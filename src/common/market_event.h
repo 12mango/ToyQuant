@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <initializer_list>
 #include <string>
+#include <type_traits>
 #include <variant>
 #include <vector>
 
@@ -209,3 +210,28 @@ struct IncrementalBookBatch
 
 using MarketEvent =
     std::variant<MarketTrade, BboQuote, MarketDepthSnapshot, IncrementalBookBatch>;
+
+// The event's place on the venue's clock. A batch is stamped with the exchange's own microsecond and a book
+// snapshot or a trade with its own, so every alternative answers the same question and a stream of different
+// kinds can be ordered. It lives here rather than beside one caller because two of them need it: the replay
+// feed merge, and the merge that turns several instruments' streams into one ordered stream.
+inline uint64_t market_event_timestamp(const MarketEvent& event)
+{
+    return std::visit(
+        [](const auto& value)
+        {
+            using Event = std::decay_t<decltype(value)>;
+            if constexpr (std::is_same_v<Event, IncrementalBookBatch>)
+                return value.exchange_ts;
+            else
+                return value.ts;
+        },
+        event);
+}
+
+// The instrument the event is about, which is what a run carrying several books dispatches on. Every
+// alternative carries one, including a batch: its updates do not, because one batch is one instrument.
+inline const std::string& market_event_symbol(const MarketEvent& event)
+{
+    return std::visit([](const auto& value) -> const std::string& { return value.symbol; }, event);
+}

@@ -56,6 +56,7 @@ set(CORE_SOURCES
     src/market/line_reader.cpp
     src/market/market_data_validator.cpp
     src/market/market_event_recorder.cpp
+    src/market/merged_event_reader.cpp
     src/market/replay_feed.cpp
     src/market/threaded_l2_replay.cpp
     src/orderbook/l2_orderbook.cpp
@@ -81,6 +82,7 @@ set(LINE_SOURCES
 set(APP_SOURCES
     src/app/app_config.cpp
     src/app/fill_accounting.cpp
+    src/app/multi_book.cpp
     src/app/order_ledger.cpp
     src/app/pipeline.cpp
     src/app/risk_pipeline.cpp
@@ -224,4 +226,5 @@ add_toy_test(portfolio_test)
 add_toy_test(carry_ledger_test)
 add_toy_test(funding_rate_test)
 add_toy_test(pipeline_accounting_test)
+add_toy_test(multi_book_test)
 add_toy_test(strategy_benchmark_test)

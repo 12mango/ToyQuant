@@ -18,6 +18,17 @@ void Portfolio::reset()
     taker_trade_count_ = 0;
 }
 
+void Portfolio::set_instrument(const InstrumentSpec& instrument)
+{
+    // The three numbers the valuation needs, and deliberately not the symbol: the position map is already keyed
+    // by it, and a spec whose symbol disagrees with the report's would be a second place the mapping could be
+    // wrong. `quantity_scale` of zero is refused at construction, so it is refused here the same way.
+    instruments_[instrument.symbol] =
+        Valuation{.quantity_scale = instrument.quantity_scale == 0 ? 1 : instrument.quantity_scale,
+                  .unit_notional_usd = instrument.unit_notional_usd,
+                  .multiplier = instrument.multiplier};
+}
+
 void Portfolio::charge_fee(double fee)
 {
     if (fee == 0.0) return;
@@ -43,6 +54,10 @@ void Portfolio::apply(const ExecutionReport& report)
         taker_fees_ += report.fee;
         ++taker_trade_count_;
     }
+    // One instrument's units and unit value, asked for once: the closing half, the opening half and the
+    // averaging all use the same three numbers, and a symbol the account holds was registered by whoever
+    // built it.
+    const Valuation valuation = valuation_of(report.symbol);
     cash_ -= report.fee;
     realized_pnl_ -= report.fee;
 
@@ -53,9 +68,9 @@ void Portfolio::apply(const ExecutionReport& report)
     const double executed = static_cast<double>(report.executed_quantity());
     const auto settle_close = [&](int64_t close_quantity)
     {
-        const double closed = units(static_cast<uint64_t>(close_quantity));
-        const double value_now = value_of(closed, position.average_price, report.price);
-        const double value_at_entry = unit_value(position.average_price) * closed;
+        const double closed = units(valuation, static_cast<uint64_t>(close_quantity));
+        const double value_now = value_of(valuation, closed, position.average_price, report.price);
+        const double value_at_entry = unit_value(valuation, position.average_price) * closed;
         double pnl = 0.0;
         if (report.side == exchange::Side::Buy)
         {
@@ -78,7 +93,7 @@ void Portfolio::apply(const ExecutionReport& report)
         // profit. The share is taken in proportion to quantity, and a close of the whole position takes
         // all of it.
         const double closing_fee = report.fee * static_cast<double>(close_quantity) / executed;
-        const double held = units(static_cast<uint64_t>(std::llabs(position.quantity)));
+        const double held = units(valuation, static_cast<uint64_t>(std::llabs(position.quantity)));
         const double entry_fee_share = held > 0.0 ? position.entry_fees * (closed / held) : 0.0;
         position.entry_fees -= entry_fee_share;
 
@@ -110,9 +125,9 @@ void Portfolio::apply(const ExecutionReport& report)
 
         if (remaining_quantity > 0)
         {
-            const double open = units(static_cast<uint64_t>(remaining_quantity));
+            const double open = units(valuation, static_cast<uint64_t>(remaining_quantity));
             const double existing =
-                units(static_cast<uint64_t>(std::max<int64_t>(0, position.quantity)));
+                units(valuation, static_cast<uint64_t>(std::max<int64_t>(0, position.quantity)));
             const double total = existing + open;
             // A position opened from flat starts its clock and its fee carry here; adding to one already
             // held keeps both.
@@ -128,7 +143,7 @@ void Portfolio::apply(const ExecutionReport& report)
                 total > 0.0 ? (existing * position.average_price + open * report.price) / total
                             : 0.0;
             position.quantity += remaining_quantity;
-            cash_ -= unit_value(report.price) * open;
+            cash_ -= unit_value(valuation, report.price) * open;
         }
     }
     else
@@ -143,9 +158,9 @@ void Portfolio::apply(const ExecutionReport& report)
 
         if (remaining_quantity > 0)
         {
-            const double open = units(static_cast<uint64_t>(remaining_quantity));
+            const double open = units(valuation, static_cast<uint64_t>(remaining_quantity));
             const double existing =
-                units(static_cast<uint64_t>(std::max<int64_t>(0, -position.quantity)));
+                units(valuation, static_cast<uint64_t>(std::max<int64_t>(0, -position.quantity)));
             const double total = existing + open;
             if (position.quantity == 0)
             {
@@ -157,7 +172,7 @@ void Portfolio::apply(const ExecutionReport& report)
                 total > 0.0 ? (existing * position.average_price + open * report.price) / total
                             : 0.0;
             position.quantity -= remaining_quantity;
-            cash_ += unit_value(report.price) * open;
+            cash_ += unit_value(valuation, report.price) * open;
         }
     }
 }
@@ -172,9 +187,10 @@ void Portfolio::mark_values(const std::unordered_map<std::string, double>& price
         const auto price_it = prices.find(symbol);
         if (price_it == prices.end() || position.quantity == 0) continue;
 
-        const double amount = units(static_cast<uint64_t>(std::llabs(position.quantity)));
-        const double value_now = value_of(amount, position.average_price, price_it->second);
-        const double value_at_entry = unit_value(position.average_price) * amount;
+        const Valuation valuation = valuation_of(symbol);
+        const double amount = units(valuation, static_cast<uint64_t>(std::llabs(position.quantity)));
+        const double value_now = value_of(valuation, amount, position.average_price, price_it->second);
+        const double value_at_entry = unit_value(valuation, position.average_price) * amount;
         if (position.quantity > 0)
         {
             unrealized_pnl += value_now - value_at_entry;
@@ -218,10 +234,12 @@ PortfolioExposure Portfolio::exposure(const std::unordered_map<std::string, doub
         if (position.quantity == 0) continue;
         const auto mark = prices.find(symbol);
         const double price = mark == prices.end() ? 0.0 : mark->second;
-        const double units = static_cast<double>(position.quantity) / static_cast<double>(quantity_scale_);
+        const Valuation valuation = valuation_of(symbol);
+        const double units = static_cast<double>(position.quantity) /
+                             static_cast<double>(valuation.quantity_scale);
         out.legs.push_back(ExposureLeg{.symbol = symbol,
                                        .quantity = position.quantity,
-                                       .notional_usd = units * unit_value(price)});
+                                       .notional_usd = units * unit_value(valuation, price)});
     }
     // Sorted by symbol: the account is a hash map, and a report whose lines move between runs is a report
     // nobody can diff.
@@ -245,10 +263,12 @@ double Portfolio::accrue_interval_flow(const std::string& symbol, double interva
     if (it == positions_.end() || it->second.quantity == 0) return 0.0;
     // A price-quoted unit needs a positive price before it has a notional to charge a rate to; a fixed
     // USD face value does not, because that value does not come from the price.
-    if (unit_notional_usd_ <= 0.0 && mark_price <= 0.0) return 0.0;
+    const Valuation valuation = valuation_of(symbol);
+    if (valuation.unit_notional_usd <= 0.0 && mark_price <= 0.0) return 0.0;
 
     const double notional =
-        units(static_cast<uint64_t>(std::llabs(it->second.quantity))) * unit_value(mark_price);
+        units(valuation, static_cast<uint64_t>(std::llabs(it->second.quantity))) *
+        unit_value(valuation, mark_price);
     const double flow =
         it->second.quantity > 0 ? notional * interval_rate : -notional * interval_rate;
     if (flow == 0.0) return 0.0;

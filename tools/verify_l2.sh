@@ -50,6 +50,13 @@ SLICE_2M=/tmp/depth_2m.csv
 # built on demand, so the cut costs a second once and nothing afterwards.
 SNAPSHOT_0501=data/v2/crypto/deribit_book_snapshot_25_2020-05-01_BTC-PERPETUAL.csv.gz
 SLICE_0501=/tmp/snap_0501_200k.csv
+# The second book of the two-instrument run: the same venue, the same day, a different instrument. Its depth
+# file is gzipped because that is how it arrives, so its slice is cut through zcat like the snapshot above. The
+# pair exists so that the one read a single position cannot produce -- gross exposure against net -- is measured
+# on a real replay rather than only on an account built by a test.
+ETH_TRADES=data/v2/crypto/deribit_trades_2020-04-01_ETH-PERPETUAL.csv.gz
+ETH_DEPTH=data/v2/crypto/deribit_incremental_book_L2_2020-04-01_ETH-PERPETUAL.csv.gz
+SLICE_ETH_200K=/tmp/eth_depth_200k.csv
 # The funding block in docs/PERFORMANCE_HISTORY.md replays ten minutes around the 2024-03-28 08:00 UTC funding
 # settlement, because a Binance day file is cut on UTC midnight and midnight is itself a settlement instant, so a
 # window that begins with the day applies that settlement to an account that holds nothing. The two slices are one
@@ -67,6 +74,9 @@ REF_HASH=/tmp/l2_full_ref.sha256
 ensure_slices() {
   [ -f "$SLICE_200K" ] || head -n 200001 "$FULL_DEPTH" > "$SLICE_200K"
   [ -f "$SLICE_2M" ] || head -n 2000001 "$FULL_DEPTH" > "$SLICE_2M"
+  if [ ! -f "$SLICE_ETH_200K" ] && [ -f "$ETH_DEPTH" ]; then
+    zcat "$ETH_DEPTH" | head -n 200001 > "$SLICE_ETH_200K"
+  fi
   if [ ! -f "$SLICE_0501" ] && [ -f "$SNAPSHOT_0501" ]; then
     zcat "$SNAPSHOT_0501" 2>/dev/null | head -n 200001 > "$SLICE_0501"
   fi
@@ -208,6 +218,32 @@ tier1() {
   broker_break=$("$BIN" l2_replay "$TRADES" "$SLICE_200K" BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation \
         --paper-broker --broker-drop-every=1 2>&1 | grep -oE '^\[RECON\].*status=[a-z]+$')
   printf '%s' "$broker_break" | grep -q 'status=break' || broker_ok=1
+  # The two-book run: a second instrument into the same account. Three different claims, each its own number.
+  # Both streams were delivered -- the event count equals the sum of the two books' own counts, which a merge
+  # that dropped or duplicated a stream could not satisfy. Both books decided, one [EXECUTION] line each, which
+  # is the count a single-book run cannot produce. And the account reports one book of two legs valued at each
+  # instrument's own face value: ten dollars for a BTC contract, one for an ETH one, so a gross of 11 against a
+  # net of 9 is what says the two legs are not the same position. The block is skipped when the second
+  # instrument's data is not on disk, the way the funding block below is, because the archive is not in the tree.
+  local multi_ok=0
+  if [ -f "$ETH_TRADES" ] && [ -f "$SLICE_ETH_200K" ]; then
+    local multi multi_events multi_booked multi_books multi_lines
+    multi=$("$BIN" l2_replay "$TRADES" "$SLICE_200K" BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation \
+          --symbol-b=ETH-PERPETUAL --trades-b="$ETH_TRADES" --depth-b="$SLICE_ETH_200K" 2>&1)
+    printf '%s' "$multi" |
+      grep -q '^\[EXPOSURE\] symbols=2 legs=BTC-PERPETUAL:1:10,ETH-PERPETUAL:-1:-1 gross_usd=11 net_usd=9 gross_to_net=1.22222 fees_usd=0.0202$' ||
+      multi_ok=1
+    multi_lines=$(printf '%s' "$multi" | grep -c '^\[EXECUTION\] symbol=')
+    [ "$multi_lines" = 2 ] || multi_ok=1
+    multi_books=$(printf '%s' "$multi" | grep -oE '^\[L2 DATA\].* books=[0-9]+' | grep -oE 'books=[0-9]+' |
+      sed 's/books=//' | head -1)
+    [ "$multi_books" = 2 ] || multi_ok=1
+    multi_events=$(printf '%s' "$multi" | grep -oE '^\[L2 DATA\].* events=[0-9]+' | grep -oE 'events=[0-9]+' |
+      sed 's/events=//' | head -1)
+    multi_booked=$(printf '%s' "$multi" | grep -oE '^\[BOOK\] .*events=[0-9]+' |
+      awk -F'events=' '{sum += $2} END {print sum + 0}')
+    [ -n "$multi_events" ] && [ "$multi_events" = "$multi_booked" ] || multi_ok=1
+  fi
   # The numbers the documents quote are claims about this code, and hand-copied claims drift: one did,
   # a "thirty times per fill" that a re-measurement turned into ten. They are checked at the same gate
   # as the invariants, on the same slices, so a documented value that stops being true fails a run.
@@ -225,6 +261,7 @@ tier1() {
   # here rather than being trusted.
   python3 tools/capacity_table.py --self-test >> "$TOOL_CHECK_LOG" 2>&1 || tool_check=1
   if [ $rc -eq 0 ] && [ $rec_ok -eq 0 ] && [ $thr_ok -eq 0 ] && [ $broker_ok -eq 0 ] &&
+     [ $multi_ok -eq 0 ] &&
      [ $doc_check -eq 0 ] &&
      [ $fields_check -eq 0 ] && [ $prose_check -eq 0 ] && [ $tool_check -eq 0 ] &&
      [ $verdict_check -eq 0 ]; then
@@ -235,6 +272,8 @@ tier1() {
   [ $rec_ok -eq 0 ] || echo "  recorder: replaying the recording did not reproduce the run"
   [ $thr_ok -eq 0 ] || echo "  threads: the threaded run did not match the direct run, or its hand-off count did not"
   [ $broker_ok -eq 0 ] || echo "  broker: the brokered run did not match the direct one, or a lost report was not reported"
+  [ $multi_ok -eq 0 ] ||
+    echo "  multi: the two-book run did not report two books, two legs, or the sum of its own event counts"
   [ $fields_check -eq 0 ] || sed 's/^/  fields: /' "$FIELD_CHECK_LOG"
   [ $prose_check -eq 0 ] || sed 's/^/  prose: /' "$PROSE_CHECK_LOG"
   [ $tool_check -eq 0 ] || sed 's/^/  tool: /' "$TOOL_CHECK_LOG"

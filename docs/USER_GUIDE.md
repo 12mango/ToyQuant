@@ -243,6 +243,29 @@ The remaining `l2_replay` flags are `--no-output`, `--fast-validation`, `--profi
 broker's faults `--broker-reject-every=N`, `--broker-partial-every=N`, `--broker-drop-every=N`,
 `--broker-outage-after=N` and `--broker-outage-holds=M`.
 
+A second book is three flags, and a replay that names them trades two instruments into one account:
+
+```bash
+./build/toy_quant l2_replay \
+  data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL \
+  0 active_l2 1 prorata --fast-validation \
+  --symbol-b=ETH-PERPETUAL \
+  --trades-b=data/v2/crypto/deribit_trades_2020-04-01_ETH-PERPETUAL.csv.gz \
+  --depth-b=/tmp/eth_depth_200k.csv
+```
+
+Each symbol gets its own book, its own decision layer, its own venue and its own pipeline -- the pipeline is
+one engine and one strategy by construction -- and the two share one account. The four readers are merged by
+timestamp before the feed sees them, so the event order is the venue's clock with a tie going to the first
+stream listed. Three things change in what is printed: one `[EXECUTION]` line per book, carrying
+`symbol=`; one `[BOOK]` line per book with how many events it was given; and one `[EXPOSURE]` line for the
+account, where each leg is valued with its own instrument's face value, so a ten dollar contract and a one
+dollar one are not the same exposure. `[PORTFOLIO]` is printed once, and `[PNL]` is not printed at all:
+its per-fill columns divide the account's money by one book's fill count, which is one book's denominator
+for the whole account's result. The broker, the gateway, `--metrics`, `--parent`, `--record` and
+`--funding-rates` are refused with a second book, each for its own reason, rather than silently applied to
+only one of the two.
+
 `--record=PREFIX` taps the stream a run is fed and writes it back out in the replay's own shapes,
 `PREFIX_trades.csv` and `PREFIX_depth.csv`, so a paced session or a live feed becomes a file the same
 binary replays:

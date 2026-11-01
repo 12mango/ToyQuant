@@ -10,6 +10,7 @@ class Pipeline;
 class IMarketEventReader;
 struct InstrumentSpec;
 struct MatchingEngineConfig;
+struct StrategyFactoryConfig;
 
 class Application
 {
@@ -29,6 +30,13 @@ class Application
     // The parsed flags as the engine's own settings, in one place, because two modes build an engine from
     // the same flags and a mode should read as a list of objects rather than a list of numbers in order.
     MatchingEngineConfig engine_config(const InstrumentSpec& instrument) const;
+    // The instrument a run trades, from the registry plus the two flags that re-price it. One method because
+    // both the single-book path and the two-book one need the same answer for a symbol, and the flags are per
+    // run rather than per symbol: a run that names a maker fee rate means it for every book it carries.
+    InstrumentSpec instrument_for(const std::string& symbol) const;
+    // The flags every strategy of this run is built from, gathered once: the two-book run builds two strategies
+    // from one command line, and the per-symbol part of it is the instrument pointer.
+    StrategyFactoryConfig strategy_config(const InstrumentSpec& instrument) const;
     // Every mode opens its log the same way and applies the same four pipeline limits, and neither is worth
     // repeating at four call sites: the prologue is two lines of the same two calls, and the limits are the
     // risk controls a reader wants to find by name rather than infer from four adjacent setters.
@@ -42,6 +50,10 @@ class Application
     // Everything after the readers exist -- the book, the strategy, the engine, the recorder, the
     // broker and the summary -- is the same code, which is what makes one strategy drive both.
     void run_l2_session_mode() const;
+    // A replay of two instruments into one account. Everything the single-book path builds is built twice --
+    // book, decision layer, venue, pipeline -- and the account, the output files and the delivery path are
+    // shared, which is what makes the exposure read meaningful rather than arithmetic over one position.
+    void run_multi_book_mode() const;
     void run_carry_mode() const;
     void run_legacy_udp_mode() const;
 

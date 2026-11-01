@@ -11,7 +11,7 @@ legacy CSV / UDP / Binance ─────────────────�
 
 | | |
 |---|---|
-| **Size** | 104 files, 22,321 lines: `app` 6944, `market` 3890, `legacy` 1851, `lines` 2602, `strategy` 1954, `exchange` 1327, `common` 785, `backtest` 611, `utils` 488, `accounting` 540, `bench` 563, `orderbook` 560, `concurrency` 176, `main` 30 |
+| **Size** | 108 files, 23,010 lines: `app` 7472, `market` 3974, `legacy` 1851, `lines` 2602, `strategy` 1954, `exchange` 1327, `common` 811, `backtest` 611, `bench` 563, `orderbook` 560, `accounting` 591, `utils` 488, `concurrency` 176, `main` 30 |
 | **Tests** | 26 CTest binaries, at least one per module, run by tier 0 of the gate |
 | **Tools** | 40 scripts (`*.py` and `*.sh` in `tools/`): the gate, the measurement sweeps, the queue calibration, the source fetches, two lints |
 | **Build** | CMake + presets, C++20, standard library only (zlib for `.gz` inputs) |
@@ -410,10 +410,10 @@ One script, four tiers, run on every change. `tools/verify_l2.sh all`:
 
 | Tier | Time | What it checks |
 |---|---|---|
-| 0 | ~1 s | CTest: 27 unit-test binaries |
+| 0 | ~1 s | CTest: 28 unit-test binaries |
 | 1 | ~60 s | pinned invariants on an L2 and an L1 run, every number quoted in the documents, the prose lints, and the IEX and futures registries' own checks |
 | 2 | ~15 s | the SHA-256 of the full 1.5 GB standard output against a stored reference |
-| 3 | ~5 s | the same 27 test binaries and one 200k-row replay under AddressSanitizer and UndefinedBehaviorSanitizer, with leak detection on |
+| 3 | ~5 s | the same 28 test binaries and one 200k-row replay under AddressSanitizer and UndefinedBehaviorSanitizer, with leak detection on |
 
 Most of tier 1 is the document check: it re-runs the 47 recorded blocks the documents quote, which include the
 F4 windows and the latency sweep on converted Databento data, so a claim about a market or about a millisecond

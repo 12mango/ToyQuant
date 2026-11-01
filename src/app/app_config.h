@@ -27,6 +27,11 @@ struct AppConfig
     AppMode mode = AppMode::LegacyCsv;
     std::string path_or_port = "data/scenarios/synthetic_ticks.csv";
     std::string quotes_path;
+    // The second book of an `l2_replay` run: its two files. Empty means one book, which is what every recorded
+    // run replays. The account, the output files and the delivery path are shared; the book, the strategy and the
+    // venue are one per symbol, because the pipeline is one engine and one strategy by construction.
+    std::string trades_b_path;
+    std::string depth_b_path;
     std::string symbol;
     // The live websocket endpoint of a ws-mode run: host:port from the positional argument, and the
     // HTTP target the handshake asks for, which defaults to "/" and is set by --ws-target=.
@@ -224,8 +229,10 @@ struct AppConfig
     // settlement each time the event clock passes one, reported as a [FUNDING] line that appears only when
     // this is set, so a run without it reproduces the recorded output byte for byte.
     std::string funding_rates_path;
-    // The carry mode's second leg and its two symbols. `path_or_port` holds the first leg's funding file
-    // there, because the first path of any mode is the one the positional arguments start with.
+    // The carry mode's second leg, and the second book of an `l2_replay` run that was given one: two modes, one
+    // field, because both are asking the same question -- which instrument is the other side of this run. In
+    // carry mode `path_or_port` holds the first leg's funding file, because the first path of any mode is the one
+    // the positional arguments start with.
     std::string funding_b_path;
     std::string symbol_b;
     // USD held on each carry leg: one leg long and one short, so the account's own exposure is the

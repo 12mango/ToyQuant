@@ -139,6 +139,15 @@ class Portfolio
     {
     }
 
+    // One instrument's units, for an account that holds more than one. A position is already keyed by symbol;
+    // what was still account-wide was how a unit of that symbol is worth anything, and two instruments need not
+    // agree: a BTC perpetual has a ten dollar face value and an ETH perpetual a one dollar face value, so an
+    // account valuing both at one of those prices the other leg ten times too large.
+    //
+    // A symbol that was never registered is valued with the constructor's figures, which is what every
+    // single-instrument run relies on and what keeps its numbers where they were.
+    void set_instrument(const InstrumentSpec& instrument);
+
     void apply(const ExecutionReport& report);
     void mark_to_market(const std::unordered_map<std::string, double>& prices);
     // The same valuation as `mark_to_market`, read instead of written. The equity series a run samples
@@ -219,32 +228,54 @@ class Portfolio
     PortfolioExposure exposure(const std::unordered_map<std::string, double>& prices) const;
 
    private:
+    // What one unit of one symbol is worth, and how many units a raw quantity is. The three numbers the
+    // constructor takes are the account's default; a registered instrument overrides them for its own symbol.
+    struct Valuation
+    {
+        uint64_t quantity_scale{1};
+        double unit_notional_usd{0.0};
+        double multiplier{1.0};
+    };
+
+    // A copy rather than a reference: a fill asks for it once and uses it several times, and the map is not
+    // touched in between.
+    Valuation valuation_of(const std::string& symbol) const
+    {
+        const auto found = instruments_.find(symbol);
+        if (found != instruments_.end()) return found->second;
+        return {.quantity_scale = quantity_scale_,
+                .unit_notional_usd = unit_notional_usd_,
+                .multiplier = multiplier_};
+    }
+
     // The one valuation loop. `mark_to_market` writes its two outputs into the account, `equity_at`
     // reads only the equity, and because the arithmetic is the same the sampled curve and the final
     // [PORTFOLIO] line cannot drift apart.
     void mark_values(const std::unordered_map<std::string, double>& prices, double& unrealized_pnl,
                      double& equity) const;
 
-    double units(uint64_t quantity) const
+    double units(const Valuation& valuation, uint64_t quantity) const
     {
-        return static_cast<double>(quantity) / static_cast<double>(quantity_scale_);
+        return static_cast<double>(quantity) / static_cast<double>(valuation.quantity_scale);
     }
 
     // USD value of one quantity unit at `price`.
-    double unit_value(double price) const
+    double unit_value(const Valuation& valuation, double price) const
     {
-        return unit_notional_at(unit_notional_usd_, multiplier_, price);
+        return unit_notional_at(valuation.unit_notional_usd, valuation.multiplier, price);
     }
 
     // USD value of `amount` units held from `entry_price` to `price`.
-    double value_of(double amount, double entry_price, double price) const
+    double value_of(const Valuation& valuation, double amount, double entry_price, double price) const
     {
-        return position_value(unit_notional_usd_, multiplier_, amount, entry_price, price);
+        return position_value(valuation.unit_notional_usd, valuation.multiplier, amount, entry_price,
+                              price);
     }
 
     uint64_t quantity_scale_;
     double unit_notional_usd_;
     double multiplier_;
+    std::unordered_map<std::string, Valuation> instruments_;
     double initial_cash_;
     double cash_;
     double realized_pnl_{0.0};

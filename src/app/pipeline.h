@@ -41,6 +41,11 @@ class Pipeline
     // copy of the valuation arithmetic.
     PortfolioExposure exposure() const;
 
+    // The midpoints `exposure` values at, one per symbol this pipeline has seen a two-sided quote for. It is
+    // public because a run that carries several books into one account has to read all of them at once: one
+    // pipeline only ever sees its own symbol, so its own `exposure` would value every other leg at zero.
+    std::unordered_map<std::string, double> latest_marks() const;
+
     uint64_t filtered_market_trades() const
     {
         return filtered_market_trades_;

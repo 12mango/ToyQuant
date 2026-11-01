@@ -82,6 +82,10 @@ constexpr std::string_view kTraceOrderPrefix = "--trace-order=";
 constexpr std::string_view kFundingRatesPrefix = "--funding-rates=";
 constexpr std::string_view kSymbolAPrefix = "--symbol-a=";
 constexpr std::string_view kSymbolBPrefix = "--symbol-b=";
+// The second book of an l2_replay run. `--symbol-b` is shared with the carry mode, which is why it is declared
+// above with the carry flags rather than here: one name, one symbol, one meaning.
+constexpr std::string_view kTradesBPrefix = "--trades-b=";
+constexpr std::string_view kDepthBPrefix = "--depth-b=";
 constexpr std::string_view kNotionalPrefix = "--notional-usd=";
 constexpr std::string_view kLongPrefix = "--long=";
 constexpr std::string_view kMakerFeePrefix = "--maker-fee-rate=";
@@ -163,6 +167,10 @@ void print_usage(const char* executable)
         std::cerr << "   or: " << executable
                       << " carry <leg_a_funding_csv> <leg_b_funding_csv> --symbol-a=SYM --symbol-b=SYM "
                          "[--notional-usd=N] [--long=b]\n";
+        std::cerr << "   second book: --symbol-b=SYM --trades-b=FILE --depth-b=FILE (l2_replay only) "
+                     "replays two instruments into one account -- a book, a decision layer and a venue per "
+                     "symbol, interleaved by timestamp -- and the [EXPOSURE] line then reports the two legs' "
+                     "gross exposure against their net\n";
         std::cerr << "   optional flags: --no-output | --fast-validation (l2_replay only) | "
                      "--profile-stages[=N] prints sampled per-stage timings (l2_replay only, default interval 64) | "
                      "--order-size=N, --inventory-limit=N, and --max-position=N override the "
@@ -420,6 +428,12 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
             const std::string flag = argv[argument];
             if (flag == "--no-output")
                 cfg.discard_output = true;
+            else if (flag.compare(0, kSymbolBPrefix.size(), kSymbolBPrefix) == 0)
+                cfg.symbol_b = flag.substr(kSymbolBPrefix.size());
+            else if (flag.compare(0, kTradesBPrefix.size(), kTradesBPrefix) == 0)
+                cfg.trades_b_path = flag.substr(kTradesBPrefix.size());
+            else if (flag.compare(0, kDepthBPrefix.size(), kDepthBPrefix) == 0)
+                cfg.depth_b_path = flag.substr(kDepthBPrefix.size());
             else if (flag == kMarkoutCoverFlag)
                 cfg.markout_cover = true;
             else if (flag == kMetricsFlag)
@@ -1111,8 +1125,76 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                         "--cancel-latency-us=N, --trace-order=N, --funding-rates=FILE, --maker-fee-rate=R, "
                         "--fee-schedule=KEY=VALUE[,KEY=VALUE], "
                         "--markout-cover, --metrics, --markout-horizon=N, --parent=SIDE:QUANTITY:SECONDS, "
-                        "--algo=MARKET|TWAP:N|POV:X, --algo-entry=CROSS|POST:SECONDS, --flatten-band=N, or "
+                        "--algo=MARKET|TWAP:N|POV:X, --algo-entry=CROSS|POST:SECONDS, --flatten-band=N, "
+                        "--symbol-b=SYM with --trades-b=FILE and --depth-b=FILE, or "
                         "--paper-broker with one of its faults";
+                return false;
+            }
+        }
+        // The second book. Three flags that only mean anything together: a symbol with no files to replay, or
+        // files with no symbol, is half a book, and reporting it as a run that traded one instrument would hide
+        // the mistake rather than make it.
+        const bool second_book_named =
+            !cfg.symbol_b.empty() || !cfg.trades_b_path.empty() || !cfg.depth_b_path.empty();
+        if (second_book_named)
+        {
+            if (cfg.mode != AppMode::L2Replay)
+            {
+                error = "a second book is an l2_replay run: a live session reads one socket, and the "
+                        "single-instrument replay modes take one symbol";
+                return false;
+            }
+            if (cfg.symbol_b.empty() || cfg.trades_b_path.empty() || cfg.depth_b_path.empty())
+            {
+                error = "a second book needs --symbol-b, --trades-b and --depth-b: a symbol without its files, or "
+                        "files without a symbol, is not a book";
+                return false;
+            }
+            if (cfg.symbol_b == cfg.symbol)
+            {
+                error = "a second book needs a different --symbol-b: the same symbol twice would be one position "
+                        "with two owners rather than two legs";
+                return false;
+            }
+            for (const std::string& path : {cfg.trades_b_path, cfg.depth_b_path})
+            {
+                if (!std::filesystem::is_regular_file(to_abs_path(path)))
+                {
+                    error = "second book input file does not exist: " + to_abs_path(path);
+                    return false;
+                }
+            }
+            // The four things a second book cannot carry, each refused for its own reason rather than ignored:
+            // a knob that configures a layer the run does not build makes a two-book run and a one-book run
+            // with the same numbers look alike.
+            if (cfg.paper_broker || cfg.order_gateway)
+            {
+                error = "the paper broker and the order gateway wrap one venue; a two-symbol run builds one venue "
+                        "per symbol, and the wrapper is not per leg yet";
+                return false;
+            }
+            if (cfg.metrics)
+            {
+                error = "--metrics samples one account's equity series; with two books the sampler would run "
+                        "twice per event, and [PERFORMANCE] would describe a book that does not exist";
+                return false;
+            }
+            if (cfg.has_parent)
+            {
+                error = "--parent works one order on one book: two books have two arrival prices and the "
+                        "[EXECUTION_ALGO] line has room for one of them";
+                return false;
+            }
+            if (!cfg.record_prefix.empty())
+            {
+                error = "--record writes one stream in the replay shapes, and replaying a two-symbol recording "
+                        "would read both instruments into the single book a replay builds";
+                return false;
+            }
+            if (!cfg.funding_rates_path.empty())
+            {
+                error = "--funding-rates names one history for one instrument; a two-symbol run needs one "
+                        "history per leg, which is a shape the flag does not have yet";
                 return false;
             }
         }

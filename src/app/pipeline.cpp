@@ -243,6 +243,11 @@ void Pipeline::process_l2_market_trade(const MarketTrade& trade)
 
 PortfolioExposure Pipeline::exposure() const
 {
+    return portfolio_.exposure(latest_marks());
+}
+
+std::unordered_map<std::string, double> Pipeline::latest_marks() const
+{
     // The marks are the midpoints of the last quote each symbol showed. A quote with a missing side is skipped
     // rather than guessed at: the account then values that leg at zero and still reports its quantity, which is
     // the honest reading of a run that never saw a two-sided market in that symbol.
@@ -252,7 +257,7 @@ PortfolioExposure Pipeline::exposure() const
         if (quote.bid_price > 0.0 && quote.ask_price > 0.0)
             marks[symbol] = 0.5 * (quote.bid_price + quote.ask_price);
     }
-    return portfolio_.exposure(marks);
+    return marks;
 }
 
 RunSummary Pipeline::summary() const

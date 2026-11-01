@@ -418,10 +418,66 @@ struct RunSummary
     // shown as a sequence instead of as a total, which is what makes it the teaching artefact.
     std::vector<TraceRow> queue_trace;
 
-    std::string to_log_string() const
+    // The account's own lines, in the two halves a run that carries several books needs them in.
+    //
+    // `[PORTFOLIO]` is the account: cash, what is realized, what is marked, fees, and the maker/taker split.
+    // Every number in it belongs to the account rather than to a book, which is why it is the line a two-book
+    // run prints once.
+    //
+    // `[PNL]` mixes the two: the account's PnL divided by one book's fill count is a per-fill figure with one
+    // book's denominator, so a run with two books does not print it -- `[PORTFOLIO]` already holds the money,
+    // and each book's own fill count is in its `[EXECUTION]` line. `account_to_log_string` is the two together,
+    // which is what every single-book run prints.
+    //
+    // The leading newline is part of each text: the caller appends it to a line that is already open.
+    std::string portfolio_to_log_string() const
     {
         std::ostringstream stream;
-        stream << "[EXECUTION] submitted_orders=" << submitted_orders
+        stream << "\n[PORTFOLIO] " << portfolio.to_log_string();
+        return stream.str();
+    }
+
+    std::string pnl_to_log_string() const
+    {
+        std::ostringstream stream;
+        stream << "\n[PNL] gross_pnl_usd=" << pnl.gross_pnl_usd
+               << " net_pnl_usd=" << pnl.net_pnl_usd
+               << " gross_closed_pnl_usd=" << pnl.gross_closed_pnl_usd
+               << " closed_pnl_usd=" << pnl.closed_pnl_usd
+               << " maker_notional_usd=" << pnl.maker_notional_usd
+               << " net_per_fill_usd=" << pnl.net_per_fill_usd
+               << " gross_closed_per_fill_usd=" << pnl.gross_closed_per_fill_usd
+               << " breakeven_maker_rate=" << pnl.breakeven_maker_rate;
+        if (metrics_requested)
+            stream << "\n[PERFORMANCE] span_seconds=" << performance.span_seconds
+                   << " samples=" << performance.samples
+                   << " periods_per_year=" << performance.periods_per_year
+                   << " sharpe=" << performance.sharpe
+                   << " sortino=" << performance.sortino
+                   << " calmar=" << performance.calmar
+                   << " ann_vol=" << performance.annualized_volatility
+                   << " max_drawdown=" << performance.max_drawdown
+                   << " max_drawdown_duration_seconds="
+                   << performance.max_drawdown_duration_seconds;
+        return stream.str();
+    }
+
+    std::string account_to_log_string() const
+    {
+        return portfolio_to_log_string() + pnl_to_log_string();
+    }
+
+    // `leg` names the book this summary belongs to, for a run that carries several of them: it is written into
+    // the [EXECUTION] line, which is the line that describes orders rather than the account. `include_account`
+    // is how a multi-book run prints one block per book and the account once -- the lines about the account are
+    // the account's and would otherwise appear twice with the same numbers. Both default to the single-book
+    // reading, so a run that names neither prints exactly the text it always printed.
+    std::string to_log_string(const std::string& leg = {}, bool include_account = true) const
+    {
+        std::ostringstream stream;
+        stream << "[EXECUTION] ";
+        if (!leg.empty()) stream << "symbol=" << leg << " ";
+        stream << "submitted_orders=" << submitted_orders
                << " submitted_quantity=" << submitted_quantity
                << " cancel_requests=" << cancel_requests << " trade_reports=" << trade_reports
                << " fill_rate=" << fill_rate << " cancel_rate=" << cancel_rate
@@ -507,26 +563,7 @@ struct RunSummary
             stream << " invalid_order_transitions=" << execution_quality.invalid_order_transitions;
         if (execution_quality.orphan_order_reports > 0)
             stream << " orphan_order_reports=" << execution_quality.orphan_order_reports;
-        stream << "\n[PORTFOLIO] " << portfolio.to_log_string()
-               << "\n[PNL] gross_pnl_usd=" << pnl.gross_pnl_usd
-               << " net_pnl_usd=" << pnl.net_pnl_usd
-               << " gross_closed_pnl_usd=" << pnl.gross_closed_pnl_usd
-               << " closed_pnl_usd=" << pnl.closed_pnl_usd
-               << " maker_notional_usd=" << pnl.maker_notional_usd
-               << " net_per_fill_usd=" << pnl.net_per_fill_usd
-               << " gross_closed_per_fill_usd=" << pnl.gross_closed_per_fill_usd
-               << " breakeven_maker_rate=" << pnl.breakeven_maker_rate;
-        if (metrics_requested)
-            stream << "\n[PERFORMANCE] span_seconds=" << performance.span_seconds
-                   << " samples=" << performance.samples
-                   << " periods_per_year=" << performance.periods_per_year
-                   << " sharpe=" << performance.sharpe
-                   << " sortino=" << performance.sortino
-                   << " calmar=" << performance.calmar
-                   << " ann_vol=" << performance.annualized_volatility
-                   << " max_drawdown=" << performance.max_drawdown
-                   << " max_drawdown_duration_seconds="
-                   << performance.max_drawdown_duration_seconds;
+        if (include_account) stream << account_to_log_string();
         if (metrics_requested)
             stream << "\n[ROUND_TRIPS] trades=" << round_trips.trades
                    << " win_rate=" << round_trips.win_rate

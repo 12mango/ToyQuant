@@ -8,20 +8,6 @@
 
 namespace
 {
-uint64_t event_timestamp(const MarketEvent& event)
-{
-    return std::visit(
-        [](const auto& value)
-        {
-            using Event = std::decay_t<decltype(value)>;
-            if constexpr (std::is_same_v<Event, IncrementalBookBatch>)
-                return value.exchange_ts;
-            else
-                return value.ts;
-        },
-        event);
-}
-
 int64_t monotonic_now_ns()
 {
     return std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -120,7 +106,7 @@ void L2ReplayFeed::run_single()
         if (pacing_.enabled)
         {
             ++pacing_summary_.events;
-            pace(static_cast<int64_t>(event_timestamp(event)));
+            pace(static_cast<int64_t>(market_event_timestamp(event)));
         }
 
         if (profiler_ != nullptr) profiler_->start_event();
@@ -153,8 +139,8 @@ void L2ReplayFeed::run()
     bool has_trade = trades_->next(trade);
     bool has_depth = depth_->next(depth);
     profiler_end(Stage::ReadParse);
-    uint64_t trade_timestamp = has_trade ? event_timestamp(trade) : 0;
-    uint64_t depth_timestamp = has_depth ? event_timestamp(depth) : 0;
+    uint64_t trade_timestamp = has_trade ? market_event_timestamp(trade) : 0;
+    uint64_t depth_timestamp = has_depth ? market_event_timestamp(depth) : 0;
     int64_t last_event_ns = 0;
 
     while (has_trade || has_depth)
@@ -164,7 +150,7 @@ void L2ReplayFeed::run()
 
         if (pacing_.enabled)
         {
-            last_event_ns = static_cast<int64_t>(event_timestamp(event));
+            last_event_ns = static_cast<int64_t>(market_event_timestamp(event));
             ++pacing_summary_.events;
             pace(last_event_ns);
         }
@@ -184,12 +170,12 @@ void L2ReplayFeed::run()
         if (use_depth)
         {
             has_depth = depth_->next(depth);
-            if (has_depth) depth_timestamp = event_timestamp(depth);
+            if (has_depth) depth_timestamp = market_event_timestamp(depth);
         }
         else
         {
             has_trade = trades_->next(trade);
-            if (has_trade) trade_timestamp = event_timestamp(trade);
+            if (has_trade) trade_timestamp = market_event_timestamp(trade);
         }
         profiler_end(Stage::ReadParse);
     }

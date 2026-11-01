@@ -1,5 +1,6 @@
 #include "app/application.h"
 
+#include <array>
 #include <filesystem>
 #include <immintrin.h>
 #include <iostream>
@@ -11,6 +12,7 @@
 #include "lines/carry_ledger.h"
 #include "accounting/portfolio.h"
 #include "lines/reconciliation.h"
+#include "app/multi_book.h"
 #include "app/pipeline.h"
 #include "app/strategy_factory.h"
 #include "common/instrument_spec.h"
@@ -23,6 +25,7 @@
 #include "market/funding_rate.h"
 #include "market/l2_replay_feed.h"
 #include "market/market_event_recorder.h"
+#include "market/merged_event_reader.h"
 #include "market/threaded_l2_replay.h"
 #include "market/replay_feed.h"
 #include "lines/legacy/udp_feed.h"
@@ -54,6 +57,68 @@ std::string application_log_path(bool discard_output)
 }  // namespace
 
 Application::Application(const AppConfig& cfg) : cfg_(cfg) {}
+
+InstrumentSpec Application::instrument_for(const std::string& symbol) const
+{
+    // The symbol decides the instrument, through the one registry the rest of the program reads, so a new
+    // market is an entry there rather than another branch here. A symbol with no entry is an error rather
+    // than a default, because a default would quietly price the wrong tick with the wrong fee.
+    InstrumentSpec instrument;
+    if (!instrument_spec_of(symbol, instrument))
+        throw std::invalid_argument("no instrument specification for L2 replay symbol: " + symbol);
+    // The positional quantity scale is accepted on this path for the same command shape as the other modes
+    // and then not applied: the instrument's own scale is the contract's, and every recorded run passes a
+    // scale of one against a specification that carries a million, so honouring it would reprice the whole
+    // corpus. The mode line prints the figure actually in force, which is what keeps the no-op visible.
+    //
+    // A different maker fee rate than the venue's, for the runs that ask what the fee would have had to be.
+    if (cfg_.has_maker_fee_rate) instrument.maker_fee_rate = cfg_.maker_fee_rate;
+    // And the account's own schedule, when a run names one. It is applied here, before the instrument reaches
+    // the venue, the strategy and the pipeline, so all three price the schedule the mode line reports. The five
+    // terms are the ones `InstrumentSpec` and `--fee-schedule` have in common, which is why they are listed one
+    // by one: a term added to the flag's struct and not to the instrument prices the run without it while the
+    // mode line reports it set, the failure `fee_schedule_of` exists to prevent in the other direction.
+    if (cfg_.has_fee_schedule)
+    {
+        instrument.min_commission_per_order = cfg_.fee_schedule.min_commission_per_order;
+        instrument.regulatory_fee_rate = cfg_.fee_schedule.regulatory_fee_rate;
+        instrument.clearing_fee_per_share = cfg_.fee_schedule.clearing_fee_per_share;
+        instrument.audit_fee_per_share = cfg_.fee_schedule.audit_fee_per_share;
+        instrument.maker_rebate_per_share = cfg_.fee_schedule.maker_rebate_per_share;
+        // The commission is applied only when the run named one, because the schedule's other terms default
+        // to zero and this one's zero means "the venue's own rate" rather than "free": a run that named a
+        // floor and nothing else must keep paying the instrument's commission, and a run that names a
+        // commission is asking for a different tier than the registry's.
+        if (cfg_.fee_schedule.has_commission_per_share)
+            instrument.fee_per_share = cfg_.fee_schedule.commission_per_share;
+    }
+    return instrument;
+}
+
+StrategyFactoryConfig Application::strategy_config(const InstrumentSpec& instrument) const
+{
+    return StrategyFactoryConfig{
+        .instrument = &instrument,
+        .order_size_override = cfg_.order_size_override,
+        .inventory_limit_override = cfg_.inventory_limit_override,
+        .base_spread_ticks_override = cfg_.base_spread_ticks,
+        .inventory_shift_ticks_override = cfg_.inventory_shift_ticks,
+        .refresh_price_ticks_override = cfg_.refresh_price_ticks_override,
+        .edge_cover_ticks_override = cfg_.edge_cover_ticks,
+        .markout_cover = cfg_.markout_cover,
+        .flatten_band_units = cfg_.flatten_band,
+        .min_spread_ticks_override = cfg_.min_spread_ticks,
+        .trend = cfg_.trend,
+        .execution = StrategyFactoryConfig::ExecutionParams{
+            .side = cfg_.parent_side,
+            .quantity = cfg_.parent_quantity,
+            .horizon_us = cfg_.parent_horizon_us,
+            .algo = execution_algo_of(cfg_.algo),
+            .slices = cfg_.algo_slices,
+            .participation = cfg_.algo_participation,
+            .post_first = cfg_.algo_entry == "post",
+            .post_timeout_us = cfg_.algo_post_timeout_seconds * 1'000'000}};
+}
 
 MatchingEngineConfig Application::engine_config(const InstrumentSpec& instrument) const
 {
@@ -163,7 +228,14 @@ int Application::run() const
         case AppMode::L2Replay:
         case AppMode::WebSocket:
             // One delivery path for both: the live session is the replay with its readers swapped for
-            // the socket, so the two modes differ only in where the market events come from.
+            // the socket, so the two modes differ only in where the market events come from. A replay given a
+            // second book is the same path with two of everything except the account, which is why it is a
+            // branch here rather than a mode of its own.
+            if (!cfg_.symbol_b.empty())
+            {
+                run_multi_book_mode();
+                return 0;
+            }
             run_l2_session_mode();
             return 0;
         case AppMode::Carry:
@@ -360,37 +432,10 @@ void Application::run_l2_session_mode() const
         okx = format == "okx";
     }
 
-    // The symbol decides the instrument, through the one registry the rest of the program reads, so a new
-    // market is an entry there rather than another branch here. A symbol with no entry is an error rather
-    // than a default, because a default would quietly price the wrong tick with the wrong fee.
-    InstrumentSpec instrument;
-    if (!instrument_spec_of(cfg_.symbol, instrument))
-        throw std::invalid_argument("no instrument specification for L2 replay symbol: " + cfg_.symbol);
-    // The positional quantity scale is accepted here for the same command shape as the other modes and then not
-    // applied: on this path the instrument's own scale is the contract's, and every recorded run passes a scale of
-    // one against a specification that carries a million, so honouring it would reprice the whole corpus. The mode
-    // line prints the figure actually in force, which is what keeps the no-op visible rather than silent.
-    // A different maker fee rate than the venue's, for the runs that ask what the fee would have had to be.
-    if (cfg_.has_maker_fee_rate) instrument.maker_fee_rate = cfg_.maker_fee_rate;
-    // And the account's own schedule, when a run names one. It is applied here, before the instrument reaches
-    // the venue, the strategy and the pipeline, so all three price the schedule the mode line reports. The five
-    // terms are the ones `InstrumentSpec` and `--fee-schedule` have in common, which is why they are listed one
-    // by one: a term added to the flag's struct and not to the instrument prices the run without it while the
-    // mode line reports it set, the failure `fee_schedule_of` exists to prevent in the other direction.
-    if (cfg_.has_fee_schedule)
-    {
-        instrument.min_commission_per_order = cfg_.fee_schedule.min_commission_per_order;
-        instrument.regulatory_fee_rate = cfg_.fee_schedule.regulatory_fee_rate;
-        instrument.clearing_fee_per_share = cfg_.fee_schedule.clearing_fee_per_share;
-        instrument.audit_fee_per_share = cfg_.fee_schedule.audit_fee_per_share;
-        instrument.maker_rebate_per_share = cfg_.fee_schedule.maker_rebate_per_share;
-        // The commission is applied only when the run named one, because the schedule's other terms default
-        // to zero and this one's zero means "the venue's own rate" rather than "free": a run that named a
-        // floor and nothing else must keep paying the instrument's commission, and a run that names a
-        // commission is asking for a different tier than the registry's.
-        if (cfg_.fee_schedule.has_commission_per_share)
-            instrument.fee_per_share = cfg_.fee_schedule.commission_per_share;
-    }
+    // The symbol decides the instrument, through the registry and the two flags that re-price it; see
+    // `instrument_for`. A symbol with no entry is an error rather than a default, because a default would
+    // quietly price the wrong tick with the wrong fee.
+    const InstrumentSpec instrument = instrument_for(cfg_.symbol);
     Logger logger = make_logger();
     if (live)
         logger.log("[Mode: WebSocket] endpoint=", cfg_.ws_host, ":", cfg_.ws_port,
@@ -442,29 +487,7 @@ void Application::run_l2_session_mode() const
                    ";tick_size=" + std::to_string(instrument.tick_size);
     auto output_files = open_output_files(source, "source_l2_market_data");
     L2OrderBook l2_book(instrument.tick_size);
-    auto strategy = make_strategy(cfg_.strategy_name,
-                                  StrategyFactoryConfig{
-                                      .instrument = &instrument,
-                                      .order_size_override = cfg_.order_size_override,
-                                      .inventory_limit_override = cfg_.inventory_limit_override,
-                                      .base_spread_ticks_override = cfg_.base_spread_ticks,
-                                      .inventory_shift_ticks_override = cfg_.inventory_shift_ticks,
-                                      .refresh_price_ticks_override =
-                                          cfg_.refresh_price_ticks_override,
-                                      .edge_cover_ticks_override = cfg_.edge_cover_ticks,
-                                      .markout_cover = cfg_.markout_cover,
-                                      .flatten_band_units = cfg_.flatten_band,
-                                      .min_spread_ticks_override = cfg_.min_spread_ticks,
-                                      .trend = cfg_.trend,
-                                      .execution = StrategyFactoryConfig::ExecutionParams{
-                                          .side = cfg_.parent_side,
-                                          .quantity = cfg_.parent_quantity,
-                                          .horizon_us = cfg_.parent_horizon_us,
-                                          .algo = execution_algo_of(cfg_.algo),
-                                          .slices = cfg_.algo_slices,
-                                          .participation = cfg_.algo_participation,
-                                          .post_first = cfg_.algo_entry == "post",
-                                          .post_timeout_us = cfg_.algo_post_timeout_seconds * 1'000'000}});
+    auto strategy = make_strategy(cfg_.strategy_name, strategy_config(instrument));
     MatchingEngine engine(instrument.tick_size, fee_schedule_of(instrument),
                           engine_config(instrument));
     // The paper broker wraps the venue rather than replacing it: the strategy, the book and the
@@ -708,6 +731,170 @@ void Application::run_l2_session_mode() const
         live_feed->stop();
         logger.log("[WS] ", live_feed->summary().to_log_string());
     }
+}
+
+void Application::run_multi_book_mode() const
+{
+    // Two instruments, one account. Everything the single-book path builds for itself is built once per symbol
+    // -- the book, the decision layer, the venue, the pipeline -- because a pipeline is one engine and one
+    // strategy by construction. What is shared is the account, the output files and the delivery path, and the
+    // number that only exists at the two-book level is the exposure, which is why it is read here and not by
+    // either pipeline.
+    Logger logger = make_logger();
+    struct BookSource
+    {
+        std::string symbol;
+        std::string trades_file;
+        std::string depth_file;
+    };
+    const std::array<BookSource, 2> sources{{
+        {cfg_.symbol, to_abs_path(cfg_.path_or_port), to_abs_path(cfg_.quotes_path)},
+        {cfg_.symbol_b, to_abs_path(cfg_.trades_b_path), to_abs_path(cfg_.depth_b_path)},
+    }};
+
+    // Per-stage timing is opt-in here exactly as it is there, and the threaded path refuses it for the same
+    // reason: the profiler accumulates on whatever thread calls it, and that path calls it from two.
+    StageProfiler stage_profiler(cfg_.profile_sample_interval > 0 ? cfg_.profile_sample_interval
+                                                                : StageProfiler::kDefaultSampleInterval);
+    StageProfiler* const profiler = cfg_.profile_sample_interval > 0 ? &stage_profiler : nullptr;
+    if (cfg_.feed_thread && profiler != nullptr)
+        throw std::invalid_argument(
+            "--profile-stages and --feed-thread cannot be combined: the profiler accumulates on the thread "
+            "that calls it and this path calls it from two, so its report would be a race rather than a "
+            "measurement");
+
+    // The account is built with the first book's valuation and then told about both, because the two are not
+    // interchangeable: a BTC perpetual has a ten dollar face value and an ETH perpetual a one dollar face, and
+    // an account holding both with one face value prices the other leg ten times too large.
+    const InstrumentSpec first_instrument = instrument_for(sources[0].symbol);
+    Portfolio portfolio(first_instrument.quantity_scale, 1000.0, first_instrument.unit_notional_usd,
+                        first_instrument.multiplier);
+    portfolio.set_instrument(first_instrument);
+
+    const std::string source = "deribit;symbols=" + sources[0].symbol + "," + sources[1].symbol +
+                               ";trades=" + sources[0].trades_file + "," + sources[1].trades_file +
+                               ";depth=" + sources[0].depth_file + "," + sources[1].depth_file;
+    auto output_files = open_output_files(source, "source_l2_market_data");
+
+    MultiBook books(portfolio);
+    books.set_profiler(profiler);
+    std::vector<std::unique_ptr<IMarketEventReader>> streams;
+    for (const BookSource& book_source : sources)
+    {
+        // The leg is heap-allocated and never moved: the strategy and the venue are built with the address of
+        // its instrument, so that address is part of the leg's contract rather than an accident of iteration.
+        auto leg = std::make_unique<BookLeg>();
+        leg->instrument = instrument_for(book_source.symbol);
+        portfolio.set_instrument(leg->instrument);
+        leg->book = std::make_unique<L2OrderBook>(leg->instrument.tick_size);
+        leg->strategy = make_strategy(cfg_.strategy_name, strategy_config(leg->instrument));
+        leg->venue = std::make_unique<MatchingEngine>(leg->instrument.tick_size,
+                                                      fee_schedule_of(leg->instrument),
+                                                      engine_config(leg->instrument));
+        leg->pipeline = std::make_unique<Pipeline>(output_files.orders, output_files.trades,
+                                                   *leg->strategy, *leg->venue, portfolio,
+                                                   leg->instrument.tick_size);
+        // The same settings the single-book path applies, applied to the book they belong to. The exposure
+        // ceiling is in dollars and lives on the pipeline, so each book measures its own exposure against the
+        // same cash rather than the two together measuring against it.
+        leg->pipeline->set_collateral(1000.0, leg->instrument.unit_notional_usd,
+                                      leg->instrument.quantity_scale, leg->instrument.multiplier);
+        leg->pipeline->set_profiler(profiler);
+        apply_pipeline_limits(*leg->pipeline);
+        leg->pipeline->set_schedule_terms(leg->instrument.fee_per_share,
+                                          leg->instrument.min_commission_per_order);
+        leg->pipeline->set_markout_cover(cfg_.markout_cover);
+        leg->pipeline->set_gate_diagnostics(cfg_.markout_cover || cfg_.flatten_band > 0);
+        leg->pipeline->set_markout_horizon(cfg_.markout_horizon);
+
+        // A venue brings either its own trade archive and a JSON Lines book, or the CSV pair this repository
+        // started with, and the depth file says which. It is decided per leg, because two books need not come
+        // from the same venue.
+        const std::string format = market_data_format_of(book_source.depth_file);
+        if (format == "okx")
+        {
+            streams.push_back(make_okx_trade_reader(book_source.trades_file, leg->instrument.symbol,
+                                                    leg->instrument.contract_size,
+                                                    leg->instrument.quantity_scale));
+            streams.push_back(make_okx_book_reader(book_source.depth_file, leg->instrument.symbol,
+                                                   leg->instrument.contract_size,
+                                                   leg->instrument.quantity_scale));
+        }
+        else
+        {
+            streams.push_back(make_deribit_trade_reader(book_source.trades_file));
+            streams.push_back(make_deribit_depth_reader(book_source.depth_file));
+        }
+        books.add_leg(std::move(leg));
+    }
+
+    logger.log("[Mode: L2 Replay] symbols=", sources[0].symbol, ",", sources[1].symbol,
+               " trades=", sources[0].trades_file, ",", sources[1].trades_file,
+               " depth=", sources[0].depth_file, ",", sources[1].depth_file,
+               " strategy=", cfg_.strategy_name,
+               " queue_model=", queue_model_name(cfg_.queue_model), " books=", books.legs().size(),
+               " maker_fee_rate=", first_instrument.maker_fee_rate,
+               " min_commission_per_order=", first_instrument.min_commission_per_order);
+
+    const ReplayPacing pacing{.enabled = cfg_.live_pacing || cfg_.delay > 0,
+                              .speed = cfg_.live_pacing ? cfg_.live_pacing_speed : 1.0};
+    MarketDataValidationConfig validation_config;
+    validation_config.validate_incremental_update_fields = !cfg_.fast_validation;
+    // The books' readers as one ordered stream: the merge the feed already performs for one instrument's
+    // trades and depth, one level up. The feed below takes it already merged, so nothing in the delivery path
+    // needed a second merge loop, and the merge itself is testable with no feed at all.
+    auto merged = std::make_unique<MergedMarketEventReader>(std::move(streams));
+    const auto consume = [&books](const MarketEvent& event) { books.process(event); };
+    std::unique_ptr<L2ReplayFeed> feed;
+    std::unique_ptr<ThreadedReplayFeed> threaded_feed;
+    const std::size_t hand_off_capacity =
+        cfg_.ring_capacity == 0 ? ThreadedReplayFeed::kDefaultRingCapacity : cfg_.ring_capacity;
+    if (cfg_.feed_thread)
+        threaded_feed = std::make_unique<ThreadedReplayFeed>(std::move(merged), consume, pacing,
+                                                             validation_config, hand_off_capacity);
+    else
+        feed = std::make_unique<L2ReplayFeed>(std::move(merged), consume, pacing, validation_config);
+    if (threaded_feed)
+    {
+        threaded_feed->set_profiler(profiler);
+        threaded_feed->run();
+    }
+    else
+    {
+        feed->set_profiler(profiler);
+        feed->run();
+    }
+    const PacingSummary& pacing_summary =
+        threaded_feed ? threaded_feed->pacing_summary() : feed->pacing_summary();
+    const MarketDataValidationSummary& validation =
+        threaded_feed ? threaded_feed->validation_summary() : feed->validation_summary();
+
+    if (pacing.enabled) logger.log("[LIVE] ", pacing_summary.to_log_string());
+    if (threaded_feed)
+        logger.log("[LATENCY] ", threaded_feed->latency_summary().to_log_string());
+    // The account's final mark at every leg's last midpoint, in one call: a leg whose book never showed a
+    // two-sided quote is absent from the map and keeps the value the last mark gave it.
+    portfolio.mark_to_market(books.marks());
+    logger.log("[L2 DATA] events=", validation.events, " trades=", validation.trades,
+               " depth_snapshots=", validation.depth_snapshots,
+               " incremental_batches=", validation.incremental_batches,
+               " incremental_snapshot_batches=", validation.incremental_snapshot_batches,
+               " books=", books.legs().size());
+    // One [EXECUTION] block per book, with the symbol on the line because the tag alone no longer says which
+    // book it describes, then the account once. [PNL] is deliberately absent: its per-fill columns divide the
+    // account's money by one book's fill count, which is one book's denominator for the whole account's result.
+    // Every number it would carry is either in [PORTFOLIO] or in the book's own [EXECUTION] line.
+    for (const auto& leg : books.legs())
+    {
+        logger.log(leg->pipeline->summary().to_log_string(leg->instrument.symbol,
+                                                          /*include_account=*/false));
+        logger.log("[BOOK] symbol=", leg->instrument.symbol, " events=", leg->events);
+    }
+    std::string account = books.legs().front()->pipeline->summary().portfolio_to_log_string();
+    if (!account.empty() && account.front() == '\n') account.erase(account.begin());
+    logger.log(account);
+    logger.log("[EXPOSURE] ", books.exposure().to_log_string());
+    if (profiler != nullptr) std::cout << profiler->report() << std::flush;
 }
 
 void Application::run_legacy_udp_mode() const

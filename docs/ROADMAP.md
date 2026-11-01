@@ -40,7 +40,7 @@ existing design, architecture and user documents are the whole plan.
 | execution algorithms | `execution_l2` with three schedules, two entry modes and parent-level shortfall against both the arrival price and the window's TWAP; the schedule wins at most half a basis point, posting loses the fills it saves, and size moves the number of crossings but not the cost | nothing while the closure stands; a venue with a materially different fee would be a new row | closed |
 | pre-trade risk | done: switch, fat finger, rate, exposure, position | per-strategy budget only when strategies share an account | P2 |
 | order state | done: Pending/Resting/PartiallyFilled/Filled/Cancelled/Rejected, reasons, pending release, IOC/FOK terminals | timeout/query visibility and immediate-order terminals done; recovery policy remains P2 | done |
-| portfolio and PnL | single instrument per run; a BTC/ETH pair is 2.7 times short of its own round-trip cost on two windows, and the two instruments' maker break-even rates are 6.9 bps apart (both in `PERFORMANCE_HISTORY.md`) | the maker comparison needs a larger fill count than the free days give; that is data, not code | P2 |
+| portfolio and PnL | several instruments in one run against one account: a book, a decision layer, a venue and a pipeline per symbol, per-instrument valuation, and `[EXPOSURE]` reporting gross against net. The instruments themselves still do not pay: a BTC/ETH pair is 2.7 times short of its own round-trip cost on two windows, and the two instruments' maker break-even rates are 6.9 bps apart (both in `PERFORMANCE_HISTORY.md`) | the maker comparison needs a larger fill count than the free days give; that is data, not code | done |
 | broker and gateway simulation | paper broker plus gateway faults and timeout queries | client-order-id recovery remains P2 | done |
 | persistence and recovery | missing | out of the demo; would need a venue-like query | P3 |
 | live venue, TLS and authentication | missing; current boundary | out of the demo; lift by request | P3 |
@@ -76,15 +76,23 @@ existing design, architecture and user documents are the whole plan.
 
 **P2 — only after P1, or when the owner asks.**
 
-9. Multi-instrument, portfolio and netting. **First slice landed:** the account already keyed positions by
-   symbol, so what was missing was the read that answers the question a single position cannot — gross exposure
-   against net exposure — and the line that prints it. `[EXPOSURE]` now reports one leg per symbol with its
-   signed notional, the sum of the sizes, the size of the sum and their ratio, valued at the last quote each
-   symbol showed and without moving the account. A two-leg book that nearly cancels reports a gross of twice its
-   net, which is the number a hedged book is judged by and the one the carry line's fee bill was charged on.
-   **Still missing:** a run that trades more than one book at once. The pipeline is still one engine and one
-   strategy per run, so the report is exercised by the account and the unit test rather than by a multi-leg
-   replay, and that half is the next slice.
+9. Multi-instrument, portfolio and netting. **Landed:** the account keys positions by symbol and reports
+   `[EXPOSURE]` — one leg per symbol with its signed notional, the sum of the sizes, the size of the sum and
+   their ratio, valued at the last quote each symbol showed and without moving the account. A two-leg book that
+   nearly cancels reports a gross of twice its net, which is the number a hedged book is judged by and the one
+   the carry line's fee bill was charged on. **And a run that trades two books at once:** `--symbol-b`,
+   `--trades-b` and `--depth-b` give an `l2_replay` a second instrument, so the run builds a book, a decision
+   layer, a venue and a pipeline per symbol against one `Portfolio`, merges the four readers by timestamp
+   (`src/market/merged_event_reader.*`), and reports one `[EXECUTION] ... symbol=` line and one `[BOOK]` line
+   per book, one `[PORTFOLIO]`, and one `[EXPOSURE]` over both legs. The account values each symbol with its own
+   instrument (`Portfolio::set_instrument`), because a ten dollar contract face and a one dollar one are not the
+   same exposure — without that the ETH leg is priced ten times too large. Measured on 2020-04-01, 200k depth
+   rows per instrument: 377,024 events, one contract long in BTC and one short in ETH, `gross_usd=11` against
+   `net_usd=9`, `fees_usd=0.0202` (the sum of both books' fees). The gate re-derives it on every run.
+   **Still missing, each refused with a second book rather than half-applied:** the broker and the gateway (they
+   wrap one venue), `--metrics` (one account's equity series sampled by two pipelines), `--parent` (one arrival
+   price per line), `--record` (the replay shapes hold one book), and `--funding-rates` (one history per flag).
+   A third book is a change to the two-source array and to the flags, not to the design.
 10. Persistence and restart recovery.
 11. Full venue semantics (cancel/replace and the other modes not chosen in P1), live venue/TLS, price impact,
     out-of-sample studies, and performance experiments (block parsing, shared memory, binary telemetry,
@@ -145,6 +153,7 @@ frozen, and a next item needs the same kind of request and a row here.
 | 2026-10-30 | Second instrument: `ETH-PERPETUAL` registered (five-cent tick, one dollar of face value, same fee), its account numbers separated from the BTC contract's, and the crossing floor measured at 6.88 against 5.39 bps for an identical fee | `432dc18` |
 | 2026-10-30 | Maker break-even is tick-dependent: −5.65 bps on the BTC contract against +1.26 on the ETH one, same venue and fee; recorded as a hint, because the free days give too few fills to settle it | `0b79452` |
 | 2026-10-31 | The campaign after the tick curve, each with its verdict in the sections above: the dated and calendar basis, the CME calendar over 23 quarterly holds, the straddle measured three times (the first two wrong), the maker revival test that falsifies "execution rescues a closed line", and the funding extreme that fails all three gates | `8df8777` … `86be0ce` |
+| 2026-11-02 | P2-9 completed: a run that trades two books at once. `--symbol-b`/`--trades-b`/`--depth-b` build a book, a decision layer, a venue and a pipeline per symbol against one `Portfolio`; the four readers are merged by timestamp; `Portfolio::set_instrument` values each symbol at its own face value; the summary prints one `[EXECUTION] ... symbol=` and one `[BOOK]` per book and the account once. Measured: 377,024 events, gross 11 against net 9, fees 0.0202, re-derived by the gate | this commit |
 | 2026-10-28 | Order state machine, reject/cancel reasons, risk pipeline, non-market-making line and measurements | `9a691be` … `3b0a180` |
 
 ### For an AI reviewing this plan
@@ -1636,7 +1645,7 @@ failed there was the capture and not the fee.
 The stages above are the plan from a positive window to a running system. Read as a learning path instead — no
 profit goal, and no need for the statistical rigor the seven gates impose — the same material is a coverage
 checklist. The engine already speaks historical data, the L2 book, the queue, the fee, the market-making line,
-single-instrument accounting, funding, the paper broker, reconciliation and the recorder. What has not been built
+several instruments against one account, funding, the paper broker, reconciliation and the recorder. What has not been built
 here by hand is the other half of a trading system, and each row points the existing book and engine at a new
 workload rather than rewriting them:
 
@@ -1647,7 +1656,7 @@ workload rather than rewriting them:
 | the order gateway and the order lifecycle behind it (Stage B) | landed: submit, cancel, partial fills, rejects and timeouts; the remaining item is timeout/query reconciliation (P1) |
 | a strategy that is not market making | signal, then target position, then risk, then exit — landed as `trend_l2`: an EWMA cross, clips at the touch, a stop, a time stop, a cooldown and an exit band, on the shared pre-trade gates |
 | live ingestion pointed at a real venue (Stage A) | the venue protocol, subscription, heartbeat, gap detection and reconnect |
-| multi-instrument accounting and a portfolio layer | from one instrument to a portfolio and a risk budget |
+| multi-instrument accounting and a portfolio layer | from one instrument to a portfolio and a risk budget -- landed as the two-book run: a pipeline per symbol, one account, and gross exposure against net |
 | persistence and recovery | how a long-lived process keeps its state and asks the venue what is still working |
 
 **How the live reader reaches a venue, in two steps.** The venues whose data this repository already models

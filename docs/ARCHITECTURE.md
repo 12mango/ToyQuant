@@ -406,12 +406,22 @@ drops the incoming tick by design.
 
 ## 3. Application Coordinator
 
-**Files:** `src/app/application.*`, `src/app/pipeline.*`
+**Files:** `src/app/application.*`, `src/app/pipeline.*`, `src/app/multi_book.*`
 
 `main.cpp` is only the process bootstrap. `Application` wires concrete objects together. The
 `LegacyCsv` and `LegacyUdp` modes create a legacy Tick adapter, `Replay` creates a Trades+BBO
 event feed, and `L2Replay` creates a trade+depth feed. `Pipeline` owns the v2 domain sequence; the
 application intentionally does not introduce separate runner abstractions yet.
+
+An `L2Replay` given `--symbol-b` builds **two** of everything one book needs -- book, decision layer,
+venue, pipeline -- and **one** `Portfolio`. `MultiBook` holds the legs, sends each event to the book its
+symbol names, and reads the account once with every leg valued at its own last midpoint, which is the only
+moment a gross and a net both exist. The books' readers are merged by timestamp before the feed sees them
+(`src/market/merged_event_reader.*`), so the delivery path stays the single-stream one, and
+`Portfolio::set_instrument` gives each symbol its own unit face value, because a ten dollar contract and a
+one dollar one are not the same exposure. What the two-book run does not carry yet is named in the
+roadmap: the broker and the gateway wrap one venue, `--metrics` samples one account's equity series, and
+`[PNL]`'s per-fill columns divide the account's money by one book's fill count.
 
 The diagram is the `Replay` path, and it has no book in it. A quote is already a top of book, and the
 pipeline applies the book's own rule for one it can use -- both sides positive and not crossed -- rather
