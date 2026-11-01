@@ -3,6 +3,7 @@
 #include <atomic>
 #include <deque>
 #include <fstream>
+#include <functional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -45,6 +46,15 @@ class Pipeline
     // public because a run that carries several books into one account has to read all of them at once: one
     // pipeline only ever sees its own symbol, so its own `exposure` would value every other leg at zero.
     std::unordered_map<std::string, double> latest_marks() const;
+
+    // Where the marks of the *whole* account come from, for a run that carries several books into it. A pipeline
+    // knows one symbol and cannot value the other legs, but the hard exposure cap belongs to the account, so this
+    // is how much of it the other books have already used. Unset -- which is every single-book run -- leaves the
+    // cap comparing this book alone, exactly as it did before.
+    void set_account_marks(std::function<std::unordered_map<std::string, double>()> provider)
+    {
+        account_marks_ = std::move(provider);
+    }
 
     uint64_t filtered_market_trades() const
     {
@@ -297,6 +307,10 @@ class Pipeline
     uint64_t strategy_position_mismatches_{0};
     double last_mid_{0.0};
     uint64_t inventory_samples_{0};
+    // How much of the account's hard exposure cap the other books have already used, refreshed once per decision
+    // cycle. Read by `make_risk_context`; zero unless `set_account_marks` gave the pipeline a way to see them.
+    double account_other_exposure_usd_{0.0};
+    std::function<std::unordered_map<std::string, double>()> account_marks_;
 
     // The run's own measurements: the funding series, and the markout of our fills and of the venue's
     // prints. Both are measured over the clock rather than per order, so they hold a queue of what is not

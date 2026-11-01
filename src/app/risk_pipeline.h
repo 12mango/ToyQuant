@@ -50,6 +50,12 @@ struct RiskContext
     // The latest BBO for the order's symbol, or null when the feed has not produced one. A fat-finger check
     // without a reference price cannot say anything, so it allows the order rather than inventing a band.
     const BboQuote* quote{nullptr};
+    // The marked exposure of the **rest** of the account, in USD: every other book's position at its own last
+    // midpoint. The hard cap is the account's, so this book's projection has to be added to what the other books
+    // already carry -- two books each comparing their own notional with the same cash allow twice the cap, and
+    // both would report no violation. A run with one book leaves this at zero and the cap then compares exactly
+    // as it always did.
+    double account_other_exposure_usd{0.0};
     // The event clock in seconds. The bucket uses it, and a clock that goes backwards (an out-of-order
     // replay) refills nothing rather than granting orders.
     double now_seconds{0.0};

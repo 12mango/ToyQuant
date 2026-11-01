@@ -166,7 +166,9 @@ RiskPipeline::Decision RiskPipeline::check_exposure(const StrategyOrder& order,
     const double marked = std::abs(static_cast<double>(projected)) / scale *
                           unit_notional_at(context.unit_notional_usd, context.multiplier,
                                            order.price);
-    if (marked <= limits_.max_exposure_usd) return {};
+    // The cap is the account's rather than this book's: what the other books already hold counts against the
+    // same cash. Adds exactly zero in a single-book run, which is why every recorded number is unchanged.
+    if (marked + context.account_other_exposure_usd <= limits_.max_exposure_usd) return {};
 
     ++hard_limit_rejections_;
     return {false, Reason::Exposure};

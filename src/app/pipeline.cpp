@@ -382,6 +382,19 @@ void Pipeline::submit_strategy_actions(uint64_t ts, std::vector<StrategyOrder> o
         risk_pipeline_.begin_cycle(account.realized_pnl + account.unrealized_pnl, ts);
     }
 
+    // What the rest of the account already holds, for the hard cap, which is the account's rather than this
+    // book's. Read once a cycle instead of once an order: the number belongs to the other books, and this cycle's
+    // own submissions are not part of it. A run with one book never calls this, so the cap there reads zero here
+    // and every recorded number stays where it was.
+    if (account_marks_)
+    {
+        std::unordered_map<std::string, double> marks = account_marks_();
+        // This book's own symbols are the ones it has quotes for, and leaving them out is what makes the number
+        // "the rest": the account read at the other legs' marks values this leg at zero.
+        for (const auto& entry : latest_quotes_) marks.erase(entry.first);
+        account_other_exposure_usd_ = portfolio_.exposure(marks).gross_usd;
+    }
+
     for (auto& order : orders)
     {
         const auto quote_it = latest_quotes_.find(order.symbol);
@@ -399,6 +412,7 @@ RiskContext Pipeline::make_risk_context(const BboQuote* quote, uint64_t ts) cons
     context.unit_notional_usd = unit_notional_usd_;
     context.multiplier = multiplier_;
     context.quote = quote;
+    context.account_other_exposure_usd = account_other_exposure_usd_;
     context.now_seconds = static_cast<double>(ts) / 1'000'000.0;
     return context;
 }

@@ -419,9 +419,11 @@ symbol names, and reads the account once with every leg valued at its own last m
 moment a gross and a net both exist. The books' readers are merged by timestamp before the feed sees them
 (`src/market/merged_event_reader.*`), so the delivery path stays the single-stream one, and
 `Portfolio::set_instrument` gives each symbol its own unit face value, because a ten dollar contract and a
-one dollar one are not the same exposure. What the two-book run does not carry yet is named in the
-roadmap: the broker and the gateway wrap one venue, `--metrics` samples one account's equity series, and
-`[PNL]`'s per-fill columns divide the account's money by one book's fill count.
+one dollar one are not the same exposure. The hard cap is the account's as well: each book is told what
+the other legs already hold (`Pipeline::set_account_marks`), so two books cannot each spend the same
+ceiling. What the two-book run does not carry yet is named in the roadmap: the broker and the gateway wrap
+one venue, `--metrics` samples one account's equity series, and `[PNL]`'s per-fill columns divide the
+account's money by one book's fill count.
 
 The diagram is the `Replay` path, and it has no book in it. A quote is already a top of book, and the
 pipeline applies the book's own rule for one it can use -- both sides positive and not crossed -- rather

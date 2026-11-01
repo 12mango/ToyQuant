@@ -806,6 +806,11 @@ void Application::run_multi_book_mode() const
         leg->pipeline->set_markout_cover(cfg_.markout_cover);
         leg->pipeline->set_gate_diagnostics(cfg_.markout_cover || cfg_.flatten_band > 0);
         leg->pipeline->set_markout_horizon(cfg_.markout_horizon);
+        // The hard exposure cap is the account's, not each book's: without this, two books would each compare
+        // their own notional with the same cash and both would report no violation while the account held twice
+        // the cap. The provider hands over every book's last midpoint, and the pipeline values the account with
+        // its own symbol left out.
+        leg->pipeline->set_account_marks([&books] { return books.marks(); });
 
         // A venue brings either its own trade archive and a JSON Lines book, or the CSV pair this repository
         // started with, and the depth file says which. It is decided per leg, because two books need not come

@@ -243,6 +243,15 @@ tier1() {
     multi_booked=$(printf '%s' "$multi" | grep -oE '^\[BOOK\] .*events=[0-9]+' |
       awk -F'events=' '{sum += $2} END {print sum + 0}')
     [ -n "$multi_events" ] && [ "$multi_events" = "$multi_booked" ] || multi_ok=1
+    # The cap is the account's, not each book's. With ten dollars the BTC book fills to ten and the ETH book is
+    # refused every quote, because its own dollar would be the eleventh: the exposure line then reports one leg
+    # rather than two, and the fees are the one book's. Two books each comparing their own notional with the same
+    # cash would report two legs and eleven dollars here, which is the bug this assertion exists for.
+    printf '%s' "$("$BIN" l2_replay "$TRADES" "$SLICE_200K" BTC-PERPETUAL 0 active_l2 1 prorata \
+      --fast-validation --max-exposure-usd=10 --symbol-b=ETH-PERPETUAL --trades-b="$ETH_TRADES" \
+      --depth-b="$SLICE_ETH_200K" 2>&1)" |
+      grep -q '^\[EXPOSURE\] symbols=1 legs=BTC-PERPETUAL:1:10 gross_usd=10 net_usd=10 gross_to_net=1 fees_usd=0.0144$' ||
+      multi_ok=1
   fi
   # The numbers the documents quote are claims about this code, and hand-copied claims drift: one did,
   # a "thirty times per fill" that a re-measurement turned into ten. They are checked at the same gate

@@ -209,6 +209,60 @@ int main()
     }
     assert(refused_unknown);
 
+    // The hard cap belongs to the account, and this is the A/B that says so: the same two books, the same orders,
+    // the same cap on one of them -- only the provider that tells a book what the other leg already holds differs.
+    // The ETH book's own second quote is 20 dollars and the BTC book is holding 100, so a 110 dollar cap refuses
+    // it once the account is read as a whole and allows it when the book looks only at itself.
+    const auto capped_rejections = [&](bool share_account)
+    {
+        test_support::TempFile capped_orders_file("multi_book_capped_orders.csv");
+        test_support::TempFile capped_trades_file("multi_book_capped_trades.csv");
+        std::ofstream capped_orders = capped_orders_file.open();
+        std::ofstream capped_trades = capped_trades_file.open();
+        Portfolio capped_account(1, 1000.0, 10.0);
+        capped_account.set_instrument(btc);
+        capped_account.set_instrument(eth);
+        MultiBook capped_books(capped_account);
+        capped_books.add_leg(make_leg(capped_account, capped_orders, capped_trades, btc));
+        capped_books.add_leg(make_leg(capped_account, capped_orders, capped_trades, eth));
+        capped_books.legs()[1]->pipeline->set_hard_exposure_limit_usd(110.0);
+        if (share_account)
+        {
+            capped_books.legs()[1]->pipeline->set_account_marks(
+                [&capped_books] { return capped_books.marks(); });
+        }
+        capped_books.process(MarketDepthSnapshot{.ts = 10,
+                                                .symbol = "BTC-PERPETUAL",
+                                                .sequence = 1,
+                                                .bids = {{6400.0, 100}},
+                                                .asks = {{6401.0, 100}},
+                                                .exchange = "deribit"});
+        capped_books.process(
+            MarketTrade{11, "BTC-PERPETUAL", 6400.0, 200, Side::Sell, 2, "deribit"});
+        capped_books.process(MarketDepthSnapshot{.ts = 12,
+                                                .symbol = "ETH-PERPETUAL",
+                                                .sequence = 1,
+                                                .bids = {{130.0, 100}},
+                                                .asks = {{131.0, 100}},
+                                                .exchange = "deribit"});
+        capped_books.process(MarketTrade{13, "ETH-PERPETUAL", 131.0, 200, Side::Buy, 2, "deribit"});
+        // A requote several ticks away. The decision layer cancels the quotes it holds on the view that sees the
+        // move and places the new ones on the view after it, so the budget is tested on the second one: the ETH
+        // book is short ten contracts, and adding ten more is the risk the account's cap has to refuse.
+        for (uint64_t ts = 14; ts <= 15; ++ts)
+        {
+            capped_books.process(MarketDepthSnapshot{.ts = ts,
+                                                    .symbol = "ETH-PERPETUAL",
+                                                    .sequence = ts - 12,
+                                                    .bids = {{135.0, 100}},
+                                                    .asks = {{136.0, 100}},
+                                                    .exchange = "deribit"});
+        }
+        return capped_books.legs()[1]->pipeline->summary().hard_limit_rejections;
+    };
+    assert(capped_rejections(false) == 0);
+    assert(capped_rejections(true) == 1);
+
     // The summary split. A book's block names its own symbol and carries no account lines; the account's block
     // carries them once and no [EXECUTION] line. What a reader greps for stays where it was for a single-book
     // run, which is the default reading asserted last.

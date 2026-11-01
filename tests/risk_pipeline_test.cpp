@@ -110,6 +110,21 @@ int main()
         decision = risk.check(make_order(Side::Buy, 100.0, 1), context);
         assert(!decision.allowed);
         assert(decision.reason == RiskPipeline::Reason::Exposure);
+
+        // The cap belongs to the account, so what the other books already hold counts against the same cash: an
+        // order this book may place on its own is refused once another leg is holding the budget. Both numbers
+        // are the same order at the same price; only the rest of the account differs.
+        RiskContext shared = fixture.context();
+        assert(risk.check(make_order(Side::Buy, 100.0, 4), shared).allowed);
+        shared.account_other_exposure_usd = 200.0;
+        decision = risk.check(make_order(Side::Buy, 100.0, 4), shared);
+        assert(!decision.allowed);
+        assert(decision.reason == RiskPipeline::Reason::Exposure);
+        // A reducing order is still allowed while the account is over its cap, which is the same rule the book
+        // had on its own: the cap refuses new risk rather than trapping a position.
+        shared.position = 4;
+        shared.pending_buy_quantity = 0;
+        assert(risk.check(make_order(Side::Sell, 100.0, 4), shared).allowed);
     }
 
     {
