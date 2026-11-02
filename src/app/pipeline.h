@@ -101,7 +101,6 @@ class Pipeline
     // of the notional. It runs after the feed has finished and before the final mark, so the account it reports is a
     // closed one.
     WindDownSummary close_out(uint64_t ts);
-
     uint64_t filtered_market_trades() const
     {
         return filtered_market_trades_;
@@ -349,6 +348,12 @@ class Pipeline
     uint64_t quote_cycle_{0};
     // The pre-trade controls in one object, so the order path and the summary read the same counters and
     // the order of the checks is a property of the risk pipeline rather than of this loop.
+    // One implementation of "close what this book is holding, at the touch, and price it": the end of the session
+    // uses it and so does a latched kill switch, so a halt and a `--close-out` cannot disagree about what an exit
+    // costs. Returns an empty summary when there is nothing to close.
+    WindDownSummary send_close_order(uint64_t ts);
+
+    // The pre-trade decision, the order sequence and the report fan-out live here; the pieces it borrows are above.
     RiskPipeline risk_pipeline_;
     double starting_cash_usd_{0.0};
     double unit_notional_usd_{0.0};
@@ -368,6 +373,10 @@ class Pipeline
     std::function<std::unordered_map<std::string, double>()> account_marks_;
     // The clock a resumed session starts trading again at. Zero, the default, holds nothing.
     uint64_t hold_submissions_until_{0};
+    // What a latched kill switch closed and what that exit cost, in the same units `--close-out` reports: the halt is
+    // the control doing something rather than only stopping, and the two numbers say what it did.
+    uint64_t kill_switch_closed_quantity_{0};
+    double kill_switch_close_bps_{0.0};
 
     // The run's own measurements: the funding series, and the markout of our fills and of the venue's
     // prints. Both are measured over the clock rather than per order, so they hold a queue of what is not

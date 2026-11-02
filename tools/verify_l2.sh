@@ -317,6 +317,21 @@ tier1() {
   close_residual=$(printf '%s' "$close_line" | grep -oE ' residual=-?[0-9]+' | grep -oE '\-?[0-9]+')
   [ -n "$close_position" ] && [ -n "$close_closed" ] && [ -n "$close_residual" ] &&
     [ "${close_position#-}" = "$((close_closed + ${close_residual#-}))" ] || close_ok=1
+  # A latched kill switch flattens. The two halves had to be fixed to make this true: the switch refused every order
+  # including the one that would close the position, and the account was never marked during a run so the loss it
+  # reads sat in the position rather than in the PnL. Here the limit is below the run's own loss, so the switch fires,
+  # closes the contract the book was holding, and the account ends flat -- `[EXPOSURE] symbols=0` is the assertion,
+  # because a halt that leaves the position open is a control that stops without reducing anything.
+  local halt_ok=0 halt_line
+  halt_line=$("$BIN" l2_replay "$TRADES" "$SLICE_200K" BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation \
+    --kill-switch-loss-usd=0.001 2>&1)
+  printf '%s' "$halt_line" | grep -q 'kill_switch_triggered=1' || halt_ok=1
+  printf '%s' "$halt_line" | grep -q 'kill_switch_closed_quantity=1' || halt_ok=1
+  printf '%s' "$halt_line" | grep -q '^\[EXPOSURE\] symbols=0 legs=none' || halt_ok=1
+  # And a limit the run never reaches leaves it exactly as it was: the control is opt-in, and a run that arms it above
+  # its own loss keeps the numbers every document quotes.
+  printf '%s' "$("$BIN" l2_replay "$TRADES" "$SLICE_200K" BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation \
+    --kill-switch-loss-usd=0.02 2>&1)" | grep -q 'kill_switch_triggered=0' || halt_ok=1
   # The numbers the documents quote are claims about this code, and hand-copied claims drift: one did,
   # a "thirty times per fill" that a re-measurement turned into ten. They are checked at the same gate
   # as the invariants, on the same slices, so a documented value that stops being true fails a run.
@@ -337,6 +352,7 @@ tier1() {
      [ $multi_ok -eq 0 ] &&
      [ $session_ok -eq 0 ] &&
      [ $close_ok -eq 0 ] &&
+     [ $halt_ok -eq 0 ] &&
      [ $doc_check -eq 0 ] &&
      [ $fields_check -eq 0 ] && [ $prose_check -eq 0 ] && [ $tool_check -eq 0 ] &&
      [ $verdict_check -eq 0 ]; then
@@ -353,6 +369,8 @@ tier1() {
     echo "  session: the resumed run did not report the account the first run left, or an order went unresolved"
   [ $close_ok -eq 0 ] ||
     echo "  close: the end-of-session line is missing, or what it closed and left does not add up to what it carried"
+  [ $halt_ok -eq 0 ] ||
+    echo "  halt: the kill switch fired and left the account holding something, or a limit it never reaches changed the run"
   [ $fields_check -eq 0 ] || sed 's/^/  fields: /' "$FIELD_CHECK_LOG"
   [ $prose_check -eq 0 ] || sed 's/^/  prose: /' "$PROSE_CHECK_LOG"
   [ $tool_check -eq 0 ] || sed 's/^/  tool: /' "$TOOL_CHECK_LOG"

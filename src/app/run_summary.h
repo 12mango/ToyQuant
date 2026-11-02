@@ -390,6 +390,11 @@ struct RunSummary
     bool kill_switch_triggered{false};
     uint64_t kill_switch_ts{0};
     uint64_t kill_switch_rejected_orders{0};
+    // What a latched kill switch closed, and the basis points that exit cost -- the same arithmetic `--close-out`
+    // reports at the end of a run, applied when the control fires instead. Printed only when a halt closed something,
+    // because a run whose switch never fired keeps its recorded line.
+    uint64_t kill_switch_closed_quantity{0};
+    double kill_switch_close_bps{0.0};
     // The two controls the non-market-making line added. The configuration is echoed so a [RISK] line is
     // self-contained, and the counters are how a run says the control acted rather than merely existed.
     bool risk_controls_requested{false};
@@ -602,8 +607,13 @@ struct RunSummary
                << " kill_switch_loss_usd=" << kill_switch_loss_usd
                << " kill_switch_triggered=" << kill_switch_triggered
                << " kill_switch_ts=" << kill_switch_ts
-               << " kill_switch_rejected_orders=" << kill_switch_rejected_orders
-               << " strategy_net_position=" << strategy_net_position
+               << " kill_switch_rejected_orders=" << kill_switch_rejected_orders;
+        // What the halt closed and what the exit cost, printed only when a halt closed something: a run whose switch
+        // never fired keeps the recorded line it always had.
+        if (kill_switch_closed_quantity > 0 || kill_switch_close_bps > 0.0)
+            stream << " kill_switch_closed_quantity=" << kill_switch_closed_quantity
+                   << " kill_switch_close_bps=" << kill_switch_close_bps;
+        stream << " strategy_net_position=" << strategy_net_position
                << " strategy_position_mismatches=" << strategy_position_mismatches
                << " starting_cash_usd=" << starting_cash_usd
                << " max_abs_exposure_usd=" << max_abs_exposure_usd

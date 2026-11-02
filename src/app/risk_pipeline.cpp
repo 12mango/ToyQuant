@@ -98,9 +98,20 @@ bool RiskPipeline::is_reducing(const StrategyOrder& order, const RiskContext& co
 RiskPipeline::Decision RiskPipeline::check_kill_switch(const StrategyOrder& order,
                                                        const RiskContext& context)
 {
-    (void)order;
-    (void)context;
     if (!kill_switch_triggered_) return {};
+    // The switch stops new risk; it does not trap the position it is holding. Every other gate here follows that rule
+    // -- the exposure cap and the position limit both let a reducing order through -- and this one has to, or a run at
+    // its loss limit could not close what it holds, which is the opposite of what the control exists for.
+    //
+    // What it allows is narrower than `is_reducing`, which compares magnitudes: a sell of nine against a long of five
+    // is a *flip* to minus four, and this predicate calls that a reduction. A halt must not open a new short in the
+    // other direction, so the order has to exit only -- towards zero, on the same side, or exactly to flat.
+    const int64_t current = current_position(context);
+    const int64_t projected = projected_position(order, context);
+    const bool exits_only =
+        current != 0 &&
+        (projected == 0 || (((current > 0) == (projected > 0)) && std::abs(projected) < std::abs(current)));
+    if (exits_only) return {};
     ++kill_switch_rejected_orders_;
     return {false, Reason::KillSwitch};
 }

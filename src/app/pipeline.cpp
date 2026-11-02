@@ -325,6 +325,8 @@ RunSummary Pipeline::summary() const
             .kill_switch_triggered = risk_pipeline_.kill_switch_triggered(),
             .kill_switch_ts = risk_pipeline_.kill_switch_ts(),
             .kill_switch_rejected_orders = risk_pipeline_.kill_switch_rejected_orders(),
+            .kill_switch_closed_quantity = kill_switch_closed_quantity_,
+            .kill_switch_close_bps = kill_switch_close_bps_,
             .risk_controls_requested =
                 risk_pipeline_.fat_finger_enabled() || risk_pipeline_.rate_limit_enabled(),
             .fat_finger_bps = risk_pipeline_.fat_finger_bps(),
@@ -412,6 +414,15 @@ void Pipeline::submit_strategy_actions(uint64_t ts, std::vector<StrategyOrder> o
     {
         const auto account = portfolio_.metrics();
         risk_pipeline_.begin_cycle(account.realized_pnl + account.unrealized_pnl, ts);
+        // The latch closing is the moment the run has decided to stop trading, and a book that still holds something
+        // is not stopped, it is stopped and exposed. Close it here, once, through the same order path everything else
+        // uses -- and the gate lets this one through because it reduces rather than adds.
+        if (risk_pipeline_.kill_switch_triggered())
+        {
+            const WindDownSummary halted = send_close_order(ts);
+            kill_switch_closed_quantity_ = halted.closed_quantity;
+            kill_switch_close_bps_ = halted.total_bps;
+        }
     }
 
     // What the rest of the account already holds, for the hard cap, which is the account's rather than this
@@ -523,6 +534,11 @@ std::string WindDownSummary::to_log_string() const
 }
 
 WindDownSummary Pipeline::close_out(uint64_t ts)
+{
+    return send_close_order(ts);
+}
+
+WindDownSummary Pipeline::send_close_order(uint64_t ts)
 {
     WindDownSummary summary;
     const int64_t position = fill_accounting_.position();
@@ -645,6 +661,20 @@ void Pipeline::advance_mid(const std::string& symbol, uint64_t ts, double mid)
 {
     last_mid_ = mid;
     ++quote_cycle_;
+    // The kill switch reads realised plus unrealised, and an account that is never marked carries its loss inside the
+    // position rather than in the PnL: a run bleeding through an open position would never reach the limit, because
+    // `unrealized_pnl` stays at zero until the run's final mark. So the account is marked each cycle -- but only when
+    // the switch is armed, which leaves every run that did not ask for one on exactly the path it had.
+    //
+    // The mark covers the whole book and not this symbol: `mark_to_market` values the positions it is given prices
+    // for and leaves the others out of the total, so a one-symbol mark on a two-book account would understate equity
+    // by the other leg's holding.
+    if (risk_pipeline_.kill_switch_loss_usd() > 0.0)
+    {
+        std::unordered_map<std::string, double> marks = latest_marks();
+        marks[symbol] = mid;
+        portfolio_.mark_to_market(marks);
+    }
     // The equity sample is taken after the engine has processed this event, so it marks the account the
     // view is about to trade against. `equity_at` is read-only: the kill switch reads realized plus
     // unrealized in the middle of an event, and a sample that moved either would make that a race with

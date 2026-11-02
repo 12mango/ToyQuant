@@ -127,6 +127,27 @@ int main()
         assert(risk.check(make_order(Side::Sell, 100.0, 4), shared).allowed);
     }
 
+    // A latched kill switch is the same rule: it stops new risk and does not trap the position. Without the
+    // exception a run at its loss limit could not close what it holds, which is the opposite of what the control is
+    // for -- and the halt path would be unable to send its closing order.
+    {
+        RiskPipeline risk;
+        risk.set_kill_switch_loss_usd(1.0);
+        RiskContext context = fixture.context();
+        // A loss of -2 against a limit of 1 latches the switch on the next cycle.
+        risk.begin_cycle(-2.0, 0.0);
+        assert(risk.kill_switch_triggered());
+        const auto decision = risk.check(make_order(Side::Buy, 100.0, 1), context);
+        assert(!decision.allowed);
+        assert(decision.reason == RiskPipeline::Reason::KillSwitch);
+        // The order that takes the position down is allowed through, and it is the only kind that is.
+        context.position = 5;
+        assert(risk.check(make_order(Side::Sell, 100.0, 5), context).allowed);
+        assert(risk.check(make_order(Side::Sell, 100.0, 1), context).allowed);
+        assert(!risk.check(make_order(Side::Sell, 100.0, 9), context).allowed);
+        assert(risk.kill_switch_rejected_orders() == 2);
+    }
+
     {
         RiskPipeline risk;
         risk.set_position_limit(100);

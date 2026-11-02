@@ -496,4 +496,100 @@ int main()
         // The close paid the taker rate, so the run's fee bill is bigger than the maker fills alone.
         assert(end_portfolio.metrics().taker_fees > 0.0);
     }
+
+    // A close the venue cannot finish says so. The exit is an IOC, so it takes what the touch displays and leaves the
+    // rest: reporting a partial close as a finished one would be the same lie as marking it.
+    {
+        test_support::TempFile thin_orders_file("pipeline_close_out_thin_orders.csv");
+        test_support::TempFile thin_trades_file("pipeline_close_out_thin_trades.csv");
+        std::ofstream thin_orders = thin_orders_file.open();
+        std::ofstream thin_trades = thin_trades_file.open();
+        L2MarketMakerBase thin_strategy(L2MarketMakerBaseConfig{.order_size = 10,
+                                                                .base_spread = 0.5,
+                                                                .inventory_limit = 100,
+                                                                .tick_size = 1.0,
+                                                                .signal_mode = L2SignalMode::Baseline});
+        MatchingEngine thin_engine(1.0, FeeSchedule{.maker_rate = 0.0002,
+                                                    .taker_rate = 0.0005,
+                                                    .quantity_scale = 1,
+                                                    .unit_notional_usd = 10.0});
+        Portfolio thin_portfolio(1, 1000.0, 10.0);
+        Pipeline thin_pipeline(thin_orders, thin_trades, thin_strategy, thin_engine, thin_portfolio, 1.0);
+        thin_pipeline.set_collateral(1000.0, 10.0, 1, 1.0);
+        thin_pipeline.process_l2_market_view(L2MarketView{.symbol = "THIN",
+                                                          .ts = 10,
+                                                          .top = TopOfBook{100.0, 5, 101.0, 5},
+                                                          .micro_price = 100.5});
+        thin_pipeline.process_l2_market_trade(MarketTrade{11, "THIN", 100.0, 200, Side::Sell, 1, "deribit"});
+        const auto* carried = thin_portfolio.find_position("THIN");
+        assert(carried != nullptr && carried->quantity == 10);
+        // The bid shows five, so five of the ten can be closed and five cannot.
+        thin_pipeline.process_l2_market_view(L2MarketView{.symbol = "THIN",
+                                                          .ts = 12,
+                                                          .top = TopOfBook{100.0, 5, 101.0, 5},
+                                                          .micro_price = 100.5});
+        const WindDownSummary partial = thin_pipeline.close_out(13);
+        assert(partial.closed_quantity == 5);
+        assert(partial.residual == 5);
+        const auto* left = thin_portfolio.find_position("THIN");
+        assert(left != nullptr && left->quantity == 5);
+    }
+
+    // A latched kill switch closes what the run is holding. Two things had to be true for this to work and neither
+    // was: the switch refused *every* order, including the one that would take the position down, and the account was
+    // never marked during a run, so the loss it reads carried the position in `unrealized_pnl`, which stayed at zero.
+    // Here the market moves against an open long, the loss passes the limit, and the run closes at the touch -- then
+    // refuses to quote again, which is what the switch is for.
+    {
+        test_support::TempFile halt_orders_file("pipeline_halt_orders.csv");
+        test_support::TempFile halt_trades_file("pipeline_halt_trades.csv");
+        std::ofstream halt_orders = halt_orders_file.open();
+        std::ofstream halt_trades = halt_trades_file.open();
+        L2MarketMakerBase halt_strategy(L2MarketMakerBaseConfig{.order_size = 10,
+                                                                .base_spread = 0.5,
+                                                                .inventory_limit = 100,
+                                                                .tick_size = 1.0,
+                                                                .signal_mode = L2SignalMode::Baseline});
+        MatchingEngine halt_engine(1.0, FeeSchedule{.maker_rate = 0.0002,
+                                                    .taker_rate = 0.0005,
+                                                    .quantity_scale = 1,
+                                                    .unit_notional_usd = 10.0});
+        Portfolio halt_portfolio(1, 1000.0, 10.0);
+        Pipeline halt_pipeline(halt_orders, halt_trades, halt_strategy, halt_engine, halt_portfolio, 1.0);
+        halt_pipeline.set_collateral(1000.0, 10.0, 1, 1.0);
+        halt_pipeline.set_kill_switch_loss_usd(0.1);
+        halt_pipeline.process_l2_market_view(L2MarketView{.symbol = "HALT",
+                                                          .ts = 10,
+                                                          .top = TopOfBook{100.0, 100, 101.0, 100},
+                                                          .micro_price = 100.5});
+        halt_pipeline.process_l2_market_trade(MarketTrade{11, "HALT", 100.0, 200, Side::Sell, 1, "deribit"});
+        const auto* open_position = halt_portfolio.find_position("HALT");
+        assert(open_position != nullptr && open_position->quantity == 10);
+        assert(!halt_pipeline.summary().kill_switch_triggered);
+
+        // The market drops a full point: ten contracts of a ten dollar face are worth 100 USD, so this is about a
+        // dollar of unrealized loss against a limit of ten cents.
+        halt_pipeline.process_l2_market_view(L2MarketView{.symbol = "HALT",
+                                                          .ts = 12,
+                                                          .top = TopOfBook{99.0, 100, 100.0, 100},
+                                                          .micro_price = 99.5});
+        auto halted = halt_pipeline.summary();
+        assert(halted.kill_switch_triggered);
+        assert(halted.kill_switch_closed_quantity == 10);
+        // The exit paid the taker rate and gave up the half spread, so the halt has a price like any other exit.
+        assert(halted.kill_switch_close_bps > 5.0);
+        const auto* flat_position = halt_portfolio.find_position("HALT");
+        assert(flat_position != nullptr && flat_position->quantity == 0);
+        assert(halted.to_log_string().find("kill_switch_closed_quantity=10") != std::string::npos);
+
+        // And it does not quote again: the strategy keeps asking and the gate keeps refusing.
+        halt_pipeline.process_l2_market_view(L2MarketView{.symbol = "HALT",
+                                                          .ts = 14,
+                                                          .top = TopOfBook{99.0, 100, 100.0, 100},
+                                                          .micro_price = 99.5});
+        halted = halt_pipeline.summary();
+        assert(halted.kill_switch_rejected_orders > 0);
+        const auto* still_flat = halt_portfolio.find_position("HALT");
+        assert(still_flat != nullptr && still_flat->quantity == 0);
+    }
 }
