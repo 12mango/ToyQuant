@@ -41,6 +41,11 @@ outcome by an order of magnitude.**
    with, not the sum of either.
 5. **Unverified facts are labelled.** The account's schedule is read from pages rather than from a statement and the
    minimum per order is reported rather than confirmed, and both are marked where they are used.
+6. **Print the interval, and read the range before it.** "Below thirty fills is not a conclusion" was a rule this
+   campaign applied by hand, and a rule applied by hand is applied by mood. The tool that now applies it showed the
+   mean of five monthly windows pinned inside 1.9 bps while the draws themselves spanned 2.75 and fell in order: an
+   interval says how well the mean is known, not whether the population is one thing, and the second question was
+   the one being asked.
 
 ## What is established
 

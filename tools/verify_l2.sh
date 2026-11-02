@@ -7,7 +7,7 @@
 # pass before it is accepted:
 #
 #   tier 0  (~0.2 s) the unit tests, because a red test must not be able to pass this gate
-#   tier 1  (~7 s, including a 2M-row replay behind one marked block and four 200k-row risk-control runs)   L2 200k slice and L1 invariants: batch counts, orders, fills, PnL, queue ahead, the record-and-replay and direct-versus-threaded round trips, and the pre-trade controls measured by tools/risk_check.sh
+#   tier 1  (~64 s, and about a minute of that is re-deriving the numbers the documents quote)   L2 200k slice and L1 invariants: batch counts, orders, fills, PnL, queue ahead, the record-and-replay and direct-versus-threaded round trips, the pre-trade controls measured by tools/risk_check.sh, every number a document quotes -- re-derived, including the interval a five-window series carries -- and the tools' own self-tests
 #   tier 2  (~15 s)  full 1.5 GB stdout hash against a cached reference
 #   tier 3  (~8 s)   the same tests and one short replay under ASan and UBSan
 #
@@ -373,6 +373,11 @@ tier1() {
   # documents is priced with: a table of money is worth what its arithmetic is, so its own hand-checked cells run
   # here rather than being trusted.
   python3 tools/capacity_table.py --self-test >> "$TOOL_CHECK_LOG" 2>&1 || tool_check=1
+  # The interval tool is the one that decides whether a mean is quotable at all, and its own arithmetic is checked
+  # here for the same reason: an interval that was wrong in the direction of confidence would make every row it
+  # touches look more settled than it is. Its replay mode is exercised by the marked block in
+  # docs/PERFORMANCE_HISTORY.md, which the doc check above runs, so this tier does not replay the windows twice.
+  python3 tools/pnl_interval.py --self-test >> "$TOOL_CHECK_LOG" 2>&1 || tool_check=1
   if [ $rc -eq 0 ] && [ $rec_ok -eq 0 ] && [ $thr_ok -eq 0 ] && [ $broker_ok -eq 0 ] &&
      [ $multi_ok -eq 0 ] &&
      [ $session_ok -eq 0 ] &&

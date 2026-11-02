@@ -1882,6 +1882,66 @@ run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tm
 then: trade_reports=1 captured_edge_per_unit_ticks=6.5 gross_pnl_usd=0.00514688 gross_closed_per_fill_usd=0 breakeven_maker_rate=0.000514688
 -->
 
+### The interval each of those numbers carries
+
+Every rate above is one number from one window, and the rule this document applies by hand -- a fill count below
+thirty is not a conclusion -- fails on all of them: the four windows here produced 267, 207, 15 and 1 fills. The
+maker break-even gap quoted further down between the two Deribit perpetuals is worse, because it compares two
+single windows and reads a 6.9 bps difference out of them.
+
+So the number's own uncertainty is measured rather than asserted. `tools/pnl_interval.py` takes a series, resamples
+the mean out of it, and prints the interval, the median, the range and a flag for the thirty-fill rule; its window
+mode replays the windows itself rather than reading a saved log, so the series cannot go stale. The series chosen
+here differs by the month and by nothing the measurement chose: the same configuration as the table above, one
+25-level snapshot slice per month at 200k rows, five months of the archive.
+
+| month | slice covers | fills | break-even maker rate |
+|---|---:|---:|---:|
+| 2020-04-01 | 0.49 h | 146 | -3.19 bps |
+| 2020-05-01 | 0.59 h | 58 | -2.96 bps |
+| 2020-06-01 | 0.86 h | 31 | -1.93 bps |
+| 2020-07-01 | 2.16 h | 29 | -0.86 bps |
+| 2020-08-01 | 0.62 h | 26 | -0.44 bps |
+
+<!-- toyquant:check
+tool: python3 tools/pnl_interval.py --window btc-months
+then: n=5 mean=-1.87368 median=-1.93129 ci95_lo=-2.84287 ci95_hi=-0.904496 spread=2.74983 includes_zero=0 sign_consistent=1 thin_sample=1
+-->
+
+Five things follow, and the first changes how the rest of this section should be read:
+
+- **The number is not one number, and the interval is narrower than the thing it estimates.** The mean is -1.87 bps
+  with a 95% interval of -2.84 to -0.90, while the five draws themselves span 2.75 bps, from -3.19 to -0.44, and
+  they fall in order. An interval says how well the mean is pinned; it says nothing about the spread of the
+  population, and here the spread is the finding: a window's answer depends on the month more than on anything the
+  strategy does. The median is printed beside the mean for the same reason -- on five points with a trend, the mean
+  is a point on a slope pretending to be a level.
+- **The 6.9 bps gap is larger than the month effect, and that is all that can be said for it.** Moving from April to
+  August moves one instrument by 2.75 bps, which is 40% of the gap the two-window comparison reports. The gap's
+  sign survives every window measured here, since BTC is worse than ETH on both same-day pairs; its size does not,
+  because a difference between two single windows carries both instruments' month effects and nothing in the data
+  separates them afterwards.
+- **The pair that controls for the day is the right design and has two draws.** BTC minus ETH on the same day, same
+  file type, same length, is -3.54 bps over 200k rows and -1.35 over 2M. Both negative, so the direction is
+  consistent; the interval over two points is the range between them, so nothing else is. That is what "recorded as
+  a hint" should have meant from the start, and the honest version of the hint is a direction rather than a number
+  to two decimals.
+- **The slice length is a confound the tool cannot remove.** A 200k-row slice covers half an hour in April and more
+  than two hours in July, because the archive is a stream of rows rather than of time, so the five draws differ by
+  the month *and* by how much of the day the slice happened to cover. The series is still the honest one available
+  -- the alternative is one window and no interval at all -- but it is a series over windows, not over months, and
+  a reader who takes it as a month effect is reading more than was measured.
+- **The floor numbers need no interval, which is the useful contrast.** The 5.39 bps a crossing costs is fee plus
+  half a tick and is arithmetic: run it twice and it is the same to the last digit, so its interval has zero width
+  and quoting one would be theatre. Intervals belong to the numbers that are estimates over a sample, and the value
+  of the distinction is that it sorts this document's claims into two piles that were previously one.
+
+What is not here is a per-fill interval. A fill's own PnL is not on disk: the trade report carries price, quantity,
+side, fee and liquidity role, so a per-fill series would have to be reconstructed by matching trades, which is a
+second implementation of the portfolio's accounting and would disagree with it exactly when it mattered. Adding a
+PnL column to the trade report is a change to the binary and is recorded as still open in `docs/ROADMAP.md`.
+
+
 **The reference hash was re-recorded.** The `[PNL]` line is printed unconditionally and the `[Mode]` line now
 echoes the maker rate, so `tools/verify_l2.sh full` failed until the reference was refreshed. The re-record is
 justified by proving the change is exactly those two additions: stripping the `[PNL]` line and the

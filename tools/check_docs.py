@@ -27,6 +27,19 @@ The name is resolved relative to the binary the gate passes in, so it follows `-
 that binary came from. A block whose command exits non-zero fails, because a binary that crashed printed
 none of the values the block is about.
 
+A block may also name a `tool:` instead of a `run:`, which is how a number a Python tool derives is checked
+rather than trusted:
+
+    <!-- toyquant:check
+    tool: python3 tools/pnl_interval.py --window btc-months
+    then: n=5 mean=-1.87368 includes_zero=0
+    -->
+
+The line is executed with this interpreter, and the binary the gate passed in is appended to it as
+`--binary <path>`, so a tool that replays windows follows the preset like a `run:` does. The interpreter and
+the script's path are checked before the run, because a tool whose name moved should say so rather than
+report a missing field.
+
 Usage:
     python3 tools/check_docs.py docs/PERFORMANCE_HISTORY.md [more.md ...]
 """
@@ -66,27 +79,38 @@ def check_blocks(text):
 
 
 def parse_block(body):
-    """Triples of (command, {field: value}, binary) in the order the block lists them.
+    """(kind, command, {field: value}, binary) in the order the block lists them.
 
     `binary:` is sticky for the runs that follow it, because a block describes one thing: a benchmark
     named once at the top rather than repeated on every line of it.
+
+    `kind` is "run" for the binary and "tool" for a `tool:` line, which is executed by this interpreter
+    instead. It is carried in the tuple rather than inferred later because the two are launched differently
+    and a block is allowed to hold both.
     """
     runs = []
     command = None
     binary = None
+    kind = "run"
     for raw_line in body:
         line = raw_line.strip()
         if line.startswith("binary:"):
             binary = line[len("binary:") :].strip()
+        elif line.startswith("tool:"):
+            if command is not None:
+                runs.append((kind, command, {}, binary))
+            kind = "tool"
+            command = line[len("tool:") :].strip()
         elif line.startswith("run:"):
             if command is not None:
-                runs.append((command, {}, binary))
+                runs.append((kind, command, {}, binary))
+            kind = "run"
             command = line[len("run:") :].strip()
         elif line.startswith("then:") and command is not None:
-            runs.append((command, dict_of(line[len("then:") :]), binary))
+            runs.append((kind, command, dict_of(line[len("then:") :]), binary))
             command = None
     if command is not None:
-        runs.append((command, {}, binary))
+        runs.append((kind, command, {}, binary))
     return runs
 
 
@@ -110,22 +134,42 @@ def main():
     for document in args.documents:
         text = document.read_text()
         for line_number, runs in check_blocks(text):
-            for command, expected, binary in runs:
+            for kind, command, expected, binary in runs:
                 checked += 1
-                # A block that names a binary gets the one beside the binary the gate passed in, so the
-                # benchmark follows the preset the run is checking rather than a path written into a doc.
-                executable = main_binary if binary is None else main_binary.parent / binary
-                if not executable.exists():
-                    failures.append(
-                        f"{document}:{line_number}: {executable} is not built, so the block cannot be run"
+                if kind == "tool":
+                    argv = shlex.split(command)
+                    # A tool line is written as `python3 tools/x.py ...`; the interpreter is this one and the
+                    # binary the gate passed in follows as a flag, so a tool that replays windows follows the
+                    # preset the way a `run:` does rather than replaying with a path written into a document.
+                    if argv and argv[0] in ("python3", "python"):
+                        argv = argv[1:]
+                    if not argv or not Path(argv[0]).exists():
+                        failures.append(
+                            f"{document}:{line_number}: {argv[0] if argv else command} does not exist, so "
+                            f"the block cannot be run"
+                        )
+                        continue
+                    argv = [sys.executable] + argv
+                    if "--binary" not in argv:
+                        argv += ["--binary", str(main_binary)]
+                    completed = subprocess.run(argv, capture_output=True, text=True)
+                    label = " ".join(argv[1:])
+                else:
+                    # A block that names a binary gets the one beside the binary the gate passed in, so the
+                    # benchmark follows the preset the run is checking rather than a path written into a doc.
+                    executable = main_binary if binary is None else main_binary.parent / binary
+                    if not executable.exists():
+                        failures.append(
+                            f"{document}:{line_number}: {executable} is not built, so the block cannot be run"
+                        )
+                        continue
+                    completed = subprocess.run(
+                        [str(executable)] + shlex.split(command), capture_output=True, text=True
                     )
-                    continue
-                completed = subprocess.run(
-                    [str(executable)] + shlex.split(command), capture_output=True, text=True
-                )
+                    label = f"{executable} {command}"
                 if completed.returncode != 0:
                     failures.append(
-                        f"{document}:{line_number}: {executable} {command} exited "
+                        f"{document}:{line_number}: {label} exited "
                         f"{completed.returncode}: {completed.stderr.strip()[:200]}"
                     )
                     continue

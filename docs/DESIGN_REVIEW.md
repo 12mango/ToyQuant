@@ -12,8 +12,8 @@ legacy CSV / UDP / Binance ─────────────────�
 | | |
 |---|---|
 | **Size** | 110 files, 24,456 lines: `app` 8658, `market` 4053, `legacy` 1851, `lines` 2602, `strategy` 1958, `exchange` 1360, `common` 811, `backtest` 611, `bench` 563, `orderbook` 587, `accounting` 708, `utils` 488, `concurrency` 176, `main` 30 |
-| **Tests** | 26 CTest binaries, at least one per module, run by tier 0 of the gate |
-| **Tools** | 40 scripts (`*.py` and `*.sh` in `tools/`): the gate, the measurement sweeps, the queue calibration, the source fetches, two lints |
+| **Tests** | 30 test binaries, at least one per module, run by tier 0 of the gate |
+| **Tools** | 45 scripts (`*.py` and `*.sh` in `tools/`): the gate, the measurement sweeps, the queue calibration, the source fetches, four lints and the interval |
 | **Build** | CMake + presets, C++20, standard library only (zlib for `.gz` inputs) |
 | **Numbers** | every figure below is re-derived by `bash tools/verify_l2.sh fast` on every change |
 
@@ -377,6 +377,7 @@ column says what fails when the row stops being true -- or that nothing does yet
 | the size of the tree, per directory | the table above | `tools/lint_prose.py`, which counts it |
 | the number of test binaries | `CMakeLists.txt` | `tools/lint_prose.py`, which counts `add_toy_test` |
 | a field of a run's output | `tools/lib.sh`'s `field_of` | nothing yet: the agreement with `tools/check_docs.py`'s rule was measured once, on a 115-field run |
+| the interval a mean carries | `tools/pnl_interval.py`, and the window list it replays | its own self-test in tier 1 and a `tool:` block in `docs/PERFORMANCE_HISTORY.md`, so the quoted interval is re-derived and the tool's arithmetic is checked |
 
 Two of these earned their place twice. The engine's struct was the last positional configuration in the
 codebase, and replacing its argument list dropped a bare `1` -- the one-event cancel delay that no flag names
@@ -415,10 +416,10 @@ One script, four tiers, run on every change. `tools/verify_l2.sh all`:
 | 2 | ~15 s | the SHA-256 of the full 1.5 GB standard output against `tests/fixtures/l2_full_ref.sha256`, taken with the mode line filtered out so the reference describes the code rather than one checkout's absolute paths |
 | 3 | ~5 s | the same 30 test binaries and one 200k-row replay under AddressSanitizer and UndefinedBehaviorSanitizer, with leak detection on |
 
-Most of tier 1 is the document check: it re-runs the 47 recorded blocks the documents quote, which include the
-F4 windows and the latency sweep on converted Databento data, so a claim about a market or about a millisecond
-moves the per-edit loop from seconds to about a minute. That is the cost of the rule that a documented number is
-a claim about the code.
+Most of tier 1 is the document check: it re-runs the 52 recorded runs the documents quote, which include the
+F4 windows, the latency sweep on converted Databento data and the interval a five-window series carries, so a
+claim about a market or about a millisecond moves the per-edit loop from seconds to about a minute. That is the
+cost of the rule that a documented number is a claim about the code.
 
 Tier 3 is the one standard C++ check this project did not run until now, and it is **checked to be live
 rather than assumed**: the sanitizer binary links `libasan` and `libubsan` and contains 34 `__asan`
@@ -433,6 +434,7 @@ tier1()  {
   python3 tools/check_written_fields.py   # every summary field is actually computed
   python3 tools/lint_prose.py docs/*.md   # every flag, queue model and tools/ path exists
   python3 tools/fetch_iex_hist.py --self-test   # the pcap/IEX-TP walk, on a file it builds itself
+  python3 tools/pnl_interval.py --self-test      # the interval's arithmetic, on hand-checked samples
   "$BIN" l2_replay ... | grep -oE 'submitted_orders=406|trade_reports=1|...'   # pinned invariants
   python3 tools/check_docs.py --binary "$BIN" docs/PERFORMANCE_HISTORY.md docs/ARCHITECTURE.md \
       docs/DESIGN_REVIEW.md docs/PERFORMANCE.md
