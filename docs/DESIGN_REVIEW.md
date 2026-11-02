@@ -412,7 +412,7 @@ One script, four tiers, run on every change. `tools/verify_l2.sh all`:
 |---|---|---|
 | 0 | ~1 s | CTest: 29 unit-test binaries |
 | 1 | ~60 s | pinned invariants on an L2 and an L1 run, every number quoted in the documents, the prose lints, and the IEX and futures registries' own checks |
-| 2 | ~15 s | the SHA-256 of the full 1.5 GB standard output against a stored reference |
+| 2 | ~15 s | the SHA-256 of the full 1.5 GB standard output against `tests/fixtures/l2_full_ref.sha256`, taken with the mode line filtered out so the reference describes the code rather than one checkout's absolute paths |
 | 3 | ~5 s | the same 29 test binaries and one 200k-row replay under AddressSanitizer and UndefinedBehaviorSanitizer, with leak detection on |
 
 Most of tier 1 is the document check: it re-runs the 47 recorded blocks the documents quote, which include the

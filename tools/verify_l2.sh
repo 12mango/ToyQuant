@@ -67,7 +67,7 @@ SLICE_SETTLE_TRADES=/tmp/btc_trades_settle.csv
 SLICE_SETTLE_BBO=/tmp/btc_bbo_settle.csv
 SETTLE_FROM=1711612500000
 SETTLE_TO=1711613100000
-REF_HASH=/tmp/l2_full_ref.sha256
+REF_HASH=tests/fixtures/l2_full_ref.sha256
 
 # The slices are cut from the tracked depth file. /tmp is volatile, so cut them again on demand
 # rather than failing with a confusing "input file does not exist".
@@ -365,13 +365,16 @@ tier1() {
 }
 
 full_hash() {
+  # The mode line carries absolute input paths, so it would make the reference a fact about one checkout rather than
+  # about the code: dropping it is what lets the hash live in the tree and mean something on any machine. Nothing
+  # else is filtered, because the point of this tier is that every number in the run is identical.
   "$BIN" l2_replay "$TRADES" "$FULL_DEPTH" BTC-PERPETUAL 0 active_l2 1 conservative \
-    --fast-validation 2>&1 | sha256sum | cut -d' ' -f1
+    --fast-validation 2>&1 | grep -v '^\[Mode:' | sha256sum | cut -d' ' -f1
 }
 
 tier2() {
   if [ ! -f "$REF_HASH" ]; then
-    echo "tier2 SKIP (no reference yet; run: tools/verify_l2.sh ref)"
+    echo "tier2 SKIP (no reference in the tree yet; run: tools/verify_l2.sh ref)"
     return 0
   fi
   local now
