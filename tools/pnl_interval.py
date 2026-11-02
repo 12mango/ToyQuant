@@ -454,7 +454,8 @@ def main():
     parser.add_argument("--binary", type=Path, default=Path("out/build/linux-debug/toy_quant"),
                         help="the binary --window replays with; tools/check_docs.py passes its own")
     parser.add_argument("--scale", type=float, default=1.0,
-                        help="multiply every value, e.g. 1e4 to read a rate as basis points")
+                        help="multiply every value, e.g. 1e4 to read a rate as basis points; the window mode "
+                             "ignores it, because what it replays is already in basis points")
     parser.add_argument("--unit", default="value", help="what the numbers are, for the printed line")
     parser.add_argument("--level", type=float, default=0.95)
     parser.add_argument("--resamples", type=int, default=2000)

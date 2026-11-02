@@ -648,7 +648,7 @@ void WebSocketFeed::handle_message(std::string_view message)
                     trade.ts = csv_fields::parse_uint64(fields[2]);
                     trade.sequence = csv_fields::parse_uint64(fields[3]);
                     trade.aggressor_side = parse_side_token(fields[4]);
-                    trade.price = csv_fields::parse_double(fields[5]);
+                    trade.price = csv_fields::parse_price(fields[5]);
                     trade.quantity = csv_fields::parse_uint64(fields[6]);
                     if (trade.aggressor_side == Side::Unknown)
                         ++summary_.parse_errors;
@@ -670,7 +670,7 @@ void WebSocketFeed::handle_message(std::string_view message)
                     update.local_ts = csv_fields::parse_uint64(fields[3]);
                     update.is_snapshot = csv_fields::parse_boolean(fields[4]);
                     update.side = parse_side_token(fields[5]);
-                    update.price = csv_fields::parse_double(fields[6]);
+                    update.price = csv_fields::parse_price(fields[6]);
                     update.amount = csv_fields::parse_uint64(fields[7]);
                     if (update.side == Side::Unknown)
                         ++summary_.parse_errors;

@@ -17,6 +17,7 @@
 #include "common/funding.h"
 #include "exchange/matching_engine.h"
 #include "common/market_event.h"
+#include "market/market_data_validator.h"
 #include "orderbook/top_of_book.h"
 #include "strategy/strategy.h"
 #include "utils/stage_profiler.h"
@@ -106,6 +107,23 @@ class Pipeline
         return filtered_market_trades_;
     }
 
+    // Where the prints are checked against the book, and how hard: a print whose midpoint is older than
+    // `max_age_ms` counts as stale, and one further than `max_deviation_bps` from a fresh midpoint counts as
+    // dislocated. The defaults are the validator's own, so a pipeline built without this call counts the same
+    // way the feed would, and the coordinator passes its config so a run has one pair of limits rather than two.
+    void set_trade_reference_limits(const MarketDataValidationConfig& config)
+    {
+        max_reference_age_us_ = config.max_bbo_age_ms * 1000;
+        max_trade_deviation_bps_ = config.max_trade_deviation_bps;
+    }
+
+    // The prints the L2 path was given and how they agreed with the book: `stale` for a midpoint that was
+    // missing or too old, `dislocated` for a fresh midpoint the print was far from.
+    const TradeReferenceSummary& trade_reference() const
+    {
+        return trade_reference_;
+    }
+
     const ExecutionQualityMetrics& execution_quality() const
     {
         return execution_quality_;
@@ -120,9 +138,9 @@ class Pipeline
         risk_pipeline_.set_position_limit(limit);
     }
 
-    // The hard exposure cap in USD and the loss at which the run stops quoting. See the flags of the same
-    // names: the cap is in dollars rather than shares because the same share count is three times the
-    // exposure on a thousand dollar share, and the switch stops quoting rather than flattening.
+    // The hard exposure cap in USD and the loss at which the run stops and closes out. See the flags of the same
+    // names: the cap is in dollars rather than shares because the same share count is three times the exposure on a
+    // thousand dollar share, and a latched switch exits the position it was holding rather than only refusing orders.
     void set_hard_exposure_limit_usd(double limit)
     {
         risk_pipeline_.set_hard_exposure_limit_usd(limit);
@@ -366,6 +384,17 @@ class Pipeline
     double min_commission_per_order_{0.0};
     uint64_t strategy_position_mismatches_{0};
     double last_mid_{0.0};
+    // When that midpoint was last set, in the venue's clock. A print is only scored against a reference that was
+    // current: a depth input that stops while the trades continue leaves a midpoint that is frozen rather than
+    // wrong, and the two cases are counted separately because they mean different things about the window.
+    uint64_t last_mid_ts_{0};
+    // The prints the L2 path scored against that midpoint, and the two ways they did not agree with it. The limits
+    // start at the validator's own defaults -- a second of reference age and five basis points of distance -- and
+    // `set_trade_reference_limits` replaces them from the run's config, which is what keeps one run from scoring its
+    // data with one pair of thresholds and reporting it with another.
+    TradeReferenceSummary trade_reference_;
+    uint64_t max_reference_age_us_{1000 * 1000};
+    double max_trade_deviation_bps_{5.0};
     uint64_t inventory_samples_{0};
     // How much of the account's hard exposure cap the other books have already used, refreshed once per decision
     // cycle. Read by `make_risk_context`; zero unless `set_account_marks` gave the pipeline a way to see them.

@@ -124,6 +124,36 @@ void check_depth_rows()
     }
 }
 
+// The OKX archive is JSON Lines rather than CSV, so its hostile rows are JSON: a level array whose price is not a
+// price, one whose size is negative, and a line whose level array is not closed. The row number is added by the
+// reader that owns the line, which is why these assert on it as well as on the message.
+void check_okx_lines()
+{
+    const RowCase cases[] = {
+        {"nan level price",
+         R"({"instId":"BTC-USDT-SWAP","action":"update","ts":"1585700098541","bids":[["nan","10","1"]],"asks":[]})",
+         "price must be finite and positive"},
+        {"negative level size",
+         R"({"instId":"BTC-USDT-SWAP","action":"update","ts":"1585700098541","bids":[["60000","-10","1"]],"asks":[]})",
+         "okx level size must be finite and non-negative"},
+        {"unterminated level",
+         R"({"instId":"BTC-USDT-SWAP","action":"update","ts":"1585700098541","bids":[["60000","10","1"],"asks":[]})",
+         "holds a non array level"},
+        {"missing action", R"({"instId":"BTC-USDT-SWAP","ts":"1585700098541","bids":[],"asks":[]})",
+         "okx line is missing action"},
+    };
+    for (const RowCase& item : cases)
+    {
+        test_support::TempFile file("malformed_okx_book.jsonl");
+        file.write(std::string(item.row) + "\n");
+        auto reader = make_okx_book_reader(file.path().string(), "BTC-USDT-SWAP", 0.01, 1);
+        const std::string message = read_to_error(*reader);
+        assert(!message.empty() && "a hostile OKX line was accepted");
+        assert(contains(message, item.expected));
+        assert(contains(message, "row 1:") && "the rejection does not say which line it came from");
+    }
+}
+
 // A message reader: the action throws or the case failed. `expected` is the phrase the message has to carry, so a
 // rejection that says nothing useful counts as a failure.
 template <typename Action>
@@ -370,6 +400,7 @@ int main()
 {
     check_trade_rows();
     check_depth_rows();
+    check_okx_lines();
     check_impossible_books();
     check_incremental_updates();
     check_crossed_batches_are_counted();

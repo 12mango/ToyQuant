@@ -11,7 +11,7 @@ legacy CSV / UDP / Binance ─────────────────�
 
 | | |
 |---|---|
-| **Size** | 110 files, 24,456 lines: `app` 8658, `market` 4053, `legacy` 1851, `lines` 2602, `strategy` 1958, `exchange` 1360, `common` 811, `backtest` 611, `bench` 563, `orderbook` 587, `accounting` 708, `utils` 488, `concurrency` 176, `main` 30 |
+| **Size** | 110 files, 24,576 lines: `app` 8762, `market` 4069, `legacy` 1851, `lines` 2602, `strategy` 1958, `exchange` 1360, `common` 811, `backtest` 611, `bench` 563, `orderbook` 587, `accounting` 708, `utils` 488, `concurrency` 176, `main` 30 |
 | **Tests** | 30 test binaries, at least one per module, run by tier 0 of the gate |
 | **Tools** | 45 scripts (`*.py` and `*.sh` in `tools/`): the gate, the measurement sweeps, the queue calibration, the source fetches, four lints and the interval |
 | **Build** | CMake + presets, C++20, standard library only (zlib for `.gz` inputs) |
@@ -416,7 +416,7 @@ One script, four tiers, run on every change. `tools/verify_l2.sh all`:
 | 2 | ~15 s | the SHA-256 of the full 1.5 GB standard output against `tests/fixtures/l2_full_ref.sha256`, taken with the mode line filtered out so the reference describes the code rather than one checkout's absolute paths |
 | 3 | ~5 s | the same 30 test binaries and one 200k-row replay under AddressSanitizer and UndefinedBehaviorSanitizer, with leak detection on |
 
-Most of tier 1 is the document check: it re-runs the 52 recorded runs the documents quote, which include the
+Most of tier 1 is the document check: it re-runs the 53 recorded runs the documents quote, which include the
 F4 windows, the latency sweep on converted Databento data and the interval a five-window series carries, so a
 claim about a market or about a millisecond moves the per-edit loop from seconds to about a minute. That is the
 cost of the rule that a documented number is a claim about the code.

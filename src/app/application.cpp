@@ -69,6 +69,37 @@ std::string crossed_book_suffix(const MultiBook& books)
     return crossed_book_suffix(crossed);
 }
 
+// The same shape for the prints: how many arrived without a current midpoint, and how many of the rest were far
+// from it. Empty when both are zero, so a window whose depth and trades cover the same span keeps its recorded
+// bytes -- and a window whose depth stops early says so on the line that reports how much depth arrived.
+std::string trade_reference_suffix(uint64_t stale, uint64_t dislocated)
+{
+    std::string suffix;
+    if (stale > 0) suffix += " stale_trades=" + std::to_string(stale);
+    if (dislocated > 0) suffix += " dislocated_trades=" + std::to_string(dislocated);
+    return suffix;
+}
+
+std::string trade_reference_suffix(const TradeReferenceSummary& summary)
+{
+    return trade_reference_suffix(summary.stale, summary.dislocated);
+}
+
+// A two-book run's prints are scored per book against that book's own midpoint, so the line reports the sum: one
+// count per run, and the per-book split is not printed because a print belongs to the book whose symbol it carries.
+std::string trade_reference_suffix(const MultiBook& books)
+{
+    uint64_t stale = 0;
+    uint64_t dislocated = 0;
+    for (const auto& leg : books.legs())
+    {
+        if (leg->pipeline == nullptr) continue;
+        stale += leg->pipeline->trade_reference().stale;
+        dislocated += leg->pipeline->trade_reference().dislocated;
+    }
+    return trade_reference_suffix(stale, dislocated);
+}
+
 std::string application_log_path(bool discard_output)
 {
     if (!discard_output) return to_abs_path("logs/toy_quant.log");
@@ -567,6 +598,13 @@ void Application::run_l2_session_mode() const
     }
     Pipeline pipeline(output_files.orders, output_files.trades, *strategy, *venue, portfolio,
                       instrument.tick_size);
+    // The prints are scored against the book's own midpoint, with the same two limits the feed's validator uses: a
+    // run that changed them for the feed would otherwise measure its data with one pair of thresholds and report it
+    // with another. The config is built here rather than beside the feed because the pipeline is created first and
+    // both sides take their limits from it.
+    MarketDataValidationConfig validation_config;
+    validation_config.validate_incremental_update_fields = !cfg_.fast_validation;
+    pipeline.set_trade_reference_limits(validation_config);
     if (resumed)
     {
         // The id sequence continues where the snapshot stopped, because an id the venue has already seen is refused
@@ -614,8 +652,6 @@ void Application::run_l2_session_mode() const
         pipeline.set_funding_rates(&funding_series);
     }
     double final_mid = 0.0;
-    MarketDataValidationConfig validation_config;
-    validation_config.validate_incremental_update_fields = !cfg_.fast_validation;
     // A venue brings either its own trade archive and a JSON Lines book, or the CSV pair this repository
     // started with, so the two readers are chosen together from the format the depth file reported. A
     // live session brings neither: it has one reader over one socket, and the feed that owns that socket
@@ -768,7 +804,7 @@ void Application::run_l2_session_mode() const
                " depth_snapshots=", validation.depth_snapshots,
                " incremental_batches=", validation.incremental_batches,
                " incremental_snapshot_batches=", validation.incremental_snapshot_batches,
-               crossed_book_suffix(l2_book));
+               crossed_book_suffix(l2_book), trade_reference_suffix(pipeline.trade_reference()));
     logger.log(pipeline.summary().to_log_string());
     logger.log("[EXPOSURE] ", pipeline.exposure().to_log_string());
     // The session as this run leaves it, for a process that has to take over. Written last, after the account's
@@ -901,6 +937,10 @@ void Application::run_multi_book_mode() const
         leg.pipeline = std::make_unique<Pipeline>(output_files.orders, output_files.trades,
                                                   *leg.strategy, *leg.venue, portfolio,
                                                   leg.instrument.tick_size);
+        // The prints are scored against each book's own midpoint, which is the only reference a depth run has. The
+        // limits are the defaults here because they are the defaults on this path's feed as well: the only field of
+        // the validation config this path changes is the reader-boundary one, which the trade check does not read.
+        leg.pipeline->set_trade_reference_limits(MarketDataValidationConfig{});
         // The same settings the single-book path applies, applied to the book they belong to. The exposure
         // ceiling is in dollars and lives on the pipeline, so each book measures its own exposure against the
         // same cash rather than the two together measuring against it.
@@ -1014,7 +1054,8 @@ void Application::run_multi_book_mode() const
                " depth_snapshots=", validation.depth_snapshots,
                " incremental_batches=", validation.incremental_batches,
                " incremental_snapshot_batches=", validation.incremental_snapshot_batches,
-               " books=", books.legs().size(), crossed_book_suffix(books));
+               " books=", books.legs().size(), crossed_book_suffix(books),
+               trade_reference_suffix(books));
     // One [EXECUTION] block per book, with the symbol on the line because the tag alone no longer says which
     // book it describes, then the account once. [PNL] is deliberately absent: its per-fill columns divide the
     // account's money by one book's fill count, which is one book's denominator for the whole account's result.

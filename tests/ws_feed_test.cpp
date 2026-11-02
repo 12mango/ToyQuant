@@ -316,5 +316,26 @@ int main()
         assert(threw);
     }
 
+    {
+        // A price that parses as a number but is not one: `nan` used to travel all the way into the book, where every
+        // arithmetic that touched it became `nan` and the run reported a strange PnL instead of a bad row. The feed
+        // counts the row and skips it, because one malformed row must not tear down a session -- and the trade count
+        // stays at zero, which is what says the row was not delivered with a `nan` price in it.
+        LoopbackServer nan_server({"exchange,symbol,timestamp,id,side,price,amount",
+                                   "ws,ETH-PERPETUAL,1000,1,buy,nan,3",
+                                   "exchange,symbol,timestamp,local_timestamp,is_snapshot,side,price,amount",
+                                   "ws,ETH-PERPETUAL,1000,1000,0,bid,inf,5"});
+        nan_server.serve();
+        WebSocketFeed nan_feed(WebSocketFeed::Endpoint{"127.0.0.1", nan_server.port(), "/"});
+        nan_feed.start();
+        auto nan_reader = nan_feed.event_reader();
+        MarketEvent nan_event;
+        while (nan_reader->next(nan_event)) {}
+        nan_feed.stop();
+        assert(nan_feed.summary().trades == 0);
+        assert(nan_feed.summary().depth_updates == 0);
+        assert(nan_feed.summary().parse_errors == 2);
+    }
+
     return 0;
 }

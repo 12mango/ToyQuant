@@ -1882,6 +1882,44 @@ run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tm
 then: trade_reports=1 captured_edge_per_unit_ticks=6.5 gross_pnl_usd=0.00514688 gross_closed_per_fill_usd=0 breakeven_maker_rate=0.000514688
 -->
 
+### What the window's inputs actually cover
+
+Every number in this section is a replay of "the 200k slice", and that phrase hid two facts about the inputs until
+the run was made to say them. The depth slice is the first 200,000 updates of the day, which is **quarter of an
+hour**; the trade file is the whole day. The replay reads both to the end, so 117,903 of its 119,237 prints arrive
+after the book has stopped moving: the strategy can no longer requote, because a quote cycle begins with a book
+update, and the midpoint the prints are scored against is frozen rather than wrong.
+
+`[L2 DATA]` now says which case a window is in, splitting the prints by *why* they were not comparable:
+
+| window | prints | no current midpoint | beyond 5 bps of one |
+|---|---:|---:|---:|
+| 200k depth slice | 119,237 | 117,889 | 9 |
+| the full day's depth | 119,237 | 0 | 554 |
+
+<!-- toyquant:check
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --maker-fee-rate=0.0002
+then: events=236525 stale_trades=117889 dislocated_trades=9
+-->
+
+Three things follow, and the first is the one that matters for reading everything above:
+
+- **The fills are all inside the live book.** The 21 fills of this configuration run from 1585699244 to 1585700097,
+  and the depth slice ends at 1585700098: the last fill is 1.2 seconds before the book stops. So the *measurement*
+  is not made against a frozen book, even though 99% of the prints are — which is the difference between a caveat
+  and a defect, and the reason the field is printed rather than the window redefined.
+- **The nine prints beyond five basis points are consistent with the tick, and the 554 of the full day are 0.46% of
+  it.** On a 0.5 tick against 6,358, one tick is 0.78 bps, so a print eight ticks from the midpoint is a sweep that
+  crossed several levels rather than a bad row. The threshold is not a filter: nothing is dropped, because dropping a
+  print would move every fill in the run instead of describing it.
+- **A window whose inputs cover the same span says nothing at all.** On the full day's depth the stale count is zero
+  and the field is absent, which is what keeps the line honest: the token appears exactly where the coverage gap is.
+
+The tier-2 reference was re-recorded for this, from `270d8085` to `d66e88e0`. The change is one token on the
+`[L2 DATA]` line and nothing else: deleting ` dislocated_trades=554` from the new output reproduces `270d8085` byte
+for byte over the 1.5 GB stream, which is how the re-record is justified rather than asserted.
+
+
 ### The interval each of those numbers carries
 
 Every rate above is one number from one window, and the rule this document applies by hand -- a fill count below

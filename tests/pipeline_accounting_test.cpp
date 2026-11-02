@@ -592,4 +592,61 @@ int main()
         const auto* still_flat = halt_portfolio.find_position("HALT");
         assert(still_flat != nullptr && still_flat->quantity == 0);
     }
+
+    // The prints against the book. On the L2 path the midpoint is the only reference there is, so the two ways a
+    // print can disagree with it are counted apart: a print that arrives before the run has a midpoint, or after the
+    // depth input stopped, is stale -- a fact about the input's coverage -- and only a print against a current
+    // midpoint can be dislocated, which is a fact about the print. Neither drops the print.
+    {
+        test_support::TempFile ref_orders_file("pipeline_trade_reference_orders.csv");
+        test_support::TempFile ref_trades_file("pipeline_trade_reference_trades.csv");
+        std::ofstream ref_orders = ref_orders_file.open();
+        std::ofstream ref_trades = ref_trades_file.open();
+        L2MarketMakerBase ref_strategy(L2MarketMakerBaseConfig{.order_size = 10,
+                                                               .base_spread = 0.5,
+                                                               .inventory_limit = 100,
+                                                               .tick_size = 0.01,
+                                                               .signal_mode = L2SignalMode::Baseline});
+        MatchingEngine ref_engine(0.01);
+        Portfolio ref_portfolio;
+        Pipeline ref_pipeline(ref_orders, ref_trades, ref_strategy, ref_engine, ref_portfolio, 0.01);
+        assert(ref_pipeline.trade_reference().stale == 0);
+
+        // Before any view: there is no midpoint, so the print is stale rather than dislocated.
+        ref_pipeline.process_l2_market_trade(MarketTrade{10, "REF", 100.0, 1, Side::Sell, 1, "deribit"});
+        assert(ref_pipeline.trade_reference().stale == 1);
+        assert(ref_pipeline.trade_reference().dislocated == 0);
+
+        // A view at 100.5 makes the print at 100.5 (0.00 bps) and at 100.54 (4.0 bps) both fine, and the one at
+        // 100.56 (5.97 bps) dislocated: the limit is 5 bps, and the tick here is a cent, so two prices can sit on
+        // either side of it.
+        ref_pipeline.process_l2_market_view(L2MarketView{.symbol = "REF",
+                                                         .ts = 1000,
+                                                         .top = TopOfBook{100.49, 10, 100.51, 10},
+                                                         .micro_price = 100.5});
+        ref_pipeline.process_l2_market_trade(MarketTrade{1001, "REF", 100.5, 1, Side::Sell, 2, "deribit"});
+        ref_pipeline.process_l2_market_trade(MarketTrade{1002, "REF", 100.54, 1, Side::Sell, 3, "deribit"});
+        assert(ref_pipeline.trade_reference().stale == 1);
+        assert(ref_pipeline.trade_reference().dislocated == 0);
+        ref_pipeline.process_l2_market_trade(MarketTrade{1003, "REF", 100.56, 1, Side::Sell, 4, "deribit"});
+        assert(ref_pipeline.trade_reference().dislocated == 1);
+
+        // A print more than a second after the last midpoint is stale even though the midpoint itself is far away
+        // from it: a frozen book is not a mispriced print, and counting the two together would report a depth file
+        // that ended as a market full of bad ticks.
+        ref_pipeline.process_l2_market_trade(
+            MarketTrade{1000 + 1000001, "REF", 50.0, 1, Side::Sell, 5, "deribit"});
+        assert(ref_pipeline.trade_reference().stale == 2);
+        assert(ref_pipeline.trade_reference().dislocated == 1);
+
+        // The limits come from the validation config, so a run that widens them counts less without any other change.
+        ref_pipeline.set_trade_reference_limits(MarketDataValidationConfig{.max_bbo_age_ms = 1000,
+                                                                          .max_trade_deviation_bps = 10.0});
+        ref_pipeline.process_l2_market_view(L2MarketView{.symbol = "REF",
+                                                         .ts = 2000000,
+                                                         .top = TopOfBook{100.49, 10, 100.51, 10},
+                                                         .micro_price = 100.5});
+        ref_pipeline.process_l2_market_trade(MarketTrade{2000001, "REF", 100.56, 1, Side::Sell, 6, "deribit"});
+        assert(ref_pipeline.trade_reference().dislocated == 1);
+    }
 }

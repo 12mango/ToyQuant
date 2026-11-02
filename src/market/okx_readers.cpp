@@ -5,6 +5,7 @@
 #include "market/market_data_adapter.h"
 
 #include <cstdint>
+#include <cmath>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -92,8 +93,14 @@ void parse_okx_levels(std::string_view object, std::string_view quoted_key, std:
             price_end == std::string_view::npos ? std::string_view::npos : level.find(',', price_end + 1);
         if (price_end == std::string_view::npos || size_end == std::string_view::npos)
             throw std::invalid_argument("okx level needs price and size");
-        into.push_back(OkxLevel{parse_double(unquoted(level.substr(0, price_end))),
-                                parse_double(unquoted(level.substr(price_end + 1, size_end - price_end - 1)))});
+        // The price goes through the same rule the CSV families use -- finite and positive, rejected here rather than
+        // where the ladder is indexed -- and the size is checked rather than left to `amount_of`, which reads a
+        // non-positive size as "remove this level": a negative size in a file is a bad row, not a removal.
+        const double price = parse_price(unquoted(level.substr(0, price_end)));
+        const double size = parse_double(unquoted(level.substr(price_end + 1, size_end - price_end - 1)));
+        if (!std::isfinite(size) || size < 0.0)
+            throw std::invalid_argument("okx level size must be finite and non-negative");
+        into.push_back(OkxLevel{price, size});
         cursor = level_end + 1;
     }
 }
@@ -148,11 +155,20 @@ class OkxBookJsonReader final : public IMarketEventReader
         while (reader_.next_line(row))
         {
             if (row.empty()) continue;
-            current_.instrument = json_string(row, "\"instId\":\"", "instId");
-            current_.action = json_string(row, "\"action\":\"", "action");
-            current_.ts = parse_uint64(json_string(row, "\"ts\":\"", "ts"));
-            parse_okx_levels(row, "\"bids\":", current_.bids, "bids");
-            parse_okx_levels(row, "\"asks\":", current_.asks, "asks");
+            // The row number is added here rather than in each parser: a JSON line holds four fields and a level
+            // array, and a message that names the line is worth more than one that names the field.
+            try
+            {
+                current_.instrument = json_string(row, "\"instId\":\"", "instId");
+                current_.action = json_string(row, "\"action\":\"", "action");
+                current_.ts = parse_uint64(json_string(row, "\"ts\":\"", "ts"));
+                parse_okx_levels(row, "\"bids\":", current_.bids, "bids");
+                parse_okx_levels(row, "\"asks\":", current_.asks, "asks");
+            }
+            catch (const std::invalid_argument& error)
+            {
+                throw std::invalid_argument(row_context(reader_.lines_read(), error.what()));
+            }
             return true;
         }
         return false;

@@ -136,6 +136,22 @@ struct FundingSummary
     double flow_usd{0.0};
 };
 
+// How the market's prints and the book's midpoint agreed, on the path where the book is the only reference.
+//
+// The L1 replay is given a best bid and offer beside the trades, so `MarketDataValidator` can say how old the
+// quote was and how far each print sat from it. The L2 path is given a book instead, and its midpoint is the
+// reference — a better one while the depth lasts and a worse one after it stops, which is why the two are
+// counted here rather than there: this is the count that says *which* case a window is in.
+//
+// A print whose midpoint is missing or older than the limit counts as `stale` and is not also scored for
+// distance: a frozen book and a mispriced print are different facts, and adding them together would produce a
+// number that is really about how much of the day the depth file covered. Neither count is a filter.
+struct TradeReferenceSummary
+{
+    uint64_t stale{0};
+    uint64_t dislocated{0};
+};
+
 // What a run earned and what it paid, split so that quoting and the position left at the end are not read
 // as the same thing. `net_pnl_usd` is the closed result plus the open position marked at the last price,
 // `closed_pnl_usd` is the closed result alone, and `gross_*` adds the fees back. A market maker whose gross

@@ -235,6 +235,21 @@ void Pipeline::process_l2_market_view(const L2MarketView& view)
 void Pipeline::process_l2_market_trade(const MarketTrade& trade)
 {
     begin_event(trade.ts);
+    // The print against the book it arrived into. This is the L2 half of the check `MarketDataValidator` runs on the
+    // L1 path, where a best bid and offer arrive beside the trades and supply the reference; here the book is the
+    // reference and the two failure modes are separated: a midpoint that is missing or older than the limit is
+    // `stale`, which on these windows means the depth input stopped before the trade file did, and only a print
+    // against a current midpoint can be `dislocated`. Neither drops the print -- let the engine have it and count
+    // rather than filter, because a print far from the midpoint on a depth book is a sweep, not a bad tick, and
+    // dropping it would move every fill in the run instead of describing it.
+    if (last_mid_ <= 0.0 || trade.ts > last_mid_ts_ + max_reference_age_us_)
+    {
+        ++trade_reference_.stale;
+    }
+    else if (std::abs(trade.price - last_mid_) / last_mid_ * 10000.0 > max_trade_deviation_bps_)
+    {
+        ++trade_reference_.dislocated;
+    }
     if (accounting_.market_markouts_enabled() && trade.aggressor_side != Side::Unknown &&
         last_mid_ > 0.0)
     {
@@ -660,6 +675,7 @@ void Pipeline::begin_event(uint64_t ts)
 void Pipeline::advance_mid(const std::string& symbol, uint64_t ts, double mid)
 {
     last_mid_ = mid;
+    last_mid_ts_ = ts;
     ++quote_cycle_;
     // The kill switch reads realised plus unrealised, and an account that is never marked carries its loss inside the
     // position rather than in the PnL: a run bleeding through an open position would never reach the limit, because

@@ -72,9 +72,11 @@ struct AppConfig
     int64_t position_limit = 0;
     // The two hard limits, both off at 0. `max_exposure_usd` refuses an order whose projected marked
     // exposure would pass it, in USD rather than in shares because the same share count is three times the
-    // exposure on a thousand dollar share. `kill_switch_loss_usd` stops the run quoting once realised plus
-    // unrealised reaches that loss, and it does not flatten: a switch that loses money on the way out is a
-    // worse control than one that stops.
+    // exposure on a thousand dollar share. `kill_switch_loss_usd` latches once realised plus unrealised
+    // reaches that loss, and a latched switch exits what the book holds and then refuses everything else:
+    // leaving the position open was the first version, and it is the one behaviour a loss cap must not have,
+    // because the control would stop the strategy and keep the risk. The exit is priced -- 5.39 bps on the
+    // measured window, fee plus half a tick -- and that price is reported beside the halt.
     double max_exposure_usd = 0.0;
     double kill_switch_loss_usd = 0.0;
     // The pre-trade band and the submission bucket. Both off at 0: a fat-finger band of 0 does not look at

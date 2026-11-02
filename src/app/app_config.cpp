@@ -205,8 +205,8 @@ void print_usage(const char* executable)
                      "each of them at the strategy's own setting\n";
         std::cerr << "   limits: --max-exposure-usd=N is the exposure ceiling the summary measures the run "
                      "against, enforced rather than reported once it is named, and --kill-switch-loss-usd=N "
-                     "stops the run when its loss reaches N dollars instead of carrying the position into "
-                     "the final mark\n";
+                     "latches when the loss reaches N dollars, closes the position it was holding at the "
+                     "touch and refuses every order after that\n";
         std::cerr << "   risk: --fat-finger-bps=X refuses an order priced more than X basis points from the "
                      "current midpoint, and --max-orders-per-second=X with --order-burst=N caps submissions "
                      "with a token bucket; 0 leaves each of them off\n";
