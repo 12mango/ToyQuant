@@ -93,6 +93,9 @@ struct AppConfig
     // Add-liquidity-only for every order the run sends. Off, the default, leaves the venue trading a quote that
     // arrives through the touch, which is a maker paying the taker rate.
     bool post_only = false;
+    // Close the position at the end of the input: stop with something on the book and the run has marked it at the
+    // midpoint rather than closed it. Off, the default, leaves every recorded number exactly where it was.
+    bool close_out = false;
     // The non-market-making signal. A run that does not name --trend-params leaves `set` false and the
     // strategy's own defaults in force.
     TrendParams trend{};

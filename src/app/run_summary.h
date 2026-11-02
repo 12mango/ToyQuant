@@ -158,6 +158,44 @@ struct PnlSummary
     double breakeven_maker_rate{0.0};
 };
 
+// What closing the session's position cost, for a run that asked with `--close-out`. A replay that ends with a
+// position on the book has not finished trading, it has marked the position at the last midpoint and called the
+// difference PnL -- and nobody can close at the midpoint. This is the exit priced: the touch it crossed, the
+// half spread that crossing gave up, and the taker fee it paid, both in basis points of the notional so they are
+// comparable with every other cost in this project.
+//
+// A close that could not finish is visible rather than rounded away: the venue only takes its displayed size (and
+// no more than the participation cap allows), so a position larger than the touch leaves a `residual` behind and
+// says so.
+struct WindDownSummary
+{
+    std::string symbol;
+    int64_t position{0};
+    uint64_t closed_quantity{0};
+    int64_t residual{0};
+    double notional_usd{0.0};
+    // |touch - mid| / mid, in basis points: what the exit gave up against the price the account was marked at.
+    double spread_bps{0.0};
+    double fees_usd{0.0};
+    double fees_bps{0.0};
+    double total_bps{0.0};
+    // True when the venue or a pre-trade control refused the closing order outright. A close that silently did
+    // nothing would leave the run's PnL looking exactly like a closed one.
+    bool refused{false};
+    // True when the order went out and nothing traded because the touch showed no size. It happens at the end of a
+    // replay more often than one would expect: the engine's touch is a displayed quantity that every print consumes
+    // and only a fresh view restores, so the last event of a window frequently leaves the best bid at zero. The exit
+    // then has a price and no depth, and that is a fact about the window rather than a failure of the close.
+    bool no_liquidity{false};
+
+    bool attempted() const
+    {
+        return !symbol.empty();
+    }
+
+    std::string to_log_string() const;
+};
+
 // What the account's marked equity did over the run, for the runs that asked for it with --metrics. The
 // equity is sampled once per 60-second bucket, so every figure here is a per-bucket rate annualized by the
 // bucket count a 24/7 year holds. `max_drawdown` is the depth of the worst decline and

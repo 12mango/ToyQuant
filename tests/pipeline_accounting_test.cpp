@@ -432,4 +432,68 @@ int main()
         assert(std::abs(summary.maker_fees_bps - 1.2) < 1e-12);
         assert(std::abs(summary.taker_fees_bps - 2.0) < 1e-12);
     }
+
+    // The end of the session, priced. A run that stops with a position on the book has marked it at the midpoint and
+    // called the difference PnL; nobody can close at the midpoint, so `close_out` sends the position out as an IOC at
+    // the touch and reports what the exit cost -- the half spread it gave up and the taker fee it paid, in basis
+    // points, which is the same unit every other cost in this project is quoted in.
+    {
+        test_support::TempFile end_orders_file("pipeline_close_out_orders.csv");
+        test_support::TempFile end_trades_file("pipeline_close_out_trades.csv");
+        std::ofstream end_orders = end_orders_file.open();
+        std::ofstream end_trades = end_trades_file.open();
+        L2MarketMakerBase end_strategy(L2MarketMakerBaseConfig{.order_size = 10,
+                                                               .base_spread = 0.5,
+                                                               .inventory_limit = 100,
+                                                               .tick_size = 1.0,
+                                                               .signal_mode = L2SignalMode::Baseline});
+        MatchingEngine end_engine(1.0, FeeSchedule{.maker_rate = 0.0002,
+                                                   .taker_rate = 0.0005,
+                                                   .quantity_scale = 1,
+                                                   .unit_notional_usd = 10.0});
+        Portfolio end_portfolio(1, 1000.0, 10.0);
+        Pipeline end_pipeline(end_orders, end_trades, end_strategy, end_engine, end_portfolio, 1.0);
+        // The collateral call is what tells the pipeline what a contract is worth, and the close prices its exit in
+        // basis points of that notional: a pipeline without it values a contract at its price, which is 100 times the
+        // ten dollar face value this instrument has.
+        end_pipeline.set_collateral(1000.0, 10.0, 1, 1.0);
+        end_pipeline.process_l2_market_view(L2MarketView{.symbol = "L2",
+                                                         .ts = 10,
+                                                         .top = TopOfBook{100.0, 100, 101.0, 100},
+                                                         .micro_price = 100.5});
+        // The queue in front of the bid is taken and the order fills: the book ends long ten contracts.
+        end_pipeline.process_l2_market_trade(MarketTrade{11, "L2", 100.0, 200, Side::Sell, 1, "deribit"});
+        assert(end_pipeline.summary().trade_reports == 1);
+        const auto* open = end_portfolio.find_position("L2");
+        assert(open != nullptr && open->quantity == 10);
+
+        // The market prints again before the close, which is what a book with liquidity on it looks like: the trade
+        // that filled us consumed the displayed bid, so the touch has to be re-shown for the exit to have a price to
+        // cross.
+        end_pipeline.process_l2_market_view(L2MarketView{.symbol = "L2",
+                                                         .ts = 12,
+                                                         .top = TopOfBook{100.0, 100, 101.0, 100},
+                                                         .micro_price = 100.5});
+        const WindDownSummary wind_down = end_pipeline.close_out(13);
+        assert(wind_down.attempted());
+        assert(wind_down.position == 10);
+        assert(wind_down.closed_quantity == 10);
+        assert(wind_down.residual == 0);
+        assert(!wind_down.refused);
+        // Ten contracts of a ten dollar face: the notional the two costs are measured against.
+        assert(std::abs(wind_down.notional_usd - 100.0) < 1e-9);
+        // Sold at the bid, marked at the midpoint: the distance is the half spread the mark was pretending not to
+        // pay, and the fee is the taker rate on the same notional.
+        assert(std::abs(wind_down.spread_bps - 0.5 / 100.5 * 10'000.0) < 1e-9);
+        assert(std::abs(wind_down.fees_bps - 5.0) < 1e-9);
+        assert(std::abs(wind_down.total_bps - (wind_down.spread_bps + wind_down.fees_bps)) < 1e-12);
+        // The account is flat, so the [PNL] that follows is a closed result rather than a mark.
+        const auto* flat = end_portfolio.find_position("L2");
+        assert(flat != nullptr && flat->quantity == 0);
+        end_portfolio.mark_to_market({{"L2", 100.5}});
+        const PnlSummary pnl = end_pipeline.summary().book_pnl;
+        assert(std::abs(pnl.net_pnl_usd - pnl.closed_pnl_usd) < 1e-12);
+        // The close paid the taker rate, so the run's fee bill is bigger than the maker fills alone.
+        assert(end_portfolio.metrics().taker_fees > 0.0);
+    }
 }

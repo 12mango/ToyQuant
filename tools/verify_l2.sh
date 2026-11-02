@@ -304,6 +304,19 @@ tier1() {
     rm -rf "$pair_dir"
   fi
   rm -rf "$session_dir"
+  # The end of the session, priced. A run that stops holding something has marked it at the last midpoint; --close-out
+  # sends it out at the touch and reports what the exit cost. The assertion is the identity that holds whether or not
+  # the exit filled: what was carried is what closed plus what is left, and the line says which of the three happened
+  # (filled, refused, no liquidity at the touch) instead of leaving a reader to guess.
+  local close_ok=0 close_line close_position close_closed close_residual
+  close_line=$("$BIN" l2_replay "$TRADES" "$SLICE_200K" BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation \
+    --close-out 2>&1 | grep -oE '^\[WIND-DOWN\].*$')
+  [ -n "$close_line" ] || close_ok=1
+  close_position=$(printf '%s' "$close_line" | grep -oE ' position=-?[0-9]+' | grep -oE '\-?[0-9]+')
+  close_closed=$(printf '%s' "$close_line" | grep -oE ' closed=[0-9]+' | grep -oE '[0-9]+')
+  close_residual=$(printf '%s' "$close_line" | grep -oE ' residual=-?[0-9]+' | grep -oE '\-?[0-9]+')
+  [ -n "$close_position" ] && [ -n "$close_closed" ] && [ -n "$close_residual" ] &&
+    [ "${close_position#-}" = "$((close_closed + ${close_residual#-}))" ] || close_ok=1
   # The numbers the documents quote are claims about this code, and hand-copied claims drift: one did,
   # a "thirty times per fill" that a re-measurement turned into ten. They are checked at the same gate
   # as the invariants, on the same slices, so a documented value that stops being true fails a run.
@@ -323,6 +336,7 @@ tier1() {
   if [ $rc -eq 0 ] && [ $rec_ok -eq 0 ] && [ $thr_ok -eq 0 ] && [ $broker_ok -eq 0 ] &&
      [ $multi_ok -eq 0 ] &&
      [ $session_ok -eq 0 ] &&
+     [ $close_ok -eq 0 ] &&
      [ $doc_check -eq 0 ] &&
      [ $fields_check -eq 0 ] && [ $prose_check -eq 0 ] && [ $tool_check -eq 0 ] &&
      [ $verdict_check -eq 0 ]; then
@@ -337,6 +351,8 @@ tier1() {
     echo "  multi: the two-book run did not report two books, two legs, or the sum of its own event counts"
   [ $session_ok -eq 0 ] ||
     echo "  session: the resumed run did not report the account the first run left, or an order went unresolved"
+  [ $close_ok -eq 0 ] ||
+    echo "  close: the end-of-session line is missing, or what it closed and left does not add up to what it carried"
   [ $fields_check -eq 0 ] || sed 's/^/  fields: /' "$FIELD_CHECK_LOG"
   [ $prose_check -eq 0 ] || sed 's/^/  prose: /' "$PROSE_CHECK_LOG"
   [ $tool_check -eq 0 ] || sed 's/^/  tool: /' "$TOOL_CHECK_LOG"

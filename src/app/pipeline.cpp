@@ -510,6 +510,74 @@ void Pipeline::submit_order(StrategyOrder& order, uint64_t ts, const BboQuote* q
     }
 }
 
+std::string WindDownSummary::to_log_string() const
+{
+    std::ostringstream stream;
+    stream << "symbol=" << symbol << " position=" << position << " closed=" << closed_quantity
+           << " residual=" << residual << " notional_usd=" << notional_usd
+           << " spread_bps=" << spread_bps << " fees_usd=" << fees_usd << " fees_bps=" << fees_bps
+           << " total_bps=" << total_bps;
+    if (refused) stream << " refused=1";
+    if (no_liquidity) stream << " no_liquidity=1";
+    return stream.str();
+}
+
+WindDownSummary Pipeline::close_out(uint64_t ts)
+{
+    WindDownSummary summary;
+    const int64_t position = fill_accounting_.position();
+    if (position == 0 || latest_quotes_.empty()) return summary;
+    const auto& [symbol, quote] = *latest_quotes_.begin();
+    if (quote.bid_price <= 0.0 || quote.ask_price <= 0.0) return summary;
+
+    const double mid = 0.5 * (quote.bid_price + quote.ask_price);
+    const double quantity = static_cast<double>(std::llabs(position));
+    const double units = quantity / static_cast<double>(std::max<uint64_t>(1, quantity_scale_));
+    const double notional = units * unit_notional_at(unit_notional_usd_, multiplier_, mid);
+    const double touch = position > 0 ? quote.bid_price : quote.ask_price;
+
+    summary.symbol = symbol;
+    summary.position = position;
+    summary.notional_usd = notional;
+    // The exit is priced against the mark, so the number is what the mark was optimistic by: a long is sold at the
+    // bid, and the distance from the midpoint is exactly the half spread the account was pretending not to pay.
+    summary.spread_bps = mid > 0.0 ? std::abs(touch - mid) / mid * 10'000.0 : 0.0;
+
+    // An IOC that crosses the touch: it takes what the venue displays and cancels the rest, because a closing order
+    // that rests has not closed anything.
+    StrategyOrder order(position > 0 ? Side::Sell : Side::Buy, symbol, touch,
+                        static_cast<uint64_t>(std::llabs(position)), 0);
+    order.time_in_force = TimeInForce::Ioc;
+    const uint64_t submitted_before = submitted_orders_;
+    const double fees_before = portfolio_.metrics().fees_paid;
+    submit_order(order, ts, &quote);
+    if (submitted_orders_ == submitted_before)
+    {
+        // A pre-trade control refused it. The account is therefore still open and the caller has to be able to see
+        // that, or a refused close would read exactly like a finished one.
+        summary.refused = true;
+        summary.residual = position;
+        return summary;
+    }
+
+    const int64_t after = fill_accounting_.position();
+    const int64_t closed = std::llabs(position) - std::llabs(after);
+    summary.closed_quantity = closed > 0 ? static_cast<uint64_t>(closed) : 0;
+    summary.residual = after;
+    const double closed_units = static_cast<double>(summary.closed_quantity) /
+                                static_cast<double>(std::max<uint64_t>(1, quantity_scale_));
+    const double closed_notional = closed_units * unit_notional_at(unit_notional_usd_, multiplier_, mid);
+    summary.fees_usd = portfolio_.metrics().fees_paid - fees_before;
+    // Both costs against the notional that was actually closed, so a partial close is not credited with the fee of a
+    // full one and the two numbers stay comparable with every other basis-point figure in this project.
+    summary.fees_bps = closed_notional > 0.0 ? summary.fees_usd / closed_notional * 10'000.0 : 0.0;
+    summary.total_bps = summary.spread_bps + summary.fees_bps;
+    // A close that sent an order and got nothing back is the touch showing no size, not a refusal and not a fill:
+    // saying which of the three happened is the difference between a report and a rumour.
+    if (summary.closed_quantity == 0) summary.no_liquidity = true;
+    return summary;
+}
+
 void Pipeline::settle_order(const ExecutionReport& report)
 {
     const double owed =

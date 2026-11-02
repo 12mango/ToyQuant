@@ -729,6 +729,13 @@ void Application::run_l2_session_mode() const
         logger.log("[REC] ", recorder->summary().to_log_string(),
                    " trades_path=", recorder->trades_path(), " depth_path=", recorder->depth_path());
     }
+    // The session's end, before the final mark: closing the position is what makes the [PNL] below a realized
+    // result rather than a mark, and pricing the exit is the only way to say what the mark was optimistic by.
+    if (cfg_.close_out)
+    {
+        const WindDownSummary wind_down = pipeline.close_out(pipeline.last_event_ts());
+        if (wind_down.attempted()) logger.log("[WIND-DOWN] ", wind_down.to_log_string());
+    }
     if (final_mid > 0.0) portfolio.mark_to_market({{cfg_.symbol, final_mid}});
     logger.log("[L2 DATA] events=", validation.events, " trades=", validation.trades,
                " depth_snapshots=", validation.depth_snapshots,
@@ -959,6 +966,13 @@ void Application::run_multi_book_mode() const
     if (pacing.enabled) logger.log("[LIVE] ", pacing_summary.to_log_string());
     if (threaded_feed)
         logger.log("[LATENCY] ", threaded_feed->latency_summary().to_log_string());
+    // The session's end, before the final mark: each book is closed at its own touch, and the account's [PNL] below
+    // is then a realized result rather than a mark. A book that was already flat prints nothing.
+    if (cfg_.close_out)
+    {
+        for (const WindDownSummary& wind_down : books.close_out())
+            logger.log("[WIND-DOWN] ", wind_down.to_log_string());
+    }
     // The account's final mark at every leg's last midpoint, in one call: a leg whose book never showed a
     // two-sided quote is absent from the map and keeps the value the last mark gave it.
     portfolio.mark_to_market(books.marks());

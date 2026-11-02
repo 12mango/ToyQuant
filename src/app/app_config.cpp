@@ -71,6 +71,10 @@ constexpr std::string_view kTimeInForcePrefix = "--time-in-force=";
 // cancelled instead, so a quote that arrived after the market went through it pays nothing rather than the taker
 // rate. It has no value, because there is nothing to say beyond "on".
 constexpr std::string_view kPostOnlyFlag = "--post-only";
+// Close the position at the end of the input, at the touch, and report what the exit cost. Nothing sets it by
+// default: a run that stops with a position has marked it rather than closed it, and that is what the recorded
+// numbers describe.
+constexpr std::string_view kCloseOutFlag = "--close-out";
 constexpr std::string_view kTrendParamsPrefix = "--trend-params=";
 constexpr std::string_view kBaseSpreadPrefix = "--base-spread-ticks=";
 constexpr std::string_view kInventoryShiftPrefix = "--inventory-shift-ticks=";
@@ -184,6 +188,10 @@ void print_usage(const char* executable)
                      "account is restored, every order the snapshot listed is asked about at the venue (a live "
                      "one is cancelled, a forgotten one is counted), and the run replays its file from the first "
                      "line while holding its own orders until the snapshot's clock\n";
+        std::cerr << "   end of session: --close-out flattens whatever the run is holding at the end of the input, "
+                     "at the touch, and prints [WIND-DOWN] with the half spread and the taker fee the exit cost in "
+                     "basis points. Without it a run that stops with a position has marked it at the last midpoint "
+                     "rather than closed it, and its [PNL] is that mark\n";
         std::cerr << "   optional flags: --no-output | --fast-validation (l2_replay only) | "
                      "--profile-stages[=N] prints sampled per-stage timings (l2_replay only, default interval 64) | "
                      "--order-size=N, --inventory-limit=N, and --max-position=N override the "
@@ -905,6 +913,8 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
             }
             else if (flag == kPostOnlyFlag)
                 cfg.post_only = true;
+            else if (flag == kCloseOutFlag)
+                cfg.close_out = true;
             else if (flag.compare(0, kTrendParamsPrefix.size(), kTrendParamsPrefix) == 0)
             {
                 const std::string text = flag.substr(kTrendParamsPrefix.size());
@@ -1148,7 +1158,7 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                         "--markout-cover, --metrics, --markout-horizon=N, --parent=SIDE:QUANTITY:SECONDS, "
                         "--algo=MARKET|TWAP:N|POV:X, --algo-entry=CROSS|POST:SECONDS, --flatten-band=N, "
                         "--symbol-b=SYM with --trades-b=FILE and --depth-b=FILE, "
-                        "--snapshot-out=FILE or --snapshot-in=FILE, --post-only, or "
+                        "--snapshot-out=FILE or --snapshot-in=FILE, --post-only, --close-out, or "
                         "--paper-broker with one of its faults";
                 return false;
             }

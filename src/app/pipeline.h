@@ -95,6 +95,13 @@ class Pipeline
         account_marks_ = std::move(provider);
     }
 
+    // The session's end, priced. A run that stops with a position on the book has marked it at the last midpoint and
+    // called the difference PnL; nobody can close at the midpoint, so this sends the position out as an IOC at the
+    // touch and reports what the exit cost -- the half spread it gave up and the taker fee it paid, in basis points
+    // of the notional. It runs after the feed has finished and before the final mark, so the account it reports is a
+    // closed one.
+    WindDownSummary close_out(uint64_t ts);
+
     uint64_t filtered_market_trades() const
     {
         return filtered_market_trades_;

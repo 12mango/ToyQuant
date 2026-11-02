@@ -76,6 +76,11 @@ class MultiBook
         return legs_;
     }
 
+    // Close every book's position at its own touch, at that book's own clock: each leg trades its own venue, so the
+    // end of the session is a per-book action even though the account is shared. A book that is already flat is not
+    // reported, because there was nothing to price.
+    std::vector<WindDownSummary> close_out();
+
     // The account the books share, which a snapshot writes once and a resume restores once.
     const Portfolio& account() const
     {

@@ -96,3 +96,16 @@ uint64_t MultiBook::events(const std::string& symbol) const
 {
     return legs_[leg_index(symbol)]->events;
 }
+
+std::vector<WindDownSummary> MultiBook::close_out()
+{
+    // Each book at its own clock: the two streams need not end at the same microsecond, and a close priced against
+    // the wrong book's clock is a close at a touch that book never saw.
+    std::vector<WindDownSummary> summaries;
+    for (const auto& leg : legs_)
+    {
+        WindDownSummary summary = leg->pipeline->close_out(leg->pipeline->last_event_ts());
+        if (summary.attempted()) summaries.push_back(std::move(summary));
+    }
+    return summaries;
+}
