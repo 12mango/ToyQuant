@@ -516,6 +516,30 @@ ExecutionAlgoSummary RunAccounting::parent_summary() const
     return summary;
 }
 
+PnlSummary RunAccounting::pnl_summary_of(const Portfolio& portfolio, const std::string& symbol,
+                                         double price, double maker_notional_usd,
+                                         uint64_t trade_reports)
+{
+    // The same formula as `pnl_summary`, over one leg instead of the account. The account's total is the sum of
+    // these, and a book with two legs needs the legs: "the run lost X" and "the leg that was supposed to hedge lost
+    // Y" are different facts, and only the second one says whether the hedge was the problem.
+    const auto leg = portfolio.pnl_of(symbol, price);
+    PnlSummary pnl;
+    pnl.closed_pnl_usd = leg.realized_pnl;
+    pnl.net_pnl_usd = leg.realized_pnl + leg.unrealized_pnl;
+    pnl.gross_closed_pnl_usd = pnl.closed_pnl_usd + leg.fees_paid;
+    pnl.gross_pnl_usd = pnl.net_pnl_usd + leg.fees_paid;
+    pnl.maker_notional_usd = maker_notional_usd;
+    if (trade_reports > 0)
+    {
+        const double fills = static_cast<double>(trade_reports);
+        pnl.net_per_fill_usd = pnl.net_pnl_usd / fills;
+        pnl.gross_closed_per_fill_usd = pnl.gross_closed_pnl_usd / fills;
+    }
+    if (maker_notional_usd > 0.0) pnl.breakeven_maker_rate = pnl.gross_pnl_usd / maker_notional_usd;
+    return pnl;
+}
+
 PnlSummary RunAccounting::pnl_summary(const Portfolio& portfolio, double maker_notional_usd,
                                       uint64_t trade_reports)
 {

@@ -83,8 +83,12 @@ existing design, architecture and user documents are the whole plan.
    the carry line's fee bill was charged on. **And a run that trades two books at once:** `--symbol-b`,
    `--trades-b` and `--depth-b` give an `l2_replay` a second instrument, so the run builds a book, a decision
    layer, a venue and a pipeline per symbol against one `Portfolio`, merges the four readers by timestamp
-   (`src/market/merged_event_reader.*`), and reports one `[EXECUTION] ... symbol=` line and one `[BOOK]` line
-   per book, one `[PORTFOLIO]`, and one `[EXPOSURE]` over both legs. The account values each symbol with its own
+   (`src/market/merged_event_reader.*`), and reports one `[EXECUTION] ... symbol=` line, one `[PNL] symbol=` line
+   and one `[BOOK]` line per book, one `[PORTFOLIO]`, and one `[EXPOSURE]` over both legs. The per-book `[PNL]` is
+   what says which leg lost the money: on the measured window the long BTC book lost 0.033 USD closed, at a
+   break-even maker rate of −0.00025, and the short ETH book made 0.005 — and the legs add up to the account exactly,
+   because the split is taken where the account's totals are written rather than recomputed from them. The account
+   values each symbol with its own
    instrument (`Portfolio::set_instrument`), because a ten dollar contract face and a one dollar one are not the
    same exposure — without that the ETH leg is priced ten times too large. Measured on 2020-04-01, 200k depth
    rows per instrument: 377,024 events, one contract long in BTC and one short in ETH, `gross_usd=11` against
@@ -116,10 +120,12 @@ existing design, architecture and user documents are the whole plan.
    given and no memory of its own quotes, and the first fill after a resume reports it through
    `strategy_position_mismatches` rather than being silently absorbed. Adoption — taking a live order over
    instead of cancelling it — would need a queue position nobody can reconstruct, so it is refused by
-   design. **Still missing:** a venue that remembers its own fills across a client restart (the simulator's
-   engine is created per run, so a resumed run compares against nothing; the test uses one broker for both
-   halves to show a fill missed while down being *caught* by `reconcile_positions`), and a snapshot per book
-   for a two-symbol run.
+   design. **One record per book:** the snapshot writes the account once and each book's own clock, id sequence and
+   working orders, so a two-symbol run resumes both legs at their own venues; the single-book format written first
+   is still read, because a restart reads a file an older build left behind. **Still missing:** a venue that
+   remembers its own fills across a client restart (the simulator's engine is created per run, so a resumed run
+   compares against nothing; the test uses one broker for both halves to show a fill missed while down being
+   *caught* by `reconcile_positions`).
 11. Full venue semantics. **First quarter landed: add-liquidity-only.** `--post-only` makes the venue refuse an
     order that would trade on arrival: it is cancelled with reason `post_only` rather than filled, because a quote
     that arrives after the market went through it is a maker paying the taker rate. The check is the one FOK
@@ -196,7 +202,8 @@ frozen, and a next item needs the same kind of request and a row here.
 | 2026-11-02 | P2-9 completed: a run that trades two books at once. `--symbol-b`/`--trades-b`/`--depth-b` build a book, a decision layer, a venue and a pipeline per symbol against one `Portfolio`; the four readers are merged by timestamp; `Portfolio::set_instrument` values each symbol at its own face value; the summary prints one `[EXECUTION] ... symbol=` and one `[BOOK]` per book and the account once. Measured: 377,024 events, gross 11 against net 9, fees 0.0202, re-derived by the gate | `bf9ef28` |
 | 2026-11-02 | Pre-trade risk follows the account: the hard exposure cap counted each book's own notional against the same cash, so two books could carry twice the cap while both reported no violation. Each book is told what the other legs hold and the check adds it, which is zero in a single-book run. With a ten dollar cap on the same two books the second book is refused and the account never passes ten | `5a63c58` |
 | 2026-11-02 | P2-10 landed: a session is written down and taken over. `--snapshot-out` writes the account, the positions with their entries, the marks, the working orders and the clock; `--snapshot-in` restores the account, asks the venue about every inherited order (a live one is cancelled, a forgotten one counted) and holds its own orders until the snapshot's clock while it rebuilds the book. The resumed run's `[PORTFOLIO]` and `[EXPOSURE]` are identical to the run it took over, and the gate re-derives that. Also fixed: a `Pipeline` left the venue holding a callback into itself, which a restart is the first thing to notice | `195839f` |
-| 2026-11-02 | P2-11 opened with add-liquidity-only: `--post-only` makes the venue cancel an order that would trade on arrival instead of filling it. `active_l2` is unchanged on the 200k window; `trend_l2`'s 55 fills on it were *all* taker fills (taker fees 0.275 against maker fees 0), and with the flag it trades nothing. Cancel/replace is recorded as deliberately unbuilt, with the engine reason: the queue is reconstructed on entry, so an amend's only gain is the round trip, which needs the latency model | this commit |
+| 2026-11-02 | P2-11 opened with add-liquidity-only: `--post-only` makes the venue cancel an order that would trade on arrival instead of filling it. `active_l2` is unchanged on the 200k window; `trend_l2`'s 55 fills on it were *all* taker fills (taker fees 0.275 against maker fees 0), and with the flag it trades nothing. Cancel/replace is recorded as deliberately unbuilt, with the engine reason: the queue is reconstructed on entry, so an amend's only gain is the round trip, which needs the latency model | `0112968` |
+| 2026-11-02 | Two loose ends closed. A two-book run now reports `[PNL] symbol=..` per book — the account's line could not say which leg lost the money — and the split is taken where the account's totals are written, so the legs add up to it exactly. And the session snapshot holds one record per book (its own clock, id sequence and working orders), so a two-symbol run resumes both legs at their own venues; the single-book format written first is still read, because a restart reads a file an older build left behind | this commit |
 | 2026-10-28 | Order state machine, reject/cancel reasons, risk pipeline, non-market-making line and measurements | `9a691be` … `3b0a180` |
 
 ### For an AI reviewing this plan

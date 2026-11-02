@@ -1225,21 +1225,15 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
             error = "--fast-validation is only supported by l2_replay or ws";
             return false;
         }
-        // A session snapshot belongs to one book and one account. Two books would need two order ledgers and two
-        // clocks, and a live session has no replay clock to resume against, so both are refused rather than half
-        // written.
+        // A session snapshot belongs to one account and one record per book: a two-symbol run writes and resumes two
+        // of them, each with its own clock, id sequence and working orders. A live session has no replay clock to
+        // resume against, which is why the mode is refused rather than the second book.
         if (!cfg.snapshot_out_path.empty() || !cfg.snapshot_in_path.empty())
         {
             if (cfg.mode != AppMode::L2Replay)
             {
                 error = "--snapshot-out and --snapshot-in are l2_replay flags: a session is written and resumed "
                         "against a replay's own clock";
-                return false;
-            }
-            if (!cfg.symbol_b.empty())
-            {
-                error = "a session snapshot is one book: a two-symbol run would need an order ledger per book, "
-                        "which this flag does not carry yet";
                 return false;
             }
             if (!cfg.snapshot_in_path.empty() && cfg.order_gateway)

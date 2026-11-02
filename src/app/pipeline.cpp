@@ -282,6 +282,18 @@ RunSummary Pipeline::summary() const
     PnlSummary pnl =
         RunAccounting::pnl_summary(portfolio_, fill_accounting_.maker_notional_usd(),
                                    fill_accounting_.trade_reports());
+    // One book's own result: the pipeline is built for one instrument, so a single quoted symbol is the book, and a
+    // run that carries several books prints this per book. Left empty when the pipeline saw no quote or more than
+    // one symbol, which is what keeps a single-book run on the account's line.
+    PnlSummary book_pnl;
+    std::string book_symbol;
+    if (latest_quotes_.size() == 1)
+    {
+        book_symbol = latest_quotes_.begin()->first;
+        book_pnl = RunAccounting::pnl_summary_of(portfolio_, book_symbol, last_mid_,
+                                                 fill_accounting_.maker_notional_usd(),
+                                                 fill_accounting_.trade_reports());
+    }
     // The longest waiting order that is still in the book: the audit map holds the open orders, so the
     // maximum over it names the quote whose queue is worth watching. It has survived every requote the run
     // made.
@@ -327,6 +339,8 @@ RunSummary Pipeline::summary() const
             .working_orders = strategy_.working_order_count(),
             .portfolio = portfolio_.metrics(),
             .pnl = pnl,
+            .book_pnl = book_pnl,
+            .book_symbol = book_symbol,
             .metrics_requested = metrics_requested_,
             .performance = accounting_.performance_summary(),
             .round_trips = RunAccounting::round_trip_summary(
@@ -501,7 +515,8 @@ void Pipeline::settle_order(const ExecutionReport& report)
     const double owed =
         ledger_.on_report(report, quote_cycle_, execution_quality_, quantity_scale_,
                           commission_per_unit_, min_commission_per_order_);
-    if (owed > 0.0) portfolio_.charge_fee(owed);
+    // Charged to the leg it came from, so a two-book run's per-book result carries the commission floors too.
+    if (owed > 0.0) portfolio_.charge_fee(owed, report.symbol);
 }
 
 void Pipeline::record_taker_measurement(const ExecutionReport& report)

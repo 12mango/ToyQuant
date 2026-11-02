@@ -263,19 +263,35 @@ int main()
     assert(capped_rejections(false) == 0);
     assert(capped_rejections(true) == 1);
 
-    // The summary split. A book's block names its own symbol and carries no account lines; the account's block
-    // carries them once and no [EXECUTION] line. What a reader greps for stays where it was for a single-book
-    // run, which is the default reading asserted last.
+    // The summary split. A book's block names its own symbol, carries its own [PNL] -- the account's line cannot say
+    // which leg lost the money -- and carries no account lines; the account's block carries those once and no
+    // [EXECUTION] line. What a reader greps for stays where it was for a single-book run, which is the default
+    // reading asserted last.
     const RunSummary& leg_summary = books.legs()[0]->pipeline->summary();
     const std::string leg_text = leg_summary.to_log_string(books.legs()[0]->instrument.symbol, false);
     assert(leg_text.rfind("[EXECUTION] symbol=BTC-PERPETUAL ", 0) == 0);
     assert(leg_text.find("[PORTFOLIO]") == std::string::npos);
-    assert(leg_text.find("[PNL]") == std::string::npos);
+    // The per-book PnL: the long leg's own numbers, marked at its own midpoint, not the account's.
+    assert(leg_text.find("[PNL] symbol=BTC-PERPETUAL gross_pnl_usd=") != std::string::npos);
+    assert(leg_text.find("[PNL] gross_pnl_usd=") == std::string::npos);
     const std::string account_text = leg_summary.account_to_log_string();
     assert(account_text.find("[PORTFOLIO]") != std::string::npos);
     assert(account_text.find("[PNL]") != std::string::npos);
     assert(account_text.find("[EXECUTION]") == std::string::npos);
     assert(leg_summary.to_log_string().rfind("[EXECUTION] submitted_orders=", 0) == 0);
     assert(leg_summary.to_log_string().find("[PORTFOLIO]") != std::string::npos);
+
+    // The per-book numbers are a split of the account rather than a second opinion on it: the two closed results add
+    // up to what the account realized, the two fee bills to what it paid, and the two marks to what it is holding.
+    const auto long_book = books.legs()[0]->pipeline->summary().book_pnl;
+    const auto short_book = books.legs()[1]->pipeline->summary().book_pnl;
+    const double closed_sum = long_book.closed_pnl_usd + short_book.closed_pnl_usd;
+    assert(std::abs(closed_sum - account.metrics().realized_pnl) < 1e-12);
+    const double fees_sum = (long_book.gross_closed_pnl_usd - long_book.closed_pnl_usd) +
+                            (short_book.gross_closed_pnl_usd - short_book.closed_pnl_usd);
+    assert(std::abs(fees_sum - account.metrics().fees_paid) < 1e-12);
+    const double open_sum = (long_book.net_pnl_usd - long_book.closed_pnl_usd) +
+                            (short_book.net_pnl_usd - short_book.closed_pnl_usd);
+    assert(std::abs(open_sum - account.metrics().unrealized_pnl) < 1e-12);
     return 0;
 }

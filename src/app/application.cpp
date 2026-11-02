@@ -532,11 +532,15 @@ void Application::run_l2_session_mode() const
         std::string snapshot_error;
         if (!read_snapshot(to_abs_path(cfg_.snapshot_in_path), snapshot, snapshot_error))
             throw std::invalid_argument(snapshot_error);
-        if (snapshot.symbol != instrument.symbol)
-            throw std::invalid_argument("session snapshot is for " + snapshot.symbol + ", not " +
-                                        instrument.symbol);
-        const ResumeSummary summary = resume_session(snapshot, portfolio, *venue);
-        logger.log("[RESUME] ", summary.to_log_string());
+        if (snapshot.books.size() != 1 || snapshot.books.front().symbol != instrument.symbol)
+        {
+            throw std::invalid_argument("session snapshot is for " +
+                                        (snapshot.books.empty() ? std::string("no book")
+                                                                : snapshot.books.front().symbol) +
+                                        ", not " + instrument.symbol);
+        }
+        for (const ResumeSummary& summary : resume_session(snapshot, portfolio, {{instrument.symbol, venue}}))
+            logger.log("[RESUME] ", summary.to_log_string());
         resumed = std::move(snapshot);
     }
     Pipeline pipeline(output_files.orders, output_files.trades, *strategy, *venue, portfolio,
@@ -546,8 +550,8 @@ void Application::run_l2_session_mode() const
         // The id sequence continues where the snapshot stopped, because an id the venue has already seen is refused
         // as a duplicate, and nothing is sent before the snapshot's own moment: the market is rebuilt from the
         // file's first line, and the decisions are not repeated.
-        pipeline.set_next_order_id(resumed->next_order_id);
-        pipeline.hold_submissions_until(resumed->last_ts);
+        pipeline.set_next_order_id(resumed->books.front().next_order_id);
+        pipeline.hold_submissions_until(resumed->books.front().last_ts);
     }
     // The documented model is cash only and no margin, so the cash the run starts with is the
     // exposure ceiling the summary measures against, and --max-position decides whether it is
@@ -740,8 +744,9 @@ void Application::run_l2_session_mode() const
         std::string snapshot_error;
         if (!write_snapshot(to_abs_path(cfg_.snapshot_out_path), snapshot, snapshot_error))
             throw std::invalid_argument(snapshot_error);
-        logger.log("[SNAPSHOT] path=", to_abs_path(cfg_.snapshot_out_path), " symbol=", snapshot.symbol,
-                   " last_ts=", snapshot.last_ts, " orders=", snapshot.working_orders.size(),
+        const SessionBook& book = snapshot.books.front();
+        logger.log("[SNAPSHOT] path=", to_abs_path(cfg_.snapshot_out_path), " symbol=", book.symbol,
+                   " last_ts=", book.last_ts, " orders=", book.working_orders.size(),
                    " legs=", snapshot.account.positions.size(), " cash_usd=", snapshot.account.cash);
     }
     if (gateway != nullptr)
@@ -820,6 +825,11 @@ void Application::run_multi_book_mode() const
     MultiBook books(portfolio);
     books.set_profiler(profiler);
     std::vector<std::unique_ptr<IMarketEventReader>> streams;
+    // The legs are built in three passes rather than one, because a resumed session has to resolve each book's
+    // inherited orders at that book's own venue *before* a pipeline exists: a cancel that arrived at a pipeline
+    // would be an orphan report from a client that has not started trading.
+    std::vector<std::unique_ptr<BookLeg>> legs;
+    std::unordered_map<std::string, IMatchingEngine*> venues;
     for (const BookSource& book_source : sources)
     {
         // The leg is heap-allocated and never moved: the strategy and the venue are built with the address of
@@ -832,26 +842,57 @@ void Application::run_multi_book_mode() const
         leg->venue = std::make_unique<MatchingEngine>(leg->instrument.tick_size,
                                                       fee_schedule_of(leg->instrument),
                                                       engine_config(leg->instrument));
-        leg->pipeline = std::make_unique<Pipeline>(output_files.orders, output_files.trades,
-                                                   *leg->strategy, *leg->venue, portfolio,
-                                                   leg->instrument.tick_size);
+        venues[leg->instrument.symbol] = leg->venue.get();
+        legs.push_back(std::move(leg));
+    }
+
+    // The account comes back once and each book's orders are resolved at its own venue, before anything quotes.
+    std::optional<SessionSnapshot> resumed;
+    if (!cfg_.snapshot_in_path.empty())
+    {
+        SessionSnapshot snapshot;
+        std::string snapshot_error;
+        if (!read_snapshot(to_abs_path(cfg_.snapshot_in_path), snapshot, snapshot_error))
+            throw std::invalid_argument(snapshot_error);
+        for (const ResumeSummary& summary : resume_session(snapshot, portfolio, venues))
+            logger.log("[RESUME] ", summary.to_log_string());
+        resumed = std::move(snapshot);
+    }
+
+    for (std::size_t index = 0; index < legs.size(); ++index)
+    {
+        BookLeg& leg = *legs[index];
+        const BookSource& book_source = sources[index];
+        leg.pipeline = std::make_unique<Pipeline>(output_files.orders, output_files.trades,
+                                                  *leg.strategy, *leg.venue, portfolio,
+                                                  leg.instrument.tick_size);
         // The same settings the single-book path applies, applied to the book they belong to. The exposure
         // ceiling is in dollars and lives on the pipeline, so each book measures its own exposure against the
         // same cash rather than the two together measuring against it.
-        leg->pipeline->set_collateral(1000.0, leg->instrument.unit_notional_usd,
-                                      leg->instrument.quantity_scale, leg->instrument.multiplier);
-        leg->pipeline->set_profiler(profiler);
-        apply_pipeline_limits(*leg->pipeline);
-        leg->pipeline->set_schedule_terms(leg->instrument.fee_per_share,
-                                          leg->instrument.min_commission_per_order);
-        leg->pipeline->set_markout_cover(cfg_.markout_cover);
-        leg->pipeline->set_gate_diagnostics(cfg_.markout_cover || cfg_.flatten_band > 0);
-        leg->pipeline->set_markout_horizon(cfg_.markout_horizon);
+        leg.pipeline->set_collateral(1000.0, leg.instrument.unit_notional_usd,
+                                     leg.instrument.quantity_scale, leg.instrument.multiplier);
+        leg.pipeline->set_profiler(profiler);
+        apply_pipeline_limits(*leg.pipeline);
+        leg.pipeline->set_schedule_terms(leg.instrument.fee_per_share,
+                                         leg.instrument.min_commission_per_order);
+        leg.pipeline->set_markout_cover(cfg_.markout_cover);
+        leg.pipeline->set_gate_diagnostics(cfg_.markout_cover || cfg_.flatten_band > 0);
+        leg.pipeline->set_markout_horizon(cfg_.markout_horizon);
         // The hard exposure cap is the account's, not each book's: without this, two books would each compare
         // their own notional with the same cash and both would report no violation while the account held twice
         // the cap. The provider hands over every book's last midpoint, and the pipeline values the account with
         // its own symbol left out.
-        leg->pipeline->set_account_marks([&books] { return books.marks(); });
+        leg.pipeline->set_account_marks([&books] { return books.marks(); });
+        if (resumed)
+        {
+            const auto book = std::find_if(resumed->books.begin(), resumed->books.end(),
+                                           [&leg](const SessionBook& candidate)
+                                           { return candidate.symbol == leg.instrument.symbol; });
+            if (book == resumed->books.end())
+                throw std::invalid_argument("session snapshot does not name " + leg.instrument.symbol);
+            leg.pipeline->set_next_order_id(book->next_order_id);
+            leg.pipeline->hold_submissions_until(book->last_ts);
+        }
 
         // A venue brings either its own trade archive and a JSON Lines book, or the CSV pair this repository
         // started with, and the depth file says which. It is decided per leg, because two books need not come
@@ -859,19 +900,19 @@ void Application::run_multi_book_mode() const
         const std::string format = market_data_format_of(book_source.depth_file);
         if (format == "okx")
         {
-            streams.push_back(make_okx_trade_reader(book_source.trades_file, leg->instrument.symbol,
-                                                    leg->instrument.contract_size,
-                                                    leg->instrument.quantity_scale));
-            streams.push_back(make_okx_book_reader(book_source.depth_file, leg->instrument.symbol,
-                                                   leg->instrument.contract_size,
-                                                   leg->instrument.quantity_scale));
+            streams.push_back(make_okx_trade_reader(book_source.trades_file, leg.instrument.symbol,
+                                                    leg.instrument.contract_size,
+                                                    leg.instrument.quantity_scale));
+            streams.push_back(make_okx_book_reader(book_source.depth_file, leg.instrument.symbol,
+                                                   leg.instrument.contract_size,
+                                                   leg.instrument.quantity_scale));
         }
         else
         {
             streams.push_back(make_deribit_trade_reader(book_source.trades_file));
             streams.push_back(make_deribit_depth_reader(book_source.depth_file));
         }
-        books.add_leg(std::move(leg));
+        books.add_leg(std::move(legs[index]));
     }
 
     logger.log("[Mode: L2 Replay] symbols=", sources[0].symbol, ",", sources[1].symbol,
@@ -940,6 +981,21 @@ void Application::run_multi_book_mode() const
     if (!account.empty() && account.front() == '\n') account.erase(account.begin());
     logger.log(account);
     logger.log("[EXPOSURE] ", books.exposure().to_log_string());
+    // The session as this run leaves it, for a process that has to take over: one account and one record per book,
+    // each with its own clock, id sequence and working orders. Written last, after the final mark, so the snapshot
+    // and the lines above describe the same moment.
+    if (!cfg_.snapshot_out_path.empty())
+    {
+        const SessionSnapshot snapshot = capture_session(books, portfolio);
+        std::string snapshot_error;
+        if (!write_snapshot(to_abs_path(cfg_.snapshot_out_path), snapshot, snapshot_error))
+            throw std::invalid_argument(snapshot_error);
+        uint64_t working = 0;
+        for (const SessionBook& book : snapshot.books) working += book.working_orders.size();
+        logger.log("[SNAPSHOT] path=", to_abs_path(cfg_.snapshot_out_path),
+                   " books=", snapshot.books.size(), " orders=", working,
+                   " legs=", snapshot.account.positions.size(), " cash_usd=", snapshot.account.cash);
+    }
     if (profiler != nullptr) std::cout << profiler->report() << std::flush;
 }
 

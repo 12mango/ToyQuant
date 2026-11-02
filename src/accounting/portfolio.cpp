@@ -7,6 +7,8 @@ void Portfolio::reset()
 {
     positions_.clear();
     closed_trades_.clear();
+    realized_by_symbol_.clear();
+    fees_by_symbol_.clear();
     cash_ = initial_cash_;
     realized_pnl_ = 0.0;
     unrealized_pnl_ = 0.0;
@@ -27,7 +29,9 @@ Portfolio::State Portfolio::state() const
             .taker_fees = taker_fees_,
             .maker_trade_count = maker_trade_count_,
             .taker_trade_count = taker_trade_count_,
-            .positions = positions_};
+            .positions = positions_,
+            .realized_by_symbol = realized_by_symbol_,
+            .fees_by_symbol = fees_by_symbol_};
 }
 
 void Portfolio::restore(const State& state)
@@ -40,6 +44,8 @@ void Portfolio::restore(const State& state)
     maker_trade_count_ = state.maker_trade_count;
     taker_trade_count_ = state.taker_trade_count;
     positions_ = state.positions;
+    realized_by_symbol_ = state.realized_by_symbol;
+    fees_by_symbol_ = state.fees_by_symbol;
     // A restored account is unmarked until something prices it, which is the state a run is in when it starts:
     // equity is the cash and unrealized PnL is zero. Copying the old mark in here would carry a price nobody
     // has seen since the last process died.
@@ -58,12 +64,19 @@ void Portfolio::set_instrument(const InstrumentSpec& instrument)
                   .multiplier = instrument.multiplier};
 }
 
-void Portfolio::charge_fee(double fee)
+void Portfolio::charge_fee(double fee, const std::string& symbol)
 {
     if (fee == 0.0) return;
     fees_paid_ += fee;
     cash_ -= fee;
     realized_pnl_ -= fee;
+    // Attributed when the caller knows the leg, because a per-book result needs it; an empty symbol is booked to the
+    // account alone, which is what the paths that predate the two-book run pass.
+    if (!symbol.empty())
+    {
+        realized_by_symbol_[symbol] -= fee;
+        fees_by_symbol_[symbol] += fee;
+    }
 }
 
 void Portfolio::apply(const ExecutionReport& report)
@@ -73,6 +86,7 @@ void Portfolio::apply(const ExecutionReport& report)
     auto& position = positions_[report.symbol];
     position.traded_quantity += report.executed_quantity();
     fees_paid_ += report.fee;
+    fees_by_symbol_[report.symbol] += report.fee;
     if (report.liquidity_role == LiquidityRole::Maker)
     {
         maker_fees_ += report.fee;
@@ -89,6 +103,7 @@ void Portfolio::apply(const ExecutionReport& report)
     const Valuation valuation = valuation_of(report.symbol);
     cash_ -= report.fee;
     realized_pnl_ -= report.fee;
+    realized_by_symbol_[report.symbol] -= report.fee;
 
     // A trade can close part of an existing position and open the rest. The closing portion is
     // valued from the position's entry price and the opening portion at the trade price, so the
@@ -107,6 +122,7 @@ void Portfolio::apply(const ExecutionReport& report)
             cash_ -= value_now;
             pnl = value_at_entry - value_now;
             realized_pnl_ += pnl;
+            realized_by_symbol_[report.symbol] += pnl;
         }
         else
         {
@@ -114,6 +130,7 @@ void Portfolio::apply(const ExecutionReport& report)
             cash_ += value_now;
             pnl = value_now - value_at_entry;
             realized_pnl_ += pnl;
+            realized_by_symbol_[report.symbol] += pnl;
         }
 
         // The fee this fill paid for the quantity it closed, plus the share of the entry fees the position
@@ -206,6 +223,21 @@ void Portfolio::apply(const ExecutionReport& report)
     }
 }
 
+Portfolio::SymbolPnl Portfolio::pnl_of(const std::string& symbol, double price) const
+{
+    SymbolPnl out;
+    const auto realized = realized_by_symbol_.find(symbol);
+    if (realized != realized_by_symbol_.end()) out.realized_pnl = realized->second;
+    const auto fees = fees_by_symbol_.find(symbol);
+    if (fees != fees_by_symbol_.end()) out.fees_paid = fees->second;
+    const auto position = positions_.find(symbol);
+    // A flat or unmarked position has nothing to mark: the realized part is the whole answer, which is also what a
+    // run reports for a book that closed out before the window ended.
+    if (position == positions_.end() || position->second.quantity == 0 || price <= 0.0) return out;
+    out.unrealized_pnl = marked_position(valuation_of(symbol), position->second, price).unrealized_pnl;
+    return out;
+}
+
 void Portfolio::mark_values(const std::unordered_map<std::string, double>& prices,
                             double& unrealized_pnl, double& equity) const
 {
@@ -217,19 +249,9 @@ void Portfolio::mark_values(const std::unordered_map<std::string, double>& price
         if (price_it == prices.end() || position.quantity == 0) continue;
 
         const Valuation valuation = valuation_of(symbol);
-        const double amount = units(valuation, static_cast<uint64_t>(std::llabs(position.quantity)));
-        const double value_now = value_of(valuation, amount, position.average_price, price_it->second);
-        const double value_at_entry = unit_value(valuation, position.average_price) * amount;
-        if (position.quantity > 0)
-        {
-            unrealized_pnl += value_now - value_at_entry;
-            equity += value_now;
-        }
-        else
-        {
-            unrealized_pnl += value_at_entry - value_now;
-            equity -= value_now;
-        }
+        const MarkedPosition marked = marked_position(valuation, position, price_it->second);
+        unrealized_pnl += marked.unrealized_pnl;
+        equity += marked.value;
     }
 }
 
@@ -304,6 +326,7 @@ double Portfolio::accrue_interval_flow(const std::string& symbol, double interva
 
     cash_ += flow;
     realized_pnl_ += flow;
+    realized_by_symbol_[symbol] += flow;
     equity_ += flow;
     return flow;
 }

@@ -260,9 +260,10 @@ timestamp before the feed sees them, so the event order is the venue's clock wit
 stream listed. Three things change in what is printed: one `[EXECUTION]` line per book, carrying
 `symbol=`; one `[BOOK]` line per book with how many events it was given; and one `[EXPOSURE]` line for the
 account, where each leg is valued with its own instrument's face value, so a ten dollar contract and a one
-dollar one are not the same exposure. `[PORTFOLIO]` is printed once, and `[PNL]` is not printed at all:
-its per-fill columns divide the account's money by one book's fill count, which is one book's denominator
-for the whole account's result. The broker, the gateway, `--metrics`, `--parent`, `--record` and
+dollar one are not the same exposure. `[PORTFOLIO]` is printed once, and each book prints its own
+`[PNL] symbol=..`: the account's line cannot say which leg lost the money, and a book's line can — the split is
+taken where the account's totals are written, so the legs add up to the account exactly. The broker, the gateway,
+`--metrics`, `--parent`, `--record` and
 `--funding-rates` are refused with a second book, each for its own reason, rather than silently applied to
 only one of the two.
 
@@ -312,8 +313,9 @@ forgotten is counted rather than assumed to be filled or cancelled — the venue
 apart, and a fill that happened while nobody was listening is what `reconcile_positions` is for. And the
 **strategy is not restored**: the new process starts with the account it was given and no memory of its own
 quotes, which the first fill after a resume reports as a `strategy_position_mismatches` count instead of
-hiding. A snapshot belongs to one book, so neither flag is accepted with `--symbol-b`, and `--snapshot-in`
-refuses `--order-gateway`, whose own table is client state a resumed process does not have.
+hiding. A snapshot holds one record per book, so a two-symbol run resumes both legs and resolves each one's orders
+at its own venue; `--snapshot-in` refuses `--order-gateway`, whose own table is client state a resumed process does
+not have.
 
 `--feed-thread` moves the reading to its own thread and hands each event to the strategy thread over a
 bounded single-producer ring, which is the shape a live path has: the feed's own work — block refill,

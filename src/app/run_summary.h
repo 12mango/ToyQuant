@@ -368,6 +368,11 @@ struct RunSummary
     // Printed for every run, because whether a run earns anything before the venue is paid is the question
     // the market-making line exists to answer, and a reader should not have to subtract two fields by hand.
     PnlSummary pnl;
+    // This book's own result, for a run that carries several books into one account: the account's `[PNL]` cannot
+    // say which leg lost the money. `book_symbol` is the one symbol this pipeline traded, and it is empty for a
+    // pipeline that saw no quote or several -- in which case the per-book line is not printed and the account's is.
+    PnlSummary book_pnl;
+    std::string book_symbol;
     // Printed only when --metrics asked for the equity series: the sampling is a per-event cost and the
     // [PERFORMANCE] line is derived from numbers no other line carries, so a run that does not ask keeps
     // the summary it had.
@@ -441,10 +446,12 @@ struct RunSummary
         return stream.str();
     }
 
-    std::string pnl_to_log_string() const
+    // The [PNL] fields, shared by the account's line and a book's, so the two are the same arithmetic printed twice
+    // rather than two implementations that agree today.
+    static std::string pnl_fields(const PnlSummary& pnl)
     {
         std::ostringstream stream;
-        stream << "\n[PNL] gross_pnl_usd=" << pnl.gross_pnl_usd
+        stream << "gross_pnl_usd=" << pnl.gross_pnl_usd
                << " net_pnl_usd=" << pnl.net_pnl_usd
                << " gross_closed_pnl_usd=" << pnl.gross_closed_pnl_usd
                << " closed_pnl_usd=" << pnl.closed_pnl_usd
@@ -452,6 +459,13 @@ struct RunSummary
                << " net_per_fill_usd=" << pnl.net_per_fill_usd
                << " gross_closed_per_fill_usd=" << pnl.gross_closed_per_fill_usd
                << " breakeven_maker_rate=" << pnl.breakeven_maker_rate;
+        return stream.str();
+    }
+
+    std::string pnl_to_log_string() const
+    {
+        std::ostringstream stream;
+        stream << "\n[PNL] " << pnl_fields(pnl);
         if (metrics_requested)
             stream << "\n[PERFORMANCE] span_seconds=" << performance.span_seconds
                    << " samples=" << performance.samples
@@ -570,6 +584,11 @@ struct RunSummary
             stream << " invalid_order_transitions=" << execution_quality.invalid_order_transitions;
         if (execution_quality.orphan_order_reports > 0)
             stream << " orphan_order_reports=" << execution_quality.orphan_order_reports;
+        // A book's own [PNL], printed only for a named book: the account's line cannot say which leg lost the money,
+        // and that is the question a two-leg run is asking. A book that saw no quote has nothing to mark, so the
+        // line is omitted rather than printed as zero.
+        if (!leg.empty() && !book_symbol.empty())
+            stream << "\n[PNL] symbol=" << leg << ' ' << pnl_fields(book_pnl);
         if (include_account) stream << account_to_log_string();
         if (metrics_requested)
             stream << "\n[ROUND_TRIPS] trades=" << round_trips.trades

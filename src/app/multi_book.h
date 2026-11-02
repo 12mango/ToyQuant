@@ -76,6 +76,12 @@ class MultiBook
         return legs_;
     }
 
+    // The account the books share, which a snapshot writes once and a resume restores once.
+    const Portfolio& account() const
+    {
+        return account_;
+    }
+
     uint64_t events(const std::string& symbol) const;
 
     // Optional per-stage timing, the same contract the single-book path has: the book and market-view

@@ -139,6 +139,19 @@ class Portfolio
     {
     }
 
+    // One symbol's contribution to the account's result, which the account's own line cannot show: a book with two
+    // legs has to know which leg lost the money, and a sum over both legs answers a different question. `realized`
+    // is the closed result net of the fees booked against that symbol, `fees` is those fees wherever they came
+    // from, and `unrealized` is the open position marked at the price the caller passes.
+    struct SymbolPnl
+    {
+        double realized_pnl{0.0};
+        double fees_paid{0.0};
+        double unrealized_pnl{0.0};
+    };
+
+    SymbolPnl pnl_of(const std::string& symbol, double price) const;
+
     // The account as it stands, for a session another process has to take over. It carries what a mark cannot
     // recover: the cash, what was realized, the fees, the two trade counts, and every position with the entry
     // price and the fee still riding on it. Equity and unrealized PnL are deliberately absent -- the next mark
@@ -153,6 +166,10 @@ class Portfolio
         uint64_t maker_trade_count{0};
         uint64_t taker_trade_count{0};
         std::unordered_map<std::string, PortfolioPosition> positions;
+        // The per-symbol split of `realized_pnl` and `fees_paid`, which a resumed run needs to print one book's
+        // result: without it the account comes back and its legs do not.
+        std::unordered_map<std::string, double> realized_by_symbol;
+        std::unordered_map<std::string, double> fees_by_symbol;
     };
 
     State state() const;
@@ -184,7 +201,10 @@ class Portfolio
     // when the order ends, because that is the only moment the order's total is known. It is booked to fees
     // and to cash exactly like the fee of a fill, and deliberately not to the maker or taker split, which
     // counts the venue's own fees per execution and would be reporting a commission as a venue charge.
-    void charge_fee(double fee);
+    //
+    // `symbol` attributes it to one leg, which is what a two-book run needs to report each book's own result; an
+    // empty symbol books it to the account alone, which is what the legacy paths pass.
+    void charge_fee(double fee, const std::string& symbol = {});
 
     // One interval of a per-interval cash flow on one position: the funding a perpetual pays, the basis
     // a future pays at roll, a dividend, or the financing a position is charged. One method for all four
@@ -294,10 +314,33 @@ class Portfolio
                               price);
     }
 
+    // One position at one price: what it is worth now and what it has gained or lost. `mark_values` loops over the
+    // account with this and `pnl_of` asks for one symbol, so the account's total and a leg's own number cannot
+    // disagree -- which they could if each had its own copy of the three lines.
+    struct MarkedPosition
+    {
+        double value{0.0};
+        double unrealized_pnl{0.0};
+    };
+
+    MarkedPosition marked_position(const Valuation& valuation, const PortfolioPosition& position,
+                                   double price) const
+    {
+        const double amount = units(valuation, static_cast<uint64_t>(std::llabs(position.quantity)));
+        const double value_now = value_of(valuation, amount, position.average_price, price);
+        const double value_at_entry = unit_value(valuation, position.average_price) * amount;
+        if (position.quantity > 0) return {value_now, value_now - value_at_entry};
+        return {-value_now, value_at_entry - value_now};
+    }
+
     uint64_t quantity_scale_;
     double unit_notional_usd_;
     double multiplier_;
     std::unordered_map<std::string, Valuation> instruments_;
+    // The per-symbol split of the two account totals above. A sum of them is what the totals are, and a two-book
+    // run reads them one leg at a time.
+    std::unordered_map<std::string, double> realized_by_symbol_;
+    std::unordered_map<std::string, double> fees_by_symbol_;
     double initial_cash_;
     double cash_;
     double realized_pnl_{0.0};

@@ -264,7 +264,7 @@ tier1() {
     --snapshot-out="$session_dir/session" > "$session_dir/first.log" 2>&1 || session_ok=1
   "$BIN" l2_replay "$TRADES" "$SLICE_200K" BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation \
     --snapshot-in="$session_dir/session" > "$session_dir/second.log" 2>&1 || session_ok=1
-  grep -q '^toyquant-session 1$' "$session_dir/session" || session_ok=1
+  grep -q '^toyquant-session 2$' "$session_dir/session" || session_ok=1
   local first_account second_account first_book second_book resume orders live gone
   first_account=$(grep -E '^\[PORTFOLIO\]' "$session_dir/first.log")
   second_account=$(grep -E '^\[PORTFOLIO\]' "$session_dir/second.log")
@@ -280,6 +280,29 @@ tier1() {
   # Every order the snapshot listed is resolved into one of the two buckets, so the three numbers cannot drift
   # apart: an order that is neither live nor gone is an order the recovery did not look at.
   [ -n "$orders" ] && [ "$orders" = "$((live + gone))" ] || session_ok=1
+  # The same two halves with two books: one account, one record per book, each with its own clock and id sequence.
+  # The claim is the same -- the resumed run's account is the account the first run reported -- and the extra
+  # assertion is that the snapshot names both books and that each of them resolves its own orders.
+  if [ -f "$ETH_TRADES" ] && [ -f "$SLICE_ETH_200K" ]; then
+    local pair_dir pair_first_account pair_second_account books resume_lines
+    pair_dir=$(mktemp -d)
+    "$BIN" l2_replay "$TRADES" "$SLICE_200K" BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation \
+      --symbol-b=ETH-PERPETUAL --trades-b="$ETH_TRADES" --depth-b="$SLICE_ETH_200K" \
+      --snapshot-out="$pair_dir/session" > "$pair_dir/first.log" 2>&1 || session_ok=1
+    "$BIN" l2_replay "$TRADES" "$SLICE_200K" BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation \
+      --symbol-b=ETH-PERPETUAL --trades-b="$ETH_TRADES" --depth-b="$SLICE_ETH_200K" \
+      --snapshot-in="$pair_dir/session" > "$pair_dir/second.log" 2>&1 || session_ok=1
+    books=$(grep -c '^book=' "$pair_dir/session")
+    [ "$books" = 2 ] || session_ok=1
+    resume_lines=$(grep -c '^\[RESUME\]' "$pair_dir/second.log")
+    [ "$resume_lines" = 2 ] || session_ok=1
+    pair_first_account=$(grep -E '^\[PORTFOLIO\]' "$pair_dir/first.log")
+    pair_second_account=$(grep -E '^\[PORTFOLIO\]' "$pair_dir/second.log")
+    [ -n "$pair_first_account" ] && [ "$pair_first_account" = "$pair_second_account" ] || session_ok=1
+    [ "$(grep -E '^\[EXPOSURE\]' "$pair_dir/first.log")" = \
+      "$(grep -E '^\[EXPOSURE\]' "$pair_dir/second.log")" ] || session_ok=1
+    rm -rf "$pair_dir"
+  fi
   rm -rf "$session_dir"
   # The numbers the documents quote are claims about this code, and hand-copied claims drift: one did,
   # a "thirty times per fill" that a re-measurement turned into ten. They are checked at the same gate

@@ -291,6 +291,11 @@ class RunAccounting
     static PnlSummary pnl_summary(const Portfolio& portfolio, double maker_notional_usd,
                                   uint64_t trade_reports);
 
+    // The same formula for one symbol, marked at `price`. A two-book run reports one of these per book, because the
+    // account's total cannot say which leg lost the money and a leg's own number can.
+    static PnlSummary pnl_summary_of(const Portfolio& portfolio, const std::string& symbol, double price,
+                                     double maker_notional_usd, uint64_t trade_reports);
+
    private:
     // The win/loss half of the distribution, over every trade or over one side. An empty `side` means every
     // trade, and the notional figures stay with the caller because they belong to the account rather than to
