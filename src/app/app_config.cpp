@@ -86,6 +86,10 @@ constexpr std::string_view kSymbolBPrefix = "--symbol-b=";
 // above with the carry flags rather than here: one name, one symbol, one meaning.
 constexpr std::string_view kTradesBPrefix = "--trades-b=";
 constexpr std::string_view kDepthBPrefix = "--depth-b=";
+// The two halves of a session that another process can take over: where the state is written, and where a run
+// reads one to resume from.
+constexpr std::string_view kSnapshotOutPrefix = "--snapshot-out=";
+constexpr std::string_view kSnapshotInPrefix = "--snapshot-in=";
 constexpr std::string_view kNotionalPrefix = "--notional-usd=";
 constexpr std::string_view kLongPrefix = "--long=";
 constexpr std::string_view kMakerFeePrefix = "--maker-fee-rate=";
@@ -171,6 +175,11 @@ void print_usage(const char* executable)
                      "replays two instruments into one account -- a book, a decision layer and a venue per "
                      "symbol, interleaved by timestamp -- and the [EXPOSURE] line then reports the two legs' "
                      "gross exposure against their net\n";
+        std::cerr << "   session: --snapshot-out=FILE writes the session -- account, positions, marks, working "
+                     "orders, clock, next order id -- when the run ends, and --snapshot-in=FILE takes one over: the "
+                     "account is restored, every order the snapshot listed is asked about at the venue (a live "
+                     "one is cancelled, a forgotten one is counted), and the run replays its file from the first "
+                     "line while holding its own orders until the snapshot's clock\n";
         std::cerr << "   optional flags: --no-output | --fast-validation (l2_replay only) | "
                      "--profile-stages[=N] prints sampled per-stage timings (l2_replay only, default interval 64) | "
                      "--order-size=N, --inventory-limit=N, and --max-position=N override the "
@@ -434,6 +443,10 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                 cfg.trades_b_path = flag.substr(kTradesBPrefix.size());
             else if (flag.compare(0, kDepthBPrefix.size(), kDepthBPrefix) == 0)
                 cfg.depth_b_path = flag.substr(kDepthBPrefix.size());
+            else if (flag.compare(0, kSnapshotOutPrefix.size(), kSnapshotOutPrefix) == 0)
+                cfg.snapshot_out_path = flag.substr(kSnapshotOutPrefix.size());
+            else if (flag.compare(0, kSnapshotInPrefix.size(), kSnapshotInPrefix) == 0)
+                cfg.snapshot_in_path = flag.substr(kSnapshotInPrefix.size());
             else if (flag == kMarkoutCoverFlag)
                 cfg.markout_cover = true;
             else if (flag == kMetricsFlag)
@@ -1126,7 +1139,8 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                         "--fee-schedule=KEY=VALUE[,KEY=VALUE], "
                         "--markout-cover, --metrics, --markout-horizon=N, --parent=SIDE:QUANTITY:SECONDS, "
                         "--algo=MARKET|TWAP:N|POV:X, --algo-entry=CROSS|POST:SECONDS, --flatten-band=N, "
-                        "--symbol-b=SYM with --trades-b=FILE and --depth-b=FILE, or "
+                        "--symbol-b=SYM with --trades-b=FILE and --depth-b=FILE, "
+                        "--snapshot-out=FILE or --snapshot-in=FILE, or "
                         "--paper-broker with one of its faults";
                 return false;
             }
@@ -1202,6 +1216,37 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
         {
             error = "--fast-validation is only supported by l2_replay or ws";
             return false;
+        }
+        // A session snapshot belongs to one book and one account. Two books would need two order ledgers and two
+        // clocks, and a live session has no replay clock to resume against, so both are refused rather than half
+        // written.
+        if (!cfg.snapshot_out_path.empty() || !cfg.snapshot_in_path.empty())
+        {
+            if (cfg.mode != AppMode::L2Replay)
+            {
+                error = "--snapshot-out and --snapshot-in are l2_replay flags: a session is written and resumed "
+                        "against a replay's own clock";
+                return false;
+            }
+            if (!cfg.symbol_b.empty())
+            {
+                error = "a session snapshot is one book: a two-symbol run would need an order ledger per book, "
+                        "which this flag does not carry yet";
+                return false;
+            }
+            if (!cfg.snapshot_in_path.empty() && cfg.order_gateway)
+            {
+                error = "--snapshot-in cannot be combined with --order-gateway: the gateway's own table is client "
+                        "state that a resumed process does not have, so its cancel of an inherited order would "
+                        "never reach the venue";
+                return false;
+            }
+            if (!cfg.snapshot_in_path.empty() &&
+                !std::filesystem::is_regular_file(to_abs_path(cfg.snapshot_in_path)))
+            {
+                error = "session snapshot does not exist: " + to_abs_path(cfg.snapshot_in_path);
+                return false;
+            }
         }
         if (cfg.profile_sample_interval > 0 && !is_l2_family)
         {

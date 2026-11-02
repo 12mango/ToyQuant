@@ -18,6 +18,35 @@ void Portfolio::reset()
     taker_trade_count_ = 0;
 }
 
+Portfolio::State Portfolio::state() const
+{
+    return {.cash = cash_,
+            .realized_pnl = realized_pnl_,
+            .fees_paid = fees_paid_,
+            .maker_fees = maker_fees_,
+            .taker_fees = taker_fees_,
+            .maker_trade_count = maker_trade_count_,
+            .taker_trade_count = taker_trade_count_,
+            .positions = positions_};
+}
+
+void Portfolio::restore(const State& state)
+{
+    cash_ = state.cash;
+    realized_pnl_ = state.realized_pnl;
+    fees_paid_ = state.fees_paid;
+    maker_fees_ = state.maker_fees;
+    taker_fees_ = state.taker_fees;
+    maker_trade_count_ = state.maker_trade_count;
+    taker_trade_count_ = state.taker_trade_count;
+    positions_ = state.positions;
+    // A restored account is unmarked until something prices it, which is the state a run is in when it starts:
+    // equity is the cash and unrealized PnL is zero. Copying the old mark in here would carry a price nobody
+    // has seen since the last process died.
+    unrealized_pnl_ = 0.0;
+    equity_ = cash_;
+}
+
 void Portfolio::set_instrument(const InstrumentSpec& instrument)
 {
     // The three numbers the valuation needs, and deliberately not the symbol: the position map is already keyed

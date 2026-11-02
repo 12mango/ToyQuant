@@ -87,6 +87,7 @@ set(APP_SOURCES
     src/app/pipeline.cpp
     src/app/risk_pipeline.cpp
     src/app/run_accounting.cpp
+    src/app/session_state.cpp
     src/app/strategy_benchmark.cpp
     src/app/strategy_factory.cpp)
 
@@ -227,4 +228,5 @@ add_toy_test(carry_ledger_test)
 add_toy_test(funding_rate_test)
 add_toy_test(pipeline_accounting_test)
 add_toy_test(multi_book_test)
+add_toy_test(session_state_test)
 add_toy_test(strategy_benchmark_test)

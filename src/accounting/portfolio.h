@@ -139,6 +139,28 @@ class Portfolio
     {
     }
 
+    // The account as it stands, for a session another process has to take over. It carries what a mark cannot
+    // recover: the cash, what was realized, the fees, the two trade counts, and every position with the entry
+    // price and the fee still riding on it. Equity and unrealized PnL are deliberately absent -- the next mark
+    // produces them -- and so is the marking price itself, which the caller holds.
+    struct State
+    {
+        double cash{0.0};
+        double realized_pnl{0.0};
+        double fees_paid{0.0};
+        double maker_fees{0.0};
+        double taker_fees{0.0};
+        uint64_t maker_trade_count{0};
+        uint64_t taker_trade_count{0};
+        std::unordered_map<std::string, PortfolioPosition> positions;
+    };
+
+    State state() const;
+    // Put an account back where `state` says it was, which is the other half of a snapshot. The mark is left
+    // for the caller: equity reads as the cash until something prices the positions, so a resumed run reports
+    // equity only after its first mark, which is the same rule a fresh run follows.
+    void restore(const State& state);
+
     // One instrument's units, for an account that holds more than one. A position is already keyed by symbol;
     // what was still account-wide was how a unit of that symbol is worth anything, and two instruments need not
     // agree: a BTC perpetual has a ten dollar face value and an ETH perpetual a one dollar face value, so an

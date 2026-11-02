@@ -42,7 +42,7 @@ existing design, architecture and user documents are the whole plan.
 | order state | done: Pending/Resting/PartiallyFilled/Filled/Cancelled/Rejected, reasons, pending release, IOC/FOK terminals | timeout/query visibility and immediate-order terminals done; recovery policy remains P2 | done |
 | portfolio and PnL | several instruments in one run against one account: a book, a decision layer, a venue and a pipeline per symbol, per-instrument valuation, and `[EXPOSURE]` reporting gross against net. The instruments themselves still do not pay: a BTC/ETH pair is 2.7 times short of its own round-trip cost on two windows, and the two instruments' maker break-even rates are 6.9 bps apart (both in `PERFORMANCE_HISTORY.md`) | the maker comparison needs a larger fill count than the free days give; that is data, not code | done |
 | broker and gateway simulation | paper broker plus gateway faults and timeout queries | client-order-id recovery remains P2 | done |
-| persistence and recovery | missing | out of the demo; would need a venue-like query | P3 |
+| persistence and recovery | a session is written down and taken over: the account, the positions with their entries, the marks, the working orders and the clock; a resumed run restores the account and asks the venue about each order it inherited | a venue that remembers its own fills across a client restart, and a snapshot per book for a two-symbol run | done |
 | live venue, TLS and authentication | missing; current boundary | out of the demo; lift by request | P3 |
 | market impact and realistic taker fills | partial: capacity cap only; there is still no price-impact model | none inside the current boundary | done |
 | out-of-sample, Sharpe and capacity | the Sharpe, volatility, drawdown and Calmar figures are measured on demand behind `--metrics`; the out-of-sample and capacity studies are still not a demo goal | the studies, not the measurement, are out of the demo | out |
@@ -100,7 +100,26 @@ existing design, architecture and user documents are the whole plan.
    number where it was. On the same two books with a ten dollar cap: the BTC book fills to ten, the ETH book is
    refused every quote because its own dollar would be the eleventh, and `[EXPOSURE]` reports `symbols=1`. The
    gate re-derives that too.
-10. Persistence and restart recovery.
+10. Persistence and restart recovery. **Landed:** a session can be written down and taken over,
+   against a venue that outlives the client. `--snapshot-out=FILE` writes the account (cash, realized PnL,
+   fees and both trade counts), every position with its entry price and the fee riding on it, the last
+   midpoint each symbol showed, the orders the ledger still holds, and the clock and next order id.
+   `--snapshot-in=FILE` restores the account, then asks the **venue** about every order the snapshot listed:
+   a live one is cancelled (a queue position a new process did not stand in is not one it can keep), and a
+   forgotten one is counted rather than assumed to be filled or cancelled, because the venue's query cannot
+   tell those apart. The run then replays its file from the first line — the book has to be the one the
+   snapshot was taken against — and holds its own orders until the snapshot's clock, so the market is
+   rebuilt and the decisions are not repeated. Measured on the 200k slice: the resumed run reports
+   `[RESUME] ... cash_usd=989.993 legs=1 next_order_id=382` and then a `[PORTFOLIO]` and `[EXPOSURE]`
+   identical to the run it took over, field for field; the gate re-derives that on every run.
+   **What it deliberately does not do:** restore the *strategy*. A new process starts with the account it was
+   given and no memory of its own quotes, and the first fill after a resume reports it through
+   `strategy_position_mismatches` rather than being silently absorbed. Adoption — taking a live order over
+   instead of cancelling it — would need a queue position nobody can reconstruct, so it is refused by
+   design. **Still missing:** a venue that remembers its own fills across a client restart (the simulator's
+   engine is created per run, so a resumed run compares against nothing; the test uses one broker for both
+   halves to show a fill missed while down being *caught* by `reconcile_positions`), and a snapshot per book
+   for a two-symbol run.
 11. Full venue semantics (cancel/replace and the other modes not chosen in P1), live venue/TLS, price impact,
     out-of-sample studies, and performance experiments (block parsing, shared memory, binary telemetry,
     configuration hot reload).
@@ -161,7 +180,8 @@ frozen, and a next item needs the same kind of request and a row here.
 | 2026-10-30 | Maker break-even is tick-dependent: −5.65 bps on the BTC contract against +1.26 on the ETH one, same venue and fee; recorded as a hint, because the free days give too few fills to settle it | `0b79452` |
 | 2026-10-31 | The campaign after the tick curve, each with its verdict in the sections above: the dated and calendar basis, the CME calendar over 23 quarterly holds, the straddle measured three times (the first two wrong), the maker revival test that falsifies "execution rescues a closed line", and the funding extreme that fails all three gates | `8df8777` … `86be0ce` |
 | 2026-11-02 | P2-9 completed: a run that trades two books at once. `--symbol-b`/`--trades-b`/`--depth-b` build a book, a decision layer, a venue and a pipeline per symbol against one `Portfolio`; the four readers are merged by timestamp; `Portfolio::set_instrument` values each symbol at its own face value; the summary prints one `[EXECUTION] ... symbol=` and one `[BOOK]` per book and the account once. Measured: 377,024 events, gross 11 against net 9, fees 0.0202, re-derived by the gate | `bf9ef28` |
-| 2026-11-02 | Pre-trade risk follows the account: the hard exposure cap counted each book's own notional against the same cash, so two books could carry twice the cap while both reported no violation. Each book is told what the other legs hold and the check adds it, which is zero in a single-book run. With a ten dollar cap on the same two books the second book is refused and the account never passes ten | this commit |
+| 2026-11-02 | Pre-trade risk follows the account: the hard exposure cap counted each book's own notional against the same cash, so two books could carry twice the cap while both reported no violation. Each book is told what the other legs hold and the check adds it, which is zero in a single-book run. With a ten dollar cap on the same two books the second book is refused and the account never passes ten | `5a63c58` |
+| 2026-11-02 | P2-10 landed: a session is written down and taken over. `--snapshot-out` writes the account, the positions with their entries, the marks, the working orders and the clock; `--snapshot-in` restores the account, asks the venue about every inherited order (a live one is cancelled, a forgotten one counted) and holds its own orders until the snapshot's clock while it rebuilds the book. The resumed run's `[PORTFOLIO]` and `[EXPOSURE]` are identical to the run it took over, and the gate re-derives that. Also fixed: a `Pipeline` left the venue holding a callback into itself, which a restart is the first thing to notice | this commit |
 | 2026-10-28 | Order state machine, reject/cancel reasons, risk pipeline, non-market-making line and measurements | `9a691be` … `3b0a180` |
 
 ### For an AI reviewing this plan
@@ -1665,7 +1685,7 @@ workload rather than rewriting them:
 | a strategy that is not market making | signal, then target position, then risk, then exit — landed as `trend_l2`: an EWMA cross, clips at the touch, a stop, a time stop, a cooldown and an exit band, on the shared pre-trade gates |
 | live ingestion pointed at a real venue (Stage A) | the venue protocol, subscription, heartbeat, gap detection and reconnect |
 | multi-instrument accounting and a portfolio layer | from one instrument to a portfolio and a risk budget -- landed as the two-book run: a pipeline per symbol, one account, and gross exposure against net |
-| persistence and recovery | how a long-lived process keeps its state and asks the venue what is still working |
+| persistence and recovery | how a long-lived process keeps its state and asks the venue what is still working -- landed as the session snapshot: `--snapshot-out` writes the account and the orders, `--snapshot-in` restores the account and resolves each inherited order against the venue |
 
 **How the live reader reaches a venue, in two steps.** The venues whose data this repository already models
 publish live data over `wss://`, and the transport here speaks plaintext `ws://` with neither TLS nor a JSON

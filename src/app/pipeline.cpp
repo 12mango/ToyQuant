@@ -38,6 +38,14 @@ Pipeline::Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, Strateg
     });
 }
 
+Pipeline::~Pipeline()
+{
+    // Released rather than left behind: the callback captures `this`, and a venue that outlives its client is what
+    // a restart is. Everything that wraps the venue already tolerates an empty callback, which is why this is a
+    // clear rather than a hand-off to the next pipeline.
+    engine_.set_report_callback(IMatchingEngine::ReportCallback{});
+}
+
 void Pipeline::handle_report(const ExecutionReport& report)
 {
     ledger_.trace_report(report, current_ts_, engine_);
@@ -366,6 +374,11 @@ RunSummary Pipeline::summary() const
 
 void Pipeline::submit_strategy_actions(uint64_t ts, std::vector<StrategyOrder> orders)
 {
+    // A resumed session rebuilds the market from the file's first line and starts trading where the snapshot left
+    // off. Nothing is sent before that moment -- not even a cancel -- because a new process has no quotes of its
+    // own to pull, and the orders the old one left are resolved by the recovery rather than by the strategy.
+    if (hold_submissions_until_ > 0 && ts <= hold_submissions_until_) return;
+
     for (uint64_t order_id : strategy_.cancel_requests())
     {
         if (!ledger_.begin_cancel(order_id, engine_)) continue;

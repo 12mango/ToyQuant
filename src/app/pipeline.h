@@ -30,6 +30,11 @@ class Pipeline
     Pipeline(std::ofstream& orders_out, std::ofstream& trades_out, Strategy& strategy,
              IMatchingEngine& engine, Portfolio& portfolio, double tick_size = PRICE_TICK_SIZE);
 
+    // The venue's report callback points into this object, so it is released when the pipeline goes: a venue that
+    // outlives its client is exactly what a restart looks like, and an engine still holding the callback would be
+    // calling into freed memory the moment anything happened at that venue.
+    ~Pipeline();
+
     void process_event(const MarketEvent& event);
     void process_top_of_book(const std::string& symbol, uint64_t ts, const TopOfBook& top);
     void process_l2_market_view(const L2MarketView& view);
@@ -46,6 +51,40 @@ class Pipeline
     // public because a run that carries several books into one account has to read all of them at once: one
     // pipeline only ever sees its own symbol, so its own `exposure` would value every other leg at zero.
     std::unordered_map<std::string, double> latest_marks() const;
+
+    // The clock of the last event this pipeline was given. A snapshot stores it because a resumed run has to know
+    // where to start trading again.
+    uint64_t last_event_ts() const
+    {
+        return current_ts_;
+    }
+
+    // The next order id, and the one setting that lets a resumed session continue it: an id the venue has already
+    // seen would be refused as a duplicate, so a new process cannot start from one and hope.
+    uint64_t next_order_id() const
+    {
+        return next_order_id_.load();
+    }
+
+    void set_next_order_id(uint64_t id)
+    {
+        next_order_id_.store(id);
+    }
+
+    // The orders this run still has at the venue, for a snapshot. `Pipeline` forwards to the ledger, which is the
+    // only owner of order state.
+    std::vector<SessionOrder> working_orders() const
+    {
+        return ledger_.working_orders();
+    }
+
+    // A resumed run replays the file from its first line so the book is the one the snapshot was taken against,
+    // and withholds its own orders until the clock passes this moment: the market is rebuilt, the decisions are
+    // not repeated. A timestamp of zero, the default, holds nothing.
+    void hold_submissions_until(uint64_t ts)
+    {
+        hold_submissions_until_ = ts;
+    }
 
     // Where the marks of the *whole* account come from, for a run that carries several books into it. A pipeline
     // knows one symbol and cannot value the other legs, but the hard exposure cap belongs to the account, so this
@@ -311,6 +350,8 @@ class Pipeline
     // cycle. Read by `make_risk_context`; zero unless `set_account_marks` gave the pipeline a way to see them.
     double account_other_exposure_usd_{0.0};
     std::function<std::unordered_map<std::string, double>()> account_marks_;
+    // The clock a resumed session starts trading again at. Zero, the default, holds nothing.
+    uint64_t hold_submissions_until_{0};
 
     // The run's own measurements: the funding series, and the markout of our fills and of the venue's
     // prints. Both are measured over the clock rather than per order, so they hold a queue of what is not

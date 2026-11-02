@@ -28,6 +28,28 @@ std::size_t fill_size_bucket(uint64_t quantity)
 }
 }  // namespace
 
+std::vector<SessionOrder> OrderLedger::working_orders() const
+{
+    std::vector<SessionOrder> orders;
+    orders.reserve(order_audit_.size());
+    for (const auto& [id, audit] : order_audit_)
+    {
+        // The three terminal states are the ones `is_terminal` also ends an order with, asked here on the state
+        // machine rather than on a report, because this reads the ledger rather than a message.
+        if (audit.state == OrderState::Filled || audit.state == OrderState::Cancelled ||
+            audit.state == OrderState::Rejected)
+            continue;
+        orders.push_back({.id = id,
+                          .symbol = audit.symbol,
+                          .side = audit.side,
+                          .price = audit.price,
+                          .filled_quantity = audit.filled_quantity});
+    }
+    std::sort(orders.begin(), orders.end(),
+              [](const SessionOrder& left, const SessionOrder& right) { return left.id < right.id; });
+    return orders;
+}
+
 OrderLedger::OrderLedger(std::ofstream& orders_out, std::ofstream& trades_out)
     : orders_out_(orders_out), trades_out_(trades_out)
 {

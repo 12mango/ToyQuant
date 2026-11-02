@@ -253,6 +253,34 @@ tier1() {
       grep -q '^\[EXPOSURE\] symbols=1 legs=BTC-PERPETUAL:1:10 gross_usd=10 net_usd=10 gross_to_net=1 fees_usd=0.0144$' ||
       multi_ok=1
   fi
+  # The session's two halves: a run that writes its state, and a run that takes it over. What has to hold is that
+  # the resumed run's account *is* the account the first run reported -- every field of [PORTFOLIO] and [EXPOSURE],
+  # because a snapshot that loses one of them (a fee, a trade count, an entry price) leaves a different account and
+  # nothing else would notice. The resumed run replays the same file and holds its own orders until the snapshot's
+  # clock, so it has no decisions left to take and its summary is the state it was handed.
+  local session_ok=0 session_dir
+  session_dir=$(mktemp -d)
+  "$BIN" l2_replay "$TRADES" "$SLICE_200K" BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation \
+    --snapshot-out="$session_dir/session" > "$session_dir/first.log" 2>&1 || session_ok=1
+  "$BIN" l2_replay "$TRADES" "$SLICE_200K" BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation \
+    --snapshot-in="$session_dir/session" > "$session_dir/second.log" 2>&1 || session_ok=1
+  grep -q '^toyquant-session 1$' "$session_dir/session" || session_ok=1
+  local first_account second_account first_book second_book resume orders live gone
+  first_account=$(grep -E '^\[PORTFOLIO\]' "$session_dir/first.log")
+  second_account=$(grep -E '^\[PORTFOLIO\]' "$session_dir/second.log")
+  first_book=$(grep -E '^\[EXPOSURE\]' "$session_dir/first.log")
+  second_book=$(grep -E '^\[EXPOSURE\]' "$session_dir/second.log")
+  [ -n "$first_account" ] && [ "$first_account" = "$second_account" ] || session_ok=1
+  [ -n "$first_book" ] && [ "$first_book" = "$second_book" ] || session_ok=1
+  resume=$(grep -E '^\[RESUME\]' "$session_dir/second.log")
+  printf '%s' "$resume" | grep -q 'legs=1' || session_ok=1
+  orders=$(printf '%s' "$resume" | grep -oE ' orders=[0-9]+' | grep -oE '[0-9]+')
+  live=$(printf '%s' "$resume" | grep -oE ' live=[0-9]+' | grep -oE '[0-9]+')
+  gone=$(printf '%s' "$resume" | grep -oE ' gone=[0-9]+' | grep -oE '[0-9]+')
+  # Every order the snapshot listed is resolved into one of the two buckets, so the three numbers cannot drift
+  # apart: an order that is neither live nor gone is an order the recovery did not look at.
+  [ -n "$orders" ] && [ "$orders" = "$((live + gone))" ] || session_ok=1
+  rm -rf "$session_dir"
   # The numbers the documents quote are claims about this code, and hand-copied claims drift: one did,
   # a "thirty times per fill" that a re-measurement turned into ten. They are checked at the same gate
   # as the invariants, on the same slices, so a documented value that stops being true fails a run.
@@ -271,6 +299,7 @@ tier1() {
   python3 tools/capacity_table.py --self-test >> "$TOOL_CHECK_LOG" 2>&1 || tool_check=1
   if [ $rc -eq 0 ] && [ $rec_ok -eq 0 ] && [ $thr_ok -eq 0 ] && [ $broker_ok -eq 0 ] &&
      [ $multi_ok -eq 0 ] &&
+     [ $session_ok -eq 0 ] &&
      [ $doc_check -eq 0 ] &&
      [ $fields_check -eq 0 ] && [ $prose_check -eq 0 ] && [ $tool_check -eq 0 ] &&
      [ $verdict_check -eq 0 ]; then
@@ -283,6 +312,8 @@ tier1() {
   [ $broker_ok -eq 0 ] || echo "  broker: the brokered run did not match the direct one, or a lost report was not reported"
   [ $multi_ok -eq 0 ] ||
     echo "  multi: the two-book run did not report two books, two legs, or the sum of its own event counts"
+  [ $session_ok -eq 0 ] ||
+    echo "  session: the resumed run did not report the account the first run left, or an order went unresolved"
   [ $fields_check -eq 0 ] || sed 's/^/  fields: /' "$FIELD_CHECK_LOG"
   [ $prose_check -eq 0 ] || sed 's/^/  prose: /' "$PROSE_CHECK_LOG"
   [ $tool_check -eq 0 ] || sed 's/^/  tool: /' "$TOOL_CHECK_LOG"

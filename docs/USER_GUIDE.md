@@ -289,6 +289,32 @@ so recording it is refused. And so is any event the replay formats cannot expres
 with no aggressor side, because a file with a hole where an event was reads back as a book that is
 quietly wrong.
 
+A session can be written down and taken over by another process. `--snapshot-out=FILE` writes what the run
+knows when it ends: the account (cash, realized PnL, fees, both trade counts), every position with its
+entry price and the fee still riding on it, the last midpoint each symbol showed, the orders the ledger
+still holds, and the clock and next order id.
+
+```bash
+./build/toy_quant l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
+  /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation \
+  --snapshot-out=/tmp/session
+./build/toy_quant l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
+  /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation \
+  --snapshot-in=/tmp/session
+```
+
+The second run prints `[RESUME]` with what it took over and what it found, then replays the file from its
+first line — the book has to be the one the snapshot was taken against — and holds its own orders until the
+snapshot's clock, so the market is rebuilt and the decisions are not repeated. Two things are worth knowing.
+Every order the snapshot listed is **asked about at the venue**: one the venue still holds is cancelled,
+because a queue position a new process did not stand in is not one it can keep, and one the venue has
+forgotten is counted rather than assumed to be filled or cancelled — the venue's query cannot tell those
+apart, and a fill that happened while nobody was listening is what `reconcile_positions` is for. And the
+**strategy is not restored**: the new process starts with the account it was given and no memory of its own
+quotes, which the first fill after a resume reports as a `strategy_position_mismatches` count instead of
+hiding. A snapshot belongs to one book, so neither flag is accepted with `--symbol-b`, and `--snapshot-in`
+refuses `--order-gateway`, whose own table is client state a resumed process does not have.
+
 `--feed-thread` moves the reading to its own thread and hands each event to the strategy thread over a
 bounded single-producer ring, which is the shape a live path has: the feed's own work — block refill,
 `memchr`, field split, number conversion — then runs beside the strategy's instead of in front of it.

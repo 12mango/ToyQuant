@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "app/run_summary.h"
+#include "app/session_state.h"
 #include "exchange/execution_report.h"
 #include "exchange/order.h"
 #include "strategy/strategy.h"
@@ -138,6 +139,11 @@ class OrderLedger
     // requote the run made.
     // (id, cycles) of the order that has waited longest and is still in the book.
     std::pair<uint64_t, uint64_t> longest_working_order(uint64_t quote_cycle) const;
+
+    // The orders that have not ended -- submitted, resting or partly filled -- which is what the venue may still
+    // fill. A session another process takes over has to resolve exactly this list before it quotes anything, so it
+    // is read out rather than kept private.
+    std::vector<SessionOrder> working_orders() const;
 
     uint64_t first_fill_order_id() const
     {

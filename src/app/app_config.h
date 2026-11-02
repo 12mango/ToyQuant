@@ -229,6 +229,11 @@ struct AppConfig
     // settlement each time the event clock passes one, reported as a [FUNDING] line that appears only when
     // this is set, so a run without it reproduces the recorded output byte for byte.
     std::string funding_rates_path;
+    // Where a run writes its session -- the account, the positions, the marks, the working orders and the clock --
+    // and where a second run reads one to take the session over. Empty on either side means that half is off,
+    // which is what every recorded run has.
+    std::string snapshot_out_path;
+    std::string snapshot_in_path;
     // The carry mode's second leg, and the second book of an `l2_replay` run that was given one: two modes, one
     // field, because both are asking the same question -- which instrument is the other side of this run. In
     // carry mode `path_or_port` holds the first leg's funding file, because the first path of any mode is the one

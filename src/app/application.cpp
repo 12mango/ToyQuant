@@ -5,6 +5,7 @@
 #include <immintrin.h>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -14,6 +15,7 @@
 #include "lines/reconciliation.h"
 #include "app/multi_book.h"
 #include "app/pipeline.h"
+#include "app/session_state.h"
 #include "app/strategy_factory.h"
 #include "common/instrument_spec.h"
 #include "exchange/matching_engine.h"
@@ -518,8 +520,33 @@ void Application::run_l2_session_mode() const
     }
     Portfolio portfolio(instrument.quantity_scale, 1000.0, instrument.unit_notional_usd,
                         instrument.multiplier);
+    // A resumed session puts the account back where the previous process left it and resolves every order that
+    // snapshot listed against the venue, before this process quotes anything. The venue is asked rather than
+    // believed: an order that filled while nobody was listening is exactly the state a snapshot cannot describe.
+    std::optional<SessionSnapshot> resumed;
+    if (!cfg_.snapshot_in_path.empty())
+    {
+        SessionSnapshot snapshot;
+        std::string snapshot_error;
+        if (!read_snapshot(to_abs_path(cfg_.snapshot_in_path), snapshot, snapshot_error))
+            throw std::invalid_argument(snapshot_error);
+        if (snapshot.symbol != instrument.symbol)
+            throw std::invalid_argument("session snapshot is for " + snapshot.symbol + ", not " +
+                                        instrument.symbol);
+        const ResumeSummary summary = resume_session(snapshot, portfolio, *venue);
+        logger.log("[RESUME] ", summary.to_log_string());
+        resumed = std::move(snapshot);
+    }
     Pipeline pipeline(output_files.orders, output_files.trades, *strategy, *venue, portfolio,
                       instrument.tick_size);
+    if (resumed)
+    {
+        // The id sequence continues where the snapshot stopped, because an id the venue has already seen is refused
+        // as a duplicate, and nothing is sent before the snapshot's own moment: the market is rebuilt from the
+        // file's first line, and the decisions are not repeated.
+        pipeline.set_next_order_id(resumed->next_order_id);
+        pipeline.hold_submissions_until(resumed->last_ts);
+    }
     // The documented model is cash only and no margin, so the cash the run starts with is the
     // exposure ceiling the summary measures against, and --max-position decides whether it is
     // enforced. 0, the default, reports the ceiling without blocking anything.
@@ -703,6 +730,18 @@ void Application::run_l2_session_mode() const
                " incremental_snapshot_batches=", validation.incremental_snapshot_batches);
     logger.log(pipeline.summary().to_log_string());
     logger.log("[EXPOSURE] ", pipeline.exposure().to_log_string());
+    // The session as this run leaves it, for a process that has to take over. Written last, after the account's
+    // final mark, so a snapshot and the summary above describe the same moment.
+    if (!cfg_.snapshot_out_path.empty())
+    {
+        const SessionSnapshot snapshot = capture_session(pipeline, portfolio, instrument.symbol);
+        std::string snapshot_error;
+        if (!write_snapshot(to_abs_path(cfg_.snapshot_out_path), snapshot, snapshot_error))
+            throw std::invalid_argument(snapshot_error);
+        logger.log("[SNAPSHOT] path=", to_abs_path(cfg_.snapshot_out_path), " symbol=", snapshot.symbol,
+                   " last_ts=", snapshot.last_ts, " orders=", snapshot.working_orders.size(),
+                   " legs=", snapshot.account.positions.size(), " cash_usd=", snapshot.account.cash);
+    }
     if (gateway != nullptr)
     {
         // The client's own account of the order path: what it sent, what it absorbed as a retry, and
