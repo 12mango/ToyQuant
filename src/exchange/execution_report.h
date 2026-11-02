@@ -62,7 +62,11 @@ enum class CancelReason : uint8_t
     Ioc,
     Fok,
     SelfTrade,
-    Timeout
+    Timeout,
+    // A post-only order that would have traded on arrival. The venue declines to cross rather than let a quote
+    // pay the taker rate, so this reason means "the price had already gone through the order", which is the
+    // adverse selection the fill would have realised.
+    PostOnly
 };
 
 inline const char* cancel_reason_name(CancelReason reason)
@@ -81,6 +85,8 @@ inline const char* cancel_reason_name(CancelReason reason)
             return "self_trade";
         case CancelReason::Timeout:
             return "timeout";
+        case CancelReason::PostOnly:
+            return "post_only";
         case CancelReason::None:
             break;
     }

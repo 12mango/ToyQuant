@@ -52,6 +52,10 @@ struct ExecutionQualityMetrics
     // a rejection is not a cancel the strategy asked for; the [EXECUTION] line prints it only when it is
     // non-zero, so every run that never sees a refusal keeps its recorded line.
     uint64_t audited_rejected_orders{0};
+    // Orders the venue cancelled because they would have traded on arrival and the run asked for
+    // add-liquidity-only. They are counted apart from the other cancels because they are not the strategy changing
+    // its mind: they are the fills the venue declined, which is what `--post-only` buys and costs.
+    uint64_t post_only_cancels{0};
     // State-machine health. A normal run leaves both at zero; they exist so a duplicate, late or
     // out-of-order report is a visible count rather than a silent rewrite of an order's state.
     uint64_t invalid_order_transitions{0};
@@ -559,6 +563,9 @@ struct RunSummary
                << " min_commission_paid=" << execution_quality.min_commission_paid;
         if (execution_quality.audited_rejected_orders > 0)
             stream << " audited_rejected_orders=" << execution_quality.audited_rejected_orders;
+        // Printed only when the run asked for add-liquidity-only, so a run that did not keeps its recorded line.
+        if (execution_quality.post_only_cancels > 0)
+            stream << " post_only_cancels=" << execution_quality.post_only_cancels;
         if (execution_quality.invalid_order_transitions > 0)
             stream << " invalid_order_transitions=" << execution_quality.invalid_order_transitions;
         if (execution_quality.orphan_order_reports > 0)

@@ -90,6 +90,9 @@ struct AppConfig
     // a run that did not ask for one.
     TimeInForce time_in_force = TimeInForce::Gtc;
     bool time_in_force_set = false;
+    // Add-liquidity-only for every order the run sends. Off, the default, leaves the venue trading a quote that
+    // arrives through the touch, which is a maker paying the taker rate.
+    bool post_only = false;
     // The non-market-making signal. A run that does not name --trend-params leaves `set` false and the
     // strategy's own defaults in force.
     TrendParams trend{};

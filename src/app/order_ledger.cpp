@@ -69,6 +69,7 @@ exchange::Order OrderLedger::to_exchange_order(const StrategyOrder& strategy_ord
     order.ts = ts;
     order.owner = owner;
     order.time_in_force = strategy_order.time_in_force;
+    order.post_only = strategy_order.post_only;
     return order;
 }
 

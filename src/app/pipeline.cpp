@@ -51,6 +51,11 @@ void Pipeline::handle_report(const ExecutionReport& report)
     ledger_.trace_report(report, current_ts_, engine_);
     if (report.exec_type == ExecType::Resting)
         ledger_.mark_resting(report, engine_, execution_quality_);
+    // A post-only cancel is the venue declining to trade a quote that had already gone through it. Counting it here
+    // rather than in the engine puts the number next to the other per-order counts, and it is the one number that
+    // says what the flag cost in missed fills rather than what it saved in fees.
+    if (report.exec_type == ExecType::Cancelled && report.cancel_reason == CancelReason::PostOnly)
+        ++execution_quality_.post_only_cancels;
     if (report.owner == "MarketMaker") portfolio_.apply(report);
     if (report.owner == "MarketMaker" && report.exec_type == ExecType::Trade)
     {
@@ -472,6 +477,9 @@ void Pipeline::submit_order(StrategyOrder& order, uint64_t ts, const BboQuote* q
                                        order.time_in_force == TimeInForce::Fok});
     }
     auto exchange_order = OrderLedger::to_exchange_order(order, ts, "MarketMaker");
+    // The run's own add-liquidity-only setting, applied the way `--time-in-force` is: the flag overrides the
+    // strategy's own choice for every order, and leaving it unset leaves the strategy's choice alone.
+    if (post_only_override_) exchange_order.post_only = true;
     ++submitted_orders_;
     submitted_quantity_ += order.quantity;
     if (quote != nullptr) record_quote_observation(order, *quote);

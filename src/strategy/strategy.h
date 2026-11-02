@@ -20,6 +20,10 @@ struct StrategyOrder
     // The strategy can ask for an immediate order without knowing how the pipeline or venue represent it.
     // A good-till-cancelled order is the default, so existing strategy code and recorded runs are unchanged.
     TimeInForce time_in_force{TimeInForce::Gtc};
+    // Add-liquidity-only, which the venue enforces by cancelling instead of trading. A strategy may ask for it, and
+    // a run may impose it on every order the way `--time-in-force` does; false is the behaviour every recorded run
+    // had.
+    bool post_only{false};
 
     StrategyOrder() = default;
 

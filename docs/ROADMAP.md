@@ -39,7 +39,7 @@ existing design, architecture and user documents are the whole plan.
 | non-market-making line | `trend_l2`, its 27-cell grid, and the two-window scale test that closes the taker variant by non-replication | nothing while the closure stands; a new signal is a new row | closed |
 | execution algorithms | `execution_l2` with three schedules, two entry modes and parent-level shortfall against both the arrival price and the window's TWAP; the schedule wins at most half a basis point, posting loses the fills it saves, and size moves the number of crossings but not the cost | nothing while the closure stands; a venue with a materially different fee would be a new row | closed |
 | pre-trade risk | done: switch, fat finger, rate, exposure, position; the exposure cap is the **account's** when several books share one, so two books cannot each spend it | none | done |
-| order state | done: Pending/Resting/PartiallyFilled/Filled/Cancelled/Rejected, reasons, pending release, IOC/FOK terminals | timeout/query visibility and immediate-order terminals done; recovery policy remains P2 | done |
+| order state | done: Pending/Resting/PartiallyFilled/Filled/Cancelled/Rejected, reasons, pending release, IOC/FOK terminals; the venue also refuses an add-liquidity-only order that would trade on arrival | cancel/replace, for the reason recorded under item 11 | done |
 | portfolio and PnL | several instruments in one run against one account: a book, a decision layer, a venue and a pipeline per symbol, per-instrument valuation, and `[EXPOSURE]` reporting gross against net. The instruments themselves still do not pay: a BTC/ETH pair is 2.7 times short of its own round-trip cost on two windows, and the two instruments' maker break-even rates are 6.9 bps apart (both in `PERFORMANCE_HISTORY.md`) | the maker comparison needs a larger fill count than the free days give; that is data, not code | done |
 | broker and gateway simulation | paper broker plus gateway faults and timeout queries | client-order-id recovery remains P2 | done |
 | persistence and recovery | a session is written down and taken over: the account, the positions with their entries, the marks, the working orders and the clock; a resumed run restores the account and asks the venue about each order it inherited | a venue that remembers its own fills across a client restart, and a snapshot per book for a two-symbol run | done |
@@ -120,9 +120,23 @@ existing design, architecture and user documents are the whole plan.
    engine is created per run, so a resumed run compares against nothing; the test uses one broker for both
    halves to show a fill missed while down being *caught* by `reconcile_positions`), and a snapshot per book
    for a two-symbol run.
-11. Full venue semantics (cancel/replace and the other modes not chosen in P1), live venue/TLS, price impact,
-    out-of-sample studies, and performance experiments (block parsing, shared memory, binary telemetry,
-    configuration hot reload).
+11. Full venue semantics. **First quarter landed: add-liquidity-only.** `--post-only` makes the venue refuse an
+    order that would trade on arrival: it is cancelled with reason `post_only` rather than filled, because a quote
+    that arrives after the market went through it is a maker paying the taker rate. The check is the one FOK
+    already used, so a venue that refuses to cross cannot disagree with the venue that fills. Measured on the
+    200k window: `active_l2` is unchanged, because none of its quotes arrived crossed; `trend_l2` clips at the
+    touch, so **all 55 of its fills were taker fills** (taker fees 0.275 USD against maker fees 0) and with the flag
+    it makes 1,814 crossing attempts, all cancelled, and trades nothing. That is the reversion line's cost explained
+    one level down: a clip at the touch is not a quote, it is a market order.
+    **Cancel/replace is deliberately not built**, and the reason is in the engine: the queue an order joins is
+    reconstructed from the displayed size at the moment it joins and then shrinks with the display, so an amend at
+    the same price lands behind the same queue a re-entry would. Its only measurable gain is one round trip instead
+    of two and no window in which the quote is absent, and those need the latency model (`--order-latency-us`,
+    `--cancel-latency-us`) to price; a version that reports "amends saved nothing" would be a claim about a lever
+    this engine does not have.
+    **Still deferred (P3, out of the demo):** live venue/TLS/authentication, a price-impact model, out-of-sample
+    studies, and the performance experiments (block parsing, shared memory, binary telemetry, configuration hot
+    reload).
 
 **P3 — current boundaries, not permanent.**
 
@@ -181,7 +195,8 @@ frozen, and a next item needs the same kind of request and a row here.
 | 2026-10-31 | The campaign after the tick curve, each with its verdict in the sections above: the dated and calendar basis, the CME calendar over 23 quarterly holds, the straddle measured three times (the first two wrong), the maker revival test that falsifies "execution rescues a closed line", and the funding extreme that fails all three gates | `8df8777` … `86be0ce` |
 | 2026-11-02 | P2-9 completed: a run that trades two books at once. `--symbol-b`/`--trades-b`/`--depth-b` build a book, a decision layer, a venue and a pipeline per symbol against one `Portfolio`; the four readers are merged by timestamp; `Portfolio::set_instrument` values each symbol at its own face value; the summary prints one `[EXECUTION] ... symbol=` and one `[BOOK]` per book and the account once. Measured: 377,024 events, gross 11 against net 9, fees 0.0202, re-derived by the gate | `bf9ef28` |
 | 2026-11-02 | Pre-trade risk follows the account: the hard exposure cap counted each book's own notional against the same cash, so two books could carry twice the cap while both reported no violation. Each book is told what the other legs hold and the check adds it, which is zero in a single-book run. With a ten dollar cap on the same two books the second book is refused and the account never passes ten | `5a63c58` |
-| 2026-11-02 | P2-10 landed: a session is written down and taken over. `--snapshot-out` writes the account, the positions with their entries, the marks, the working orders and the clock; `--snapshot-in` restores the account, asks the venue about every inherited order (a live one is cancelled, a forgotten one counted) and holds its own orders until the snapshot's clock while it rebuilds the book. The resumed run's `[PORTFOLIO]` and `[EXPOSURE]` are identical to the run it took over, and the gate re-derives that. Also fixed: a `Pipeline` left the venue holding a callback into itself, which a restart is the first thing to notice | this commit |
+| 2026-11-02 | P2-10 landed: a session is written down and taken over. `--snapshot-out` writes the account, the positions with their entries, the marks, the working orders and the clock; `--snapshot-in` restores the account, asks the venue about every inherited order (a live one is cancelled, a forgotten one counted) and holds its own orders until the snapshot's clock while it rebuilds the book. The resumed run's `[PORTFOLIO]` and `[EXPOSURE]` are identical to the run it took over, and the gate re-derives that. Also fixed: a `Pipeline` left the venue holding a callback into itself, which a restart is the first thing to notice | `195839f` |
+| 2026-11-02 | P2-11 opened with add-liquidity-only: `--post-only` makes the venue cancel an order that would trade on arrival instead of filling it. `active_l2` is unchanged on the 200k window; `trend_l2`'s 55 fills on it were *all* taker fills (taker fees 0.275 against maker fees 0), and with the flag it trades nothing. Cancel/replace is recorded as deliberately unbuilt, with the engine reason: the queue is reconstructed on entry, so an amend's only gain is the round trip, which needs the latency model | this commit |
 | 2026-10-28 | Order state machine, reject/cancel reasons, risk pipeline, non-market-making line and measurements | `9a691be` … `3b0a180` |
 
 ### For an AI reviewing this plan

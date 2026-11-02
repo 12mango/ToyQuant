@@ -115,6 +115,28 @@ void MatchingEngine::send_order_now(const exchange::Order& order)
     auto& book = books_[id];
     const bool immediate = order.time_in_force != TimeInForce::Gtc;
 
+    // A post-only order may not trade on arrival. The check is the FOK check: the same external capacity and the
+    // same book the matcher is about to use, so a venue that refuses to cross cannot disagree with the venue that
+    // fills. It is a cancel rather than a rejection because the order was legal -- it simply arrived at a price the
+    // market had already gone through, which is exactly the fill a maker pays the taker fee for.
+    if (order.post_only)
+    {
+        const uint64_t would_trade = external_available(order, id) + internal_available(book, order);
+        if (would_trade > 0)
+        {
+            report(ExecutionReport{.order_id = order.id,
+                                   .side = order.side,
+                                   .exec_type = ExecType::Cancelled,
+                                   .symbol = order.symbol,
+                                   .price = order.price,
+                                   .quantity = order.remaining,
+                                   .ts = order.ts,
+                                   .owner = order.owner,
+                                   .cancel_reason = CancelReason::PostOnly});
+            return;
+        }
+    }
+
     // FOK has to know the whole quantity is available before it trades anything, because a partial fill
     // followed by a cancel is exactly what fill-or-kill forbids. The check uses the same external capacity
     // and the same book the matcher is about to use; a self-trade stops the count because the matcher will

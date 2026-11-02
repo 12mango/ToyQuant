@@ -22,6 +22,11 @@ struct Order {
     // Kept last so every aggregate initializer written before this field still compiles and gets the
     // good-till-cancelled default that the engine has always implemented.
     TimeInForce time_in_force{TimeInForce::Gtc};
+    // Add-liquidity-only. A venue that honours it refuses to trade an order on arrival and cancels it instead,
+    // which is the difference between paying the maker rate and paying the taker rate for the same quote: the
+    // quote was priced against a market that had already moved through it. Off by default, so every recorded run
+    // keeps the behaviour it had.
+    bool post_only{false};
 };
 
 }  // namespace exchange

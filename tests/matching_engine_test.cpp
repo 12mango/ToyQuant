@@ -174,6 +174,53 @@ int main()
     assert(queued_engine.queue_ahead_consumed(Side::Buy) == 50);
     assert(queued_engine.queue_ahead_levels_cleared(Side::Buy) == 1);
 
+    // Add-liquidity-only: the venue declines to trade an order on arrival and cancels it instead. The check is the
+    // one FOK already uses, so a venue that refuses to cross cannot disagree with the venue that fills.
+    {
+        MatchingEngine post_engine(0.1);
+        std::vector<ExecutionReport> post_reports;
+        post_engine.set_report_callback(
+            [&post_reports](const ExecutionReport& report) { post_reports.push_back(report); });
+        post_engine.process_l2_top({30, "POSTONLY", 100.0, 50, 100.1, 40, 2, "test"});
+
+        // A buy that reaches the ask would trade through it as a taker.
+        exchange::Order crossing{};
+        crossing.id = 90;
+        crossing.symbol = "POSTONLY";
+        crossing.side = exchange::Side::Buy;
+        crossing.type = exchange::OrderType::Limit;
+        crossing.price = 100.1;
+        crossing.qty = 10;
+        crossing.remaining = 10;
+        crossing.ts = 31;
+        crossing.owner = "MarketMaker";
+        crossing.post_only = true;
+        post_engine.send_order(crossing);
+        assert(post_reports.size() == 1);
+        assert(post_reports[0].exec_type == ExecType::Cancelled);
+        assert(post_reports[0].cancel_reason == CancelReason::PostOnly);
+        assert(post_reports[0].quantity == 10);
+        // Nothing traded and nothing rests: the order the venue refused is not in the book at all.
+        assert(post_engine.query_order(90) != OrderQuery::Working);
+
+        // The same order at the bid is passive, which is what the flag allows.
+        exchange::Order passive = crossing;
+        passive.id = 91;
+        passive.price = 100.0;
+        passive.ts = 32;
+        post_engine.send_order(passive);
+        assert(post_reports.size() == 2);
+        assert(post_reports[1].exec_type == ExecType::Resting);
+        assert(post_engine.query_order(91) == OrderQuery::Working);
+        // Without the flag the same crossing order is a taker fill, which is what the venue declined to charge for.
+        exchange::Order crossing_taker = crossing;
+        crossing_taker.id = 92;
+        crossing_taker.post_only = false;
+        crossing_taker.ts = 33;
+        post_engine.send_order(crossing_taker);
+        assert(has_report(post_reports, 92, ExecType::Trade, 10));
+    }
+
     MatchingEngine conservative_queue_engine(0.1, {}, {.queue_model = QueueModel::Conservative});
     std::vector<ExecutionReport> conservative_queue_reports;
     conservative_queue_engine.set_report_callback(

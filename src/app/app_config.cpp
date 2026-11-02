@@ -67,6 +67,10 @@ constexpr std::string_view kMaxOrdersPerSecondPrefix = "--max-orders-per-second=
 constexpr std::string_view kOrderBurstPrefix = "--order-burst=";
 constexpr std::string_view kParticipationLimitPrefix = "--participation-limit=";
 constexpr std::string_view kTimeInForcePrefix = "--time-in-force=";
+// Add-liquidity-only, which the venue enforces rather than the strategy: an order that would trade on arrival is
+// cancelled instead, so a quote that arrived after the market went through it pays nothing rather than the taker
+// rate. It has no value, because there is nothing to say beyond "on".
+constexpr std::string_view kPostOnlyFlag = "--post-only";
 constexpr std::string_view kTrendParamsPrefix = "--trend-params=";
 constexpr std::string_view kBaseSpreadPrefix = "--base-spread-ticks=";
 constexpr std::string_view kInventoryShiftPrefix = "--inventory-shift-ticks=";
@@ -202,7 +206,9 @@ void print_usage(const char* executable)
                      "displayed best size; 1.0 is off, and the execution price remains the touch\n";
         std::cerr << "   time in force: --time-in-force=gtc|ioc|fok applies to every strategy order; gtc is "
                      "the default, ioc cancels any immediate remainder, and fok cancels without trading "
-                     "unless the whole quantity is available\n";
+                     "unless the whole quantity is available; --post-only is the venue's side of the same "
+                     "question: an order that would trade on arrival is cancelled instead, so a quote that "
+                     "arrived after the market went through it pays nothing rather than the taker rate\n";
         std::cerr << "   trend: --trend-params=FAST,SLOW,ENTRY_TICKS,EXIT_TICKS,STOP_TICKS[,COOLDOWN_VIEWS"
                      "[,HOLDING_VIEWS]] sets the non-market-making signal; the view counts are decisions and "
                      "the bands are ticks\n";
@@ -897,6 +903,8 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                 }
                 cfg.time_in_force_set = true;
             }
+            else if (flag == kPostOnlyFlag)
+                cfg.post_only = true;
             else if (flag.compare(0, kTrendParamsPrefix.size(), kTrendParamsPrefix) == 0)
             {
                 const std::string text = flag.substr(kTrendParamsPrefix.size());
@@ -1140,7 +1148,7 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                         "--markout-cover, --metrics, --markout-horizon=N, --parent=SIDE:QUANTITY:SECONDS, "
                         "--algo=MARKET|TWAP:N|POV:X, --algo-entry=CROSS|POST:SECONDS, --flatten-band=N, "
                         "--symbol-b=SYM with --trades-b=FILE and --depth-b=FILE, "
-                        "--snapshot-out=FILE or --snapshot-in=FILE, or "
+                        "--snapshot-out=FILE or --snapshot-in=FILE, --post-only, or "
                         "--paper-broker with one of its faults";
                 return false;
             }

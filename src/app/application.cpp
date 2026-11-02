@@ -211,6 +211,8 @@ void Application::apply_pipeline_limits(Pipeline& pipeline) const
     pipeline.set_fat_finger_bps(cfg_.fat_finger_bps);
     pipeline.set_order_rate_limit(cfg_.max_orders_per_second, cfg_.order_burst);
     pipeline.set_time_in_force(cfg_.time_in_force, cfg_.time_in_force_set);
+    // The venue's own rule rather than the strategy's, so it is applied here with the other order-path settings.
+    pipeline.set_post_only(cfg_.post_only);
     pipeline.set_trace_order(cfg_.trace_order);
 }
 

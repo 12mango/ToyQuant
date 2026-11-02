@@ -184,5 +184,44 @@ int main()
     ledger.on_report(filled, 0, quality, 1, 0.0, 0.0);
     assert(quality.orphan_order_reports == 1);
 
+    // Add-liquidity-only reaches the venue through the pipeline. This probe sends a buy at the ask, which is a
+    // crossing order: without the flag it trades as a taker, and with it the venue cancels the order instead and the
+    // run counts what it declined. The translation is asserted too, because a flag the venue never sees is a flag
+    // that did nothing.
+    {
+        test_support::TempFile post_orders_file("order_state_post_only_orders.csv");
+        test_support::TempFile post_trades_file("order_state_post_only_trades.csv");
+        std::ofstream post_orders = post_orders_file.open();
+        std::ofstream post_trades = post_trades_file.open();
+        StrategyOrder post_order(Side::Buy, "TEST", 101.0, 10, 1);
+        post_order.post_only = true;
+        assert(OrderLedger::to_exchange_order(post_order, 1, "MarketMaker").post_only);
+
+        ProbeStrategy post_strategy;
+        MatchingEngine post_venue(1.0, FeeSchedule{.maker_rate = 0.0002,
+                                                   .taker_rate = 0.0005,
+                                                   .quantity_scale = 1});
+        Portfolio post_portfolio;
+        Pipeline post_pipeline(post_orders, post_trades, post_strategy, post_venue, post_portfolio, 1.0);
+        post_pipeline.set_post_only(true);
+        post_pipeline.process_l2_market_view(view);
+        const auto post_summary = post_pipeline.summary();
+        assert(post_summary.submitted_orders == 1);
+        assert(post_summary.trade_reports == 0);
+        assert(post_summary.execution_quality.post_only_cancels == 1);
+        assert(post_summary.to_log_string().find("post_only_cancels=1") != std::string::npos);
+        assert(post_portfolio.metrics().fees_paid == 0.0);
+        assert(post_venue.query_order(1) != OrderQuery::Working);
+
+        // The same view without the flag fills as a taker and pays the taker rate, which is the fee the flag
+        // declines to pay.
+        ProbeStrategy taker_strategy;
+        Pipeline taker_pipeline(post_orders, post_trades, taker_strategy, post_venue, post_portfolio, 1.0);
+        taker_pipeline.process_l2_market_view(view);
+        assert(taker_pipeline.summary().trade_reports == 1);
+        assert(taker_pipeline.summary().execution_quality.post_only_cancels == 0);
+        assert(post_portfolio.metrics().fees_paid > 0.0);
+    }
+
     return 0;
 }

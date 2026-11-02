@@ -147,6 +147,14 @@ class Pipeline
         time_in_force_override_ = override_order;
     }
 
+    // Add-liquidity-only on every order the run sends, which is the venue's own rule rather than the strategy's:
+    // an order that would trade on arrival is cancelled instead, so a quote that arrived after the market went
+    // through it pays nothing rather than the taker rate. Off unless the run names it.
+    void set_post_only(bool enabled)
+    {
+        post_only_override_ = enabled;
+    }
+
     bool kill_switch_triggered() const
     {
         return risk_pipeline_.kill_switch_triggered();
@@ -326,6 +334,7 @@ class Pipeline
     uint64_t cancel_requests_{0};
     TimeInForce time_in_force_{TimeInForce::Gtc};
     bool time_in_force_override_{false};
+    bool post_only_override_{false};
     uint64_t last_buy_queue_ahead_consumed_{0};
     uint64_t last_sell_queue_ahead_consumed_{0};
     uint64_t filtered_market_trades_{0};
