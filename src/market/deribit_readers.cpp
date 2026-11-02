@@ -23,7 +23,9 @@ namespace
 using csv_fields::split_csv_views;
 using csv_fields::parse_boolean;
 using csv_fields::parse_double;
+using csv_fields::parse_price;
 using csv_fields::parse_uint64;
+using csv_fields::row_context;
 using csv_fields::snapshot_quantity;
 
 class DeribitBookSnapshotReader final : public IMarketEventReader
@@ -63,27 +65,37 @@ class DeribitBookSnapshotReader final : public IMarketEventReader
         while (reader_.next_line(row))
         {
             if (row.empty()) continue;
-            split_csv_views(row, fields_, columns_.size());
-            if (fields_.size() < columns_.size())
-                throw std::invalid_argument("invalid Deribit book snapshot row");
+            try
+            {
+                split_csv_views(row, fields_, columns_.size());
+                if (fields_.size() < columns_.size())
+                    throw std::invalid_argument("invalid Deribit book snapshot row: expected " +
+                                                std::to_string(columns_.size()) + " fields");
 
-            MarketDepthSnapshot snapshot{.ts = parse_uint64(fields_[timestamp_column_]),
-                                         .symbol = std::string(fields_[symbol_column_]),
-                                         .sequence = ++sequence_,
-                                         .bids = {},
-                                         .asks = {},
-                                         .exchange = std::string(fields_[exchange_column_])};
-            snapshot.bids.reserve(bids_.size());
-            snapshot.asks.reserve(asks_.size());
-            for (const auto& [price_column, quantity_column] : bids_)
-                snapshot.bids.push_back(
-                    DepthLevel{parse_double(fields_[price_column]),
-                               snapshot_quantity(fields_[quantity_column])});
-            for (const auto& [price_column, quantity_column] : asks_)
-                snapshot.asks.push_back(
-                    DepthLevel{parse_double(fields_[price_column]),
-                               snapshot_quantity(fields_[quantity_column])});
-            event = std::move(snapshot);
+                MarketDepthSnapshot snapshot{.ts = parse_uint64(fields_[timestamp_column_]),
+                                             .symbol = std::string(fields_[symbol_column_]),
+                                             .sequence = ++sequence_,
+                                             .bids = {},
+                                             .asks = {},
+                                             .exchange = std::string(fields_[exchange_column_])};
+                snapshot.bids.reserve(bids_.size());
+                snapshot.asks.reserve(asks_.size());
+                for (const auto& [price_column, quantity_column] : bids_)
+                    snapshot.bids.push_back(
+                        DepthLevel{parse_price(fields_[price_column]),
+                                   snapshot_quantity(fields_[quantity_column])});
+                for (const auto& [price_column, quantity_column] : asks_)
+                    snapshot.asks.push_back(
+                        DepthLevel{parse_price(fields_[price_column]),
+                                   snapshot_quantity(fields_[quantity_column])});
+                event = std::move(snapshot);
+            }
+            catch (const std::invalid_argument& error)
+            {
+                // The row number goes on here rather than at each throw, so a field conversion can keep saying what
+                // it found without every reader having to know where it found it.
+                throw std::invalid_argument(row_context(reader_.lines_read(), error.what()));
+            }
             return true;
         }
         return false;
@@ -190,15 +202,19 @@ class DeribitIncrementalBookReader final : public IMarketEventReader
         Side side{Side::Unknown};
         double price{};
         uint64_t amount{};
+        // The line this row came from, so a batch assembled from several of them can say which one broke.
+        std::uint64_t row_number{};
     };
 
-    ParsedRow parse_row(std::string_view row) const
+    ParsedRow parse_row(std::string_view row, std::uint64_t row_number) const
     {
         ParsedRow parsed;
         std::size_t field_start = 0;
         std::size_t field_index = 0;
-        while (field_start < row.size())
+        try
         {
+            while (field_start < row.size())
+            {
             const std::size_t delimiter = row.find(',', field_start);
             std::size_t field_end =
                 delimiter == std::string_view::npos ? row.size() : delimiter;
@@ -222,16 +238,23 @@ class DeribitIncrementalBookReader final : public IMarketEventReader
                                   : field == "ask" ? Side::Sell
                                                    : Side::Unknown;
                     break;
-                case Column::Price: parsed.price = parse_double(field); break;
+                case Column::Price: parsed.price = parse_price(field); break;
                 case Column::Amount: parsed.amount = snapshot_quantity(field); break;
                 case Column::Ignore: break;
             }
             if (delimiter == std::string_view::npos) break;
             field_start = delimiter + 1;
             ++field_index;
+            }
+        }
+        catch (const std::invalid_argument& error)
+        {
+            throw std::invalid_argument(row_context(row_number, error.what()));
         }
         if (field_index + 1 < columns_.size())
-            throw std::invalid_argument("invalid incremental book row");
+            throw std::invalid_argument(row_context(row_number, "invalid incremental book row: expected " +
+                                                                   std::to_string(columns_.size()) + " fields"));
+        parsed.row_number = row_number;
         return parsed;
     }
 
@@ -247,8 +270,9 @@ class DeribitIncrementalBookReader final : public IMarketEventReader
             // The view is only valid until the next refill, so the pending row is copied.
             // assign() reuses the existing capacity, so this does not allocate per batch.
             pending_row_.assign(row.data(), row.size());
+            pending_row_number_ = reader_.lines_read();
         }
-        const ParsedRow first = parse_row(pending_row_);
+        const ParsedRow first = parse_row(pending_row_, pending_row_number_);
         const uint64_t batch_timestamp = first.exchange_ts;
         const uint64_t local_ts = first.local_ts;
         IncrementalBookBatch batch{.ts = batch_timestamp,
@@ -266,10 +290,11 @@ class DeribitIncrementalBookReader final : public IMarketEventReader
         while (reader_.next_line(row))
         {
             if (row.empty()) continue;
-            const ParsedRow parsed = parse_row(row);
+            const ParsedRow parsed = parse_row(row, reader_.lines_read());
             if (parsed.local_ts != local_ts)
             {
                 pending_row_.assign(row.data(), row.size());
+                pending_row_number_ = reader_.lines_read();
                 break;
             }
             append_update(batch, parsed);
@@ -281,7 +306,7 @@ class DeribitIncrementalBookReader final : public IMarketEventReader
     void append_update(IncrementalBookBatch& batch, const ParsedRow& row)
     {
         if (row.symbol != batch.symbol)
-            throw std::invalid_argument("incremental update symbol changed");
+            throw std::invalid_argument(row_context(row.row_number, "incremental update symbol changed"));
         batch.contains_snapshot = batch.contains_snapshot || row.is_snapshot;
         batch.updates.push_back(IncrementalBookUpdate{
             .exchange_ts = row.exchange_ts,
@@ -303,6 +328,9 @@ class DeribitIncrementalBookReader final : public IMarketEventReader
     LineReader reader_;
     std::unordered_map<std::string, std::size_t> columns_;
     std::string pending_row_;
+    // The line the pending row came from. A batch is assembled from several rows, so the first one's number has to be
+    // remembered rather than read back from the reader, which has moved on by then.
+    std::uint64_t pending_row_number_{};
     bool started_{false};
     std::size_t exchange_column_{}, symbol_column_{}, timestamp_column_{}, local_timestamp_column_{};
     std::size_t snapshot_column_{}, side_column_{}, price_column_{}, amount_column_{};
@@ -336,24 +364,32 @@ class DeribitTradeReader final : public IMarketEventReader
         while (reader_.next_line(row))
         {
             if (row.empty()) continue;
-            split_csv_views(row, fields_, columns_.size());
-            if (fields_.size() < columns_.size())
-                throw std::invalid_argument("invalid Deribit trade row");
+            try
+            {
+                split_csv_views(row, fields_, columns_.size());
+                if (fields_.size() < columns_.size())
+                    throw std::invalid_argument("invalid Deribit trade row: expected " +
+                                                std::to_string(columns_.size()) + " fields");
 
-            const std::string_view side = fields_[side_column_];
-            const Side aggressor_side = side == "buy"   ? Side::Buy
-                                         : side == "sell" ? Side::Sell
-                                                          : Side::Unknown;
-            if (aggressor_side == Side::Unknown)
-                throw std::invalid_argument("invalid Deribit trade side: " + std::string(side));
+                const std::string_view side = fields_[side_column_];
+                const Side aggressor_side = side == "buy"   ? Side::Buy
+                                             : side == "sell" ? Side::Sell
+                                                              : Side::Unknown;
+                if (aggressor_side == Side::Unknown)
+                    throw std::invalid_argument("invalid Deribit trade side: " + std::string(side));
 
-            event = MarketTrade{.ts = parse_uint64(fields_[timestamp_column_]),
-                                .symbol = std::string(fields_[symbol_column_]),
-                                .price = parse_double(fields_[price_column_]),
-                                .quantity = snapshot_quantity(fields_[amount_column_]),
-                                .aggressor_side = aggressor_side,
-                                .sequence = parse_uint64(fields_[id_column_]),
-                                .exchange = std::string(fields_[exchange_column_])};
+                event = MarketTrade{.ts = parse_uint64(fields_[timestamp_column_]),
+                                    .symbol = std::string(fields_[symbol_column_]),
+                                    .price = parse_price(fields_[price_column_]),
+                                    .quantity = snapshot_quantity(fields_[amount_column_]),
+                                    .aggressor_side = aggressor_side,
+                                    .sequence = parse_uint64(fields_[id_column_]),
+                                    .exchange = std::string(fields_[exchange_column_])};
+            }
+            catch (const std::invalid_argument& error)
+            {
+                throw std::invalid_argument(row_context(reader_.lines_read(), error.what()));
+            }
             return true;
         }
         return false;

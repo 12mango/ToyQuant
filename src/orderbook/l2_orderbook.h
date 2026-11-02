@@ -29,6 +29,12 @@ class L2OrderBook
     DepthLevel level(Side side, std::size_t index) const;
     std::size_t depth(Side side) const;
     uint64_t sequence() const;
+    // How many incremental batches left the best bid at or above the best ask. `top_of_book()` already reports such
+    // a book as nothing and every consumer skips the view, which is the right degradation and an invisible one: a
+    // run that ignored four thousand crossed snapshots read exactly like a run whose strategy chose not to quote.
+    // A snapshot that arrives crossed is a hard error a few lines up; a stream of diffs can legitimately cross for
+    // one batch, so this path counts instead of throwing.
+    uint64_t crossed_batches() const;
     const std::string& symbol() const
     {
         return symbol_;
@@ -53,4 +59,5 @@ class L2OrderBook
     uint64_t local_timestamp_{};
     uint64_t sequence_{};
     bool snapshot_batch_active_{false};
+    uint64_t crossed_batches_{};
 };

@@ -332,6 +332,31 @@ tier1() {
   # its own loss keeps the numbers every document quotes.
   printf '%s' "$("$BIN" l2_replay "$TRADES" "$SLICE_200K" BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation \
     --kill-switch-loss-usd=0.02 2>&1)" | grep -q 'kill_switch_triggered=0' || halt_ok=1
+  # A depth file that never delivers a depth level used to produce a beautifully formatted run of zeros and an exit
+  # code of zero -- a measurement of nothing that read like a result. It is an error now, and so is a book that was
+  # given no market events in a run that trades several. Both are checked by their message, because the point is that
+  # the run refuses rather than that it fails.
+  local depth_guard_ok=0 guard_dir
+  guard_dir=$(mktemp -d)
+  printf 'exchange,symbol,timestamp,local_timestamp,is_snapshot,side,price,amount\n' > "$guard_dir/header_only.csv"
+  "$BIN" l2_replay "$TRADES" "$guard_dir/header_only.csv" BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation \
+    > "$guard_dir/empty.log" 2>&1 && depth_guard_ok=1
+  grep -q 'delivered no depth events' "$guard_dir/empty.log" || depth_guard_ok=1
+  # A crossed snapshot is not a market. The book already refused the top of one; now it counts it, so a run that
+  # skipped thousands of crossed books cannot read like a run whose strategy chose not to quote. The count rides on
+  # [L2 DATA] and is absent when it is zero, which is why the clean run is asserted by its absence.
+  printf 'exchange,symbol,timestamp,local_timestamp,is_snapshot,side,price,amount\n' > "$guard_dir/crossed.csv"
+  printf 'deribit,BTC-PERPETUAL,1585699200245000,1585699200355684,true,bid,100.5,10\n' >> "$guard_dir/crossed.csv"
+  printf 'deribit,BTC-PERPETUAL,1585699200245000,1585699200355684,true,ask,99.5,10\n' >> "$guard_dir/crossed.csv"
+  printf 'exchange,symbol,timestamp,local_timestamp,id,side,price,amount\n' > "$guard_dir/trades.csv"
+  printf 'deribit,BTC-PERPETUAL,1585699201296000,1585699201311299,70745369,buy,100.0,10\n' >> "$guard_dir/trades.csv"
+  "$BIN" l2_replay "$guard_dir/trades.csv" "$guard_dir/crossed.csv" BTC-PERPETUAL 0 active_l2 1 prorata \
+    --fast-validation 2>&1 | grep -q '^\[L2 DATA\].* crossed_book_batches=1' || depth_guard_ok=1
+  # And the window every recorded number comes from has none: the count is a statement about the data, so a slice that
+  # acquired a crossed book would change what those numbers mean.
+  "$BIN" l2_replay "$TRADES" "$SLICE_200K" BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation 2>&1 |
+    grep -q 'crossed_book_batches' && depth_guard_ok=1
+  rm -rf "$guard_dir"
   # The numbers the documents quote are claims about this code, and hand-copied claims drift: one did,
   # a "thirty times per fill" that a re-measurement turned into ten. They are checked at the same gate
   # as the invariants, on the same slices, so a documented value that stops being true fails a run.
@@ -353,6 +378,7 @@ tier1() {
      [ $session_ok -eq 0 ] &&
      [ $close_ok -eq 0 ] &&
      [ $halt_ok -eq 0 ] &&
+     [ $depth_guard_ok -eq 0 ] &&
      [ $doc_check -eq 0 ] &&
      [ $fields_check -eq 0 ] && [ $prose_check -eq 0 ] && [ $tool_check -eq 0 ] &&
      [ $verdict_check -eq 0 ]; then
@@ -371,6 +397,8 @@ tier1() {
     echo "  close: the end-of-session line is missing, or what it closed and left does not add up to what it carried"
   [ $halt_ok -eq 0 ] ||
     echo "  halt: the kill switch fired and left the account holding something, or a limit it never reaches changed the run"
+  [ $depth_guard_ok -eq 0 ] ||
+    echo "  depth: an empty depth file or a crossed book was not reported, or the recorded window acquired a crossed one"
   [ $fields_check -eq 0 ] || sed 's/^/  fields: /' "$FIELD_CHECK_LOG"
   [ $prose_check -eq 0 ] || sed 's/^/  prose: /' "$PROSE_CHECK_LOG"
   [ $tool_check -eq 0 ] || sed 's/^/  tool: /' "$TOOL_CHECK_LOG"

@@ -85,10 +85,20 @@ void L2OrderBook::apply_incremental_batch(const IncrementalBookBatch& batch)
 
     for (const auto& update : batch.updates)
     {
-        if (update.exchange_ts == 0 || update.local_ts != batch.local_ts ||
-            update.side == Side::Unknown ||
-            !std::isfinite(update.price) || update.price <= 0.0)
-            throw std::invalid_argument("invalid L2 incremental update");
+        // One message per way a row can be wrong, rather than one for all four. The previous wording named none of
+        // them, so a 200 MB depth file with a single broken row reported "invalid L2 incremental update" and left
+        // the reader with no way to find it.
+        if (update.exchange_ts == 0)
+            throw std::invalid_argument("L2 incremental update has no exchange timestamp");
+        if (update.local_ts != batch.local_ts)
+            throw std::invalid_argument("L2 incremental update local timestamp disagrees with its batch");
+        if (update.side == Side::Unknown)
+            throw std::invalid_argument("L2 incremental update side is neither bid nor ask");
+        if (!std::isfinite(update.price))
+            throw std::invalid_argument("L2 incremental update price is not a finite number");
+        if (update.price <= 0.0)
+            throw std::invalid_argument("L2 incremental update price is not positive: " +
+                                        std::to_string(update.price));
 
         const PriceTick price = to_price_tick(update.price, tick_size_);
         if (price <= 0) throw std::invalid_argument("invalid L2 incremental price");
@@ -100,6 +110,10 @@ void L2OrderBook::apply_incremental_batch(const IncrementalBookBatch& batch)
     timestamp_ = batch.exchange_ts;
     local_timestamp_ = batch.local_ts;
     sequence_++;
+    // Counted after the batch is applied, because the question is what state the book was left in: one sided books
+    // cross nothing, and a book whose bid ladder happens to still hold a level above the new best ask is crossed until
+    // the complementing update lands.
+    if (!bids_.empty() && !asks_.empty() && bids_.best() >= asks_.best()) ++crossed_batches_;
 }
 
 TopOfBook L2OrderBook::top_of_book() const
@@ -170,4 +184,10 @@ uint64_t L2OrderBook::sequence() const
 {
     std::lock_guard<std::mutex> lock(mutex_);
     return sequence_;
+}
+
+uint64_t L2OrderBook::crossed_batches() const
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    return crossed_batches_;
 }

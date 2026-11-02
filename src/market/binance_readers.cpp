@@ -21,7 +21,9 @@ namespace
 using csv_fields::split_csv_views;
 using csv_fields::parse_boolean;
 using csv_fields::parse_double;
+using csv_fields::parse_price;
 using csv_fields::parse_uint64;
+using csv_fields::row_context;
 using csv_fields::scaled_quantity;
 
 class BinanceAggTradeReader final : public IMarketEventReader
@@ -42,12 +44,14 @@ class BinanceAggTradeReader final : public IMarketEventReader
             if (!fields_.empty() &&
                 (fields_[0] == "agg_trade_id" || fields_[0] == "aggregate_trade_id"))
                 continue;
-            if (fields_.size() < 7) throw std::invalid_argument("invalid Binance aggTrades row");
+            if (fields_.size() < 7)
+                throw std::invalid_argument(
+                    row_context(reader_.lines_read(), "invalid Binance aggTrades row: expected 7 fields"));
 
             const bool buyer_is_maker = parse_boolean(fields_[6]);
             event = MarketTrade{.ts = parse_uint64(fields_[5]),
                                 .symbol = symbol_,
-                                .price = parse_double(fields_[1]),
+                                .price = parse_price(fields_[1]),
                                 .quantity = scaled_quantity(fields_[2], quantity_scale_),
                                 .aggressor_side = buyer_is_maker ? Side::Sell : Side::Buy,
                                 .sequence = parse_uint64(fields_[0]),
@@ -83,13 +87,15 @@ class BinanceBookTickerReader final : public IMarketEventReader
         {
             if (row.empty() || row.rfind("update_id,", 0) == 0) continue;
             split_csv_views(row, fields_, kColumns);
-            if (fields_.size() < 7) throw std::invalid_argument("invalid Binance bookTicker row");
+            if (fields_.size() < 7)
+                throw std::invalid_argument(
+                    row_context(reader_.lines_read(), "invalid Binance bookTicker row: expected 7 fields"));
 
             event = BboQuote{.ts = parse_uint64(fields_[5]),
                              .symbol = symbol_,
-                             .bid_price = parse_double(fields_[1]),
+                             .bid_price = parse_price(fields_[1]),
                              .bid_quantity = scaled_quantity(fields_[2], quantity_scale_),
-                             .ask_price = parse_double(fields_[3]),
+                             .ask_price = parse_price(fields_[3]),
                              .ask_quantity = scaled_quantity(fields_[4], quantity_scale_),
                              .sequence = parse_uint64(fields_[0]),
                              .exchange = "binance"};

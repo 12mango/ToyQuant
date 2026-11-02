@@ -19,7 +19,9 @@ namespace
 // namespace, so the reader bodies below read exactly as they did when every feed family was one file.
 using csv_fields::split_csv_views;
 using csv_fields::parse_double;
+using csv_fields::parse_price;
 using csv_fields::parse_uint64;
+using csv_fields::row_context;
 
 // OKX publishes its order book archive as JSON Lines: one object per line carrying instId, action, ts and
 // both sides as arrays of [price, size, orders]. The first line of a file is a full depth snapshot and the
@@ -274,14 +276,18 @@ class OkxTradeCsvReader final : public IMarketEventReader
         {
             if (row.empty()) continue;
             split_csv_views(row, fields_, kColumns);
-            if (fields_.size() < kColumns) throw std::invalid_argument("invalid okx trade row");
+            if (fields_.size() < kColumns)
+                throw std::invalid_argument(
+                    row_context(reader_.lines_read(), "invalid okx trade row: expected " +
+                                                          std::to_string(kColumns) + " fields"));
             if (fields_[0] != symbol_) continue;
             const std::string_view side = fields_[2];
             if (side != "buy" && side != "sell")
-                throw std::invalid_argument("unknown okx trade side: " + std::string(side));
+                throw std::invalid_argument(row_context(reader_.lines_read(),
+                                                        "unknown okx trade side: " + std::string(side)));
             event = MarketTrade{.ts = parse_uint64(fields_[5]),
                                 .symbol = symbol_,
-                                .price = parse_double(fields_[3]),
+                                .price = parse_price(fields_[3]),
                                 .quantity = contract_amount(parse_double(fields_[4]), contract_size_,
                                                             quantity_scale_),
                                 .aggressor_side = side == "buy" ? Side::Buy : Side::Sell,

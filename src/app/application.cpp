@@ -47,6 +47,28 @@ ExecutionAlgo execution_algo_of(const std::string& name)
     return ExecutionAlgo::Market;
 }
 
+// The crossed-book count as a suffix for the `[L2 DATA]` line, empty when the count is zero so every recorded line
+// that had no crossed snapshot keeps the bytes it had. It rides on that line because the line already says how much
+// depth arrived, and a count of the depth that arrived unusable belongs beside it.
+std::string crossed_book_suffix(uint64_t crossed)
+{
+    if (crossed == 0) return {};
+    return " crossed_book_batches=" + std::to_string(crossed);
+}
+
+std::string crossed_book_suffix(const L2OrderBook& book)
+{
+    return crossed_book_suffix(book.crossed_batches());
+}
+
+std::string crossed_book_suffix(const MultiBook& books)
+{
+    uint64_t crossed = 0;
+    for (const auto& leg : books.legs())
+        if (leg->book != nullptr) crossed += leg->book->crossed_batches();
+    return crossed_book_suffix(crossed);
+}
+
 std::string application_log_path(bool discard_output)
 {
     if (!discard_output) return to_abs_path("logs/toy_quant.log");
@@ -719,6 +741,11 @@ void Application::run_l2_session_mode() const
         threaded_feed ? threaded_feed->pacing_summary() : feed->pacing_summary();
     const MarketDataValidationSummary& validation =
         threaded_feed ? threaded_feed->validation_summary() : feed->validation_summary();
+    // A depth input that delivered no depth is not a run that chose not to trade: it is a measurement of nothing, and
+    // every number below would be a zero that reads like a result. The file is required in this mode, so an empty or
+    // header-only one is an error. A live session is exempt, because "nothing yet" is a state a socket can be in.
+    if (!live && validation.depth_snapshots == 0 && validation.incremental_batches == 0)
+        throw std::runtime_error("the depth input delivered no depth events: " + depth_file);
     if (pacing.enabled) logger.log("[LIVE] ", pacing_summary.to_log_string());
     if (threaded_feed)
         logger.log("[LATENCY] ", threaded_feed->latency_summary().to_log_string());
@@ -740,7 +767,8 @@ void Application::run_l2_session_mode() const
     logger.log("[L2 DATA] events=", validation.events, " trades=", validation.trades,
                " depth_snapshots=", validation.depth_snapshots,
                " incremental_batches=", validation.incremental_batches,
-               " incremental_snapshot_batches=", validation.incremental_snapshot_batches);
+               " incremental_snapshot_batches=", validation.incremental_snapshot_batches,
+               crossed_book_suffix(l2_book));
     logger.log(pipeline.summary().to_log_string());
     logger.log("[EXPOSURE] ", pipeline.exposure().to_log_string());
     // The session as this run leaves it, for a process that has to take over. Written last, after the account's
@@ -963,6 +991,12 @@ void Application::run_multi_book_mode() const
     const MarketDataValidationSummary& validation =
         threaded_feed ? threaded_feed->validation_summary() : feed->validation_summary();
 
+    // The same rule per book: a leg that was given no market events is a book whose file named the wrong symbol, and
+    // the run would otherwise report it as a book that simply never traded. The merged stream's own count cannot show
+    // this, because it says how many events arrived in total rather than how many reached each book.
+    for (const auto& leg : books.legs())
+        if (leg->events == 0)
+            throw std::runtime_error("book " + leg->instrument.symbol + " was given no market events");
     if (pacing.enabled) logger.log("[LIVE] ", pacing_summary.to_log_string());
     if (threaded_feed)
         logger.log("[LATENCY] ", threaded_feed->latency_summary().to_log_string());
@@ -980,7 +1014,7 @@ void Application::run_multi_book_mode() const
                " depth_snapshots=", validation.depth_snapshots,
                " incremental_batches=", validation.incremental_batches,
                " incremental_snapshot_batches=", validation.incremental_snapshot_batches,
-               " books=", books.legs().size());
+               " books=", books.legs().size(), crossed_book_suffix(books));
     // One [EXECUTION] block per book, with the symbol on the line because the tag alone no longer says which
     // book it describes, then the account once. [PNL] is deliberately absent: its per-fill columns divide the
     // account's money by one book's fill count, which is one book's denominator for the whole account's result.

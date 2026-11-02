@@ -56,6 +56,14 @@ class LineReader
         return block_reads_;
     }
 
+    // Lines delivered so far, counting the header. Readers put it in their error messages because a row number is the
+    // only thing that locates a bad row in a file nobody is going to read: "invalid trade row" over 200 MB of input
+    // says nothing a person can act on, and "row 4000123" is one `sed -n '4000123p'` away from the line.
+    std::uint64_t lines_read() const
+    {
+        return lines_read_;
+    }
+
    private:
     // Returns the bytes read, or 0 at end of input. Throws on a hard I/O error.
     std::ptrdiff_t read_block(char* destination, std::size_t capacity);
@@ -66,5 +74,6 @@ class LineReader
     std::size_t begin_{0};
     std::size_t end_{0};
     std::uint64_t block_reads_{0};
+    std::uint64_t lines_read_{0};
     bool drained_{false};
 };

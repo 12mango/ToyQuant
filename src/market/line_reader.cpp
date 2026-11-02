@@ -76,6 +76,7 @@ bool LineReader::next_line(std::string_view& line)
                 std::size_t length = newline_offset - line_begin;
                 if (length > 0 && base[newline_offset - 1] == '\r') --length;
                 line = std::string_view(base + line_begin, length);
+                ++lines_read_;
                 return true;
             }
         }
@@ -89,6 +90,7 @@ bool LineReader::next_line(std::string_view& line)
             std::size_t length = end_ - line_begin;
             if (length > 0 && base[end_ - 1] == '\r') --length;
             line = std::string_view(base + line_begin, length);
+            ++lines_read_;
             return true;
         }
 

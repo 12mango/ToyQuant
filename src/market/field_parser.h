@@ -160,6 +160,26 @@ inline void split_csv_views(std::string_view row, std::vector<std::string_view>&
     }
 }
 
+// A price, rejected where it is read rather than where it is used. `nan` and `inf` parse as numbers, so a reader that
+// accepts them hands the book a value no arithmetic recovers from, and the failure surfaces later as a strange PnL
+// instead of as a bad row. The rule is the validator's own -- finite and positive -- applied with the row number in
+// hand.
+inline double parse_price(std::string_view value)
+{
+    const double price = parse_double(value);
+    if (!std::isfinite(price) || price <= 0.0)
+        throw std::invalid_argument("price must be finite and positive: " + std::string(value));
+    return price;
+}
+
+// A reader's message with the row it came from in front of it. The row number is the only thing that locates a bad
+// row in a file nobody is going to read: "invalid trade row" over two hundred megabytes says nothing anyone can act
+// on, and "row 4000123: invalid unsigned integer: abc" is one `sed -n '4000123p'` away from the line.
+inline std::string row_context(uint64_t row, std::string_view message)
+{
+    return "row " + std::to_string(row) + ": " + std::string(message);
+}
+
 inline uint64_t scaled_quantity(std::string_view value, uint64_t scale)
 {
     const double quantity = parse_double(value);
