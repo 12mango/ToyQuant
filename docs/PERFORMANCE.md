@@ -50,7 +50,7 @@ level updates per batch**, more than a thousand live levels per side, and a live
 
 The line the project started with, kept as a regression workload. Its feed has no depth, so a resting order
 there has no queue in front of it and a fill is a price event rather than a queue event. The run pins the L1
-invariants that `tools/verify_l2.sh fast` compares on every change, and the history of the line — what it
+invariants that `tools/gate/verify_l2.sh fast` compares on every change, and the history of the line — what it
 could and could not answer, and why the queue model moved to the L2 path — is in
 [Performance History](PERFORMANCE_HISTORY.md).
 
@@ -102,7 +102,7 @@ consequences follow, and both are load-bearing:
 
 ### 3.2 Paired alternation
 
-`tools/ab_bench.sh` does this. It runs the two builds in ABBA order within a block, takes the paired
+`tools/bench/ab_bench.sh` does this. It runs the two builds in ABBA order within a block, takes the paired
 difference per block, and reports each stage's mean difference with its t statistic. Three things were
 learned by pointing it at a null pair, meaning the same binary on both sides:
 
@@ -263,9 +263,9 @@ the checks are split by what they are for:
 | Tier | Command | Cost | Purpose |
 |---|---|---|---|
 | 0 | `ctest --preset linux-debug` (inside `fast`) | ~0.2 s | The unit tests, because a red test must not be able to pass the gate |
-| 1 | `bash tools/verify_l2.sh fast` | ~3.6 s | The L2 200k and L1 invariants plus the numbers quoted in the documents, on every edit |
-| 2 | `bash tools/verify_l2.sh all` | ~18 s | Adds the full-file stdout hash and the sanitizer build, before accepting |
-| 3 | `bash tools/verify_l2.sh asan` | ~5 s | The same tests and one short replay under AddressSanitizer and UndefinedBehaviorSanitizer |
+| 1 | `bash tools/gate/verify_l2.sh fast` | ~3.6 s | The L2 200k and L1 invariants plus the numbers quoted in the documents, on every edit |
+| 2 | `bash tools/gate/verify_l2.sh all` | ~18 s | Adds the full-file stdout hash and the sanitizer build, before accepting |
+| 3 | `bash tools/gate/verify_l2.sh asan` | ~5 s | The same tests and one short replay under AddressSanitizer and UndefinedBehaviorSanitizer |
 
 Tier 1 compares batch counts, order and fill counts, realised PnL and consumed queue position, which is
 what a reader or book change can actually break. Tier 2 is what makes a timing claim defensible,
@@ -277,11 +277,11 @@ when a change is accepted.
 
 A document that quotes replay output is a claim about the code, and this project's claims are its
 product. Hand-copied claims drift: one did, a "thirty times per fill" that a re-measurement turned
-into ten. Comparisons are therefore emitted by `tools/compare_runs.sh --markdown`, which prints the
+into ten. Comparisons are therefore emitted by `tools/sweep/compare_runs.sh --markdown`, which prints the
 table and a `toyquant:check` block carrying the exact command and the values it produced.
 
 ```
-python3 tools/check_docs.py docs/PERFORMANCE_HISTORY.md docs/ARCHITECTURE.md docs/DESIGN_REVIEW.md docs/PERFORMANCE.md
+python3 tools/gate/check_docs.py docs/PERFORMANCE_HISTORY.md docs/ARCHITECTURE.md docs/DESIGN_REVIEW.md docs/PERFORMANCE.md
 ```
 
 That re-runs each recorded command and fails when a quoted number has moved. Only marked blocks are
@@ -293,7 +293,7 @@ non-zero fails, because a binary that crashed printed none of the values the blo
 
 Two more things keep the loop short:
 
-- **The measured lever matrix is one command.** `bash tools/workload_matrix.sh [placement|requote|model|arrival]`
+- **The measured lever matrix is one command.** `bash tools/sweep/workload_matrix.sh [placement|requote|model|arrival]`
   runs each lever around the same window and prints the fill counts, the per-contract edge and the fees,
   so the ordering recorded in `PERFORMANCE_HISTORY.md` can be reproduced rather than trusted.
 
@@ -301,7 +301,7 @@ Two more things keep the loop short:
   eight targets, so a plain `cmake --build` rebuilds all of them: 25 steps instead of 2. Use
   `cmake --build out/build/linux-debug --target toy_quant`, then run the whole build plus `ctest` once
   when accepting the change.
-- **Let the harness do the pairing.** `bash tools/ab_bench.sh <binaryA> <binaryB> [blocks]` runs ABBA
+- **Let the harness do the pairing.** `bash tools/bench/ab_bench.sh <binaryA> <binaryB> [blocks]` runs ABBA
   blocks and prints the per-stage paired difference. It prints every stage, including the ones that
   were not supposed to move, which is how a measurement problem is told apart from a result. It also
   regenerates the data slices when `/tmp` has been cleared.
@@ -309,12 +309,12 @@ Two more things keep the loop short:
 ### 3.8 Counting what a profile cannot see
 
 A function level profile samples the program's own text, so a call that resolves into a shared library
-looks like a leaf with no body: the call appears, its cost does not. `tools/count_libc_calls.c` is an
+looks like a leaf with no body: the call appears, its cost does not. `tools/bench/count_libc_calls.c` is an
 `LD_PRELOAD` shim that interposes the few calls that matter for a market data reader and reports counts,
 byte totals and a size histogram.
 
 ```bash
-gcc -O2 -shared -fPIC -o /tmp/count_libc_calls.so tools/count_libc_calls.c -ldl
+gcc -O2 -shared -fPIC -o /tmp/count_libc_calls.so tools/bench/count_libc_calls.c -ldl
 LD_PRELOAD=/tmp/count_libc_calls.so ./out/build/linux-debug/toy_quant l2_replay ... 2>&1 | grep SHIM
 ```
 
@@ -347,7 +347,7 @@ the per-message number is the pair's sustained pace rather than one call's laten
 
 ```bash
 cmake --build --preset linux-relwithdebinfo --target ring_bench
-python3 tools/ring_bench_table.py     # three sessions of `ring_bench 2000000 5`, medians
+python3 tools/study/ring_bench_table.py     # three sessions of `ring_bench 2000000 5`, medians
 ```
 
 The table below is that tool's output on this host. The case labels are the benchmark's own rows; the
@@ -460,7 +460,7 @@ noted otherwise. The mechanism behind each accepted row is explained in
 | **Integer-plus-scale price parse** | parse the price with integer arithmetic instead of the out-of-line `std::from_chars<double>` in libstdc++ | `read+parse` p50 **-65.5 ns (-11.3%)**, 5/5 pairs, t=-5.9, reproduced at -71 ns in a second session; end-to-end wall clock **-7.6%**, t=-2.83; output byte-identical over 11,403,032 batches | kept |
 | Fixed-point price parsing | integer-only price path in the reader | rejected on an isolation comparison (17 ns vs 10 ns) whose in-context cost is about 48 ns per call | **superseded** by the row above |
 | Removing the book mutex | drop the lock from `L2OrderBook` | 4.2 ns of a ~1200 ns event (0.7%) | **rejected**, lock kept |
-| Growth margin 1024 to 256 in `TickLadder` | how many slots a growth adds at each end of the covered tick range | **not resolvable**: 5 ABBA blocks with a null control moved `book-apply` +16.7% (t=1.44) and `market-view` +13.2% (t=1.46), which the margin can touch, and also `validate` +15.7% (t=1.53) and `read+parse` +9.2% (t=1.13), which read a file and cannot be touched by it; the null pair was positive on every stage (+2% to +16%) and no t-statistic reached the 2.8 this ledger uses. The knob was checked for capacity-only first: both margins print byte-identical stdout on the 200k slice (2947 bytes), and `tools/count_libc_calls.c` reports identical counts in every bucket, so neither instrument can see a growth on this workload. | **rejected**, kept at 1024 |
+| Growth margin 1024 to 256 in `TickLadder` | how many slots a growth adds at each end of the covered tick range | **not resolvable**: 5 ABBA blocks with a null control moved `book-apply` +16.7% (t=1.44) and `market-view` +13.2% (t=1.46), which the margin can touch, and also `validate` +15.7% (t=1.53) and `read+parse` +9.2% (t=1.13), which read a file and cannot be touched by it; the null pair was positive on every stage (+2% to +16%) and no t-statistic reached the 2.8 this ledger uses. The knob was checked for capacity-only first: both margins print byte-identical stdout on the 200k slice (2947 bytes), and `tools/bench/count_libc_calls.c` reports identical counts in every bucket, so neither instrument can see a growth on this workload. | **rejected**, kept at 1024 |
 | **SPSC ring for the feed hand-off** | bounded single-producer ring: one release store paired with an acquire load, indices on separate cache lines, values placement-newed into slots | isolation bench ([§3.9](#39-the-hand-off-between-two-threads)), **not** a paired run: 2.26 ns for a push+pop round trip, 18.29 ns/message for a two-thread uint64 stream, and 1.8x the mutex + condition variable hand-off for the event it carries (169.92 against 301.35 ns/message) | kept |
 | Hand-off through a mutex + condition variable | `std::deque` behind a mutex, one wake-up per message | 301.35 ns/message for the same payload and the same per-message construction, 1.8x the ring | **rejected** |
 | Hand-off through a mutex with the consumer spinning | the same queue with no sleeping, to separate the wake-up from the mutual exclusion | 320.52 ns/message: the exclusion is the cost, not the wake-up | **rejected** |

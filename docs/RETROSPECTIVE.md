@@ -76,7 +76,7 @@ outcome by an order of magnitude.**
 
 ## What this cleanup did not delete, and why
 
-Nothing in `src/`, `tools/` or `tests/` is unused. `src/lines/legacy/` holds the L1 market maker family that
+Nothing in `src/` or `tests/` is unused. `src/lines/legacy/` holds the L1 market maker family that
 `src/app/strategy_factory.cpp`, `src/app/strategy_benchmark.h`, `src/backtest/` and the CSV and UDP feeds all
 include; and each of the six tools that look unreferenced from `docs/` -- `fetch_okx_trades.py`,
 `multi_day_check.sh`, `inspect_source.py`, `check_okx_book.py`, `benchmark_replay_windows.py` and `trace_order.sh` --
@@ -84,6 +84,15 @@ is documented in `data/README.md` or `docs/USER_GUIDE.md`. What was actually red
 stale `site/` build of these documents and the working logs under `out/`, both of which stay out of the repository by
 construction. Deleting a referenced strategy would break the gates that make every number above re-derivable, which
 is the asset this phase produced.
+
+**The second pass, recorded 2026-11-02.** The directory was flat at that point, forty-eight files in one list, and the
+reader's problem was not that a tool was dead but that nothing said which tool answered which question. So the tools
+are grouped by the kind of thing they do -- `gate/`, `sweep/`, `fetch/`, `study/`, `live/`, `bench/`, `legacy/` --
+with `tools/README.md` as the map, and the two shapes of "cut a slice" became one entry point,
+`tools/fetch/slice.py`, with a subcommand for each. One file was deleted: `lf_windows.sh`, which no document, no
+other tool and no gate tier named, and which asked the question `equity_schedule_sweep.sh` already asks on the same
+windows. The stale `site/` build was deleted again, because a build of these documents that is not rebuilt is a
+second, older copy of every number in them.
 
 ## The eight lines, and what is left when they are all closed
 
@@ -99,19 +108,19 @@ one a number rather than an opinion.
 | funding rate carry, BTC, two venues, twelve months | 0 of 12 months clear the level and payback gates, and no run of a positive differential in any month earns the 36 USD round trip |
 | a low turnover reversion rule | the sign does not replicate: 4 of MU's 8 windows positive, median net -23.34 cents a share, and the best window earned 149.76 while the worst lost 980.38, so it wins small and loses big |
 
-**Those eight rows are data now, not prose.** `tools/viability.py` re-derives every quotient from the inputs the
+**Those eight rows are data now, not prose.** `tools/study/viability.py` re-derives every quotient from the inputs the
 rows carry, checks that the first gate to fire is the one each line is recorded as binding on, and prints what each
 gate rested on. Two things in it are there because the alternative is a lie: a gate that was not measured prints as
 `not measured` rather than as a pass, and a bound taken on the most favourable case -- the widest spread, the smallest
 position move -- may close a line and is refused if it is ever read as an opening, because the best case passing
 proves nothing about the rest. The MU row's 506 windows is not carried as a number of its own either: it is
 `(2 x 10,588 / 941)^2`, at the two standard deviations the row names, so it falls out of the same two inputs the gate
-is read from. The inputs are in `tests/fixtures/verdicts.json` and tier 1 of `tools/verify_l2.sh` runs it on every
+is read from. The inputs are in `tests/fixtures/verdicts.json` and tier 1 of `tools/gate/verify_l2.sh` runs it on every
 edit.
 
-**Two of those inputs are no longer copies.** `python3 tools/viability.py --derive` runs the tools that produced them
+**Two of those inputs are no longer copies.** `python3 tools/study/viability.py --derive` runs the tools that produced them
 and compares what comes back with what the fixture recorded: the low turnover rule over MU's eight windows returns a
-median of -23.34 cents a share either way, and `tools/venue_ratio.py` over the option series returns 56 prints a fill
+median of -23.34 cents a share either way, and `tools/study/venue_ratio.py` over the option series returns 56 prints a fill
 as the best of them either way. The option series that second measurement needs were bought again into
 `data/v2/options/`, because the first copy lived in `/tmp` and nothing behind it could be re-derived once it was
 gone; it cost 0.011938 USD and its print counts and R_max reproduce the table in `docs/ROADMAP.md` row for row. The

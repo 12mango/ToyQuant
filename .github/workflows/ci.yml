@@ -23,16 +23,16 @@ jobs:
       - name: Unit tests
         run: ctest --test-dir out/build/linux-debug --output-on-failure
 
-      # The two checks that need no market data. The replay tiers of tools/verify_l2.sh read a 1.5 GB depth
+      # The two checks that need no market data. The replay tiers of tools/gate/verify_l2.sh read a 1.5 GB depth
       # file that is not in the repository, so they stay local; everything that can run on source alone runs
       # here, which is the part that catches a stale flag, a missing tool path or a summary field that
       # nothing computes.
       - name: Every summary field is written
-        run: python3 tools/check_written_fields.py
+        run: python3 tools/gate/check_written_fields.py
 
       - name: Every documented flag, queue model and tool path exists
         run: |
-          python3 tools/lint_prose.py \
+          python3 tools/gate/lint_prose.py \
             docs/PERFORMANCE_HISTORY.md docs/ARCHITECTURE.md docs/USER_GUIDE.md \
             docs/PERFORMANCE.md docs/LEARNING.md docs/DESIGN_REVIEW.md \
             docs/LATENCY_DESIGN.md docs/index.md docs/ROADMAP.md \

@@ -51,7 +51,7 @@ struct AppConfig
     int delay = 0;
     std::string strategy_name = "optimized";
     uint64_t quantity_scale = 1000000;
-    // The calibrated model, not the skeptical one. tools/calibrate_queue_model.py measures 99.96% of
+    // The calibrated model, not the skeptical one. tools/study/calibrate_queue_model.py measures 99.96% of
     // the size that leaves a book level as cancel or amendment rather than trade, so the only free
     // parameter left is where in the queue those cancels sit, and pro-rata is the neutral assumption
     // about that. `conservative` (nothing comes off the queue ahead) and `optimistic` (all of it does)

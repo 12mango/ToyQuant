@@ -52,15 +52,19 @@ it; the total spent on data across all eight lines was 1.27 USD.
 
 Every number in these documents is re-derived from the binary, and the gate is what enforces it:
 
-* `tools/verify_l2.sh fast` is the per-edit tier: the unit tests, an L2 slice with batch, order, fill, PnL and queue
+* `tools/gate/verify_l2.sh fast` is the per-edit tier: the unit tests, an L2 slice with batch, order, fill, PnL and queue
   invariants, the L1 checks, and the record-and-replay round trips;
-* `tools/verify_l2.sh all` adds the full-file stdout hash against a cached reference, and the same tests under
+* `tools/gate/verify_l2.sh all` adds the full-file stdout hash against a cached reference, and the same tests under
   AddressSanitizer and UndefinedBehaviorSanitizer;
-* `tools/lint_prose.py` refuses a flag or a queue model named in a document that the binary does not accept, and
-  `tools/check_docs.py` re-derives every quoted run block;
+* `tools/gate/lint_prose.py` refuses a flag or a queue model named in a document that the binary does not accept, and
+  `tools/gate/check_docs.py` re-derives every quoted run block;
 * the strategy rules and the pass criteria were written down **before** the data that decided them was bought, and every
-  download is priced with a free query first — `tools/screen_spread.py` and `tools/venue_ratio.py` refuse to spend
+  download is priced with a free query first — `tools/study/screen_spread.py` and `tools/study/venue_ratio.py` refuse to spend
   without a cap.
+
+The scripts live under `tools/`, grouped by what they do — `gate/`, `sweep/`, `fetch/`, `study/`, `live/`, `bench/`,
+`legacy/` — and [`tools/README.md`](tools/README.md) says which one answers which question and which of them the gate
+runs.
 
 ## Versions
 
@@ -121,7 +125,7 @@ Recommended workflow:
 ```bash
 cmake --build build --target l2_strategy_test
 ctest --test-dir build --output-on-failure -R l2_strategy_test
-python3 tools/benchmark_l2_strategies.py \
+python3 tools/study/benchmark_l2_strategies.py \
   --binary build/toy_quant \
   --trades data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
   --depth data/v2/crypto/deribit_book_snapshot_25_2020-04-01_BTC-PERPETUAL.csv \
@@ -168,7 +172,7 @@ python3 tools/legacy/udp_sender.py --port 9000
 **Replay Deribit L2 trades and snapshots** (slice the large snapshot first):
 
 ```bash
-python3 tools/slice_l2_snapshot.py \
+python3 tools/fetch/slice.py snapshot \
   data/v2/crypto/deribit_book_snapshot_25_2020-04-01_BTC-PERPETUAL.csv \
   /tmp/deribit_depth.csv --start-ts 1585699200000000 --every 5 --max-rows 300
 ./out/build/linux-debug/toy_quant l2_replay \
@@ -178,7 +182,7 @@ python3 tools/slice_l2_snapshot.py \
 
 **Record a session and replay it again**: `--record=PREFIX` writes the stream the run was fed back out in
 the replay shapes, `PREFIX_trades.csv` and `PREFIX_depth.csv`, so the same binary can be given those files
-instead. `bash tools/verify_l2.sh fast` asserts that the replayed recording reports the same numbers.
+instead. `bash tools/gate/verify_l2.sh fast` asserts that the replayed recording reports the same numbers.
 
 ```bash
 ./out/build/linux-debug/toy_quant l2_replay \
@@ -251,7 +255,7 @@ Generate a static report with the market price, the strategy's quotes and execut
 ```bash
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python tools/plot_report.py \
+.venv/bin/python tools/study/plot_report.py \
   --ticks data/scenarios/synthetic_ticks.csv \
   --orders data/runtime/orders.csv \
   --trades data/runtime/trades.csv \

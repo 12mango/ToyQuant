@@ -42,7 +42,7 @@ set(MARKET_READER_SOURCES
     src/market/deribit_readers.cpp
     src/market/okx_readers.cpp)
 
-# The layer boundary, stated as two lists and checked by tools/check_layering.py on every gate run.
+# The layer boundary, stated as two lists and checked by tools/gate/check_layering.py on every gate run.
 # `CORE_SOURCES` is what a reader learns the engine from: it carries no venue, no legacy header and no carry ledger,
 # so `common <- orderbook/strategy/exchange/accounting <- app` stays readable in that direction only.
 # `LINE_SOURCES` is everything that belongs to one feed family or to a closed line. It stays in the build because the
@@ -162,7 +162,7 @@ target_link_libraries(ring_bench PRIVATE Threads::Threads)
 set_target_properties(ring_bench PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
 # ==================== Venue relay ====================
-# The C++ twin of tools/venue_relay.py. TLS is optional on purpose: a `wss://` venue is spoken directly
+# The C++ twin of tools/live/venue_relay.py. TLS is optional on purpose: a `wss://` venue is spoken directly
 # only when OpenSSL's headers are present, and without them the relay speaks plaintext `ws://` and the
 # Python relay is kept as the TLS terminator. ws_feed.cpp is compiled in rather than linked so the
 # target needs no layer library; the relay uses one thing from it, the accept-key helper.

@@ -20,7 +20,7 @@ can tell a correct result from a surprising one.
 Everything below uses the recorded Deribit window. Cut the slices first:
 
 ```bash
-bash tools/verify_l2.sh fast        # also checks that the code still reproduces its recorded numbers
+bash tools/gate/verify_l2.sh fast        # also checks that the code still reproduces its recorded numbers
 ```
 
 ## 1. Fill probability is a queue, not a price
@@ -30,10 +30,10 @@ size is almost irrelevant: a ten-contract quote is 0.05% of the median level, so
 where the queue went.
 
 ```bash
-tools/workload_matrix.sh model       # fills under each queue model, same window
-tools/workload_matrix.sh placement   # fills as the quote moves from behind the touch onto it
-tools/workload_matrix.sh requote     # fills as the quote is held instead of re-joined
-tools/workload_matrix.sh arrival     # fills as the assumed arrival position changes
+tools/sweep/workload_matrix.sh model       # fills under each queue model, same window
+tools/sweep/workload_matrix.sh placement   # fills as the quote moves from behind the touch onto it
+tools/sweep/workload_matrix.sh requote     # fills as the quote is held instead of re-joined
+tools/sweep/workload_matrix.sh arrival     # fills as the assumed arrival position changes
 ```
 
 Read `trade_reports` (fills) and `quote_at_touch_orders`. The measured ordering of the levers, largest
@@ -87,7 +87,7 @@ against the pipeline's, and a non-zero value there means a callback was dropped.
 ## 5. Reading a comparison without fooling yourself
 
 ```bash
-tools/compare_runs.sh "conservative" "l2_replay ... 1 conservative --fast-validation" \
+tools/sweep/compare_runs.sh "conservative" "l2_replay ... 1 conservative --fast-validation" \
                       "prorata"      "l2_replay ... 1 prorata --fast-validation"
 ```
 
@@ -237,7 +237,7 @@ for execution quality; `[STRATEGY_METRICS]` carries only what a strategy owns.
 | `[EXPOSURE]` `legs`, `gross_usd`, `net_usd`, `gross_to_net`, `fees_usd` | The book at the last quote each symbol showed: one `SYMBOL:quantity:notional` per leg sorted by symbol, then the sum of the sizes, the size of the sum, their ratio, and the fees the account paid. **Gross is what the fees are charged on and net is what the position risk is**, which is the difference a one-symbol book cannot show and a hedged or multi-leg one lives or dies by. The tag is `[EXPOSURE]` and not `[PORTFOLIO]` because the account's own line already carries that one. In a run given a second book it is the only line that reads both legs at once, and each leg is valued with its own instrument's face value |
 | `[BOOK]` `symbol`, `events` | How many market events one book was given, in a run carrying several: the count that says the merge delivered both streams rather than one of them twice, because the run's own `events` in `[L2 DATA]` is the sum of these and nothing else. Printed once per book, directly under that book's `[EXECUTION]` line, and only in a two-book run |
 | `[L2 DATA]` `crossed_book_batches` | How many incremental batches left the book with its best bid at or above its best ask. `top_of_book()` already reports a crossed book as nothing and every consumer skips the view, so the crossing is handled correctly and invisibly: a run that ignored four thousand crossed snapshots read exactly like a run whose strategy chose not to quote. The count is what separates them, and it rides on the depth line rather than getting its own because the line already says how much depth arrived. Printed only when non-zero, so a run with none keeps its recorded bytes -- the window every L2 number here comes from has none, which is why the field appears in no recorded line |
-| `[INTERVAL]` `n`, `mean`, `median`, `ci95_lo`, `ci95_hi`, `spread`, `includes_zero`, `sign_consistent`, `thin_sample` | A tool's line rather than a run's: `tools/pnl_interval.py` resamples a series and prints the interval each mean carries. Four fields are the answer and two are the correction. `mean` with `ci95_lo` and `ci95_hi` says how well the mean is pinned; `spread` says how far apart the draws themselves are, and on a series of windows it is usually the larger and the more interesting of the two -- five months of one instrument give an interval 1.9 bps wide around a mean while the draws span 2.75. `median` is beside the mean because a trend or one outlier moves the mean and not the middle. `thin_sample` is the repository's thirty-fill rule applied instead of remembered, and `sign_consistent` says whether the draws agree on a direction at all |
+| `[INTERVAL]` `n`, `mean`, `median`, `ci95_lo`, `ci95_hi`, `spread`, `includes_zero`, `sign_consistent`, `thin_sample` | A tool's line rather than a run's: `tools/study/pnl_interval.py` resamples a series and prints the interval each mean carries. Four fields are the answer and two are the correction. `mean` with `ci95_lo` and `ci95_hi` says how well the mean is pinned; `spread` says how far apart the draws themselves are, and on a series of windows it is usually the larger and the more interesting of the two -- five months of one instrument give an interval 1.9 bps wide around a mean while the draws span 2.75. `median` is beside the mean because a trend or one outlier moves the mean and not the middle. `thin_sample` is the repository's thirty-fill rule applied instead of remembered, and `sign_consistent` says whether the draws agree on a direction at all |
 | `[L2 DATA]` `stale_trades`, `dislocated_trades` | The prints scored against the book, split by *which* way they disagreed with it. `stale_trades` is a print with no midpoint to compare against -- before the book was two-sided, or more than a second after its last update -- so on a window whose depth input covers quarter of an hour and whose trade file covers the day it counts almost every print: it is a fact about the inputs' coverage, not about the prints. `dislocated_trades` is a print more than five basis points from a *current* midpoint, which is a fact about the print. Both are printed only when non-zero, and neither filters anything: dropping a print far from the midpoint would move the fills instead of describing them, which is why the L1 path's filter is not repeated here |
 | `[RESUME]` `orders`, `live`, `gone`, `cancelled`, `cash_usd`, `legs`, `next_order_id` | What a session took over: the orders the snapshot listed, how many of them the venue still held (**and that the resume then cancelled**), how many it had forgotten, the cash and leg count of the account that came back, and the id the new process continues from. `orders` is `live + gone` by construction, so a count that does not add up is a bug rather than a policy. Printed only by a run given `--snapshot-in` |
 | `[SNAPSHOT]` `path`, `symbol`, `last_ts`, `orders`, `legs`, `cash_usd` | Where a session was written and what it holds: the clock it stops at, the orders that may still be alive at the venue, and the account's legs and cash. The cash here is the same number as `[PORTFOLIO]`'s, because the snapshot is taken after the final mark. Printed only by a run given `--snapshot-out` |
@@ -248,6 +248,6 @@ for execution quality; `[STRATEGY_METRICS]` carries only what a strategy owns.
 | `[GATE]` `market_markout_buy_near_ticks`, `market_markout_buy_far_ticks`, `market_markout_sell_near_ticks`, `market_markout_sell_far_ticks`, `market_markout_samples` | The same measurement taken from the venue's own prints, as if we had been the passive side. The first version of the gate used these, and they can disagree with our fills in sign, which is why the record keeps both |
 | `[GATE]` `markout_gate_skips`, `flatten_orders`, `flatten_quantity` | Sides refused because the measured cost could not be covered, and the orders sent to reduce a position past the flatten band. Printed only when `--markout-cover` or `--flatten-band` asked for them |
 
-Every field above is written somewhere under `src/`. `tools/check_written_fields.py` fails the build if
+Every field above is written somewhere under `src/`. `tools/gate/check_written_fields.py` fails the build if
 one stops being written, because a field that is read but never written looks exactly like a field whose
 value is zero.

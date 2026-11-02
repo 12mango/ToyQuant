@@ -754,7 +754,7 @@ into the common case.
 - `spsc_ring_test` crosses 100,000 values between two real threads and requires them in order; it also
   covers capacity rounding to a power of two, wrap-around, a full ring refusing rather than dropping, and
   the destructor running over the slots that are still occupied.
-- Tier 1 of `tools/verify_l2.sh` asserts the end-to-end property rather than the primitive: a threaded
+- Tier 1 of `tools/gate/verify_l2.sh` asserts the end-to-end property rather than the primitive: a threaded
   replay reports every number the direct run reports (only `[LATENCY]` may differ) and its hand-off count
   equals the run's own event count.
 - The benchmark's deterministic fields are re-derived by the gate: the marked block in

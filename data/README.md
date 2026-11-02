@@ -74,7 +74,7 @@ Large L2 snapshot files should be sliced before tests. The slicer reads rows inc
 does not load the source file into memory. Deribit snapshot timestamps are in microseconds:
 
 ```bash
-python3 tools/slice_l2_snapshot.py \
+python3 tools/fetch/slice.py snapshot \
 	data/v2/crypto/deribit_book_snapshot_25_2020-04-01_BTC-PERPETUAL.csv \
 	/tmp/l2_tiny.csv \
 	--max-rows 100
@@ -83,7 +83,7 @@ python3 tools/slice_l2_snapshot.py \
 Use an inclusive timestamp window or keep every Nth matching row when needed:
 
 ```bash
-python3 tools/slice_l2_snapshot.py input.csv /tmp/l2_window.csv \
+python3 tools/fetch/slice.py snapshot input.csv /tmp/l2_window.csv \
 	--start-ts 1585699200000000 --end-ts 1585699500000000 --every 10
 ```
 
@@ -91,7 +91,7 @@ The same tool accepts Tardis gzip-compressed trades files, so a small paired sam
 without first extracting the full file:
 
 ```bash
-python3 tools/slice_l2_snapshot.py \
+python3 tools/fetch/slice.py snapshot \
 	data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
 	/tmp/trades_tiny.csv --max-rows 1000
 ```
@@ -129,11 +129,11 @@ pays 1.9 bps of spread instead of 0.4, under the same 5 bps taker rate; `docs/PE
 the pair of floors.
 
 Then one command prints a row per day in the table's column order, together with the recorded block that
-`tools/check_docs.py` re-derives:
+`tools/gate/check_docs.py` re-derives:
 
 ```bash
-bash tools/multi_day_check.sh                 # every day found under data/v2/
-bash tools/multi_day_check.sh 2020-06-01      # or the days named on the command line
+bash tools/sweep/multi_day_check.sh                 # every day found under data/v2/
+bash tools/sweep/multi_day_check.sh 2020-06-01      # or the days named on the command line
 ```
 
 It cuts the same 200,000-row slice per day, refuses a file that is not a complete gzip rather than reading a
@@ -143,13 +143,13 @@ like a quiet day rather than a short download.
 ## Inspecting a New Source
 
 A new source is a set of assumptions, and the wrong ones are quiet: microseconds read as milliseconds, a price
-that is still a string, or an incremental file taken for a snapshot. `tools/inspect_source.py` prints what a file
+that is still a string, or an incremental file taken for a snapshot. `tools/fetch/inspect_source.py` prints what a file
 actually contains before any reader exists for it — delimiter, header, column count, inferred types and ranges,
 which integer columns are timestamps and in what unit, whether they move forward, and the top of book implied by a
 JSON level column:
 
 ```bash
-python3 tools/inspect_source.py data/v2/crypto/bitmex_trades_2020-06-01_XBTUSD.csv.gz
+python3 tools/fetch/inspect_source.py data/v2/crypto/bitmex_trades_2020-06-01_XBTUSD.csv.gz
 ```
 
 The column summary is the anatomy half of accepting a source, and the implied top of book is the book half, which
@@ -170,12 +170,12 @@ use came from the paid Databento route above, at about two dollars a session.
 
 The equity market is the first venue here where the fee can be smaller than a tick, so it is the market the fee
 question needs an answer from, and its free depth is a daily archive rather than an endpoint.
-`tools/fetch_iex_hist.py` prints that route and then verifies whatever the operator downloaded:
+`tools/fetch/fetch_iex_hist.py` prints that route and then verifies whatever the operator downloaded:
 
 ```bash
-python3 tools/fetch_iex_hist.py --plan --date 2026-09-29
-python3 tools/fetch_iex_hist.py --verify data/v2/iex/20260929_IEXTP1_DEEP1.0.pcap.gz --sample 4
-python3 tools/fetch_iex_hist.py --self-test      # also run by tier 1 of the gate
+python3 tools/fetch/fetch_iex_hist.py --plan --date 2026-09-29
+python3 tools/fetch/fetch_iex_hist.py --verify data/v2/iex/20260929_IEXTP1_DEEP1.0.pcap.gz --sample 4
+python3 tools/fetch/fetch_iex_hist.py --self-test      # also run by tier 1 of the gate
 ```
 
 What the IEX market-data page says, read on 2026-09-30: HIST is available for download "on a T+1 basis", the
@@ -209,17 +209,17 @@ than a rate, and the registered symbol is looked up by the same `instrument_spec
 
 The depth a market-making test needs is ten price levels per side plus the trades, and the first source here that
 is both that and a market a Hong Kong personal account may trade is Databento's `mbp-10`, which
-`tools/fetch_databento.py` downloads and converts. The key comes from `DATABENTO_API_KEY` and is never written to
+`tools/fetch/fetch_databento.py` downloads and converts. The key comes from `DATABENTO_API_KEY` and is never written to
 a file in this checkout:
 
 ```bash
 export DATABENTO_API_KEY=db-...
-python3 tools/fetch_databento.py --cost --dataset GLBX.MDP3 --schema mbp-10 --symbol MESZ6 \
+python3 tools/fetch/fetch_databento.py --cost --dataset GLBX.MDP3 --schema mbp-10 --symbol MESZ6 \
   --start 2026-09-29T13:30 --end 2026-09-29T15:30
-python3 tools/fetch_databento.py --download --dataset GLBX.MDP3 --schema mbp-10 --symbol MESZ6 \
+python3 tools/fetch/fetch_databento.py --download --dataset GLBX.MDP3 --schema mbp-10 --symbol MESZ6 \
   --start 2026-09-29T13:30 --end 2026-09-29T15:30 --pretty-px \
   --output data/v2/futures/glbx_mbp10_MESZ6_2026-09-29_1330_1530.csv
-python3 tools/fetch_databento.py --convert --input data/v2/futures/glbx_mbp10_MESZ6_2026-09-29_1330_1530.csv \
+python3 tools/fetch/fetch_databento.py --convert --input data/v2/futures/glbx_mbp10_MESZ6_2026-09-29_1330_1530.csv \
   --symbol MESZ6 --exchange glbx --depth-out data/v2/futures/glbx_MESZ6_depth.csv.gz \
   --trades-out data/v2/futures/glbx_MESZ6_trades.csv.gz
 ```
@@ -261,22 +261,22 @@ The raw instrument, before conversion, is one contract of a micro E-mini S&P 500
 worth 1.25 USD because the contract multiplier is 5, and a commission charged per contract. The same tool takes
 an equity: SPY on the Nasdaq book, one cent tick, sizes in shares, 2.18 million depth rows and 28,592 trade rows
 in two hours, and the same two hours again for **AAPL (786,111 depth rows and 39,254 trade rows) and TSLA
-(425,234 and 35,466)**, the two symbols the screen below passed. `tools/f4_windows.sh` re-runs all four pairs, and
+(425,234 and 35,466)**, the two symbols the screen below passed. `tools/sweep/f4_windows.sh` re-runs all four pairs, and
 `docs/ROADMAP.md` records what the runs found.
 
 ## Screening a Symbol Before Buying Its Depth
 
-`tools/screen_spread.py` is the cheap half of the phase 2b instrument screen: it prices a Databento window
+`tools/study/screen_spread.py` is the cheap half of the phase 2b instrument screen: it prices a Databento window
 before it spends anything, and it refuses to download without a cap, so a screen cannot surprise anyone. It reads
 the top of book only, which is why it runs on the cheap schema:
 
 ```bash
 export DATABENTO_API_KEY=db-...
-python3 tools/screen_spread.py --cost --symbols SPY,QQQ,IWM --start 2026-09-29T13:30 --end 2026-09-29T15:30
-python3 tools/screen_spread.py --download --max-cost-usd=5 --symbols SPY,QQQ,IWM \
+python3 tools/study/screen_spread.py --cost --symbols SPY,QQQ,IWM --start 2026-09-29T13:30 --end 2026-09-29T15:30
+python3 tools/study/screen_spread.py --download --max-cost-usd=5 --symbols SPY,QQQ,IWM \
   --start 2026-09-29T13:30 --end 2026-09-29T15:30
-python3 tools/screen_spread.py --input data/v2/equities/xnas_mbp10_SPY_2026-09-29_1330_1530.csv --symbol SPY
-python3 tools/screen_spread.py --input data/v2/equities/xnas_mbp10_SPY_2026-09-29_1330_1530.csv --symbol SPY \
+python3 tools/study/screen_spread.py --input data/v2/equities/xnas_mbp10_SPY_2026-09-29_1330_1530.csv --symbol SPY
+python3 tools/study/screen_spread.py --input data/v2/equities/xnas_mbp10_SPY_2026-09-29_1330_1530.csv --symbol SPY \
   --min-trades-per-second=2.8
 ```
 
@@ -287,7 +287,7 @@ nothing.
 
 **The cheap schema is a way to rank a symbol and not a substitute for the ten-level one, and that was measured
 rather than assumed** (2026-10-02, and it cost nothing because the AAPL file for the recorded window was already in
-the cache): converted by `tools/fetch_databento.py --convert` and run through the same policy as the ten-level
+the cache): converted by `tools/fetch/fetch_databento.py --convert` and run through the same policy as the ten-level
 file, top of book gives **1,182 fills against 2,324** and **67,157 submitted orders against 45,907**. The engine's
 own output says why -- with one level, a book whose touch is taken has nothing left to become the new touch, so
 quotes land behind the touch 23,148 times instead of 11,596 -- which is also why this script is only ever read for
@@ -323,11 +323,11 @@ What it reports, and why it reports two distributions:
 
 ## OKX Trades, and What the Public Route Cannot Do
 
-The public history endpoint answers without a key, and `tools/fetch_okx_trades.py` turns it into one CSV per
+The public history endpoint answers without a key, and `tools/fetch/fetch_okx_trades.py` turns it into one CSV per
 symbol per day:
 
 ```bash
-python3 tools/fetch_okx_trades.py --date 2023-03-01 --symbol BTC-USDT-SWAP
+python3 tools/fetch/fetch_okx_trades.py --date 2023-03-01 --symbol BTC-USDT-SWAP
 ```
 
 What that route serves, checked against the endpoint itself: `module=1` is tick trades, `2` is candles, `3` is
@@ -361,7 +361,7 @@ it over as a `.data` member inside a `tar.gz`, and every line is a JSON object:
   thousand records, 39 of about 800 levels disagree, in ways that look like a level leaving or entering the
   400-level window and like a small size difference inside it. The archive is therefore not a lossless record of
   the top of the book, and a reader must not assume that updates reconstruct a snapshot. The first snapshot itself
-  is exact, which is what a reader's output is compared against. `tools/check_okx_book.py` performs both checks.
+  is exact, which is what a reader's output is compared against. `tools/study/check_okx_book.py` performs both checks.
 * `size` is in contracts and the price is quoted with a quote character around it, so the reader removes the quote
   and multiplies by the contract value before the quantity reaches the engine.
 
@@ -377,15 +377,15 @@ archive or the Deribit files this repository holds.
 ## Options: The At-the-Money Straddle, One Per Month
 
 The options line of the roadmap is the only measurement whose collection started as a scratch script, and a number
-that cannot be re-collected is a copied number. `tools/fetch_deribit_options.py` is that collection as a tool: for each
+that cannot be re-collected is a copied number. `tools/fetch/fetch_deribit_options.py` is that collection as a tool: for each
 month it takes the first day's free sample, prices the straddle whose strike sits nearest spot (100-point grid, then
 250, then 500), inverts implied volatility from Black-Scholes per leg, and reports the short straddle's result at the
 nearest listed expiry at least twenty days out.
 
 ```bash
-python3 tools/fetch_deribit_options.py --self-test
-python3 tools/fetch_deribit_options.py --start 2024-04 --end 2024-04
-python3 tools/fetch_deribit_options.py --start 2020-01 --end 2026-09 --output data/v2/options/atm_straddles.csv
+python3 tools/fetch/fetch_deribit_options.py --self-test
+python3 tools/fetch/fetch_deribit_options.py --start 2024-04 --end 2024-04
+python3 tools/fetch/fetch_deribit_options.py --start 2020-01 --end 2026-09 --output data/v2/options/atm_straddles.csv
 ```
 
 Three facts the first version of the measurement got wrong and this one encodes:
@@ -403,13 +403,13 @@ Three facts the first version of the measurement got wrong and this one encodes:
 
 
 The carry line's second input, and the smallest file this project reads: a funding history is a few megabytes
-per symbol per year even at an hourly settlement. `tools/fetch_funding_rates.py` fetches one instrument from
+per symbol per year even at an hourly settlement. `tools/fetch/fetch_funding_rates.py` fetches one instrument from
 either free source and writes it here:
 
 ```bash
-python3 tools/fetch_funding_rates.py --source okx --date 2026-01-07 --symbol BTC-USDT-SWAP
-python3 tools/fetch_funding_rates.py --source okx --from 2024-03-01 --to 2024-03-31 --symbol BTC-USDT-SWAP
-python3 tools/fetch_funding_rates.py --source binance --month 2024-03 --symbol BTCUSDT
+python3 tools/fetch/fetch_funding_rates.py --source okx --date 2026-01-07 --symbol BTC-USDT-SWAP
+python3 tools/fetch/fetch_funding_rates.py --source okx --from 2024-03-01 --to 2024-03-31 --symbol BTC-USDT-SWAP
+python3 tools/fetch/fetch_funding_rates.py --source binance --month 2024-03 --symbol BTCUSDT
 ```
 
 That produces `data/v2/funding/okx_funding_2026-01-07_BTC-USDT-SWAP.csv` (3 settlements,

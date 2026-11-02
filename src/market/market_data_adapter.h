@@ -50,7 +50,7 @@ std::unique_ptr<IMarketEventReader> make_binance_book_reader(const std::string& 
                                                              const std::string& symbol,
                                                              uint64_t quantity_scale);
 
-// OKX order book JSON Lines and the traded CSV that tools/fetch_okx_trades.py produces from the archive.
+// OKX order book JSON Lines and the traded CSV that tools/fetch/fetch_okx_trades.py produces from the archive.
 std::unique_ptr<IMarketEventReader> make_okx_book_reader(const std::string& path, const std::string& symbol,
                                                          double contract_size, uint64_t quantity_scale);
 

@@ -1,4 +1,4 @@
-// The CLI of the C++ relay. It mirrors `tools/venue_relay.py`'s flags so the two are interchangeable:
+// The CLI of the C++ relay. It mirrors `tools/live/venue_relay.py`'s flags so the two are interchangeable:
 // the engine connects to `--listen`, the venue is `--venue`, and a window can be recorded directly or
 // captured raw and replayed with no network.
 

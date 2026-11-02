@@ -13,9 +13,9 @@ legacy CSV / UDP / Binance ─────────────────�
 |---|---|
 | **Size** | 110 files, 24,576 lines: `app` 8762, `market` 4069, `legacy` 1851, `lines` 2602, `strategy` 1958, `exchange` 1360, `common` 811, `backtest` 611, `bench` 563, `orderbook` 587, `accounting` 708, `utils` 488, `concurrency` 176, `main` 30 |
 | **Tests** | 30 test binaries, at least one per module, run by tier 0 of the gate |
-| **Tools** | 45 scripts (`*.py` and `*.sh` in `tools/`): the gate, the measurement sweeps, the queue calibration, the source fetches, four lints and the interval |
+| **Tools** | 45 scripts (`*.py` and `*.sh` under `tools/`, grouped by what they do) and one C harness: the gate and its four lints in `tools/gate/`, the measurement sweeps, the source fetches, the one-off studies, and the live harnesses. `tools/README.md` is the map |
 | **Build** | CMake + presets, C++20, standard library only (zlib for `.gz` inputs) |
-| **Numbers** | every figure below is re-derived by `bash tools/verify_l2.sh fast` on every change |
+| **Numbers** | every figure below is re-derived by `bash tools/gate/verify_l2.sh fast` on every change |
 
 **This is a demo, not a trading system.** No exchange connectivity, no persistence, no market impact; the
 in-process pre-trade risk pipeline is not a broker or exchange risk gateway. The loop is meant to be readable
@@ -373,11 +373,11 @@ column says what fails when the row stops being true -- or that nothing does yet
 | the engine's nine settings | `MatchingEngineConfig` | the 34 call sites, which name the knobs they set |
 | the venue's schedule for an instrument | `fee_schedule_of` | the recorded runs, through the numbers they quote |
 | the L1 settings a run uses | `L1StrategyConfig` | `tests/strategy_benchmark_test.cpp`, which passes `{}` where it used to repeat four values |
-| the flags the binary accepts | `parse_config` and its `print_usage` | `tools/lint_prose.py`, in both directions |
-| the size of the tree, per directory | the table above | `tools/lint_prose.py`, which counts it |
-| the number of test binaries | `CMakeLists.txt` | `tools/lint_prose.py`, which counts `add_toy_test` |
-| a field of a run's output | `tools/lib.sh`'s `field_of` | nothing yet: the agreement with `tools/check_docs.py`'s rule was measured once, on a 115-field run |
-| the interval a mean carries | `tools/pnl_interval.py`, and the window list it replays | its own self-test in tier 1 and a `tool:` block in `docs/PERFORMANCE_HISTORY.md`, so the quoted interval is re-derived and the tool's arithmetic is checked |
+| the flags the binary accepts | `parse_config` and its `print_usage` | `tools/gate/lint_prose.py`, in both directions |
+| the size of the tree, per directory | the table above | `tools/gate/lint_prose.py`, which counts it |
+| the number of test binaries | `CMakeLists.txt` | `tools/gate/lint_prose.py`, which counts `add_toy_test` |
+| a field of a run's output | `tools/gate/lib.sh`'s `field_of` | nothing yet: the agreement with `tools/gate/check_docs.py`'s rule was measured once, on a 115-field run |
+| the interval a mean carries | `tools/study/pnl_interval.py`, and the window list it replays | its own self-test in tier 1 and a `tool:` block in `docs/PERFORMANCE_HISTORY.md`, so the quoted interval is re-derived and the tool's arithmetic is checked |
 
 Two of these earned their place twice. The engine's struct was the last positional configuration in the
 codebase, and replacing its argument list dropped a bare `1` -- the one-event cancel delay that no flag names
@@ -407,7 +407,7 @@ attempts rather than a list of wins.
 
 ## 4. The gate
 
-One script, four tiers, run on every change. `tools/verify_l2.sh all`:
+One script, four tiers, run on every change. `tools/gate/verify_l2.sh all`:
 
 | Tier | Time | What it checks |
 |---|---|---|
@@ -428,15 +428,15 @@ nothing, which is the rule the rest of this document follows too. The first full
 three minutes; the tier rebuilds incrementally, so accepting a change costs the few seconds in the table.
 
 ```bash
-# tools/verify_l2.sh — tiers 0 and 1
+# tools/gate/verify_l2.sh — tiers 0 and 1
 tier0()  { ctest --test-dir "$build_dir" ...; }                       # a red test cannot pass
 tier1()  {
-  python3 tools/check_written_fields.py   # every summary field is actually computed
-  python3 tools/lint_prose.py docs/*.md   # every flag, queue model and tools/ path exists
-  python3 tools/fetch_iex_hist.py --self-test   # the pcap/IEX-TP walk, on a file it builds itself
-  python3 tools/pnl_interval.py --self-test      # the interval's arithmetic, on hand-checked samples
+  python3 tools/gate/check_written_fields.py   # every summary field is actually computed
+  python3 tools/gate/lint_prose.py docs/*.md   # every flag, queue model and tools/ path exists
+  python3 tools/fetch/fetch_iex_hist.py --self-test   # the pcap/IEX-TP walk, on a file it builds itself
+  python3 tools/study/pnl_interval.py --self-test      # the interval's arithmetic, on hand-checked samples
   "$BIN" l2_replay ... | grep -oE 'submitted_orders=406|trade_reports=1|...'   # pinned invariants
-  python3 tools/check_docs.py --binary "$BIN" docs/PERFORMANCE_HISTORY.md docs/ARCHITECTURE.md \
+  python3 tools/gate/check_docs.py --binary "$BIN" docs/PERFORMANCE_HISTORY.md docs/ARCHITECTURE.md \
       docs/DESIGN_REVIEW.md docs/PERFORMANCE.md
 }
 ```

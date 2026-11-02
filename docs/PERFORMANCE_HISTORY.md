@@ -88,7 +88,7 @@ within four percent of the front, on the window the main tables use — is the r
 around.
 
 **What stayed.** The L1 names remain available, the legacy CSV and UDP inputs remain as demo data, and the L1
-invariants remain in `tools/verify_l2.sh fast`. New strategy work belongs to the L2 path, and a change to the
+invariants remain in `tools/gate/verify_l2.sh fast`. New strategy work belongs to the L2 path, and a change to the
 legacy makers that moves those numbers is a change to a recorded result rather than an improvement. The
 documentation that describes the line as it still runs is in
 [User Guide](USER_GUIDE.md#current-modes) and [Architecture](ARCHITECTURE.md).
@@ -665,7 +665,7 @@ is unchanged.
 For repeatable timing, use the repository runner instead of assembling shell loops manually:
 
 ```bash
-.venv/bin/python tools/measure_l2_baseline.py \
+.venv/bin/python tools/study/measure_l2_baseline.py \
   --binary out/build/linux-debug/toy_quant \
   --trades data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
   --depth data/v2/crypto/deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv \
@@ -807,7 +807,7 @@ explain the counts, and both are model behaviour rather than defects:
 
 The queue model is the lever, and the same window shows its spread. This table is generated, not
 transcribed: the command below it runs every variant, prints the table, and wraps it in a block that
-`tools/check_docs.py` reads back, so these numbers fail a check when they stop being true.
+`tools/gate/check_docs.py` reads back, so these numbers fail a check when they stop being true.
 
 <!-- toyquant:check
 run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 passive_l2 1 conservative --fast-validation
@@ -932,7 +932,7 @@ old and new estimates agree.
 ### Calibrating the queue model against the feed
 
 The fraction of a displayed-size decrease that a queue model honours was the last part of the fill
-model resting on a number nobody had measured, so it was measured. `tools/calibrate_queue_model.py`
+model resting on a number nobody had measured, so it was measured. `tools/study/calibrate_queue_model.py`
 walks the incremental depth stream, tracks every price level, and attributes each fall in a level's
 displayed size to the trades printed at that price on that side between the level's previous update
 and that one. Whatever is left over is cancel or amendment.
@@ -1117,15 +1117,15 @@ without the instrument's tick size, so every tick-denominated figure was compute
 `1e-05` instead of `0.10`. Fixing that one argument moves `total_quote_distance_ticks` to `48,891`
 (3.6 ticks per quote, which is what the maker quotes) and the new per-unit figures from `-26654.6` and
 `51508.9` to `-2.67` and `5.15`. The pinned invariants did not move, because none of them is
-tick-denominated, and the full-file reference was re-recorded through `tools/verify_l2.sh ref`.
+tick-denominated, and the full-file reference was re-recorded through `tools/gate/verify_l2.sh ref`.
 
 **One change weighed and deliberately not made.** `conservative` is still the default queue model
 because every recorded table, the verifier's pinned values and the reference hash are stated under it.
 The measurement says `prorata` is the model the mechanism supports, and under it the default L2 run
 reports `submitted_orders=381 trade_reports=3 queue_ahead_consumed=56647 realized_pnl=-0.00678`
 instead of `406 / 1 / 55460 / -0.002`. Flipping it is four commands: the default in `AppConfig`, the
-two defaults in `MatchingEngine`, the pinned values in `tools/verify_l2.sh`, then
-`bash tools/verify_l2.sh ref`. It is recorded as a decision to take rather than taken halfway.
+two defaults in `MatchingEngine`, the pinned values in `tools/gate/verify_l2.sh`, then
+`bash tools/gate/verify_l2.sh ref`. It is recorded as a decision to take rather than taken halfway.
 
 ### What the fill count is made of
 
@@ -1679,12 +1679,12 @@ The measurement is cheap: the audit map holds open orders only, so sampling ever
 costs a handful of map lookups per event, on a stage that is 0.5% of the event already.
 
 **This changed the default summary, and the reference hash was re-recorded.** The five fields are printed
-unconditionally, so `tools/verify_l2.sh full` failed until the reference was refreshed. The re-record was
+unconditionally, so `tools/gate/verify_l2.sh full` failed until the reference was refreshed. The re-record was
 taken deliberately and justified by proving the difference was exactly those fields: stripping them from the
 new output and hashing the remainder reproduces the previous reference, `079a955a`, byte for byte over the
 1.5 GB stream, and the tier 1 invariants on both the L2 and the L1 paths are unchanged. The only new
 interaction with the engine is a `const` accessor, so no run can behave differently because of this. A reader
-holding an older cached reference should run `tools/verify_l2.sh ref` once; the file lives in `/tmp` and is
+holding an older cached reference should run `tools/gate/verify_l2.sh ref` once; the file lives in `/tmp` and is
 not tracked, which is why the change is recorded here rather than in the diff.
 
 ## Funding Rates as an Input
@@ -1696,7 +1696,7 @@ difference is the kind that shifts a day or a factor without failing.
 
 | Source | Archive | What its file day is |
 |---|---|---|
-| OKX `module=3` (`tools/fetch_funding_rates.py --source okx`) | one CSV per day for **every** swap on the venue | midnight **UTC+8**: the file named `2026-01-07` opens at `2026-01-06 16:00` UTC |
+| OKX `module=3` (`tools/fetch/fetch_funding_rates.py --source okx`) | one CSV per day for **every** swap on the venue | midnight **UTC+8**: the file named `2026-01-07` opens at `2026-01-06 16:00` UTC |
 | Binance Vision `fundingRate` | one CSV per symbol per **month**; there is no daily folder, unlike `premiumIndexKlines` | UTC, and each row declares its own interval (`8` hours for BTCUSDT) |
 
 Two runs over these files answer different questions and both are recorded, because the funding line reports
@@ -1790,7 +1790,7 @@ What it says, and it is not one thing:
   one, and the answer is that it has a number where the other line had none, and that the number is thin.
 
 The second run's fields are the first run's with the sign flipped. `data/README.md` records where the two funding
-files come from, one command each, and both blocks are re-derived by `tools/check_docs.py` on every gate run.
+files come from, one command each, and both blocks are re-derived by `tools/gate/check_docs.py` on every gate run.
 
 ## The Maker Fee Each Window Would Have Needed
 
@@ -1806,7 +1806,7 @@ run lost money before the venue charged anything, which no fee tier can fix. `ma
 a rate: `breakeven_maker_rate` is the maker fee at which the window would have been exactly flat, and a negative
 one means the venue would have had to pay a rebate instead.
 
-`tools/fee_sweep.sh` runs the sweep and prints the table with the block that re-derives every number. The three
+`tools/sweep/fee_sweep.sh` runs the sweep and prints the table with the block that re-derives every number. The three
 rates are the venue's own maker fee, zero, and a rebate half the size of the fee:
 
 | window | maker rate | fills | net USD | gross USD | closed USD | gross/fill USD | breakeven rate |
@@ -1927,7 +1927,7 @@ thirty is not a conclusion -- fails on all of them: the four windows here produc
 maker break-even gap quoted further down between the two Deribit perpetuals is worse, because it compares two
 single windows and reads a 6.9 bps difference out of them.
 
-So the number's own uncertainty is measured rather than asserted. `tools/pnl_interval.py` takes a series, resamples
+So the number's own uncertainty is measured rather than asserted. `tools/study/pnl_interval.py` takes a series, resamples
 the mean out of it, and prints the interval, the median, the range and a flag for the thirty-fill rule; its window
 mode replays the windows itself rather than reading a saved log, so the series cannot go stale. The series chosen
 here differs by the month and by nothing the measurement chose: the same configuration as the table above, one
@@ -1942,7 +1942,7 @@ here differs by the month and by nothing the measurement chose: the same configu
 | 2020-08-01 | 0.62 h | 26 | -0.44 bps |
 
 <!-- toyquant:check
-tool: python3 tools/pnl_interval.py --window btc-months
+tool: python3 tools/study/pnl_interval.py --window btc-months
 then: n=5 mean=-1.87368 median=-1.93129 ci95_lo=-2.84287 ci95_hi=-0.904496 spread=2.74983 includes_zero=0 sign_consistent=1 thin_sample=1
 -->
 
@@ -1981,11 +1981,11 @@ PnL column to the trade report is a change to the binary and is recorded as stil
 
 
 **The reference hash was re-recorded.** The `[PNL]` line is printed unconditionally and the `[Mode]` line now
-echoes the maker rate, so `tools/verify_l2.sh full` failed until the reference was refreshed. The re-record is
+echoes the maker rate, so `tools/gate/verify_l2.sh full` failed until the reference was refreshed. The re-record is
 justified by proving the change is exactly those two additions: stripping the `[PNL]` line and the
 `maker_fee_rate=` token from the new output reproduces the previous reference `f95d1c98` byte for byte over the
 1.5 GB stream. The new reference is `cfabcd88`, and a reader holding a cached one should run
-`tools/verify_l2.sh ref` once.
+`tools/gate/verify_l2.sh ref` once.
 
 ## The Decision Layer Refuses, and the Position Is Not the Profit
 
@@ -2081,7 +2081,7 @@ The last two sections end on the same sentence: on a perpetual the fee is 2.57 t
 so nothing about the quoting can matter until the instrument changes. Two markets where the fee is a *fraction*
 of a tick are reachable from a Hong Kong personal account, and both are now measured with the decision layer the
 perpetuals were measured with, on the same two hours of one session (2026-09-29 13:30 to 15:30 UTC, the US cash
-open), from Databento `mbp-10` downloads converted by `tools/fetch_databento.py` into the CSV pair the existing
+open), from Databento `mbp-10` downloads converted by `tools/fetch/fetch_databento.py` into the CSV pair the existing
 readers take. A micro E-mini S&P 500 contract pays about 0.62 USD of commission against a tick worth 1.25, and a
 US share pays 0.0035 USD against a tick of one cent.
 
@@ -2108,10 +2108,10 @@ run: l2_replay data/v2/equities/xnas_TSLA_trades_2026-09-29_1330_1530.csv.gz dat
 then: trade_reports=1894 trade_report_quantity=50753 fees_paid=177.635 captured_edge_per_unit_ticks=0.97942 markout_per_unit_ticks=0.34062 gross_pnl_usd=-1297.89 closed_pnl_usd=-1476.02 net_pnl_usd=-1475.53 net_per_fill_usd=-0.779053 breakeven_maker_rate=-7.22386e-05 max_abs_inventory=1098
 -->
 
-The whole table is re-derived by `tools/f4_windows.sh`, which needs the four converted file pairs and says so
+The whole table is re-derived by `tools/sweep/f4_windows.sh`, which needs the four converted file pairs and says so
 rather than printing numbers without them. The pinned rows are the four claims the per-edit gate keeps true, one
 per market: SPY, which put the fee question in play; AAPL and TSLA, whose capture is the first to cover the fee
-at every queue model; and the micro E-mini, which is the row `tools/viability.py` reads the screen's fee gate for.
+at every queue model; and the micro E-mini, which is the row `tools/study/viability.py` reads the screen's fee gate for.
 Each costs about three seconds, which is affordable inside the loop that runs on every edit; the other eighteen
 rows cost about a minute together, which is not, so the script is their re-derivation instead.
 
@@ -2141,7 +2141,7 @@ re-derives.
 ### The Latency That Window Would Have Needed
 
 The row above was measured with a synchronous engine, which is the one assumption a personal account cannot
-make: the strategy decides and the exchange has the order in the same instant. `tools/latency_sweep.sh` varies
+make: the strategy decides and the exchange has the order in the same instant. `tools/sweep/latency_sweep.sh` varies
 the two latencies the engine models, order and cancel, on the same window and the same policy, and then on a
 slower policy as a control, because a quote that lives longer ought to be less exposed to delay if delay is the
 problem.
@@ -2208,7 +2208,7 @@ quoting line is written down as a research result rather than as a plan.
 
 ## The Screen, Run: the First Two Symbols That Pass It
 
-That screen has now been run, and this is the result. The tool is `tools/screen_spread.py`, the rule is the one
+That screen has now been run, and this is the result. The tool is `tools/study/screen_spread.py`, the rule is the one
 pre-registered in the [Roadmap](ROADMAP.md) -- the half spread where trades print, at least three times the 0.35
 ticks a share pays per side -- the activity floor of 2.8 trade prints a second was written down before the run
 rather than after it, and the cost was **0.52 USD** of the historical credit for thirty symbols of top of book over
@@ -2228,7 +2228,7 @@ the same two hours:
 | USO | 3.000 | 2.000 | 2.86 | 0.504 | fail | fail |
 | the other twenty, among them GME, AMC, SOFI, BOIL, UNG and the rest of the leveraged funds | 1.000 | 1.000 | 1.43 | under 1.4 | fail | fail |
 
-The lines that produce these are `tools/screen_spread.py --cost --symbols ...` before any spend and then the same
+The lines that produce these are `tools/study/screen_spread.py --cost --symbols ...` before any spend and then the same
 run with `--download --max-cost-usd=... --min-trades-per-second=2.8`, which prints one `[SCREEN] symbol=...` line
 per name with every field above in it; the downloaded files are cached under `data/v2/screen/`, so
 `--input data/v2/screen/AAPL_2026-09-29T1330_2026-09-29T1530.csv` re-derives a row without buying anything again.
@@ -2468,7 +2468,7 @@ priced exactly as every recorded row was -- the baseline is unchanged to the las
 trade confirmation is what should replace the rates used here.
 
 **The window can be cut into eight for nothing, and the answer it gives is the one gate 2 was going to buy.**
-`tools/analyze_l2_windows.py` cannot cut these files: it re-runs the engine per window and needs a book baseline at
+`tools/study/analyze_l2_windows.py` cannot cut these files: it re-runs the engine per window and needs a book baseline at
 each cut, and a converted Databento file carries one snapshot, in its first row, so a slice would hand the engine a
 book built from deltas with no state to apply them to. The engine already writes every fill it made, with its
 timestamp, side, price, quantity and fee, so the same question comes out of one run of the whole window instead:
@@ -2564,7 +2564,7 @@ whose quoting covers their whole schedule**, which is the claim the rule makes; 
 value, and the windows needed for that are the ones the third fact counts.
 
 **Both controls now exist, and six windows of one day measure what they cost rather than what they are worth.**
-`tools/limit_sweep.sh` re-runs the six US equity windows on disk at the pinned size, four kill-switch thresholds
+`tools/sweep/limit_sweep.sh` re-runs the six US equity windows on disk at the pinned size, four kill-switch thresholds
 against off and three exposure caps against off:
 
 | symbol | off | 250 | 500 | 1000 | 2000 | when it tripped |
@@ -2739,7 +2739,7 @@ Two questions were left open by the equities rows above, and both are answered f
 on disk.
 
 **The first is which model the tape supports.** `conservative` lets only a trade move a queue; `prorata`
-lets a level's whole decrease move it. The attribution is the one `tools/calibrate_queue_model.py` already
+lets a level's whole decrease move it. The attribution is the one `tools/study/calibrate_queue_model.py` already
 makes for the perpetuals -- every level decrease split into the part the trades explain and the part they do
 not -- run on the same two hours of AAPL and of AMD:
 
@@ -2872,9 +2872,9 @@ where the floor stops binding at a complete fill -- do cut the fee to 0.881 and 
 than they save, so the net gets worse in both. **The fee is not the term a quoter should be optimising**, and this
 grid is the fourth table in this document that says so from a different direction.
 
-Reproduction: `tools/equity_schedule_sweep.sh` prints every table in this section from the two files on disk,
+Reproduction: `tools/sweep/equity_schedule_sweep.sh` prints every table in this section from the two files on disk,
 including the three volume tiers and the tier by clip grid, and the attribution is
-`tools/calibrate_queue_model.py` on the same window -- the tool the perpetuals' queue model was calibrated with,
+`tools/study/calibrate_queue_model.py` on the same window -- the tool the perpetuals' queue model was calibrated with,
 which is what makes the two venues' numbers comparable at all.
 
 
@@ -2882,7 +2882,7 @@ which is what makes the two venues' numbers comparable at all.
 ## The non-market-making signal: what 27 parameter sets say
 
 `trend_l2` is not a market maker, so the questions are different: not where to quote but how much to hold, and
-whether the signal that sets the target survives the cost of taking liquidity. `tools/trend_sweep.sh` replays the
+whether the signal that sets the target survives the cost of taking liquidity. `tools/sweep/trend_sweep.sh` replays the
 same 200k-row 1 April slice for a grid of `--trend-params` with `--order-size=10 --inventory-limit=100`; every
 run takes liquidity, pays the venue's fees and reads the same book. The CSV is the output; this is what the first
 grid said.
@@ -2906,7 +2906,7 @@ window, not a parameter to freeze. The next step is a signal with a forecast, or
 cross can pay, not another sweep of the same three bands.
 
 ```bash
-FAST_SLOW="5:30 10:60 20:120" ENTRIES="1 2 3" STOPS="4 6 8" bash tools/trend_sweep.sh
+FAST_SLOW="5:30 10:60 20:120" ENTRIES="1 2 3" STOPS="4 6 8" bash tools/sweep/trend_sweep.sh
 ```
 
 ## The non-market-making signal at the scale it trades
@@ -3324,7 +3324,7 @@ mid-stream, so a window has to start at a snapshot rather than at a line number.
 
 ## The pre-trade controls: what the backoff changed
 
-`tools/risk_check.sh` runs four 200k-row replays: no risk flags, a permissive setting, a 1 bp fat-finger band
+`tools/sweep/risk_check.sh` runs four 200k-row replays: no risk flags, a permissive setting, a 1 bp fat-finger band
 and a bucket at 0.01 orders a second. Each line below is what the run reported about itself; every one ends
 with `[RECON] status=ok`.
 
@@ -3344,7 +3344,7 @@ changes nothing. The rate bucket, the exposure cap and the position gate also le
 when the resulting position is still outside the limit, so a position can be worked down rather than trapped.
 
 ```bash
-bash tools/risk_check.sh
+bash tools/sweep/risk_check.sh
 ```
 
 

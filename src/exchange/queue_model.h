@@ -4,7 +4,7 @@
 // the difference between the models was visible only to someone reading that method: `QueueModel` is named
 // on the command line, described in `docs/ARCHITECTURE.md`, and here is what the names do.
 //
-// Measured on this feed by tools/calibrate_queue_model.py: 99.96% of the displayed size decrease at a level
+// Measured on this feed by tools/study/calibrate_queue_model.py: 99.96% of the displayed size decrease at a level
 // is cancel or amendment rather than trade, and the book churns about two thousand four hundred times the
 // volume that actually trades. The queue ahead of a resting order is therefore removed mostly by
 // cancellations, and the only assumption about where those cancels sit that the data supports is that they

@@ -10,7 +10,7 @@ account on Interactive Brokers Pro can legitimately do about the fee** that clos
 provenance.** `[read]` means the page was fetched during the session and the claim is in it.
 `[reported]` means it is widely published but the primary source was behind a paywall or a block, so it
 is a lead rather than a fact. Numbers inside the repository are the exception: they are re-derived by
-`bash tools/verify_l2.sh fast` and need no mark.
+`bash tools/gate/verify_l2.sh fast` and need no mark.
 
 ---
 

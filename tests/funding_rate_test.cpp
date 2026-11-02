@@ -214,7 +214,7 @@ int main()
 
     // The real archives, when this checkout has them. data/v2 is not tracked, so a fresh clone skips this
     // rather than failing: the shape is what the test asserts, and the arithmetic over these files is quoted
-    // in a recorded block that tools/check_docs.py re-derives.
+    // in a recorded block that tools/gate/check_docs.py re-derives.
     {
         const std::filesystem::path root(PROJECT_ROOT_DIR);
         const auto month = root / "data/v2/funding/BTCUSDT-fundingRate-2024-03.csv";

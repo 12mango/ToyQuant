@@ -25,7 +25,7 @@ ctest --preset linux-debug
 ```
 
 The same code also builds and tests under AddressSanitizer and UndefinedBehaviorSanitizer, which is the
-gate's tier 3 (`bash tools/verify_l2.sh asan`):
+gate's tier 3 (`bash tools/gate/verify_l2.sh asan`):
 
 ```bash
 cmake --preset linux-asan
@@ -44,9 +44,9 @@ rather than the full grid. Run them in this order because the first command also
 slice that the other two read.
 
 ```bash
-bash tools/verify_l2.sh fast
-bash tools/risk_check.sh
-FAST_SLOW="5:30" ENTRIES="3" STOPS="4" bash tools/trend_sweep.sh
+bash tools/gate/verify_l2.sh fast
+bash tools/sweep/risk_check.sh
+FAST_SLOW="5:30" ENTRIES="3" STOPS="4" bash tools/sweep/trend_sweep.sh
 ```
 
 The gate prints one line per tier; the expected result is:
@@ -194,16 +194,16 @@ strategy names are:
 | `trend_l2` | Non-market-making line: an EWMA cross sets a target position, clips at the touch build it, and a stop, a time stop or the exit band closes it |
 | `execution_l2` | Execution line: works one parent order from `--parent` with `--algo=market\|twap:N\|pov:X`, takes no view on direction, and reports `[EXECUTION_ALGO]` |
 
-`trend_l2` uses `--inventory-limit` as the size of a full signal and `--order-size` as the clip it is built in. The derived default for both is the instrument's own minimum, so a run that wants to watch a position build should name both, for example `--order-size=10 --inventory-limit=100`. `--trend-params` sets the signal itself; `bash tools/trend_sweep.sh` replays a grid of them on the 200k slice and writes the fills, PnL, fees and risk pauses to a CSV. A refused order is retried with an exponential backoff (60 views, doubling to 3,840), and a reducing order bypasses the rate bucket, the exposure cap and the position gate. A pre-trade refusal uses `on_order_rejected`; a venue or broker refusal at submission arrives as a terminal `Rejected` report with a `reject_reason`, which clears the open set and backs off the same way.
+`trend_l2` uses `--inventory-limit` as the size of a full signal and `--order-size` as the clip it is built in. The derived default for both is the instrument's own minimum, so a run that wants to watch a position build should name both, for example `--order-size=10 --inventory-limit=100`. `--trend-params` sets the signal itself; `bash tools/sweep/trend_sweep.sh` replays a grid of them on the 200k slice and writes the fills, PnL, fees and risk pauses to a CSV. A refused order is retried with an exponential backoff (60 views, doubling to 3,840), and a reducing order bypasses the rate bucket, the exposure cap and the position gate. A pre-trade refusal uses `on_order_rejected`; a venue or broker refusal at submission arrives as a terminal `Rejected` report with a `reject_reason`, which clears the open set and backs off the same way.
 
-The pre-trade controls are measured rather than asserted: `bash tools/risk_check.sh` runs four 200k-row replays, requires the no-flag run to print no `[RISK]` line, requires a permissive setting to leave `[EXECUTION]` exactly as it was, and requires the 1 bp band and a very low rate to refuse orders while every run still reconciles.
+The pre-trade controls are measured rather than asserted: `bash tools/sweep/risk_check.sh` runs four 200k-row replays, requires the no-flag run to print no `[RISK]` line, requires a permissive setting to leave `[EXECUTION]` exactly as it was, and requires the 1 bp band and a very low rate to refuse orders while every run still reconciles.
 
 Run the standard benchmark with a fixed window and `depth_every=1`:
 
 Use the same benchmark configuration for every candidate strategy:
 
 ```bash
-python3 tools/benchmark_l2_strategies.py \
+python3 tools/study/benchmark_l2_strategies.py \
   --binary build/toy_quant \
   --trades data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
   --depth data/v2/crypto/deribit_book_snapshot_25_2020-04-01_BTC-PERPETUAL.csv \
@@ -280,7 +280,7 @@ binary replays:
 ```
 
 The second command is the first one with a different input, because the recorder's claim is that the
-events came back unchanged, and `bash tools/verify_l2.sh fast` asserts exactly that: it records the
+events came back unchanged, and `bash tools/gate/verify_l2.sh fast` asserts exactly that: it records the
 200k slice, replays the recording, and requires every reported number to match. Three limits are
 worth knowing before pointing it at a new feed. A price and a quantity are written so they read back
 as the values that arrived, but the readers' own running ids for a snapshot and a batch are not,
@@ -343,7 +343,7 @@ on a paced replay it also shows up in the `[LIVE]` line as a feed that fell behi
 which is what having both lines is for. Two combinations are refused rather than approximated:
 `--feed-thread` with `--profile-stages`, because the profiler accumulates on whichever thread calls it
 and this path calls it from two, and `--feed-thread` on the L1 replay, whose second stream is a BBO
-quote. The threaded path reports the same numbers as the direct one — `bash tools/verify_l2.sh fast`
+quote. The threaded path reports the same numbers as the direct one — `bash tools/gate/verify_l2.sh fast`
 asserts exactly that — because the ring is FIFO and the strategy sees the same sequence either way.
 
 ### The broker and the reconciliation
@@ -352,7 +352,7 @@ asserts exactly that — because the ring is FIFO and the strategy sees the same
 replay does not: it refuses orders for reasons a strategy cannot see in the price, fills in pieces, loses an
 execution report, and goes away for a while. It decorates the engine rather than replacing it, so the
 strategy, the book and the accounting do not know it is there, and with no faults configured it forwards
-every call and every report — `bash tools/verify_l2.sh fast` asserts that a brokered run reports exactly the
+every call and every report — `bash tools/gate/verify_l2.sh fast` asserts that a brokered run reports exactly the
 numbers of the same run without it — and then prints two lines of its own:
 
 ```bash
@@ -532,7 +532,7 @@ A candidate must remain competitive across at least two moderate windows; a one-
 not sufficient. Use `analyze_l2_windows.py` for repeated 15-minute windows:
 
 ```bash
-python3 tools/analyze_l2_windows.py \
+python3 tools/study/analyze_l2_windows.py \
   --binary build/toy_quant \
   --trades data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
   --depth data/v2/crypto/deribit_book_snapshot_25_2020-04-01_BTC-PERPETUAL.csv \
@@ -548,7 +548,7 @@ The Deribit benchmark uses `0.02%` maker and `0.05%` taker fee assumptions. Resu
 educational replay measurements, not profitability claims. L2 replay uses a fixed one-market-event
 cancellation delay; it is not a millisecond latency model. Queue model defaults to `prorata`, the model the measured cancel share supports;
 `prorata` and `optimistic` are sensitivity analyses only, with `prorata` chosen because
-`tools/calibrate_queue_model.py` measures 99.96% of the size removed from a book level as cancellation
+`tools/study/calibrate_queue_model.py` measures 99.96% of the size removed from a book level as cancellation
 rather than trade. Pass `--queue-model` to `analyze_l2_windows.py` when comparing these assumptions.
 
 The replay also reports `max_abs_exposure_usd` next to `starting_cash_usd`, the cash the run began with.
@@ -636,7 +636,7 @@ arrives as a file instead of in the event stream:
 Two free formats are recognised by their header: an OKX daily funding archive
 (`instrument_name,funding_rate,funding_time`, every swap on the venue in one file) and a Binance Vision
 monthly `fundingRate` archive (`calc_time,funding_interval_hours,last_funding_rate`, one symbol).
-`tools/fetch_funding_rates.py` fetches either for one instrument and `data/README.md` records what the two
+`tools/fetch/fetch_funding_rates.py` fetches either for one instrument and `data/README.md` records what the two
 files this checkout holds are.
 
 The rate in both is the rate longs pay. The pipeline applies each settlement at the first event at or after
@@ -795,11 +795,11 @@ trade while the depth ring filled. `--record=PREFIX` then writes the live sessio
 `PREFIX_trades.csv` and `PREFIX_depth.csv`, and streaming those two files over the feed again reproduces them
 byte for byte.
 
-`tools/websocket_sender.py` is a local stand-in for a venue: it is a WebSocket server that streams a trade file
+`tools/live/websocket_sender.py` is a local stand-in for a venue: it is a WebSocket server that streams a trade file
 and a depth file, interleaved by their own timestamps, so the whole path can be exercised on a desk:
 
 ```bash
-python3 tools/websocket_sender.py --port 8765 \
+python3 tools/live/websocket_sender.py --port 8765 \
   --trades out/lat/live_trades.csv --depth out/lat/live_depth.csv &
 ./out/build/linux-debug/toy_quant ws 127.0.0.1:8765 BTC-PERPETUAL active_l2 1 prorata --fast-validation
 ```
@@ -819,7 +819,7 @@ so `--live-pacing` is refused there, and every other `l2_replay` flag (`--record
 `--ring-capacity`, `--ws-ring-capacity`, `--idle-wait-us`, `--fast-validation`, `--profile-stages`,
 `--paper-broker` and its faults, and the strategy and risk flags) is accepted unchanged.
 
-`bash tools/soak_push.sh` is the acceptance run for this mode: it streams for `DURATION` seconds with a ping
+`bash tools/live/soak_push.sh` is the acceptance run for this mode: it streams for `DURATION` seconds with a ping
 every `PING` seconds and a forced reconnect every `DROP` seconds, then replays the engine's own recording and
 fails if a sequence gap, a parse error, a ring wait, a reconciliation break or a moved field appears.
 
@@ -883,7 +883,7 @@ it; `net_pnl_usd` adds that position marked at the last price; the `gross_` pair
 a negative gross PnL says the run lost money before the venue charged anything. `maker_notional_usd` is what the
 maker fees were charged on, and `breakeven_maker_rate` is the maker rate at which this window's total PnL would
 have been zero: **a negative answer means no fee at all would still have lost money**, and that size of rebate
-would have been needed instead. `tools/fee_sweep.sh` runs the sweep over the windows the documents quote and
+would have been needed instead. `tools/sweep/fee_sweep.sh` runs the sweep over the windows the documents quote and
 prints the table with the block that re-derives it.
 
 ## Scenarios
@@ -935,7 +935,7 @@ Set up the optional plotting environment and generate the report with:
 ```bash
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python tools/plot_report.py \
+.venv/bin/python tools/study/plot_report.py \
   --ticks data/scenarios/sample_ticks.csv \
   --orders data/runtime/orders.csv \
   --trades data/runtime/trades.csv \
@@ -973,26 +973,26 @@ The terminal shows tick and summary information. Backtest reports are written un
 ## How Sure a Number Is
 
 Every number this project quotes that is not arithmetic is a mean over a few events, and a mean without its
-interval is a habit. `tools/pnl_interval.py` prints the interval instead:
+interval is a habit. `tools/study/pnl_interval.py` prints the interval instead:
 
 ```bash
 # a series on the command line, in whatever unit you name
-python3 tools/pnl_interval.py --values 1.2 -3.4 0.5 2.0 --unit=bps
+python3 tools/study/pnl_interval.py --values 1.2 -3.4 0.5 2.0 --unit=bps
 
 # one field out of runs you have already saved
-python3 tools/pnl_interval.py --field breakeven_maker_rate data/logs/*.log --scale 1e4 --unit=bps
+python3 tools/study/pnl_interval.py --field breakeven_maker_rate data/logs/*.log --scale 1e4 --unit=bps
 
 # one column of a CSV, which is how a per-fill series would be read if the run wrote one
-python3 tools/pnl_interval.py --column gross_closed_per_fill_usd data/runtime/trades.csv
+python3 tools/study/pnl_interval.py --column gross_closed_per_fill_usd data/runtime/trades.csv
 
 # the windows on disk, replayed under one configuration rather than read from a log
-python3 tools/pnl_interval.py --window btc-months
-python3 tools/pnl_interval.py --window btc-eth      # the same-day pairs, differenced
+python3 tools/study/pnl_interval.py --window btc-months
+python3 tools/study/pnl_interval.py --window btc-eth      # the same-day pairs, differenced
 ```
 
 The line it prints is `[INTERVAL] n=… mean=… median=… sd=… se=… ci95_lo=… ci95_hi=… spread=… includes_zero=…
 sign_consistent=… thin_sample=… unit=…`, so it can be quoted in a marked block and re-derived by
-`tools/check_docs.py`; the sentence under it says the same thing in words.
+`tools/gate/check_docs.py`; the sentence under it says the same thing in words.
 
 Two habits are worth taking from the tool rather than reading past:
 

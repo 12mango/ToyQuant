@@ -305,7 +305,7 @@ int main()
         assert(!reader->next(event));
     }
 
-    // Cross-check against the independent recomputation in tools/check_okx_book.py: the first snapshot of the
+    // Cross-check against the independent recomputation in tools/study/check_okx_book.py: the first snapshot of the
     // real archive slice has to be the same top of book that script prints, which is 93712.9 by 93713.0. The
     // slice is not tracked, so a fresh clone reports the skip rather than failing on a missing file.
     {

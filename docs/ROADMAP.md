@@ -158,8 +158,8 @@ claim can be honestly produced and still be under-powered.
 
 | Gap | Why it matters | Verdict |
 |---|---|---|
-| **No interval on any number** | Almost every closed line rests on a point estimate over few fills. The rule "fill counts below thirty are not conclusions" was applied by hand, one row at a time; nothing computed a standard error and no line printed one, and the maker break-even gap between BTC and ETH was quoted as −5.65 against +1.26 bps from one window each | **done**: `tools/pnl_interval.py` (a bootstrap over a series, a window mode that replays the windows itself, a self-test in the tier-1 tool block) and a five-month series in `docs/PERFORMANCE_HISTORY.md`, where the mean is −1.87 bps with an interval of −2.84 to −0.90 and the five draws span 2.75 -- so the month moves one instrument by 40% of the 6.9 bps gap. Still open, and recorded as such: a **per-fill** series does not exist on disk (the trade report carries price, quantity, side, fee and role), so adding a PnL column to it is the remaining half |
-| **The strongest gate tier never runs** | `tools/verify_l2.sh full` compares a 1.5 GB replay's output against a stored hash, and the reference lived in `/tmp`, so in a clean checkout it printed `SKIP (no reference yet)`. The Design Review's claim that tier 2 "rules out every explanation except cost" was therefore true of the script and not of the tree. **Fixed in this session:** the hash drops the mode line, which carries absolute paths, and the reference is kept at `tests/fixtures/l2_full_ref.sha256`, so the tier runs and passes on a checkout | **done** |
+| **No interval on any number** | Almost every closed line rests on a point estimate over few fills. The rule "fill counts below thirty are not conclusions" was applied by hand, one row at a time; nothing computed a standard error and no line printed one, and the maker break-even gap between BTC and ETH was quoted as −5.65 against +1.26 bps from one window each | **done**: `tools/study/pnl_interval.py` (a bootstrap over a series, a window mode that replays the windows itself, a self-test in the tier-1 tool block) and a five-month series in `docs/PERFORMANCE_HISTORY.md`, where the mean is −1.87 bps with an interval of −2.84 to −0.90 and the five draws span 2.75 -- so the month moves one instrument by 40% of the 6.9 bps gap. Still open, and recorded as such: a **per-fill** series does not exist on disk (the trade report carries price, quantity, side, fee and role), so adding a PnL column to it is the remaining half |
+| **The strongest gate tier never runs** | `tools/gate/verify_l2.sh full` compares a 1.5 GB replay's output against a stored hash, and the reference lived in `/tmp`, so in a clean checkout it printed `SKIP (no reference yet)`. The Design Review's claim that tier 2 "rules out every explanation except cost" was therefore true of the script and not of the tree. **Fixed in this session:** the hash drops the mode line, which carries absolute paths, and the reference is kept at `tests/fixtures/l2_full_ref.sha256`, so the tier runs and passes on a checkout | **done** |
 | **No calendar and no contract lifecycle** | The engine has no opening or closing auction, no halt, no half day, and no expiry or roll: a future position never expires and a perp's funding is only applied when a file is named. Everything measured here is a continuous event stream, which is exactly what a crypto perpetual is and is not what an equity or a future is | **record only**: the corpus is crypto and the equity rows are measured from daily bars, so closing this would be a different data line rather than an extension |
 | **"Portfolio" means several books sharing a wallet** | There is no covariance, no factor model, no beta, no cross-sectional ranking and no margin: `[EXPOSURE]` sums signed notional in USD and that is the whole risk model. Two books are two independent books, not a hedged portfolio with an optimum | **record only**: a risk model needs a return history the free days do not provide, and any number it produced would be a model of a model |
 | **The kill switch stops quoting; it does not flatten** | A run at its loss limit stopped sending orders and kept whatever it was holding, so the control that exists to cap loss left the exposure open until the input ended. Two things had to be fixed and only one was obvious: the switch refused *every* order, including the one that would take the position down, and the account was never marked during a run, so `unrealised_pnl` stayed at zero and the loss it reads sat inside the position instead of in its input. **Fixed in this session:** the switch exits the position (narrower than `is_reducing`, because a flip is not an exit), the account is marked each cycle while it is armed, and the halt is priced — 5.39 bps on the measured window, with `[EXPOSURE] symbols=0` afterwards | **done** |
@@ -174,9 +174,9 @@ claim can be honestly produced and still be under-powered.
 
 Stop when the P1 items that buy a new technical point are done. The current iteration is complete when:
 
-1. `ctest` is 30/30 and `tools/verify_l2.sh fast` is tier 0 and tier 1 OK;
+1. `ctest` is 30/30 and `tools/gate/verify_l2.sh fast` is tier 0 and tier 1 OK;
 2. one L2 event, one risk refusal/backoff and one order-state path can be traced end to end;
-3. one short replay and `tools/risk_check.sh` can be shown if asked, without claiming a profitable strategy;
+3. one short replay and `tools/sweep/risk_check.sh` can be shown if asked, without claiming a profitable strategy;
 4. this plan and the five core documents still describe the binary;
 5. no known bug on the demo path is hidden.
 
@@ -233,9 +233,10 @@ table or in the item that named it; none is scheduled, and lifting one takes a n
 | 2026-11-02 | The end of the session, priced: `--close-out` flattens what the run is holding at the touch and prints `[WIND-DOWN]`. Closing a carried BTC position costs **5.39 bps** (5.00 taker + 0.39 half tick) — the same floor the crossing measurements found, arrived at from the other end of the trade — which is the amount every `net_pnl_usd` that carries a position was optimistic by. A close the touch cannot fill reports `no_liquidity=1` with the position as `residual` instead of a flat account. Also decided: the simulator's venue does not persist its own fills across a client restart, because that would only prove the simulator is self-consistent; a fill a client misses is already reachable in one run (`--broker-drop-every`) | `6a6893a` |
 | 2026-11-02 | Recorded the gaps that were on **no** list — no interval on any number, no calendar or contract lifecycle, "portfolio" with no risk model, a kill switch that stops quoting but does not flatten, a venue that is a process rather than a service, no adversarial input for the readers, no latency budget, no machine-readable provenance — each with a verdict, because an unrecorded gap is rediscovered as a feature request. One of them was then closed: tier 2 compared against a reference in `/tmp`, so it never ran on a checkout; the hash now drops the path-dependent mode line and the reference lives in `tests/fixtures/` | `445a4cc` |
 | 2026-11-02 | The halt path completed. The kill switch used to refuse every order — including the one that would close the position — and the account was never marked during a run, so its `realised + unrealised` reading had the loss sitting in the position rather than in the PnL. It now exits only (a flip is not an exit, which is what its magnitude-based neighbour would have allowed), marks the book each cycle while it is armed, closes at the touch when it latches, and prices that exit: 5.39 bps on the 200k window, with `[EXPOSURE] symbols=0` afterwards where it used to leave a leg open. A limit the run never reaches changes nothing, so every recorded number stands | `355b215` |
-| 2026-11-02 | Every number this project quotes is a mean over a handful of events, and the "below thirty fills is not a conclusion" rule had only ever been applied by hand. `tools/pnl_interval.py` now resamples the mean and prints the interval, the median, the range and the thin-sample flag, with its own hand-checked self-test in the gate. Applied to one snapshot slice a month for five months, the maker break-even rate moves from −3.19 to −0.44 bps: the interval around the mean is −2.84 to −0.90, narrower than the 2.75 bps the five draws span, which is the difference between "this mean is pinned" and "this population is one thing". The paired same-day difference is negative on both windows available, so the BTC/ETH gap keeps its sign and loses its size | this commit |
+| 2026-11-02 | Every number this project quotes is a mean over a handful of events, and the "below thirty fills is not a conclusion" rule had only ever been applied by hand. `tools/study/pnl_interval.py` now resamples the mean and prints the interval, the median, the range and the thin-sample flag, with its own hand-checked self-test in the gate. Applied to one snapshot slice a month for five months, the maker break-even rate moves from −3.19 to −0.44 bps: the interval around the mean is −2.84 to −0.90, narrower than the 2.75 bps the five draws span, which is the difference between "this mean is pinned" and "this population is one thing". The paired same-day difference is negative on both windows available, so the BTC/ETH gap keeps its sign and loses its size | this commit |
 | 2026-11-02 | The L2 path's data-quality accounting was inert: the validator's `stale_trades`/`dislocated_trades` need a best bid and offer, and the three depth readers produce none, so on the path every recorded number comes from those checks never fired and `[L2 DATA]` did not print them either. The prints are now scored against the book's own midpoint in `Pipeline` (correct on the threaded path too, where validation runs on another thread), split into `stale_trades` -- no midpoint, or one more than a second old -- and `dislocated_trades` -- a fresh midpoint the print was more than five basis points from. Measured: 117,889 and 9 on the 200k window, 0 and 554 on the full day, both printed only when non-zero. The tier-2 reference moved by exactly one token and the re-record is justified by stripping it (`270d8085` → `d66e88e0`) | this commit |
-| 2026-11-02 | A review of the recent code found three things worth changing and two worth recording. Changed: the OKX depth reader's levels and the live feed's prices went through `parse_double`, so a `nan` level price reached the ladder on the two paths the CSV families had already been hardened against; the OKX depth errors now carry the line number as well. Recorded: the L1 path drops a print far from the BBO while the L2 path counts it, and the recorded windows mix quarter-hour depth with day-long prints -- both in the gaps table, because either fix moves recorded numbers | this commit |
+| 2026-11-02 | The tools directory was one flat list of forty-eight files, and nothing in it said which tool answered which question. It is now seven directories by kind -- `gate/`, `sweep/`, `fetch/`, `study/`, `live/`, `bench/`, `legacy/` -- with `tools/README.md` as the map, and every path in the documents, the source comments, the gate and the CI workflow moved with it. Two files became one entry point (`slice.py`, whose `window` and `snapshot` subcommands are the two shapes a slice takes), the marked-block emission moved into `lib.sh` so four sweeps no longer each spell the marker, and one file was deleted: `lf_windows.sh`, named by nothing and asking the question `equity_schedule_sweep.sh` already asks. The stale `site/` build of the documents went too | this commit |
+| 2026-11-02 | A review of the recent code found three things worth changing and two worth recording. Changed: the OKX depth reader's levels and the live feed's prices went through `parse_double`, so a `nan` level price reached the ladder on the two paths the CSV families had already been hardened against; the OKX depth errors now carry the line number as well. Recorded: the L1 path drops a print far from the BBO while the L2 path counts it, and the recorded windows mix quarter-hour depth with day-long prints -- both in the gaps table, because either fix moves recorded numbers | `7fb6133` |
 | 2026-11-02 | The readers were asked what they do with input nobody promised them, in a test rather than in a review. They already refused every hostile row — truncated, `nan`, negative quantity, wrong-case side — which was better than the test suite knew, and four things were still missing: no message said *which* row, a `nan` price was caught by the validator instead of the reader that could locate it, a batch that left the book crossed was skipped and not counted, and an empty depth file produced a formatted run of zeros with exit code 0. All four are closed; the row numbers come from `LineReader::lines_read()` and the count rides on `[L2 DATA]` only when it is non-zero, so no recorded line moved | `7c62be3` |
 | 2026-10-28 | Order state machine, reject/cancel reasons, risk pipeline, non-market-making line and measurements | `9a691be` … `3b0a180` |
 
@@ -256,7 +257,7 @@ the current plan wins.
 |---|---|---|---|
 | **0 — packaging** | one branch, the `v1.0-demo` tag, the documents in the published navigation, a code CI | a reader sees a maintained repository with a history rather than two unfinished ones | done |
 | **1 — evidence** | the headline conclusions re-run on a second day, which the repository already holds, and the queue-model bounds experiment recorded | closes the two questions the documents could not answer: does it generalize, and how much does the queue model matter. Both are now recorded, and the second day's numbers are behind a marked block in the gate | done |
-| **2 — the live paper milestone** | a websocket book feed, a paper-trading mode reusing the book and the matching engine, and a recorder that writes the live feed in the replay format | the strongest statement available here: one strategy drives a replay and a live session, and a live session becomes replayable | done: the `ws` mode is the L2 replay path with its two readers moved onto a socket, so the same book, engine, recorder and paper broker run unchanged; the feed speaks RFC 6455 and reads the replay CSV shapes, and a local `tools/websocket_sender.py` closes the loop at the desk — a recording streamed back over the feed reproduces itself byte for byte |
+| **2 — the live paper milestone** | a websocket book feed, a paper-trading mode reusing the book and the matching engine, and a recorder that writes the live feed in the replay format | the strongest statement available here: one strategy drives a replay and a live session, and a live session becomes replayable | done: the `ws` mode is the L2 replay path with its two readers moved onto a socket, so the same book, engine, recorder and paper broker run unchanged; the feed speaks RFC 6455 and reads the replay CSV shapes, and a local `tools/live/websocket_sender.py` closes the loop at the desk — a recording streamed back over the feed reproduces itself byte for byte |
 | **2b — from a positive window to a running system** | the plan below, derived backwards from what a live path can be: the deployment filter, the instrument arithmetic, the seven things that must be true before any plumbing, and only then live data, a recorder, an order gateway, risk limits and reconciliation, then minimum size against a real account | a system that is measured rather than asserted, with a stated pass and fail condition at every step | see the stage table below |
 | **2a — a second venue** | a reader for the OKX historical format, added to `src/market/` beside the existing ones, plus a reconciliation check that the rebuilt book matches an independent recomputation of the top of book | consecutive-day free data with discrete levels, which is what a multi-day test needs; the existing pinned lineage is untouched because a new venue is an additional workload | done: the readers exist, `market_data_format_of` routes a depth file to the right one, and a paired replay of one hour of the 2026-01-07 archive completes with the summed order book, the exchange's fee schedule and the contract size of 0.01 BTC |
 | **3 — system only** | persistence and recovery, the pre-trade gate enabled by default, with a check that the limit exceeds one order, a real venue adapter at small size, multi-instrument accounting | none of it is checkable by a reader, so it waits until the demo is finished | later |
@@ -399,7 +400,7 @@ points** over six and a half years, against which the short straddle is a coin f
 five do not. That is what a risk premium priced at fair value looks like: the seller is compensated in most months and
 not compensated on average, and the compensation he does take is smaller than the noise he carries.
 
-The collection is `tools/fetch_deribit_options.py`, which is where this measurement stops being a scratch script: the
+The collection is `tools/fetch/fetch_deribit_options.py`, which is where this measurement stops being a scratch script: the
 ninety-two rows, their strikes and their inverted volatilities are re-derived by running it, and its own self-test
 checks the at-the-money identity against the pricing function rather than trusting the one that produced the first
 version.
@@ -479,10 +480,10 @@ funding, which is the settlement the hold actually spans, moved the two-sigma me
 held-out mean from -1.06 to **-11.63**. The verdict did not change; the rule looked better than it was for exactly as
 long as it was paying itself.
 
-**The rule and its gates live in `tools/funding_extreme_test.py`**, not in this prose, so the table above is that
+**The rule and its gates live in `tools/study/funding_extreme_test.py`**, not in this prose, so the table above is that
 tool's output rather than a paragraph that agreed with it -- the collection reads the same free monthly archives as the
-carry line's funder, `tools/fetch_funding_rates.py`, and writes no file of its own. Its own self-test -- `python3
-tools/funding_extreme_test.py --self-test` -- checks both legs
+carry line's funder, `tools/fetch/fetch_funding_rates.py`, and writes no file of its own. Its own self-test -- `python3
+tools/study/funding_extreme_test.py --self-test` -- checks both legs
 against hand arithmetic, and it caught its own author writing the long leg as a payment: with a negative rate the short
 side pays, so the contrarian long *collects* the funding, and the sign of that term is the entire carry argument in one
 line of code.
@@ -786,7 +787,7 @@ cannot represent any of it. Adding it is the next capability, and it is delibera
   direction and one rate serves both sides of a market, which is the shape the next step needs.
 * **Then a rate series as an input**, because the real rate varies by the hour and changes sign. The free sources are
   the exchange's own funding history, which costs nothing and is a few megabytes per symbol per year.
-  **Done:** `tools/fetch_funding_rates.py` fetches either source for one instrument (OKX `module=3`, and the Binance
+  **Done:** `tools/fetch/fetch_funding_rates.py` fetches either source for one instrument (OKX `module=3`, and the Binance
   Vision monthly `fundingRate` archive, which has no daily folder), `src/market/funding_rate.*` reads both formats and
   the replay applies each settlement as the event clock passes it, reported as a `[FUNDING]` line with the file's own
   arithmetic beside the USD the window moved. Two facts from the real files are recorded with it: the OKX day is cut
@@ -824,7 +825,7 @@ capture per fill + rebate  >=  maker fee + adverse selection
 
 Every term in it is already measured here, and the third was the one no run had reported as a target: the fee is
 in the portfolio, the capture and the markout are in `[EXECUTION]`, and the `[PNL]` line now turns the fee into a
-rate. The first experiment (`tools/fee_sweep.sh`) asked the fee question directly, on four windows and three
+rate. The first experiment (`tools/sweep/fee_sweep.sh`) asked the fee question directly, on four windows and three
 maker rates:
 
 * At a one-tick quote a window loses 0.0030 to 0.0032 USD **before any fee** — about three to four ticks a fill
@@ -840,7 +841,7 @@ The order this leaves, each step measurable on its own:
 
 | Step | What it does | What it settles |
 |---|---|---|
-| **F1 — the fee question** (done) | `[PNL]` splits quoting from the position left open and reports the breakeven maker rate; `--maker-fee-rate` and `tools/fee_sweep.sh` sweep it | whether a fee tier could pay for this, answered per window |
+| **F1 — the fee question** (done) | `[PNL]` splits quoting from the position left open and reports the breakeven maker rate; `--maker-fee-rate` and `tools/sweep/fee_sweep.sh` sweep it | whether a fee tier could pay for this, answered per window |
 | **F2 — a decision rule that covers adverse selection** (done) | the gate now requires a quote to cover the fee **and** what our own passive fills at that distance have cost, measured from the venue's prints first and from our own fills after the record showed the two disagree in sign | the mechanism works: refusing the quotes that cannot pay cut the one-tick loss from 0.859 to 0.050 USD and turned the four-tick row positive. What it cannot yet settle is the measured part, because the gate's own success starves its estimator below twenty samples |
 | **F3 — inventory discipline** (done) | `--flatten-band=N` reduces a position past N units with a taker order at the touch, and the closed-versus-total split says which part of a result came from quoting and which from the position carried | flattening works and costs more than it saves, and the one positive run in the table was positive *because* it carried a position: the bet paid, not the quoting |
 | **F4 — a market where the inequality can hold** (done) | the instrument half is in: `us_equity_spec` states the one cent tick and the commission per share, `micro_es_spec` states the quarter point tick, the multiplier of 5 and the commission per contract, and `fee_on_fill` charges both terms. The data half is Databento `mbp-10` converted to the CSV pair the existing readers take | **the answer is the first positive window in this repository, and it is narrower than the question.** See below |
@@ -853,7 +854,7 @@ window selected for being positive as an edge.
 
 The same decision layer, the same two hours of one session (2026-09-29 13:30 to 15:30 UTC, the US cash open), on
 the two markets where the fee is a fraction of a tick instead of a multiple of one. Every row is re-derived by
-`tools/f4_windows.sh` from Databento files that `tools/fetch_databento.py` downloads and converts.
+`tools/sweep/f4_windows.sh` from Databento files that `tools/fetch/fetch_databento.py` downloads and converts.
 
 | Window | Fills | Units | Fee USD | Capture, ticks | Markout, ticks | Gross USD | Net USD | Net per fill | Breakeven maker rate |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -986,7 +987,7 @@ that shows the floor is bought with capture, are in
 [Performance History](PERFORMANCE_HISTORY.md#what-the-queue-model-decides-and-what-the-per-order-floor-does).
 
 The screen is therefore **the half spread at the trades, at least three times the fee per side**, measured by
-`tools/screen_spread.py` from top of book before any depth is bought; the tool prices a window before it spends
+`tools/study/screen_spread.py` from top of book before any depth is bought; the tool prices a window before it spends
 and refuses to download without a stated cap. SPY fails it at **1.43** of the required 3, which is the expected
 result for a one tick market, and the sentence that used to end this paragraph said the search therefore had to
 leave the most liquid symbol in the world. **The run falsified that sentence.** Thirty symbols over the same two
@@ -1021,7 +1022,7 @@ second.
 
 Both symbols measured so far pass the floor, at 3.97 and 16.6 trade prints a second, which is the right shape
 for it: it is aimed at a market too quiet to measure, not at the two liquid markets this line has already
-failed on spread. It is applied by `tools/screen_spread.py --min-trades-per-second=2.8`, which prints
+failed on spread. It is applied by `tools/study/screen_spread.py --min-trades-per-second=2.8`, which prints
 `trades_per_second` and its own verdict beside the spread verdict; the tool does not carry the number, so
 changing the floor means editing this paragraph, and doing that *before* the next screen is what makes that
 screen's verdict pre-registered.
@@ -1055,7 +1056,7 @@ have ranked it at 2.86 and failed it. **The minimum per order is deliberately no
 charged per order instance rather than per share, so it depends on how often a policy replaces its quotes, which
 top of book cannot measure. It stays where it is measured, which is the engine, and a symbol that passes here is
 what gets run there. The rule is applied by
-`tools/screen_spread.py --fee-schedule=min=0.35,regulatory=0.0000206,clearing=0.0002,audit=0.000003,rebate=0.0013`,
+`tools/study/screen_spread.py --fee-schedule=min=0.35,regulatory=0.0000206,clearing=0.0002,audit=0.000003,rebate=0.0013`,
 which prints both verdicts, the old one beside the new, so the recorded table stays re-derivable and a reader can
 see which rule produced which fail.
 
@@ -1129,7 +1130,7 @@ tidier reason into this document would have been the third error of the three.
 
 | # | Must be true | The cheapest way to kill it | Cost |
 |---|---|---|---|
-| 1 | the half spread at the trades is at least three times the fee per side | `tools/screen_spread.py`, which prices the window before it spends and refuses to download without a stated cap — **run: AAPL and TSLA pass, thirty symbols, 0.52 USD** | 5 to 20 USD |
+| 1 | the half spread at the trades is at least three times the fee per side | `tools/study/screen_spread.py`, which prices the window before it spends and refuses to download without a stated cap — **run: AAPL and TSLA pass, thirty symbols, 0.52 USD** | 5 to 20 USD |
 | 2 | capture stays positive across days once the drift is gone | eight to ten sessions, and the hours outside the open — **its first half is answered for nothing as of 2026-10-02**: the AAPL window cut into eight leaves the capture positive in all eight, and the position term is thirty times the edge, so the second half is unanswerable at a personal account's scale rather than merely unfunded | 10 to 20 USD for full sessions, or **2.30 for ten two-hour windows**, which is the unit every recorded equity row uses — see the budget section below |
 | 3 | our order really rests where we measured it | pin a destination and re-measure, or record where orders actually land for a week and measure that | free, then 1 to 2 USD |
 | 4 | the account may run it: day trading minimums, borrow, settlement | a channel answer, not a code change | free |
@@ -1145,7 +1146,7 @@ result rather than a setback, and it is the reason these seven come before any l
 millisecond each way and gives the price away at five, the tolerance is not a personal account's to control, and
 the reflex fix of quoting more slowly measures worse rather than better. The rows and the mechanism are in
 [Performance History](PERFORMANCE_HISTORY.md#the-latency-that-window-would-have-needed), and the sweep that
-reproduces them is `tools/latency_sweep.sh`. That sweep's own last paragraph says the one cheap test left is a
+reproduces them is `tools/sweep/latency_sweep.sh`. That sweep's own last paragraph says the one cheap test left is a
 symbol whose spread is wide enough to absorb the same delay, and that test is the screen.
 
 **The first gate has now been run too, and it returned a pass.** AAPL and TSLA are the first symbols whose spread
@@ -1160,7 +1161,7 @@ the position's own move separated out, across days a single session cannot speak
 and need a channel answer, and the fee tiers (7) are worth 5 to 10 USD now that a symbol exists to run them on.
 
 **The second gate has now been taken as far as it can be taken, for nothing, and it returns a pass and then a dead
-end.** Cutting the AAPL window into eight quarter hours needs no new data: `tools/analyze_l2_windows.py` cannot cut
+end.** Cutting the AAPL window into eight quarter hours needs no new data: `tools/study/analyze_l2_windows.py` cannot cut
 these files, because it re-runs the engine per window and a converted Databento file carries one snapshot, in its
 first row, so a slice has no book state to apply its deltas to. The engine already writes every fill it made, so
 `out/probe_windows.py` cuts the window from its own ledger instead, and the buckets say two things the purchase
@@ -1196,7 +1197,7 @@ than the total: 0.97 on the two two-hour `mbp-10` windows the F4 results are mea
 thirty symbols of top of book, and 0.36 on the two-hour `mbp-10` pair for the AAPL and TSLA windows -- of which
 0.18 was spent twice, because the first pair was downloaded without `--pretty-px`, which leaves the price column
 as the vendor's 1e-9 scaled integer and kills the run with `std::bad_alloc`. That is the only money this
-repository has spent twice so far, and the flag is now in `tools/f4_windows.sh`'s own comment so the next reader
+repository has spent twice so far, and the flag is now in `tools/sweep/f4_windows.sh`'s own comment so the next reader
 does not repeat it. The credit is billed on the DBN the query returns rather than on the CSV written, which is why
 a re-download of the same window costs the same as the first one.
 
@@ -1299,7 +1300,7 @@ a detail: at one contract the floor spends 1.00 to collect 0.65, and at two it s
     half_spread_usd * 100 >= 3 * (commission per order + regulatory + clearing - rebate) / contracts_per_order
 
 evaluated at a stated clip size, because the commission has a per order floor and the rest is per contract. The
-multiplier is 100, the tick is 0.05 for a non-penny class, and `tools/screen_spread.py` prices this with
+multiplier is 100, the tick is 0.05 for a non-penny class, and `tools/study/screen_spread.py` prices this with
 `--fee-schedule=` plus its own multiplier, tick and clip size arguments; and the activity floor was restated rather than
 repeated, because 2.8 prints a second is a stock's own tape and the screen below shows no option series reaching it.
 Three consequences are written down before the answer is in: the **penny classes fail**
@@ -1325,7 +1326,7 @@ the MES measurement says only works at horizons longer than a quote's life.
 
 ### Step 1 executed: the SPY chain screen, and the verdict it returns
 
-The screen was run with one argument still missing from `tools/screen_spread.py`, because the ranking that decides the
+The screen was run with one argument still missing from `tools/study/screen_spread.py`, because the ranking that decides the
 verdict does not need it; what the clip size moves is the last factor of two and not the sign.
 
 **What was bought, and for how much.** The whole SPY chain at one minute sampled top of book, 0.2325 USD: 203 MB,
@@ -1504,7 +1505,7 @@ another round of tuning.
 
 ### The venue picker: what a top of book ratio can and cannot decide
 
-`tools/venue_ratio.py` computes the same quotient on any top of book file the repository already owns, and reports it
+`tools/study/venue_ratio.py` computes the same quotient on any top of book file the repository already owns, and reports it
 as the largest number of prints per fill that still covers one window's own standard deviation -- a fill ratio, and so
 comparable to the 71 prints a fill the equity screen used. It was run for nothing over the two things already on disk:
 the sixty equity files in the screen cache, and the option series bought for the screens above.
@@ -1548,9 +1549,9 @@ XSP, so the flow in these names lives in the one day expiry and nowhere else. Ei
 twenty to forty five days and the best R_max in any of them is **56** against the reference of 71.
 
 **The five series above were bought again on 2026-10-03 for 0.011938 USD and now sit in `data/v2/options/`**, because
-the first copy lived in `/tmp` and nothing behind it could be rebuilt once it was gone. `tools/venue_ratio.py
+the first copy lived in `/tmp` and nothing behind it could be rebuilt once it was gone. `tools/study/venue_ratio.py
 --input 'data/v2/options/*.csv' --multiplier 100 --fee-per-unit 0.65 --min-commission 1.00 --clip 1,2` reproduces the
-prints, the median spreads, the sigmas and the R_max of every row, which is what `python3 tools/viability.py
+prints, the median spreads, the sigmas and the R_max of every row, which is what `python3 tools/study/viability.py
 --derive` compares the recorded 56 against.
 
 
@@ -1563,7 +1564,7 @@ moving tens of dollars a contract over the same two hours. Spend on this venue t
 The rule was fixed before any window was read, because the point of it is to be falsifiable rather than tuned: a one
 minute mid from each file's top of book, a thirty minute simple moving average of it, an entry two ticks from the
 average, an exit on the crossing back or after sixty minutes, fills at the touch both ways, and the whole schedule
-charged a share on both sides. `tools/lowturnover_test.py` is the test.
+charged a share on both sides. `tools/study/lowturnover_test.py` is the test.
 
 **It fails on the median, and the reason is the same arithmetic as the other seven lines rather than a new one.** 57
 symbols produced 25 whose net a share a round trip is positive, against a **median net of -0.36 cents a share and a
@@ -1648,7 +1649,7 @@ against the schedule the timestamps define, which is the number a live session h
 the replay already reads, refusing anything those formats cannot express — a trade with no aggressor side, a batch
 whose updates disagree about their local timestamp, a snapshot whose level count changes, or a stream that is both
 snapshots and batches at once, which is why the OKX archive cannot be recorded. The gate asserts the claim rather
-than describing it: tier 1 of `tools/verify_l2.sh` records the 200k slice, replays the recording, and requires both
+than describing it: tier 1 of `tools/gate/verify_l2.sh` records the 200k slice, replays the recording, and requires both
 runs to report the same numbers. The reader itself has since landed too: `src/market/ws_feed.*` is a websocket
 transport behind `IMarketEventReader`, and the `ws` mode is the L2 path with its readers moved onto it. So what
 is left of Stage A is not a reader but a **venue** — an adapter that subscribes to one, decodes its messages,
@@ -1748,7 +1749,7 @@ library in the tree. The first step is therefore a small Python relay, standard 
 secure connection, subscribes, decodes the venue's messages into the replay CSV rows this repository already
 reads, and re-serves them as plaintext `ws://` on localhost for the C++ feed to read -- which it already can, so
 the engine is untouched and the relay is the only thing that knows the venue. It landed as
-`tools/venue_relay.py`, standard library only, with three roles that share one decoder: it relays the venue to
+`tools/live/venue_relay.py`, standard library only, with three roles that share one decoder: it relays the venue to
 the engine, it writes the decoded rows straight to `PREFIX_trades.csv` and `PREFIX_depth.csv` (the direct route,
 with no engine), and it captures the venue's raw messages so a window runs again with no network. It subscribes,
 decodes, keeps its own sequence accounting -- a break in the venue's `prevSeqId`/`seqId` pair is a lost update

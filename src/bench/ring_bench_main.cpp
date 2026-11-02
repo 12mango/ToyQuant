@@ -31,7 +31,7 @@ quoted without one invites a reader to believe three significant figures on a ma
 Timing numbers are not asserted by the gate, because a threshold on a microbenchmark is a threshold on
 whatever else the machine was doing. What the gate does check is that the ring still carried the right
 number of values: the `[RING_BENCH]` line carries `messages` and `checksum`, and
-`docs/PERFORMANCE_HISTORY.md` re-derives them through `tools/check_docs.py`.
+`docs/PERFORMANCE_HISTORY.md` re-derives them through `tools/gate/check_docs.py`.
 
 Usage:  ring_bench [messages=1000000] [repetitions=3]
 Build:  cmake --build --preset linux-relwithdebinfo --target ring_bench

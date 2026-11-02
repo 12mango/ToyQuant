@@ -1,5 +1,5 @@
 {
-  "note": "The eight lines the project closed, as inputs rather than as prose. Each case names the gate the line is recorded as binding on, where the numbers came from, and every input the arithmetic needs. `tools/viability.py` re-derives the quotients, checks that the first gate to fire is the recorded one, and refuses an optimistic bound read as an opening. The `also` entries are recorded and printed but never gated: a second kill is not the binding one, and an exclusion is not a quotient.",
+  "note": "The eight lines the project closed, as inputs rather than as prose. Each case names the gate the line is recorded as binding on, where the numbers came from, and every input the arithmetic needs. `tools/study/viability.py` re-derives the quotients, checks that the first gate to fire is the recorded one, and refuses an optimistic bound read as an opening. The `also` entries are recorded and printed but never gated: a second kill is not the binding one, and an exclusion is not a quotient.",
   "cases": [
     {
       "line": "crypto perpetuals",

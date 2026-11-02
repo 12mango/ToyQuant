@@ -1,5 +1,5 @@
 // The OKX readers: the daily order-book archive, which is JSON Lines, and the traded CSV that
-// tools/fetch_okx_trades.py writes out of the same archive. Both take the contract size and the quantity
+// tools/fetch/fetch_okx_trades.py writes out of the same archive. Both take the contract size and the quantity
 // scale because an OKX swap quotes a number of contracts rather than a size in the base asset.
 
 #include "market/market_data_adapter.h"

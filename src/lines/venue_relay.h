@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <string>
 
-// The C++ twin of `tools/venue_relay.py`: a client to a venue's public stream, a server to the engine,
+// The C++ twin of `tools/live/venue_relay.py`: a client to a venue's public stream, a server to the engine,
 // and a direct recorder, all over one decoder. It is a line component rather than core because it knows
 // a venue's message shapes, which the engine deliberately does not.
 //

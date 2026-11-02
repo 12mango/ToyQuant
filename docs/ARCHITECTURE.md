@@ -33,7 +33,7 @@ The four things this document is worth reading for, in the order an engineer wou
   instances with their size histogram, cancels before and after a fill, the queue consumed, and the markout of the fills
   that arrived;
 * **the honesty of the measurement**, because the numbers quoted in [Performance](PERFORMANCE.md) and
-  [Performance History](PERFORMANCE_HISTORY.md) are re-derived by `tools/verify_l2.sh` rather than copied, and the
+  [Performance History](PERFORMANCE_HISTORY.md) are re-derived by `tools/gate/verify_l2.sh` rather than copied, and the
   designs that were measured and then rejected are kept rather than deleted — [Low-Latency Design](LATENCY_DESIGN.md) is
   that record.
 
@@ -297,7 +297,7 @@ express is refused rather than approximated: a trade with no aggressor side, a f
 separator, a batch whose updates disagree about their local timestamp, a snapshot whose level count
 changes, or a stream that carries whole-book snapshots and incremental batches at once. The readers'
 own sequence ids for a snapshot and a batch are the one field a recording does not reproduce, because
-no column holds them. `bash tools/verify_l2.sh fast` records the 200k slice, replays the recording,
+no column holds them. `bash tools/gate/verify_l2.sh fast` records the 200k slice, replays the recording,
 and requires the two runs to report the same numbers.
 
 The live path's threading is implemented against the replay first, because the boundary is the same one
@@ -329,7 +329,7 @@ processing, and the total, each with a mean, a p50, a p99 and a maximum, plus th
 and how often the feed waited for room. The processing figure is where the decision and the orders the
 synchronous engine accepted inside it both land, which is why there is no separate order leg here: the
 venue's leg is what `--order-latency-us` models. The threaded path reports the same run as the direct
-one, and tier 1 of `tools/verify_l2.sh` asserts that by comparing every number except the `[LATENCY]`
+one, and tier 1 of `tools/gate/verify_l2.sh` asserts that by comparing every number except the `[LATENCY]`
 line itself.
 
 The broker layer is a decorator over that engine rather than a second execution model. `PaperBroker`
@@ -763,7 +763,7 @@ mechanism and records the measured effect on the `engine` stage.
 
 **Files:** `src/strategy/strategy.h`, `src/strategy/baseline_market_makers.h`, `src/strategy/l2_market_maker_base.h`, `src/strategy/inventory_aware_l2_market_maker.h`, `src/strategy/active_l2_market_maker.h`, `src/strategy/trend_l2.h`, `src/strategy/execution_l2.h`, `src/lines/legacy/l1_market_maker.h`
 
-Eight files and four families, which is worth stating because the file names alone do not say it. `trend_l2.h` is deliberately outside the maker families: it has no quote lifecycle, only a target position. `execution_l2.h` is outside all of them and outside the signal families too: it has no view about direction, only a parent order and a schedule. `strategy.h` is the interface everything implements, and it is where the L2 family stops depending on the L1 one: `tools/check_layering.py` keeps that true rather than trusting it, because a `legacy/` include anywhere under `src/strategy/` fails the gate. `baseline_market_makers.h` holds `NaiveMarketMaker` and `OptimizedMarketMaker`, neither of which implements `on_l2_market_view`: they see the touch and nothing else, and they are the baseline the rest is measured against. The active family is three files with one inheritance chain between them, and the middle one is the root:
+Eight files and four families, which is worth stating because the file names alone do not say it. `trend_l2.h` is deliberately outside the maker families: it has no quote lifecycle, only a target position. `execution_l2.h` is outside all of them and outside the signal families too: it has no view about direction, only a parent order and a schedule. `strategy.h` is the interface everything implements, and it is where the L2 family stops depending on the L1 one: `tools/gate/check_layering.py` keeps that true rather than trusting it, because a `legacy/` include anywhere under `src/strategy/` fails the gate. `baseline_market_makers.h` holds `NaiveMarketMaker` and `OptimizedMarketMaker`, neither of which implements `on_l2_market_view`: they see the touch and nothing else, and they are the baseline the rest is measured against. The active family is three files with one inheritance chain between them, and the middle one is the root:
 
 | File | Class | Role |
 |---|---|---|
@@ -1014,8 +1014,8 @@ quantities and position, and stale quotes are cancelled before replacement.
 
 L1 strategies are frozen compatibility implementations. Their CLI names remain available for
 reproducing earlier L1 replay and benchmark results; new strategy work belongs to the L2 path.
-The archived implementations are in `src/lines/legacy/l1_market_maker.h`. Their behaviour is pinned rather than described: `bash tools/verify_l2.sh fast` checks the L1
-invariants on every edit and `bash tools/verify_l2.sh all` compares a full-file run byte for byte,
+The archived implementations are in `src/lines/legacy/l1_market_maker.h`. Their behaviour is pinned rather than described: `bash tools/gate/verify_l2.sh fast` checks the L1
+invariants on every edit and `bash tools/gate/verify_l2.sh all` compares a full-file run byte for byte,
 so a change in those makers that moves the numbers is a change to a recorded result. Execution
 quality is not computed inside them; `ExecutionQualityMetrics` in the pipeline owns edge, markout,
 quote lifetime and inventory for every strategy, and prints them in `[EXECUTION]`.
@@ -1025,7 +1025,7 @@ quote lifetime and inventory for every strategy, and prints them in `[EXECUTION]
 Two different things are called a gate in this project, and they fail in opposite directions. The first refuses a
 change that would move a recorded number; the second refuses a quote that cannot pay for itself.
 
-The verification gate is `tools/verify_l2.sh`, and it has four tiers because the checks cost different amounts and
+The verification gate is `tools/gate/verify_l2.sh`, and it has four tiers because the checks cost different amounts and
 catch different mistakes. Tier zero runs the unit tests, because a failing test once shipped in a commit that the
 older gate could not see. Tier one replays a two hundred thousand record slice and compares the event counts,
 orders, fills, realized PnL and consumed queue position against the values the documents quote, re-derives every
@@ -1241,7 +1241,7 @@ much of that `r` was ahead of a resting order, and each model is a claim about t
 | `Optimistic` | `r` | `r` | `0` |
 
 The first and last bracket the **mean**, and `k` moves only the **variance**, which is why `ProRata` is
-the neutral default rather than a compromise. `tools/calibrate_queue_model.py` measures this feed to put
+the neutral default rather than a compromise. `tools/study/calibrate_queue_model.py` measures this feed to put
 99.96% of a level's size decrease on cancel or amendment rather than trade, so a queue that only moves
 when a trade prints contradicts the mechanism; the cancellation sizes it measures, where a median
 decrease removes 74% of a median level and the removed fraction is flat across four orders of magnitude
