@@ -577,7 +577,7 @@ where the market-making line had none — and that a criterion expressed as an a
 fee can read as a winner on a position that did not quite pay for itself. The two runs and every field of them are
 recorded in [Performance History](../performance/history-03-studies.md#the-acceptance-number) with the command that re-derives
 them, and the two funding files are fetched with one command each, named in
-[the data index](https://github.com/12mango/ToyQuant-v1/blob/main/data/README.md).
+[the data index](../../data/README.md).
 
 ## Back to the market-making line: what would make a quote pay for itself
 

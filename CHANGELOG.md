@@ -3,6 +3,10 @@
 **What changed in the code, release by release.** The plan's own log — what the project decided to build or not build,
 and when — is in [Roadmap](docs/ROADMAP.md#change-log), and the two are deliberately different records of the same work.
 
+The repository is named `ToyQuant`. The `-v1` suffix that older links and a local clone may still carry is a leftover
+from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
+site now points at `ToyQuant`.
+
 ## The live paper milestone (current)
 
 The websocket reader, the paper mode and the recorder half of a live path, which is roadmap phase 2: the
