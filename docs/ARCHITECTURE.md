@@ -13,7 +13,7 @@ This page is the module reference for the instrument: a small event-driven marke
 | How strategies make decisions | [Strategy](#6-strategy-the-main-decision-module) |
 | PnL and reusable metrics | [Backtest and Performance Metrics](#7-backtest-and-performance-metrics) |
 | What the engine costs and how that is measured | [Performance](PERFORMANCE.md) |
-| Why a latency-critical design is built the way it is | [Low-Latency Design](LATENCY_DESIGN.md) |
+| Why a latency-critical design is built the way it is | [Low-Latency Design](performance/design.md) |
 
 The diagrams show control flow. The tables show ownership and responsibilities. The code blocks
 show the smallest representative implementation surface; detailed prose explains only the design
@@ -34,7 +34,7 @@ The four things this document is worth reading for, in the order an engineer wou
   that arrived;
 * **the honesty of the measurement**, because the numbers quoted in [Performance](PERFORMANCE.md) and
   [Performance History](PERFORMANCE_HISTORY.md) are re-derived by `tools/gate/verify_l2.sh` rather than copied, and the
-  designs that were measured and then rejected are kept rather than deleted — [Low-Latency Design](LATENCY_DESIGN.md) is
+  designs that were measured and then rejected are kept rather than deleted — [Low-Latency Design](performance/design.md) is
   that record.
 
 ## 1. System Map
@@ -145,7 +145,7 @@ which removes both the per-character scan of `std::getline`/`gzgets` and the per
 allocation. The view is only valid until the next call, so a reader that must hold a row across
 `next()` calls copies it into its own buffer. [Performance](PERFORMANCE.md) records the isolated
 line-layer measurement and the end-to-end effect, and [Low-Latency
-Design](LATENCY_DESIGN.md#1-the-line-layer-linereader) explains why it is faster.
+Design](performance/design.md#1-the-line-layer-linereader) explains why it is faster.
 
 Each v2 event carries an optional `exchange` identity. Binance L1 readers set it to `binance`,
 while the Deribit L2 snapshot reader preserves the source column. `Pipeline` locks to the first
@@ -307,7 +307,7 @@ strategy thread over `concurrency::SpscRing` (`src/concurrency/spsc_ring.h`), a 
 single-producer/single-consumer ring whose two indices sit on separate cache lines and whose
 publication is a release store paired with an acquire load. The consumer runs on the calling thread, so
 the strategy, the book and the portfolio keep the thread they always had and only the reader moves.
-[Low-Latency Design section 6](LATENCY_DESIGN.md#6-the-hand-off-between-two-threads-spscring) prices the
+[Low-Latency Design section 6](performance/design.md#6-the-hand-off-between-two-threads-spscring) prices the
 primitive against the alternatives and
 [the performance reference](PERFORMANCE.md#39-the-hand-off-between-two-threads) carries the table, measured
 by `ring_bench` (`src/bench/ring_bench_main.cpp`) rather than asserted: the hand-off is a couple of
@@ -756,7 +756,7 @@ by that id instead. The public interface still takes strings, so nothing outside
 `process_bbo` is separate from the override. `find_symbol()` is the lookup-only variant, used where a
 rejected event must not register a new symbol.
 
-[Low-Latency Design](LATENCY_DESIGN.md#3-the-engines-per-symbol-state-symbol-ids) explains the
+[Low-Latency Design](performance/design.md#3-the-engines-per-symbol-state-symbol-ids) explains the
 mechanism and records the measured effect on the `engine` stage.
 
 ## 6. Strategy: The Main Decision Module

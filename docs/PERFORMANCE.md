@@ -7,7 +7,7 @@ optimization that was attempted.
 Three rules keep it honest:
 
 - **A number lives in one place.** Reasoning about *why* a design is fast is in
-  [Low-Latency Design](LATENCY_DESIGN.md). Measurements that have been superseded are in
+  [Low-Latency Design](performance/design.md). Measurements that have been superseded are in
   [Performance History](PERFORMANCE_HISTORY.md). Nothing is restated.
 - **An effect is claimed as a range from paired runs, or not at all.** This host varies by about
   +-22% between runs, so an unpaired comparison smaller than 5% means nothing. Several ledger rows
@@ -446,7 +446,7 @@ than as costs. The Share column is what they are good for, and it is the column 
 
 One row per attempt, including the ones that did not pay. "Effect" is a paired measurement unless
 noted otherwise. The mechanism behind each accepted row is explained in
-[Low-Latency Design](LATENCY_DESIGN.md).
+[Low-Latency Design](performance/design.md).
 
 | Change | Mechanism | Verified effect | Status |
 |---|---|---|---|

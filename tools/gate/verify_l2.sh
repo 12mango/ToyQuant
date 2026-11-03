@@ -143,9 +143,7 @@ tier1() {
   # describes a stale model set is exactly what that leaves behind. This compares the claims against the
   # source: flags, queue models and tool paths.
   local prose_check=0
-  python3 tools/gate/lint_prose.py docs/PERFORMANCE_HISTORY.md docs/ARCHITECTURE.md docs/USER_GUIDE.md \
-      docs/PERFORMANCE.md docs/LEARNING.md docs/DESIGN_REVIEW.md docs/LATENCY_DESIGN.md docs/index.md \
-      docs/ROADMAP.md docs/RETROSPECTIVE.md docs/MAINLINE.md docs/RESEARCH_NOTES.md > "$PROSE_CHECK_LOG" 2>&1 || prose_check=1
+  python3 tools/gate/lint_prose.py docs/*.md docs/*/*.md > "$PROSE_CHECK_LOG" 2>&1 || prose_check=1
   python3 tools/gate/check_layering.py >> "$PROSE_CHECK_LOG" 2>&1 || prose_check=1
   # The eight closed lines are claims about arithmetic too, and a copied number drifts the way a copied claim does.
   # This re-derives every quotient from the recorded inputs, checks that the first gate to fire is the one the line
@@ -361,8 +359,8 @@ tier1() {
   # a "thirty times per fill" that a re-measurement turned into ten. They are checked at the same gate
   # as the invariants, on the same slices, so a documented value that stops being true fails a run.
   local doc_check=0
-  python3 tools/gate/check_docs.py --binary "$BIN" docs/PERFORMANCE_HISTORY.md docs/ARCHITECTURE.md \
-    docs/DESIGN_REVIEW.md docs/PERFORMANCE.md > "$DOC_CHECK_LOG" 2>&1 || doc_check=1
+  python3 tools/gate/check_docs.py --binary "$BIN" docs/*.md docs/*/*.md \
+    > "$DOC_CHECK_LOG" 2>&1 || doc_check=1
   # The IEX HIST reader walks the pcap, IP, UDP and IEX-TP framing that a decoder sits on top of. The file it
   # walks in this test is built by the tool rather than downloaded, because the archive is behind an account,
   # so the container walk is the part that can be checked on every edit. It says nothing about DEEP messages,

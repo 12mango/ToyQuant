@@ -40,10 +40,16 @@ nav:
   - Retrospective: RETROSPECTIVE.md
   - User Guide: USER_GUIDE.md
   - Architecture: ARCHITECTURE.md
-  - Performance: PERFORMANCE.md
-  - Low-Latency Design: LATENCY_DESIGN.md
-  - Performance History: PERFORMANCE_HISTORY.md
-  - Research Notes: RESEARCH_NOTES.md
+  - Performance:
+      - Current numbers: PERFORMANCE.md
+      - Low-Latency Design: performance/design.md
+      - History: PERFORMANCE_HISTORY.md
+      - "History, part 1: the engine and the L1 line": performance/history-01-engine.md
+      - "History, part 2: the L2 mainline": performance/history-02-l2.md
+      - "History, part 3: the studies": performance/history-03-studies.md
+  - Archive:
+      - The studies: archive/studies.md
+      - Research Notes: archive/research-notes.md
 
 markdown_extensions:
   - toc:

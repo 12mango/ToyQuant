@@ -4,7 +4,7 @@ This is not a plan and it re-derives none of the numbers the gate checks. It rec
 repository could not measure from its own data: **what individual quantitative traders have actually
 done** (and which of those routes were a business rather than a bet), and **what a Hong Kong personal
 account on Interactive Brokers Pro can legitimately do about the fee** that closed eight lines in
-[Performance History](PERFORMANCE_HISTORY.md).
+[Performance History](../PERFORMANCE_HISTORY.md).
 
 **Every external claim carries a verification mark, because the value of a success story is its
 provenance.** `[read]` means the page was fetched during the session and the claim is in it.
@@ -115,7 +115,7 @@ nothing.
    strategy's order fills about 24 shares at a time and therefore pays a quarter of its commission against the
    whole 0.35 floor. The tier pays in full only where orders fill in full, which is a factor or taker book, and
    about 15 percent where they do not; the measured table is in
-   [Performance History](PERFORMANCE_HISTORY.md#what-the-queue-model-decides-and-what-the-per-order-floor-does).
+   [Performance History](../PERFORMANCE_HISTORY.md#what-the-queue-model-decides-and-what-the-per-order-floor-does).
 2. **Tiered rather than Fixed**, for any maker. The rebate is 0.0013 a share, worth 37 percent of a
    0.0035 commission, and Fixed neither collects nor passes it through.
 3. **The minimum per order has to move with the tier, or the discount is confiscated.** The floor is 0.35
@@ -169,7 +169,7 @@ Nothing the gate re-derives. Two assumptions change, and both make the earlier c
    **0.85 plus the exchange fee**, roughly twice the model's figure. The recorded row that already lost
    2,826 USD on 1,675 fills loses more, so its verdict stands rather than weakening.
 2. **The rebate is worth 6.4 percent of one window's loss, not a sign change.** The four-schedule run in
-   [Performance History](PERFORMANCE_HISTORY.md) prices the credit at 141.27 USD against a gross that is
+   [Performance History](../PERFORMANCE_HISTORY.md) prices the credit at 141.27 USD against a gross that is
    negative before any fee, and the volume tier moves the same order of magnitude: a 43 percent commission
    cut on a 1,087 USD fee saves about 163 USD on a window that loses 2,202. **The tier is the largest
    legitimate fee lever this account has, and it is smaller than the hole.**

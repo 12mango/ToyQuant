@@ -1,0 +1,1176 @@
+# Performance History, part 2: the L2 mainline
+
+*Part 2 of 3. The index is [`../PERFORMANCE_HISTORY.md`](../PERFORMANCE_HISTORY.md); part 1 is
+[the engine and the L1 line](history-01-engine.md) and part 3 is [the studies](history-03-studies.md).*
+
+This part is the L2 replay path itself: the workload it is measured on, the gprof preparation, the paired one-hour
+baseline, the 27-cell strategy regression matrix, the long-window profile, the buffered line reader that halved the
+parse, and the stage timings that decided the book container. It is where "how fast is it, and how do you know" is
+answered; the *why* of each change is in [Low-Latency Design](design.md).
+
+## L2 Mainline Workload
+
+To cover the current mainline, `active_l2` was replayed against a 15-minute incremental Deribit
+window with the conservative queue model and no depth sampling:
+
+- Window: `[1585699200000000, 1585700100000000]`
+- Strategy / queue model: `active_l2` / `conservative`
+- Trades: 1,354 rows; sliced input SHA-256 `af5475b5d26329563baab29519b02f440f700f74f13bd822cbcbd682605a6964`
+- Incremental depth: 201,130 rows; sliced input SHA-256 `716a84d48138648ccfd904cadfd434b6822070d4675fed88b5ca3545b200ff29`
+- Runtime summary: 119,364 events, including 118,010 incremental batches; one batch is a snapshot/reset.
+
+Five runs took `0.39`, `0.35`, `0.37`, `0.35`, and `0.33` seconds (median `0.35 s`, range
+`0.33–0.39 s`). Captured output hashes matched across all five runs:
+`afddc9b1741da4ac3000ed476ce406b3ad66d7bcf2d0b05a2cd19d9ccdfcccc3`.
+
+The first parser optimization replaced the per-row `std::istringstream` splitter with an equivalent
+delimiter scan and added allocation-free fast paths for common boolean fields. On the same
+15-minute input, three post-change runs took `0.20`, `0.22`, and `0.17` seconds (median `0.20 s`),
+with the same execution summary and identical output hashes. This is an initial comparison against
+the five-run pre-change median, not a final speedup claim; repeat the one-hour workload after the
+next change for the official comparison.
+
+Incremental batches now reserve two update slots before appending rows. In the measured window,
+117,945 of 118,010 batches contained one or two updates, so this avoids common small-vector
+growth without reserving eight slots for nearly every batch. The reserve-size comparison was noisy
+at this short duration; the choice is based on the observed distribution and memory behavior, not
+on a claimed standalone speedup.
+
+The incremental reader also reuses the CSV field vector while collecting rows in one batch. Three
+follow-up runs took `0.20`, `0.20`, and `0.18` seconds with identical output hashes. The difference
+from the preceding `0.20`, `0.21`, and `0.20` second sample is within short-run noise; the main
+benefit is reducing repeated vector allocation on the hot path.
+
+The integer timestamp, sequence, and amount conversions in the adapter now use `std::from_chars`
+through a checked `parse_uint64` helper instead of `std::stoull`. The focused adapter and replay
+tests passed, and three fixed-window runs took `0.18`, `0.19`, and `0.18` seconds with identical
+outputs. Floating-point conversion remains unchanged because it has different parsing and error
+handling considerations.
+
+The Deribit snapshot reader now uses the same `string_view` field path while constructing its typed
+25-level snapshot vectors, while retaining explicit vector capacity reservation. Snapshot,
+incremental, and orderbook tests passed; three same-window runs were `0.40`, `0.39`, `0.41` seconds
+for snapshot input and `0.16`, `0.16`, `0.16` seconds for incremental input, with identical outputs
+within each source. The snapshot short-run timing is neutral, but per-row string materialization is
+removed from the snapshot parser.
+
+Snapshot map construction now uses insertion hints because the validated input levels arrive in
+the exact bid-descending/ask-ascending order required by the maps. L2 tests passed; on a same-window
+short replay, snapshot runs took `0.12`, `0.12`, and `0.12` seconds while incremental runs took
+`0.06`, `0.05`, and `0.05` seconds, with identical outputs. This optimization is specific to
+ordered snapshot construction and does not change incremental update behavior.
+
+The incremental reader now reuses its `string_view` field vector across batches and carries the
+already-parsed batch/local timestamps into `append_update`, avoiding repeated integer conversions
+for the same row. Three fixed-window runs took `0.14`, `0.14`, and `0.14` seconds with identical
+outputs. This targets the long-profile hotspots `split_csv_views`, `parse_uint64`, and
+`append_update` as one parser chain.
+
+The L2OrderBook bid/ask maps now use an `unsynchronized_pool_resource` for map-node allocation,
+including snapshot temporary maps and reset release. The ordered-map semantics remain unchanged;
+this only changes node allocation/reuse. L2 tests passed, and the same short window measured
+`0.05`, `0.06`, `0.05` seconds for incremental input and `0.13`, `0.12`, `0.13` seconds for
+snapshot input, with identical outputs. Longer-window memory behavior still needs monitoring before
+claiming the allocator change as final.
+
+The one-hour no-output memory check reported maximum RSS of `5,464 KB` for incremental input and
+`5,172 KB` for snapshot input. Wall times were approximately `0.87 s` and `2.40 s`, respectively;
+these runs showed no abnormal pool growth for the measured workload.
+
+The parser chain is now direct for incremental rows: a `ParsedRow` is filled by one column scan and
+then converted to `IncrementalBookUpdate`, without constructing a per-row field vector at all. The
+same row object also supplies batch grouping and typed conversion values. Adapter/replay tests
+passed; three fixed-window runs took `0.15`, `0.15`, and `0.16` seconds with identical outputs.
+
+The same checked `std::from_chars` approach is now used for ordinary floating-point fields, with
+`std::stod` retained as a fallback for formats the fast parser rejects. Adapter/replay tests and
+three fixed-window runs passed with identical outputs; the short runs were `0.21`, `0.21`, and
+`0.21` seconds, so no standalone speedup is claimed yet.
+
+The incremental reader now passes its known column count into the reusable CSV splitter, avoiding
+an extra comma-counting scan on that path. Three fixed-window runs took `0.17`, `0.16`, and `0.15`
+seconds with identical outputs. This result is still a short-run comparison, but the change keeps
+the optimization local to incremental parsing and does not alter CSV field semantics.
+
+Incremental batches now carry optional snapshot metadata computed while the reader appends updates.
+The reader, validator, and `L2OrderBook` reuse that flag instead of rescanning every update list;
+manually constructed batches without metadata retain the original scan fallback. The focused
+tests passed and three fixed-window outputs remained identical (`0.16`, `0.24`, `0.16` seconds),
+so the short timing is treated as noisy while the scan reduction is retained as the structural
+benefit.
+
+`IncrementalBookUpdate` no longer stores a duplicate `exchange` string: the exchange is already
+owned by `IncrementalBookBatch`, and no downstream code consumed the per-update copy. The adapter,
+orderbook, validator, and replay tests passed; three fixed-window runs took `0.15`, `0.14`, and
+`0.15` seconds with identical outputs. This reduces the per-update object size and string-copy
+work without changing the batch-level exchange metadata.
+
+The L2 update path now uses `insert_or_assign` for non-zero price-level quantities, and the snapshot
+reader reserves its known depth vector sizes before appending levels. The related tests passed. On
+the same 15-minute window, three incremental runs took `0.14`, `0.15`, and `0.15` seconds; three
+snapshot runs took `0.34`, `0.36`, and `0.36` seconds. Outputs were identical within each source.
+
+The L2OrderBook price maps now use integer `PriceTick` keys configured with the instrument tick
+size, converting to/from double only at the input/output boundary. This removes floating-point
+ordering from the core map and makes price-level identity explicit. L2/orderbook/strategy tests
+passed; the updated three-run sample was `0.15`, `0.15`, `0.16` seconds for incremental input and
+`0.40`, `0.39`, `0.40` seconds for snapshot input. Incremental output remained identical; the
+snapshot timing is slightly higher in this short sample, so this change is treated primarily as
+a correctness/data-structure improvement, not a claimed universal speedup.
+
+`MarketDataValidator::validate` now performs merged timestamp ordering, event counting, and
+variant-specific validation in one `std::visit` instead of dispatching the same `MarketEvent`
+twice. Validator/replay tests passed; three incremental runs took `0.16`, `0.16`, and `0.15`
+seconds with identical outputs.
+
+The L2 Pipeline now uses `insert_or_assign` for the latest quote map and order lifecycle maps,
+avoiding default construction before assignment. Pipeline/accounting, replay, and benchmark tests
+passed; three incremental runs took `0.14`, `0.14`, and `0.13` seconds with identical outputs.
+
+`L2ReplayFeed::run` now caches the current trade and depth event timestamps while merging the two
+streams, updating each cache only when its reader produces a new event. This avoids repeated
+variant visits in the merge comparison. Replay/pipeline tests passed; three incremental runs took
+`0.14`, `0.13`, and `0.13` seconds with identical outputs.
+
+The incremental validator now keeps references to the per-symbol stream state and snapshot-active
+state during one batch, avoiding repeated unordered-map lookups. Validator/replay tests passed;
+the short timing sample was noisy (`0.41`, `0.35`, `0.46` seconds) but outputs remained identical,
+so this is retained as a structural cleanup rather than a standalone speedup claim.
+
+Validator stream names are now assembled only when an ordering error is thrown: normal events pass
+a static stream type and symbol separately. Quote state also uses `insert_or_assign`. Validator and
+replay tests passed; three fixed-window runs took `0.16`, `0.17`, and `0.17` seconds with identical
+outputs.
+
+The incremental path now parses rows through `string_view` fields into typed
+`IncrementalBookUpdate` values instead of materializing a `vector<string>` for every row. The
+per-update symbol was removed because symbol ownership belongs to the batch; the reader validates
+the row symbol at construction time. `MarketDataValidationConfig` now exposes
+`validate_incremental_update_fields`, defaulting to strict validation while allowing a replay
+caller to skip duplicate per-update checks after the reader boundary has been trusted. Adapter,
+L2, and pipeline tests passed; three fixed-window runs took `0.18`, `0.15`, and `0.17` seconds with
+identical outputs.
+
+Prepare the same slices and replay with:
+
+```bash
+profile_dir=$(mktemp -d)
+.venv/bin/python - "$profile_dir" <<'PY'
+import sys
+from pathlib import Path
+
+sys.path.insert(0, "tools")
+from benchmark_l2_strategies import slice_csv
+
+root = Path(sys.argv[1])
+start_ts = 1585699200000000
+end_ts = 1585700100000000
+slice_csv(Path("data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz"),
+          root / "trades.csv", start_ts, end_ts)
+slice_csv(Path("data/v2/crypto/deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv"),
+          root / "depth.csv", start_ts, end_ts)
+PY
+/usr/bin/time -f '%e' ./out/build/linux-debug/toy_quant l2_replay \
+  "$profile_dir/trades.csv" "$profile_dir/depth.csv" BTC-PERPETUAL \
+  0 active_l2 1 conservative
+```
+
+`l2_replay` writes to the fixed `data/runtime/orders.csv`, `data/runtime/trades.csv`, and
+`logs/toy_quant.log` paths. Preserve these files before replay if their current contents matter.
+
+For a compute-focused run that does not touch those files or emit Logger output, append
+`--no-output` after the queue model:
+
+```bash
+./out/build/linux-debug/toy_quant l2_replay \
+  "$profile_dir/trades.csv" "$profile_dir/depth.csv" BTC-PERPETUAL \
+  0 active_l2 1 conservative --no-output
+```
+
+This mode routes order/trade streams and logs to null sinks. The default file-producing behavior
+is unchanged.
+
+For repeatable timing, use the repository runner instead of assembling shell loops manually:
+
+```bash
+.venv/bin/python tools/study/measure_l2_baseline.py \
+  --binary out/build/linux-debug/toy_quant \
+  --trades data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
+  --depth data/v2/crypto/deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv \
+  --symbol BTC-PERPETUAL \
+  --start-ts 1585699200000000 --end-ts 1585702800000000 \
+  --runs 5
+```
+
+The runner slices inputs into a temporary directory, defaults to `--no-output`, reports timing
+statistics, and verifies that all captured stdout/stderr hashes match. Pass `--fast-validation` to
+measure the validation-free comparison path, or the default output path only when output I/O is part of the
+measurement.
+
+Append `--fast-validation` to skip duplicate per-update incremental field checks after the reader
+boundary, while retaining stream ordering and batch validation:
+
+```bash
+./out/build/linux-debug/toy_quant l2_replay \
+  "$profile_dir/trades.csv" "$profile_dir/depth.csv" BTC-PERPETUAL \
+  0 active_l2 1 conservative --no-output --fast-validation
+```
+
+On a short fixed window, strict and fast validation both measured `0.04–0.05 s` with identical
+empty output streams. This separates the validation cost for future profiling; it is not a claim
+that validation is currently the dominant bottleneck.
+
+## gprof Profile Preparation
+
+The opt-in CMake target `toy_quant_profile` builds the same L2 executable with `-pg` and is
+excluded from ordinary builds. Build it with the CMake Tools target `toy_quant_profile`, then
+reuse the prepared slices above and aggregate repeated runs:
+
+For non-instrumented profiling with optimization and symbols, use the separate
+`linux-relwithdebinfo` CMake preset. It writes to `out/build/linux-relwithdebinfo` and does not
+alter the existing Debug build directory.
+
+```bash
+profile_prefix="$profile_dir/gmon"
+for i in {1..50}; do
+  GMON_OUT_PREFIX="$profile_prefix" ./out/build/linux-debug/toy_quant_profile l2_replay \
+    "$profile_dir/trades.csv" "$profile_dir/depth.csv" BTC-PERPETUAL \
+    0 active_l2 1 conservative > /dev/null 2>&1
+done
+gprof ./out/build/linux-debug/toy_quant_profile "$profile_prefix".* \
+  > "$profile_dir/gprof.txt"
+```
+
+This 50-run aggregate collected about `4.07` CPU seconds of gprof samples. The leading application
+functions were:
+
+| Function | Sample share |
+|---|---:|
+| `L2OrderBook::apply_incremental_batch` | 11.3% |
+| Incremental CSV split/group helpers | 8–10% each |
+| `L2OrderBook::market_view` | 6.8% |
+| `ActiveL2MarketMaker::on_l2_market_view` | 3.5% |
+
+`_init` accounted for about 19.8%, largely reflecting that this aggregate starts a fresh process
+for every run. Treat these percentages as hotspot candidates, not precise event-loop costs: gprof
+adds instrumentation overhead, the sample is one short market window, and I/O/process startup are
+included. The normal non-instrumented replay timing above remains the performance comparison
+baseline.
+
+## Paired One-Hour Baseline
+
+For a larger workload, the same one-hour window was replayed three times per depth source with
+`active_l2`, `conservative`, and no depth sampling:
+
+- Window: `[1585699200000000, 1585702800000000]`
+- Trades: 9,310 rows; SHA-256 `c678297c64974a6bab3fdd240e3dcb3e75fe32ec401a106d6fa926955320a45d`
+- Incremental: 1,113,638 rows, grouped into 669,482 batches plus 9,310 trades; SHA-256 `a0732c30303b3eb2083775edb0c8fb51a5cb8062133fe60af67382d3e8bae4a8`
+- Snapshot: 351,516 rows / 360,826 replay events; SHA-256 `28fca5d55c734cac633e18d2980654a25cd6741c82b44b5f3c622356e952c9d4`
+
+| Depth source | Run times (seconds) | Median | Output consistency |
+|---|---|---:|---|
+| Incremental | 1.90, 1.77, 1.77 | 1.77 | All three captured outputs identical |
+| Snapshot | 4.35, 4.10, 3.70 | 4.10 | All three captured outputs identical |
+
+These are separate replay baselines, not expected to produce identical strategy metrics: snapshot
+and incremental feeds have different event granularity and state-update semantics.
+
+The 12-run gprof aggregate on the one-hour incremental input retained the same broad ranking as
+the short-window profile:
+
+| Function group | Sample share |
+|---|---:|
+| `L2OrderBook::apply_incremental_batch` | 15.2% |
+| Incremental reader append/split/group functions | about 26% combined |
+| `L2OrderBook::market_view` | 4.7% |
+| `ActiveL2MarketMaker::on_l2_market_view` | 1.6% |
+| `_init` and process startup | 18.8% |
+
+The higher-resolution run strengthens the case that input parsing/grouping and L2 state
+reconstruction deserve attention before strategy-specific work. The startup share remains a
+profiling artifact of launching a new process for every sample.
+
+The unified baseline runner was then used for the final three-run, one-hour no-output comparison:
+
+| Source | Rows | Seconds | Median | Output hash |
+|---|---:|---|---:|---|
+| Incremental | 1,113,638 | 0.894515, 0.875006, 0.839258 | 0.875006 | identical |
+| Snapshot | 351,516 | 2.311291, 2.163872, 2.144108 | 2.163872 | identical |
+
+These numbers are the current compute-only baseline for future L2OrderBook changes. They exclude
+runtime CSV/log output and use the strict default validation mode.
+
+## L2 Strategy Regression Matrix
+
+All four retained L2 strategies are replayed on the same 15-minute window for each depth source,
+with the conservative queue model. Window `[1585699200000000, 1585700100000000]`: 1,354 trade rows,
+201,130 incremental depth rows, 54,170 snapshot depth rows, `quantity_scale=1`. Net PnL is
+`equity - 1000`, i.e. the change in equity from the initial cash.
+
+| Strategy | Incremental orders / fills / net PnL | Snapshot orders / fills / net PnL |
+|---|---:|---:|
+| `passive_l2` | 657 / 2 / -0.020 | 641 / 2 / -0.020 |
+| `inventory_aware_l2` | 419 / 0 / 0.000 | 407 / 2 / -0.007 |
+| `flow_aware_l2` | 417 / 0 / 0.000 | 363 / 1 / -0.033 |
+| `active_l2` | 414 / 0 / 0.000 | 396 / 0 / 0.000 |
+
+**These values supersede an earlier table that reported net PnL between -13 and -21.** That table was
+produced while the fee model charged `price * quantity` on a Deribit contract, which is about 630
+times the contract's 10 USD face value. Those figures were dominated by the overcharge rather than
+by trading, so they said nothing about the strategies. `ARCHITECTURE.md` documents the corrected
+model.
+
+### Why the fill counts are near zero
+
+Fees do not influence matching, so the corrected fee model leaves fills unchanged. Two other facts
+explain the counts, and both are model behaviour rather than defects:
+
+- The strategies cancel nearly everything they submit. In this window `passive_l2` submits 657
+  orders and cancels 643 of them, while `active_l2` submits 414 and cancels 412. Cancelling and
+  re-quoting at the same price loses the queue position and rejoins at the back, so the order never
+  reaches the front.
+- Under the default `conservative` queue model the queue advances only through real trades. A real
+  queue at the touch mostly drains by cancellation, so requiring the whole displayed size to trade
+  at your exact price makes a fill close to impossible.
+
+The queue model is the lever, and the same window shows its spread. This table is generated, not
+transcribed: the command below it runs every variant, prints the table, and wraps it in a block that
+`tools/gate/check_docs.py` reads back, so these numbers fail a check when they stop being true.
+
+<!-- toyquant:check
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 passive_l2 1 conservative --fast-validation
+then: submitted_orders=647 trade_reports=4 fill_rate=0.00618238 queue_ahead_consumed=66230 captured_edge_per_unit_ticks=2.125 markout_per_unit_ticks=-1.25 markout_count=2 max_abs_inventory=1 realized_pnl=-0.0204946 equity=999.98 fees_paid=0.008
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 passive_l2 1 prorata --fast-validation
+then: submitted_orders=652 trade_reports=4 fill_rate=0.00613497 queue_ahead_consumed=50976 captured_edge_per_unit_ticks=1.375 markout_per_unit_ticks=-1 markout_count=3 max_abs_inventory=1 realized_pnl=-0.0134928 equity=999.987 fees_paid=0.008
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 passive_l2 1 optimistic --fast-validation
+then: submitted_orders=652 trade_reports=4 fill_rate=0.00613497 queue_ahead_consumed=50570 captured_edge_per_unit_ticks=1.375 markout_per_unit_ticks=-1 markout_count=3 max_abs_inventory=1 realized_pnl=-0.0134928 equity=999.987 fees_paid=0.008
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 conservative --fast-validation
+then: submitted_orders=406 trade_reports=1 fill_rate=0.00246305 queue_ahead_consumed=55460 captured_edge_per_unit_ticks=2.5 markout_per_unit_ticks=0 markout_count=0 max_abs_inventory=1 realized_pnl=-0.002 equity=1000 fees_paid=0.002
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation
+then: submitted_orders=381 trade_reports=3 fill_rate=0.00787402 queue_ahead_consumed=56647 captured_edge_per_unit_ticks=1.16667 markout_per_unit_ticks=-0.5 markout_count=2 max_abs_inventory=1 realized_pnl=-0.00678302 equity=999.995 fees_paid=0.006
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 optimistic --fast-validation
+then: submitted_orders=279 trade_reports=7 fill_rate=0.0250896 queue_ahead_consumed=18020 captured_edge_per_unit_ticks=0.5 markout_per_unit_ticks=-0.5 markout_count=7 max_abs_inventory=1 realized_pnl=0.0189169 equity=999.988 fees_paid=0.014
+| field | passive_l2 conservative | passive_l2 prorata | passive_l2 optimistic | active_l2 conservative | active_l2 prorata | active_l2 optimistic |
+|---|---:|---:|---:|---:|---:|---:|
+| `submitted_orders` | 647 | 652 | 652 | 406 | 381 | 279 |
+| `trade_reports` | 4 | 4 | 4 | 1 | 3 | 7 |
+| `fill_rate` | 0.00618238 | 0.00613497 | 0.00613497 | 0.00246305 | 0.00787402 | 0.0250896 |
+| `queue_ahead_consumed` | 66230 | 50976 | 50570 | 55460 | 56647 | 18020 |
+| `captured_edge_per_unit_ticks` | 2.125 | 1.375 | 1.375 | 2.5 | 1.16667 | 0.5 |
+| `markout_per_unit_ticks` | -1.25 | -1 | -1 | 0 | -0.5 | -0.5 |
+| `markout_count` | 2 | 3 | 3 | 0 | 2 | 7 |
+| `max_abs_inventory` | 1 | 1 | 1 | 1 | 1 | 1 |
+| `realized_pnl` | -0.0204946 | -0.0134928 | -0.0134928 | -0.002 | -0.00678302 | 0.0189169 |
+| `equity` | 999.98 | 999.987 | 999.987 | 1000 | 999.995 | 999.988 |
+| `fees_paid` | 0.008 | 0.008 | 0.008 | 0.002 | 0.006 | 0.014 |
+
+`prorata` shrinks the queue ahead of a resting order by the fraction the displayed size fell;
+`optimistic` treats the whole decrease that way. For `passive_l2`, which always rests at the touch
+where the queue ahead starts equal to the displayed size, the two coincide, which is why those two
+columns agree to the last digit. Neither column predicts live fills: they are the range that
+aggregated L2 data leaves open. The only profitable cell is `optimistic` on `active_l2`, which is a
+warning about the fill assumption rather than a result. The recorded values come from the 200,000-row
+slice at default order sizing, and the full command is inside the marker above.
+
+One scale note, corrected later. `L2MarketMakerBaseConfig::order_size` was `1` and `inventory_limit` was
+`1`, because `strategy_factory.cpp` derives both from the instrument's `quantity_scale`:
+
+```cpp
+order_size      = max(min_order_quantity, quantity_scale / 1000)
+inventory_limit = max(1,                   quantity_scale / 10)
+```
+
+That derivation assumes `quantity_scale` encodes an economic scale. For Binance `BTCUSDT` it is
+`1000000`, so the L1 workload runs with an order size of 1000 units and an inventory limit of 100000.
+For Deribit the depth quantities are already contract counts, so the spec sets `quantity_scale = 1` and
+the same derivation produces an order size of **one contract** and an inventory limit of **one
+contract**: `10 * 0.5 / 6374 = 0.0008` USD per tick of move, so every net PnL was a few cents and
+rounding dominated it. The L2 workload was running 10^6 below the L1 workload's scale, and the strategy
+it was describing was not the strategy anyone would have chosen.
+
+`--order-size=N` and `--inventory-limit=N` now override the derivation without changing any existing
+command line, verified by the full-file comparison still matching byte for byte. With them the matrix
+becomes about something:
+
+| Run, `active_l2`, 200k slice | orders | quantity | fills | realised PnL |
+|---|---:|---:|---:|---:|
+| default (`order_size` 1), conservative | 406 | 406 | 1 | -0.002 |
+| `--order-size=10 --inventory-limit=100`, conservative | 406 | 4060 | 1 | -0.02 |
+| `--order-size=100 --inventory-limit=1000`, conservative | 406 | 40600 | 1 | -0.2 |
+| default, prorata | 381 | 381 | 3 | -0.0068 |
+| `--order-size=10 --inventory-limit=100`, prorata | 408 | 4080 | 3 | -0.0678 |
+| `--order-size=10 --inventory-limit=100`, optimistic | 411 | 4110 | 7 | **-0.605** |
+
+Two conclusions. **Order size scales the PnL linearly and never changes the fill count**, under any queue
+model: `prorata` fills three times at the default size and three times at ten times the size, with ten
+times the PnL, and `conservative` and `optimistic` keep their counts fixed the same way. What sets the
+fill count is the queue model. And **at a realistic size the strategy loses more per fill in absolute
+terms**, because an order of ten contracts moves the strategy's own inventory skew by ten times as
+much. Three fills still prove nothing statistically, but they are now large enough to be about
+something, which the previous scale could not express at all.
+
+The size change also exposed a reporting gap, and three fixes went in with it. `[EXECUTION]` printed a
+subset of `ExecutionQualityMetrics`, while `[STRATEGY_METRICS]` printed the same quantities from the
+strategy's own copy, which only the legacy L1 maker fills; on the L2 path that copy stayed at zero, so
+the line showed `captured_edge=0 adverse_selection=0 markout_count=0 max_abs_inventory=0` beside an open
+marked position. `[EXECUTION]` now prints the authoritative values from the one place that computes
+them. `max_abs_inventory` is now updated where the position changes rather than sampled from a market
+view, which had missed a fill arriving as the last event, and `inventory_sign_changes` is counted there
+too instead of never. And the markout queue is now drained on the L2 path, which only the L1 path had
+done, so adverse selection had been structurally zero on this workload however often the strategy
+traded. The legacy maker's positional `StrategyMetrics` initialiser became a named one in passing,
+because inserting into that struct silently mis-assigned every field after the insertion point.
+
+With those, the same run answers the question a market maker exists to answer. At
+`--order-size=10 --inventory-limit=100` under `prorata` it reports `captured_edge=1.75`,
+`adverse_selection=-0.5` and `markout_count=2` of 3 fills, so a third of the edge captured at the fill
+is given back five cycles later. Under `conservative` it reports `captured_edge=1.25` and no resolved
+markouts, because the one fill arrives too late in the run to have one. The numbers describe the fill
+model as much as the strategy: `optimistic` reports `captured_edge=2.75`, `adverse_selection=-1.5` and
+`markout_count=6` of 7 fills, which is what the removed `heuristic` produced as well.
+
+Two modelling choices that the earlier notes called limitations are better closed with arithmetic than
+with code, because their effect is bounded below anything a run here can measure:
+
+- **Funding is not modelled.** A Deribit perpetual pays funding every eight hours, typically around
+  0.01% of notional per interval. A position held for the seconds a maker holds one crosses a boundary
+  with probability of order `hold/28800`, so the expected cost is about
+  `0.0001 * notional * hold / 28800`. At 10 contracts, $100 of notional, held for a minute, that is
+  roughly `2e-6` USD against fills worth about 0.08 USD each. Modelling it would add a rate input that
+  is not in the data and whose effect is four orders of magnitude below the PnL it would adjust.
+- **Collateral is cash only.** The engine holds no margin and no leverage, so exposure cannot exceed
+  cash. That is not an approximation while `inventory_limit * unit_notional <= equity`: at
+  `--inventory-limit=100` on a 10 USD contract the maximum position is 1000 USD against 1000 USD of
+  starting cash, so the model sits exactly at the boundary where a margin model would begin to matter.
+  Past that boundary a run would need one, rather than silently ignoring it.
+
+These are single-run replay reference values, not profitability evidence. Repeat a row with the same
+input hashes when checking exact output determinism.
+
+### Queue position at arrival
+
+A resting order is never first in the queue, so `displayed_quantity_ahead` returns the displayed best
+size of the side the order joins. It previously returned 0 whenever the order price was not exactly
+the best price, which let an order resting behind the touch fill in full the moment any trade printed
+through its level. Those fills are selectively optimistic, because they appear exactly when the
+market is moving against the resting side. Correcting this removed four of the six fills the window
+previously produced; the two that remain are `passive_l2` quotes that sat at the touch, where the
+old and new estimates agree.
+
+### Calibrating the queue model against the feed
+
+The fraction of a displayed-size decrease that a queue model honours was the last part of the fill
+model resting on a number nobody had measured, so it was measured. `tools/study/calibrate_queue_model.py`
+walks the incremental depth stream, tracks every price level, and attributes each fall in a level's
+displayed size to the trades printed at that price on that side between the level's previous update
+and that one. Whatever is left over is cancel or amendment.
+
+Over the first 200,000 incremental depth rows, which span 898 seconds of 2020-04-01:
+
+| Quantity | Value |
+|---|---:|
+| level decreases observed | 98,922 |
+| total size removed from levels | 5,162,246,010 |
+| explained by trades at the same price | 2,136,580 (0.04%) |
+| therefore cancelled or amended | 5,160,109,430 (99.96%) |
+| decrease events at least 99% cancellation | 98,268 (99.3%) |
+| events where trades exceeded the decrease | 2 (0.0%) |
+
+Two checks say the attribution is not an artefact of the window logic. The trade file holds 1,334
+trades and 2,146,690 contracts inside that same 898 seconds, and the windows captured 2,136,580 of
+them, or 99.5%, so essentially all of the traded volume is accounted for rather than falling between
+updates. And only two of 98,922 decreases had more trade volume attributed to them than the level
+actually lost, which is what a misalignment between the two files would produce in bulk.
+
+So the displayed book churns **about two thousand four hundred times the volume that actually
+trades**. On this instrument a level's size is mostly a quotation that is withdrawn and replaced: a
+resting order's queue ahead of it is dissolved by cancellations far more often than it is consumed by
+trades. That is what made the old ad-hoc `heuristic` untenable, since its two constants, a cap on the
+reduction it honoured and then a fixed fraction of it, had no reading that matches this measurement,
+and it is also why `conservative` should be read as a floor rather than as a neutral assumption.
+
+What the data cannot show is *where* in a level's queue those cancellations sat, because that is not
+public. `prorata` therefore assumes they are uniform and shrinks the queue ahead in proportion to the
+displayed size, which the two measurable extremes bracket: nothing moves (`conservative`) or all of it
+does (`optimistic`). The measurement narrowed the range rather than closing it, and the sensitivity
+table above shows what is still at stake in it: three fills against seven on one window, and one
+profitable cell out of six.
+
+#### The same measurement on an equity book
+
+The calibration above is one instrument's, so it was repeated on the equity window the F4 results are measured
+on: the converted SPY depth and trades pair for 2026-09-29 13:30 to 15:30, which is 2,593,706 depth rows and
+24,298 trades.
+
+| Quantity | Deribit BTC-PERPETUAL, 898 s | SPY, two hours |
+|---|---:|---:|
+| level decreases observed | 98,922 | 1,298,796 |
+| total size removed from levels | 5,162,246,010 | 207,950,416 |
+| explained by trades at the same price | 0.04% | **0.5%** |
+| therefore cancelled or amended | 99.96% | **99.5%** |
+| decrease events at least 99% cancellation | 99.3% | 98.7% |
+| traded volume in the window | 2,146,690 | 1,544,421 |
+| **book churn against traded volume** | **~2,400x** | **~135x** |
+
+The same qualitative answer, with one substantive difference. Cancels still explain almost all of the size that
+leaves a level, so a queue model that moves only when a trade prints is still a floor rather than a neutral
+reading. But the equity book churns 135 times its traded volume against the perpetual's 2,400, so a quote's
+queue is refreshed eighteen times less hard per share that trades, and that is what makes the queue model
+readable here:
+
+| Queue model | fills | filled shares | capture per fill, ticks | fees USD | net USD | peak inventory |
+|---|---:|---:|---:|---:|---:|---:|
+| `conservative` | 799 | 33,352 | 0.267855 | 116.73 | 262.51 | 1,099 |
+| `prorata` | 2,528 | 90,286 | 0.419556 | 316.00 | 396.14 | 1,095 |
+| `lumpy` | 2,281 | 88,124 | 0.418853 | 308.43 | 14.93 | 1,092 |
+| `optimistic` | 2,716 | 105,458 | 0.436415 | 369.10 | 155.51 | 1,096 |
+
+The fill count moves by 3.4x across the model space and the capture per fill by only 1.6x, and **the sign is what
+moves: a fill pays one side's commission of 0.35 ticks, so the floor's 0.267855 ticks cover 77% of what that fill
+pays while the other three models' 0.4189 to 0.4364 cover 120 to 125% of it**. The equity window's quoting edge
+therefore sits *on* the fee rather than under it, which is the opposite of the perpetuals -- their fee was 2.57
+ticks against a capture of 0.088 -- and what decides the sign here is the queue model plus whether the position the
+run carries happens to pay, not the fee. The F4 table's SPY row -- 799 fills and 0.267855 ticks -- is that row's own
+conservative floor rather than the window's fill count, and at that floor the quoting edge alone is 27.40 USD short
+of the commission while the window's net is +262.51, so most of that net is the position and not the quotes.
+
+The spread of `net USD` across the four rows is not the quoting: all four end carrying about 1,100 shares into
+the final mark, which is where 14.93 against 396.14 comes from. Read the capture and the fill count here, the way
+the flatten-band section says to read a row that ends holding a position.
+
+### Strategy execution correctness pass
+
+Three defects in this area were one class of mistake: a number or a decision that two components each
+owned, with nothing comparing them. They were fixed together, and the measurements below are from the
+200,000-row depth slice.
+
+**A wrapper that forgot one callback.** `ActiveL2MarketMaker` and `InventoryAwareL2MarketMaker` held an
+`L2MarketMakerBase` and hand-forwarded each of its eight virtuals. `InventoryAwareL2MarketMaker` never
+forwarded `on_queue_activity`, which silently disabled two things at once: the base's queue-consumption
+counters, which reported zero, and the base's queue-hold refresh policy, which is built on the same
+member. A forgotten forward changes behaviour without failing to compile, so both classes now derive
+from `L2MarketMakerBase` and inherit everything they do not override. On this workload the refresh
+behaviour barely moved (`price_refresh_count` 221 → 221, age 121 → 120) because the hold only binds at
+a long quote age, but the counters went from `buy/sell_queue_consumed=0/0` to `1310/47480`.
+
+**Two copies of every execution number.** `[STRATEGY_METRICS]` printed its own `captured_edge`,
+`adverse_selection`, `markout_count`, quote lifetime and inventory fields beside `[EXECUTION]`, and
+they disagreed: the same run reported `captured_edge=1.25` and `max_abs_inventory=10` in `[EXECUTION]`
+and `0` and `0` in `[STRATEGY_METRICS]`, because only the legacy L1 maker ever filled those fields.
+That is the same shape as the four-defect line fixed earlier; the earlier fix made `[EXECUTION]`
+authoritative without removing the copy that contradicts it. `StrategyMetrics` now carries only what a
+strategy owns (its own submit, cancel, fill, refresh and queue counters) and execution quality exists
+once, in `ExecutionQualityMetrics`. The Python benchmark's parser already read only the strategy-owned
+fields, so this split matches what the tools expected. The L1 maker still computes its own markout
+internals, which its unit tests assert and nothing publishes; deleting that duplicate implementation is
+the follow-up, not part of this pass.
+
+**A documented constraint that nothing enforced or measured.** `docs/PERFORMANCE_HISTORY.md` states
+that the model is cash only with no margin, so exposure cannot exceed cash. No component enforced it,
+reported it, or noticed it. A strategy without an inventory limit (`naive`, which also never cancels)
+reached a cash balance of `-120,940 USD` while `equity` still printed `+29%`, and nothing in the
+summary said so. Two changes: the summary now reports `max_abs_exposure_usd` against
+`starting_cash_usd` and counts fills that pushed the marked exposure past it, and `--max-position=N`
+adds a pre-trade gate that counts the quantity already resting on the side an order adds to, because
+those orders can still fill. The gate is off by default, so recorded runs are unaffected, and the
+default Deribit path is inside it anyway (`max_abs_exposure_usd=100` against `1000`). With the gate on,
+the same `naive` run goes from 122,794 fills and `cash=-120,940` to 43,714 fills and `cash=+1,924`.
+Without it, the run now says `max_abs_exposure_usd=487,710` and `exposure_over_collateral_fills=122,493`
+instead of saying nothing. The L1 BTCUSDT baseline is the same story at a smaller
+scale: by the same measure its exposure reaches 4,575 USD against 1,000 USD of cash, and 1,673 of
+its 2,277 fills pushed exposure past the collateral. An earlier version of this paragraph said
+seventy times, because the exposure field was computed from raw instrument units while BTCUSDT
+counts a millionth of a BTC, so every money figure on that path was a million times too large.
+The quantity scale is now passed in and both paths report dollars; the L1 edge figure moved from
+-335,733 to -0.336 USD, which is what the recorded -2.67 ticks per contract over 1.26 units
+implies.
+
+**A cross-check that had never been run.** The strategy, the pipeline and the portfolio each track the
+position independently. The summary now compares the first two on every report and counts divergences.
+On the L2 workload it reports `strategy_position_mismatches=0`, so the three agree, which is what makes
+the strategy's own sizing trustworthy. If a callback were dropped again this counter is where it would
+show, rather than in a PnL difference nobody can attribute.
+
+**One gap left open on purpose.** `ActiveL2MarketMaker` compares `pause_after_ticks_per_second` against
+a mid-price speed built from the time between views, and this feed's view gaps run from microseconds to
+hundreds of milliseconds, so that speed measures the gap distribution rather than the market:
+`min_elapsed_seconds=0.05` is above the 8.5 ms mean gap, so the floor always applies. Measured, the
+halt fires 46 times at the field's value of 9.0 and 246 times at 50.0, and every value in between lands
+in the same place. The threshold that would mean something is a tick range over a fixed time window,
+which is a behaviour change to a risk control, and it is recorded here as a known gap rather than
+half-changed: the field is renamed to say it is a per-second rate, the finding is written next to it,
+and the 200,000-row invariants were re-verified unchanged after the rename.
+
+### Making the demo's numbers readable and behaving
+
+The principle for this pass was to stay close to the mechanism, keep the demo showing something, and
+leave the results unremarkable. Four changes, all measured on the 200,000-row slice.
+
+**Edge and markout are now per-contract and in ticks.** They were raw sums of price differences, so
+`captured_edge=1.25` could not be read against the half-spread the quote sat at, and two runs with
+different fill sizes were not comparable. The weighted sums behind them produce a quantity-weighted
+average per contract, and the same for the markout five cycles later:
+
+| Model | fills | captured ticks per contract | markout ticks per contract | kept |
+|---|---:|---:|---:|---:|
+| `conservative` | 1 | 2.50 | none resolved | — |
+| `prorata` | 3 | 1.17 | -0.50 | 0.67 |
+| `optimistic` | 7 | 0.79 | -0.50 | 0.29 |
+
+The captured edge falls as the fill count rises, which is the shape adverse selection should have, and
+the giveback is now a number rather than a shrug: 43% of what was captured under `prorata`, 63% under
+`optimistic`. That ratio is what an edge-leak investigation needs to move.
+
+**The `naive` baseline was not a strategy.** It submitted two orders on every update and cancelled
+none, so every quote rested until the market traded through it: 234,576 orders and a 52% fill rate on
+200,000 rows, with the position reaching -12,000 contracts and cash -120,940 USD. A quote that is never
+cancelled is a free option. It now refreshes on a mid move of one tick or a maximum quote age, the two
+triggers a real maker uses:
+
+| | before | after |
+|---|---:|---:|
+| submitted orders | 234,576 | 11,482 |
+| fills (rate) | 122,794 (52%) | 31 (0.27%) |
+| max marked exposure | 487,710 USD | 200 USD |
+| fills past the collateral | 122,493 | 0 |
+
+**An unknown strategy name fails instead of silently measuring the default.** The factory used to fall
+through to `OptimizedMarketMaker`, which is also how the `optimized` name itself was implemented, so a
+typo or a new caller produced a run that looked fine while measuring something nobody asked for.
+`optimized` now has an explicit branch and everything else throws.
+
+**A tick-size bug the new metric found.** `total_quote_distance_ticks` was `4.8891e+08` on the L1 path
+while `total_quote_distance` was `4889.1`, a ratio of exactly `1e5`: the replay path built its pipeline
+without the instrument's tick size, so every tick-denominated figure was computed against the default
+`1e-05` instead of `0.10`. Fixing that one argument moves `total_quote_distance_ticks` to `48,891`
+(3.6 ticks per quote, which is what the maker quotes) and the new per-unit figures from `-26654.6` and
+`51508.9` to `-2.67` and `5.15`. The pinned invariants did not move, because none of them is
+tick-denominated, and the full-file reference was re-recorded through `tools/gate/verify_l2.sh ref`.
+
+**One change weighed and deliberately not made.** `conservative` is still the default queue model
+because every recorded table, the verifier's pinned values and the reference hash are stated under it.
+The measurement says `prorata` is the model the mechanism supports, and under it the default L2 run
+reports `submitted_orders=381 trade_reports=3 queue_ahead_consumed=56647 realized_pnl=-0.00678`
+instead of `406 / 1 / 55460 / -0.002`. Flipping it is four commands: the default in `AppConfig`, the
+two defaults in `MatchingEngine`, the pinned values in `tools/gate/verify_l2.sh`, then
+`bash tools/gate/verify_l2.sh ref`. It is recorded as a decision to take rather than taken halfway.
+
+### What the fill count is made of
+
+The L2 mainline fills a handful of times in 200,000 rows: three under the calibrated default and one
+under the most skeptical bound. That number now has an explanation, and the explanation changes what
+the next step should be.
+
+First the arithmetic, over the same 898 seconds. The median size displayed at a level is 20,150
+contracts, while the median volume that actually trades at a price across that whole window is 7,180.
+An order joining the back of a median level therefore waits behind a queue 2.8 times larger than all
+the trade at that price, so under `conservative`, which moves the queue ahead only when a trade prints, a fill is not
+unlikely but out of reach. The
+strategy is not being punished by a harsh model; it is standing in a queue that never clears.
+
+That is why the quote's position relative to the touch decides the outcome, and the run now counts it:
+
+| field | 1 tick (at touch) | 2 ticks (default) | 4 ticks | 1 tick + `prorata` | 1 tick + `optimistic` |
+|---|---:|---:|---:|---:|---:|
+| submitted orders | 346 | 406 | 408 | 271 | 268 |
+| **fills** | **3** | 1 | 1 | **11** | **15** |
+| quotes at the touch | **234** (68%) | 209 (51%) | **59** (14%) | 194 (72%) | 192 (72%) |
+| captured ticks per contract | **0.67** | 2.50 | **4.50** | 0.41 | 0.40 |
+| markout ticks per contract | -0.25 | none resolved | none resolved | -0.15 | -0.18 |
+| realized PnL USD | -0.033 | -0.002 | -0.002 | -0.015 | **-0.088** |
+
+Reproduce with `--base-spread-ticks=N`, which is what the first three columns vary.
+
+Three things fall out of it.
+
+**Quoting at the touch is a real lever and a bad one.** One tick instead of two triples the fill count,
+1 to 3, because the share of quotes that join the touch rises from 51% to 68%. The captured edge falls
+from 2.50 ticks to 0.67 over the same move and the markout turns negative, so the extra fills are worth
+a quarter of the edge given up to get them.
+
+**The queue model is still the larger lever.** At the touch, `prorata` fills eleven times against three
+under `conservative`, and `optimistic` fifteen. Placement is worth 3x and the queue assumption 5x, and
+they compound: the best cell is 15 fills at a 5.6% rate, the worst is 1 at 0.25%.
+
+**More fills lose more money, and the fee is the reason.** Realized PnL falls as the fill count rises,
+and the markout bounds adverse selection at -0.25 ticks, so the loss is not selection. It is the fee
+against the unit. One BTC-PERPETUAL contract has a fixed 10 USD face value, so a half-USD tick move is
+worth `10 * 0.5 / 6421 = 0.0008` USD per contract, while the maker fee on that same contract is
+`10 * 0.0002 = 0.002` USD. Capturing four ticks pays it; capturing the 0.4 to 0.7 ticks a quote at the
+touch actually earns does not, by a factor of about six. The two-tick default sits almost exactly at
+break-even, which is why the recorded runs are flat rather than profitable.
+
+The next step is therefore not to buy more fills. It is a choice between raising the capture per fill
+and finding out whether the remaining fills are enough to measure, or changing the unit economics with
+a longer horizon, a different instrument, or a venue whose fee is small against its tick. Both are
+decisions about what the demo is for; neither is a code change, because the placement lever now exists.
+
+### What the fill model assumes, and what a realistic one would need
+
+The queue model is the part of this simulator a reader should distrust first, so here is what it
+assumes and which of those assumptions the data can check.
+
+**The spine, in order of how much is assumed.**
+
+1. **Price-time priority.** A resting order fills after everything ahead of it at its price, in arrival
+   order, and new size at the same price joins behind it. That is what the engine implements and what a
+   FIFO venue does.
+2. **Our order is invisible to us.** The displayed size comes from the venue, so it is other
+   participants: a 10-contract quote is 0.05% of a median level here and does not move it.
+3. **Trades consume the front, exactly.** A print of size `t` at our price removes `t` from the queue
+   ahead and fills us once that queue is gone. Nothing is assumed here, it is arithmetic.
+4. **Cancellations are the rest, and they are the only real assumption.** A level's displayed size
+   falls by `r`; trades explain a measured 0.04% of that, so 99.96% is cancel or amendment. Where in
+   the queue those cancels sit is not public. `ProRata` assumes they are spread uniformly, which
+   shrinks the queue ahead in proportion to the display:
+
+   ```
+   queue_ahead -= queue_ahead * r / previous_displayed
+   ```
+
+   `Conservative` (nothing comes off) and `Optimistic` (all of it does) bracket that.
+
+**So there is no free parameter to tune.** The cancel share is measured and the placement of those
+cancels is bounded by the two extremes, which is why the honest presentation is a range across all
+three and why the default is now the neutral member rather than the most skeptical one: a model that
+advances the queue only when a trade prints is not conservative, it contradicts the measured mechanism
+by three orders of magnitude.
+
+**What a more realistic model would need, ordered by how much it would move the answers.**
+
+1. **Cancel position, observed instead of assumed.** Only order-level data can settle it, and this feed
+   does not carry order identity. The range stands until a source that does is used.
+2. **Latency in milliseconds.** The engine counts cancellation delay in market events, not time. At this
+   feed's rate an event is under a millisecond, so the model cannot express the case that costs a maker
+   money: our cancel arriving after the market has moved.
+3. **Our own order larger than the print.** The engine can carry a partial fill, but on this workload
+   our 10-contract quotes are always smaller than the prints that reach them, so that path is not
+   exercised.
+4. **Repricing and time priority.** A venue that lets an existing order be modified keeps its place;
+   this feed does not publish order identity, so whether an increase at our price is new size behind us
+   or an amendment ahead of us cannot be measured here.
+
+### The fill count is available; the edge is what is missing
+
+The requote policy turned out to be the largest single lever, larger than quote placement and
+comparable to the queue model itself:
+
+| `--refresh-price-ticks` | 1 | 2 (default) | 4 | 8 | 16 |
+|---|---:|---:|---:|---:|---:|
+| submitted orders | 682 | 271 | 182 | 171 | 168 |
+| **fills** | 3 | **11** | **21** | 23 | 23 |
+| fill rate | 0.44% | 4.06% | 11.5% | 13.5% | 13.7% |
+| captured edge USD | 0.0012 | 0.0035 | 0.0016 | 0.0047 | 0.0047 |
+| fees paid USD | 0.006 | 0.022 | 0.042 | 0.046 | 0.046 |
+| realized PnL USD | +0.015 | -0.015 | -0.109 | -0.147 | -0.147 |
+
+All at the touch and under the calibrated model, with only the requote threshold changing. Holding a
+quote longer instead of re-joining the back of the queue is worth a factor of two in fills between the
+default and four ticks, and eight times between the shortest and the longest setting, saturating near
+23. So the fills are there to be taken; the early fill counts were a symptom of a quote that never held
+its place rather than of a market that could not reach it.
+
+What is not there is an edge that pays for them. Fees rise with the fill count and the captured edge
+does not, so every additional fill loses more: fees are 10x the captured edge at the long settings and
+3x at the default, and the only positive cell in the table is the shortest requote setting with three
+fills, which is a sample the markout immediately contradicts at -0.5 ticks. The conclusion is that the
+next question is not how to fill more, it is what a maker can capture on this instrument that exceeds a
+0.02% fee on a fixed 10 USD face value.
+
+### The queue model, as arithmetic
+
+Let a price level display `D` contracts, of which `Q` are ahead of our resting order, so our share of the
+queue is `q = Q / D`. Two kinds of event change `Q`.
+
+**Trades.** A print of size `t` at our price removes from the front: `Q <- max(0, Q - t)`, and the order
+fills when `Q` reaches zero. Nothing is assumed here.
+
+**Cancellations.** The display falls from `D` to `D - r` with no trade at that price. Which of those `r`
+contracts were ahead of us is not in the data. Write the amount that leaves from ahead as a random
+variable `X(r)`; a queue model is a claim about its distribution.
+
+| model | `X(r)` | `E[X]` | `Var[X]` |
+|---|---|---|---|
+| `conservative` | `0` | `0` | `0` |
+| `prorata` | `r * q` | `r * q` | `0` |
+| `lumpy` | `(r / k) * Binomial(k, q)` | `r * q` | `r^2 q (1 - q) / k` |
+| `optimistic` | `r` | `r` | `0` |
+
+The columns after the first are what the models *mean*, and they separate two different uncertainties.
+`conservative` and `optimistic` bracket the **mean**: they are the claims that none, or all, of the
+fall came from ahead of us. `k` moves the **variance** without touching the mean, because a binomial
+with `k` draws has mean `k q` and variance `k q (1 - q)`, and each draw carries `r / k`. So `k` is not a
+free knob either; it has a physical reading. A cancellation removes whole orders, and the measurements
+say how big those are: the median level decrease removes 74% of a median level, decreases run from 100
+to 360,000 contracts, and the removed fraction is flat at 0.5-0.7 across four orders of magnitude of
+level size. The neutral reading of a fall of `r` is therefore "one or a few orders left, each ahead of
+us with probability `q`", which is `k = 1`, and `k -> infinity` is the deterministic pro-rata rule. A
+level of `n` equal orders would give `k = n r / D`, so `k` is L2-blind in the same way the placement of
+the cancels is.
+
+**What the measurement says, including a negative result.** The same window, quoted at the touch, with
+a four-tick requote threshold, ten seeds per setting:
+
+| model | fills over ten seeds | mean | range |
+|---|---|---:|---|
+| `prorata` | 21, 21, 21 | 21.0 | 0 |
+| `lumpy`, `k = 1` | 17 17 19 19 19 17 21 19 17 21 | 18.6 | 17-21 |
+| `lumpy`, `k = 4` | 19 19 19 19 21 19 21 21 19 21 | 19.8 | 19-21 |
+| `lumpy`, `k = 16` | 21 19 21 19 19 19 19 19 19 17 | 19.4 | 17-21 |
+
+**The fill count is largely insensitive to `k`.** The per-event variance is real, but a quote lives
+through many level updates before it can fill, so most of that variance averages out along the way and
+every setting lands within about 10% of the deterministic value. Lumpiness therefore changes *which*
+quotes fill and *when*, which a count per window cannot see, and it does not change how many a window
+produces. That is the honest reason it is offered as an alternative reading rather than as the default:
+it buys mechanism, not magnitude.
+
+**And "mean-preserving" is per event, not per run.** `E[X] = r q` holds by construction for every
+event, but the fill count is a nonlinear function of the whole queue path, so a path that empties a
+queue in one jump does not fill exactly as often as one that empties it smoothly. The 18.6 against 21
+is that effect rather than a defect, and it is the reason the two runs are not reported as agreeing.
+
+**Where the headline number actually comes from.** The paragraph here used to say that `q` inside
+`E[X] = r q` is what moves the headline, and that the arrival rule is what sets `q`. Measuring it shows
+that this is backwards, and the reason is worth the space. With `q` fixed at arrival, every cancel
+removes `r q` from the queue ahead while the display falls by `r`, so the ratio is preserved:
+
+```
+q' = (Q - r q) / (D - r) = q (D - r) / (D - r) = q
+```
+
+`q` is therefore a fixed point of the pro-rata dynamics and the starting share barely matters. Only two
+things break that fixed point: a trade at our price, which removes from the front rather than in
+proportion, and a model that lets `q` drift for its own reasons. Across the arrival share, at the touch
+with a four-tick requote threshold:
+
+| `--arrival-share` | 1.0 | 0.75 | 0.5 | 0.25 | 0.0 |
+|---|---:|---:|---:|---:|---:|
+| fills | 21 | 21 | 21 | 23 | 35 |
+| fill rate | 11.5% | 11.5% | 11.5% | 12.8% | 19.4% |
+
+Starting at the back of the queue and starting halfway through it are the same run, and starting at the
+front is worth less than a factor of two. Set against the levers measured around it, requote policy is
+7.7x and the queue model 5x. The decisive modelling choice is therefore not where we arrive; it is
+whether a cancellation is allowed to help us at all, which is exactly the mean of `X(r)`.
+`conservative` says no and fills once, `pro-rata` says proportionally and fills twenty-one times, and
+`optimistic` lets `q` drift to zero and fills more than either. The arrival share and the chunk count
+are second-order on this book because trades, the only thing that breaks the fixed point, are 0.04% of
+what moves a level.
+
+### What entry latency costs, and what it does not
+
+The engine takes `--order-latency-us`, which holds an order for that long on the exchange clock before it
+exists in the book. Zero is the synchronous behaviour every other recorded number uses, and the mode is
+exercised by a unit test that sends an order at one timestamp and checks it is not resting until an event
+whose clock has passed the delivery time.
+
+Quoted at the touch with a four-tick requote threshold, under the calibrated model:
+
+| latency us | fills | fill rate | captured ticks | markout ticks | fees USD | realized USD |
+|---|---:|---:|---:|---:|---:|---:|
+| 0 | 21 | 11.5% | 0.095 | +0.095 | 0.042 | -0.109 |
+| 100 | 21 | 11.5% | 0.095 | +0.095 | 0.042 | -0.109 |
+| 1000 | 21 | 11.5% | 0.095 | +0.095 | 0.042 | -0.109 |
+| 5000 | 11 | 15.1% | 4.23 | +0.15 | 0.022 | -0.008 |
+| 20000 | 11 | 16.9% | 4.09 | +0.45 | 0.025 | -0.016 |
+| 50000 | 10 | 20.4% | 8.45 | -0.06 | 0.023 | -0.017 |
+
+The first thing to read is a check rather than a result. **Sub-millisecond latency changes nothing at
+all**, because this feed's views arrive every 8.5 ms on average, so an order that lands before the next
+view lands in the book the strategy was looking at. The sweep is flat from 0 to 1 ms for that reason and
+not because the parameter is inert.
+
+The second is the mechanism, and it points the opposite way to the usual warning. **Entry latency makes a
+quote stale in the favourable direction.** The strategy picks a price from the view at T, the order lands
+at T + L at that now-stale price, and a fill there is a purchase below the current mid. The capture per
+contract rises from 0.095 ticks to 8.45 and the fill count falls from 21 to 10: being slow at entry is
+equivalent to quoting wider, and the fee per fill falls with the fill count.
+
+What the table therefore does not contain is the leg that costs a market maker money, which is the
+**cancel**. A late entry delays a quote that would have been good; a late cancel leaves a quote exposed
+after the market has moved against it, and that is where adverse selection enters. Cancellation delay is
+still counted in market events rather than in microseconds, so the classic latency cost is not modelled
+yet and these rows say nothing about a venue where cancels are slow.
+
+None of the rows supports a PnL conclusion: all six are below the thirty fills the project requires
+before a PnL statement, which is the case the gate exists for.
+
+### What a late cancel costs, and why the sign flips
+
+The other half of the lifecycle is `--cancel-latency-us`, the delay between the strategy asking to cancel
+and the exchange applying it. Same window, same policy, same model as the table above:
+
+| cancel latency us | fills | fill rate | captured ticks | markout ticks | edge USD | realized USD |
+|---|---:|---:|---:|---:|---:|---:|
+| 0 | 21 | 11.5% | +0.095 | +0.095 | +0.002 | -0.109 |
+| 1000 | 27 | 16.9% | -0.315 | +0.574 | -0.007 | -0.130 |
+| 5000 | 25 | 16.9% | -0.480 | +0.820 | -0.009 | -0.123 |
+| 20000 | 25 | 17.1% | -0.440 | +0.700 | -0.009 | -0.156 |
+| 50000 | 23 | 19.3% | -0.196 | +0.435 | -0.004 | -0.158 |
+
+Entry latency made the capture larger. Cancel latency makes it **negative**. The quote stands through
+whatever the market did while the cancel was in flight, so the fills that arrive are the ones where a
+trade came through a price the strategy had already decided to leave: buying above the mid, which is what
+a negative capture means. The fill count rises rather than falls, 21 to 27, for the same reason, because
+a quote that is never pulled is always there to be hit.
+
+The markout column is worth reading carefully, because the cost does not appear where the classic story
+puts it. The markout five cycles later is positive in every row, so the loss is not a delayed drift after
+the fill: it is realised at the fill itself, in the price. Measured against the fee, the edge per contract
+goes from barely positive to about half the fee, and realized PnL gets worse as the cancel gets slower,
+while the entry-latency table got better in the same column. The two directions are opposite, and that
+asymmetry is the whole of what latency does to a market maker: being slow to arrive costs you fills,
+being slow to leave costs you money.
+
+None of these rows supports a PnL conclusion either. The largest fill count is 27, still below the thirty
+the project requires.
+
+## Interpretation and Next Step
+
+
+
+The wall-clock baselines include startup, parsing, simulation, and output I/O; they do not identify
+event-level latency. The L1 sample is unsuitable for profitability conclusions, and none of these
+numbers constitutes a low-latency performance claim.
+
+Preparation is now complete for the first optimization pass: a paired one-hour performance
+baseline, a repeated gprof profile, and a four-strategy regression matrix are recorded. Use
+`active_l2` incremental replay as the primary performance target; retain snapshot and the other L2
+strategies as compatibility checks. Keep inputs, build flags, and output summaries fixed so
+performance changes can be compared without changing behavior.
+
+## Long-Window Profile Result
+
+The latest profile used the current `toy_quant_profile` binary, four one-hour incremental runs,
+and `--no-output`, so file output was removed from the sample. The leading application hotspots
+were:
+
+| Function | Sample share |
+|---|---:|
+| `split_csv_views` | 17.3% |
+| `L2OrderBook::apply_incremental_batch` | 16.2% |
+| `parse_uint64` | 12.1% |
+| `DeribitIncrementalBookReader::append_update` | 6.9% |
+| `L2OrderBook::market_view` | 6.4% |
+| `ActiveL2MarketMaker::on_l2_market_view` | 2.9% |
+
+This changes the next optimization priority: the parser and typed batch/update path are the main
+cost centers, followed by L2 map updates. Strategy code is not currently a primary hotspot, and
+output I/O was excluded from this profile. The percentages come from an instrumented Debug-style
+gprof build and guide prioritization; they are not production latency numbers.
+
+## Buffered Line Reader
+
+The line-reading layer was replaced before any parsing work, because `std::getline` and `gzgets`
+are both per-character loops. `src/market/line_reader.*` now pulls 1 MiB blocks from a plain
+`std::ifstream` or a `gzFile`, locates line boundaries with `memchr`, and hands back a
+`std::string_view` into the block, so the common case neither scans byte by byte nor allocates.
+A line that crosses a block boundary is compacted to the front of the block before the next read,
+so an owned copy is only needed for a line larger than one block. All five readers
+(`BinanceAggTradeReader`, `BinanceBookTickerReader`, `DeribitBookSnapshotReader`,
+`DeribitIncrementalBookReader`, `DeribitTradeReader`) use it, which also removed the
+comma-counting pre-pass that the old `split_csv(std::string)` needed to size its reserve.
+
+### Line layer in isolation
+
+A standalone microbenchmark over the first 200 MB (2,591,303 rows, about 76 bytes per row) of
+`data/v2/crypto/deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv`, three runs, medians:
+
+| Stage | Seconds | Throughput |
+|---|---:|---:|
+| Raw 1 MiB block reads only | 0.037 | 5.4 GB/s |
+| Block reads plus `memchr` newline scan | 0.076 | 2.6 GB/s |
+| `std::getline` into `std::string` | 0.115 | 1.7 GB/s |
+| `LineReader::next_line` | **0.080** | **2.5 GB/s** |
+| `LineReader` plus the current per-row `find(',')` field split | 0.200 | 1.0 GB/s |
+
+Two conclusions matter more than the 1.44x on the line layer itself:
+
+- `LineReader` is within 10% of the `memchr`-only floor, so the line layer is now close to the
+  irreducible read cost. `std::getline` was adding about as much time as the scan itself.
+- **Per-row field splitting costs 0.120 s, which is more than the entire pre-change line layer.**
+  Eight `find(',')` calls over roughly 10 byte fields are dominated by `memchr` call setup rather
+  than by bytes scanned. Within this layer the field split, not the line split, is the next target.
+  The stage timings below show that the field split is in fact only a small part of the parser's
+  total cost, so this isolation result should not be read as the overall priority.
+
+  **Corrected later:** the `memchr` half of that reasoning is wrong. A byte loop measured the same
+  speed as `std::string_view::find`, so this host's `memchr` is not slow for ten byte fields, and the
+  only variant that beat it was a word-at-a-time scan, by about 12% — below the measurement floor. See
+  [Low-Latency Design](../performance/design.md#a-word-at-a-time-scan-for-the-field-split).
+
+### End-to-end
+
+Workload: the full-day `data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz` (119,238 rows)
+replayed against the first 2,000,000 rows of the incremental depth file, `active_l2` and the
+conservative queue model. Runtime summary: 1,303,131 events, 1,183,894 incremental batches, one
+snapshot batch.
+
+| Build | Median | Range | Paired mean difference |
+|---|---:|---|---:|
+| Pre-change, with output | 1.52 | 1.39–1.77 | |
+| `LineReader`, with output | 1.41 | 1.21–1.64 | **−0.156 s (−10.2%)** |
+| Pre-change, `--no-output --fast-validation` | 1.61 | 1.46–2.02 | |
+| `LineReader`, `--no-output --fast-validation` | 1.41 | 1.28–1.63 | **−0.258 s (−16.0%)** |
+
+Nine paired runs each, alternating pre-change and `LineReader` so that thermal and system drift
+affect both builds equally. **Only the paired difference is trustworthy here.** Unpaired runs of a
+single build ranged over 0.38 s, which is larger than the difference between the builds, so an
+earlier unpaired comparison on this host reported a misleading `1.46x`.
+
+Behavior is unchanged: `data/runtime/orders.csv`
+(`521275515d80052d84f5ffb458cc2b82311168d7d3c7002fdd5d54889540b835`) and `data/runtime/trades.csv`
+(`171bddd11a1d60e42ff250b9a0e6b3bedc90a44325d676b88c1303f20b88a02c`) match the pre-change build
+byte for byte, and the full stdout/stderr summary is identical.
+
+### Where the end-to-end saving actually came from
+
+The saving is larger than the isolation table predicts, and most of it is not the vectorised scan:
+
+| Source | Estimated share |
+|---|---|
+| Removing one `malloc`/`free` pair per batch | largest |
+| Per-character line scan removal (the isolation table) | about 27 ms of 258 ms |
+| Per-row `std::string`/`vector<std::string>` materialisation in `DeribitTradeReader` and the two Binance readers, plus their comma-counting reserve pre-pass | small on this workload |
+
+`read_batch` used `pending_row_ = std::move(row)`. The move steals the row buffer, so the next
+`std::getline` has to allocate a fresh one: on this workload that is roughly 1.18M allocate/free
+pairs. `pending_row_.assign(view)` reuses the existing capacity instead, so the allocation
+disappears. This is worth recording because the profiling story pointed at parsing, and the
+largest single win turned out to be allocation churn on the batching boundary.
+
+
+### Coverage added
+
+`tests/line_reader_test.cpp` covers LF, CRLF, empty lines, a missing trailing newline, a line
+larger than one block, block level batching, gzip parity, and line-for-line parity against
+`data/v2/fixtures/test_aggTrades_5k.csv`. `tests/market_data_adapter_test.cpp` gained incremental book
+reader coverage for `local_timestamp` batching, the snapshot batch that starts the stream, CRLF
+rows, and the header sniffing in `make_deribit_depth_reader`.
+
+Every test source used to start with `#ifdef NDEBUG / #undef NDEBUG / #endif` before its first
+include. Without it `linux-relwithdebinfo` compiled the checks out, so a guarded setup call was
+skipped while the following `std::get<BboQuote>` still ran and aborted with
+`std::bad_variant_access`. That preset is the profiling build, so its test run has to mean
+something. The guard is on the target now -- `-UNDEBUG` inside `add_toy_test()` in `CMakeLists.txt`,
+which is also where a test's one file, the layers it takes and its registration are stated -- because
+a flag cannot be forgotten when a test is added and twenty-one copies of a block can. The whole suite
+executes its checks in both presets either way.
+
+The scratch files those tests write went the same way. They had named `/tmp` themselves, or left the file
+behind on the last line of `main` -- which an early `assert`, being an abort, walks past. `tests/support/`
+now holds `TempFile` and `TempDir`, which name a file under the system temporary directory and remove it when
+it goes out of scope, so a full ctest run leaves nothing behind.
+
+
+## Stage Timing (before the container change)
+
+The function level profile above left 38.2% of the sample unattributed, and its percentages are
+shaped by the instrumentation itself: gprof adds a call at every function entry, so tiny helpers
+are charged for the measurement and inlined helpers are charged to their caller. The stage timings
+measure declared regions instead, which is the question that matters here: how long is each step of
+turning a row into a quote.
+
+`l2_replay ... --profile-stages[=N]` records eight regions on one event in every `N` (default 64)
+and prints exact percentiles to stdout, so it also works together with `--no-output`. With the flag
+absent the profiler is not attached and the run is unchanged; that was verified by diffing the full
+stdout and the runtime CSV hashes against the pre-change binary.
+
+### Clock cost on this host
+
+Reading the monotonic clock is not the ~20 ns that is normally assumed here:
+
+| Call | ns |
+|---|---:|
+| `std::chrono::steady_clock::now()` | 71 |
+| `clock_gettime(CLOCK_MONOTONIC)` | 72 |
+| `clock_gettime(CLOCK_MONOTONIC_RAW)` | 68 |
+
+This host reports itself as WSL2, where these reads are not on a fast path. Eight regions need
+sixteen reads per sampled event, about 1.1 microseconds, so timing every event would have cost
+more than the code being measured. At an interval of 64 the added wall time is roughly 17 ns per
+event, under 1.5% of a 1.3 microsecond event, which is why the instrumented and uninstrumented
+runs take the same time.
+
+Because the read cost is significant, the profiler calibrates its own instrument first: it probes
+two back to back clock reads at construction and subtracts the minimum from every sample (35-44 ns
+here). Without that subtraction each of the eight regions was charged for one clock read, which
+inflated the column sum by roughly 400 ns per event and made it appear larger than the total run
+time.
+
+### Measured breakdown
+
+Full-day Deribit trades (119,238 rows) against the first 2,000,000 rows of the incremental depth
+file, `active_l2` and the conservative queue model, `--no-output --fast-validation
+--profile-stages`. 1,303,131 events, 1,183,894 incremental batches, wall clock 1.80-1.85 s, which
+is 1381-1420 ns per event.
+
+| Stage | Samples | Share | Mean | p50 | p90 | p99 | p999 | Max |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| read+parse | 20361 | **50.4%** | 922.4 | 622 | 766 | 1102 | 58996 | 2835896 |
+| validate | 20361 | 5.0% | 85.1 | 62 | 122 | 192 | 860 | 61219 |
+| book-apply | 18514 | 15.7% | 287.0 | 193 | 338 | 710 | 3312 | 559972 |
+| market-view | 18514 | 9.0% | 145.2 | 111 | 180 | 299 | 1173 | 226713 |
+| top-booking | 18514 | 1.9% | 44.3 | 23 | 75 | 125 | 405 | 42885 |
+| engine | 18514 | 13.5% | 274.3 | 167 | 354 | 606 | 4569 | 233840 |
+| queue-acct | 18514 | 0.6% | 16.7 | 7 | 43 | 76 | 173 | 43463 |
+| strategy | 18514 | 3.9% | 122.7 | 48 | 114 | 307 | 7029 | 339400 |
+| **column sum** | | 100.0% | 1897.7 | **1233** | | | | |
+
+Three consecutive runs produced the same ordering and the same shares within one percentage point,
+so the ranking is stable even though the absolute values track the machine state.
+
+### How to read it
+
+- Share is computed from the p50 column. The mean is not usable for stages that have rare stalls:
+  `read+parse` reaches 39-59 microseconds at p999 and 2.8-9.3 milliseconds at its maximum, which is
+  a page fault or a 1 MiB block refill showing up in a single sample. Those few samples move the
+  mean by hundreds of nanoseconds while leaving the median where it belongs.
+- The p50 column sum lands within 10-15% of the per-event wall clock time, so the eight regions do
+  cover essentially the whole event. Treat the column sum as a ranking tool and the wall clock as
+  the absolute figure.
+- `top-booking`, `engine` and `queue-acct` had no row at all in the function level profile. They
+  were previously part of the unattributed 38.2%.
+
+### What this changes for the next step
+
+`read+parse` alone is half of the per-event cost. Combining this with the isolation measurement
+above, and knowing that a batch here holds one or two rows of about 76 bytes, the split inside one
+batch is roughly:
+
+| Part | ns |
+|---|---:|
+| line reader, two rows | 76 |
+| field split, two rows at about 46 ns | 92 |
+| number conversion, two rows at about 200 ns | 400 |
+| batch assembly, including one `updates` vector allocation | 60 |
+
+**Number conversion is the largest single item in the whole run, near a third of the per-event
+cost.** It is two `std::from_chars<double>` and three `parse_uint64` calls per row. This corrects
+the priority that the isolation benchmark implied, because that benchmark could only see the line
+layer and pointed at field splitting, which is about 7% of the event.
+
+That prediction was right, and acting on it took longer than it should have. Both halves — the
+`from_chars<double>` for the price and a hand written integer path for the timestamps — were attacked
+and rejected on isolation comparisons that under-measured them. Both were eventually reimplemented as
+exactly equivalent fast paths, verified byte-identical on the full file, and accepted: together about
+20% of `read+parse`. See [Low-Latency Design section 5](../performance/design.md#5-the-number-conversions) and
+the [ledger](../PERFORMANCE.md#5-optimization-ledger).
+
+Updated order of work:
+
+1. Number conversion inside the reader: fixed point parsing so that prices become integer ticks
+   directly, plus a hand written integer path.
+2. `book-apply` and `market-view`, together 25%.
+3. `engine`, 13%, which is a larger target than the function level profile suggested.
+
+Validation and strategy are together under 9%, so they stay out of scope for now.
+
+Where that work stands, as recorded at the time: the reader keeps small batches inline and dispatches
+columns through a jump table, and a fixed point rewrite of the price parse was measured and dropped
+because it did not pay. `book-apply` and `market-view` were later rebuilt on `TickLadder`, and the
+engine's per-symbol maps were later re-keyed by integer id. Both are in the
+[optimization ledger](../PERFORMANCE.md#5-optimization-ledger), with their mechanisms in
+[Low-Latency Design](../performance/design.md).
+

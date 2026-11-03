@@ -1,5 +1,8 @@
 # Changelog
 
+**What changed in the code, release by release.** The plan's own log — what the project decided to build or not build,
+and when — is in [Roadmap](docs/ROADMAP.md#change-log), and the two are deliberately different records of the same work.
+
 ## The live paper milestone (current)
 
 The websocket reader, the paper mode and the recorder half of a live path, which is roadmap phase 2: the
@@ -7,7 +10,7 @@ seam it closes is the one the roadmap names, that a live feed is another reader 
 existing book and matching engine against it. So the live path is the L2 replay path with its two readers
 moved onto a socket, and everything downstream of them is the same code. Its entry point is the `ws` mode in
 [User Guide](docs/USER_GUIDE.md), and the numbers the other documents quote are re-derived by
-`bash tools/verify_l2.sh fast`, which this milestone leaves unchanged.
+`bash tools/gate/verify_l2.sh fast`, which this milestone leaves unchanged.
 
 ### Highlights
 
@@ -17,7 +20,7 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   session from a replayed one.
 - **The wire is the replay format.** One CSV row per text message, its kind read from its column count, in the
   two shapes `--record` writes, so a recording streamed back over the feed reproduces itself byte for byte.
-- **A desk loop with no credential.** `tools/websocket_sender.py` stands a WebSocket server in for a venue and
+- **A desk loop with no credential.** `tools/live/websocket_sender.py` stands a WebSocket server in for a venue and
   streams a trade and a depth file, interleaved by their own timestamps, so the whole path runs locally. A
   unit test closes the same loop inside `ctest`, with a server thread standing in for the venue.
 - **One mode, reused.** `ws` accepts every `l2_replay` flag -- the recorder, the feed thread, the profiler and
@@ -109,7 +112,7 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   cross sets a target position, clips at the touch fill it, and a stop, a time stop or the exit band closes
   it. A cooldown after a stop keeps the next view from reopening the same position. It shares the pipeline's
   pre-trade gates instead of reimplementing them; on the 200k-row Deribit slice it filled 55 taker clips on
-  both sides and reconciled `ok`. `--trend-params` exposes the signal, and `tools/trend_sweep.sh` replays a
+  both sides and reconciled `ok`. `--trend-params` exposes the signal, and `tools/sweep/trend_sweep.sh` replays a
   grid of it and writes the fills, PnL, fees and risk pauses to a CSV.
 - **A pre-trade risk pipeline, and the measurement that keeps it honest.** The kill switch, the exposure cap
   and the position gate moved out of `submit_strategy_actions` into `RiskPipeline`, an ordered list of five
@@ -120,7 +123,7 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   views, doubling to 3,840) cut those to 13 and 15. A venue or broker refusal at submission takes the same
   path, in addition to the cancelled report that removes the order from the open set. The rate bucket, the
   exposure cap and the position gate also let a reducing order through, so a position that is too large can be
-  worked down instead of trapped. `tools/risk_check.sh` holds the four runs.
+  worked down instead of trapped. `tools/sweep/risk_check.sh` holds the four runs.
 - **A timeout is a query, not a fake cancel.** `OrderQuery` lets the gateway ask the venue whether it still
   holds an order that has not answered; `[GATEWAY]` reports `unacknowledged`, `timeouts_queried`,
   `timeouts_working` and `timeouts_unknown`. The ledger keeps the order `Pending` until a real report, because
@@ -265,7 +268,7 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   clip dilutes it to 0.270 but never to zero, because its numerator is the number of order instances rather than
   their size, and slowing the requote from every one price move to every sixteen cuts it to 0.187 while the capture
   falls by exactly as much -- capture plus markout stays at 0.78, 0.77, 0.75, 0.74 across four refresh settings.
-  Reproduced by `tools/equity_schedule_sweep.sh`, and recorded with the caveat that the tick fields and
+  Reproduced by `tools/sweep/equity_schedule_sweep.sh`, and recorded with the caveat that the tick fields and
   `closed_pnl_usd` do not reconcile.
 - **The maker credit is worth 141 USD a window, and the column that decides the line does not move.** Four schedules on
   the same fills: the commission alone charges 380.33 USD, the account's tiered terms without the maker credit 1,228.80,
@@ -290,7 +293,7 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   (175 and 234 shares) the fee falls to 0.881 and 0.847 while the gross closed P&L falls 45 and 107 percent, and at a
   clip of 1,000 the fee is best at 0.766 and the net is worst at -8,798, because the clip that buys a smaller fee buys
   six times the inventory. **A quoter that optimises its fee is optimising the wrong column.**
-- **The screen now prices breadth.** `tools/screen_spread.py` takes a capital and prints, per symbol, the round trip
+- **The screen now prices breadth.** `tools/study/screen_spread.py` takes a capital and prints, per symbol, the round trip
   in basis points at 20 names and the widest book that stays under a stated ceiling, using the capacity arithmetic
   rather than a copy of it: AAPL at 50,000 USD and a three-tick trade spread is 3.79 bps at 20 names and 50 names
   wide under 10 bps.
@@ -305,7 +308,7 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
   states a gross of twenty-one times its net in the unit test rather than in a paragraph. A closed leg is not an
   exposure and an unpriceable one is still reported with its quantity. The pipeline half, a run that trades more
   than one book at once, is still one engine and one strategy per run and remains the next slice.
-- **A capacity table, so breadth is priced before it is chosen.** `tools/capacity_table.py` turns capital,
+- **A capacity table, so breadth is priced before it is chosen.** `tools/study/capacity_table.py` turns capital,
   name count, share price, spread and tier into round-trip basis points and a year of drag, and prints the clip
   at which the floor stops binding -- `0.35` divided by the rate, which is 100 shares at tier 1, 175 at tier 2 and
   234 at tier 3, so a book of that many names needs that many times the share price in capital before a single
@@ -384,7 +387,7 @@ moved onto a socket, and everything downstream of them is the same code. Its ent
 The line that adds the queue model, the fee model, the two latency legs, the order trace and the queue
 distribution, the strategy sweeps, and the four-tier gate. Its entry point is the
 [Design Review](docs/DESIGN_REVIEW.md), and every number it quotes is re-derived by
-`bash tools/verify_l2.sh fast`.
+`bash tools/gate/verify_l2.sh fast`.
 
 ### Highlights
 

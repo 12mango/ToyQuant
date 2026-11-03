@@ -9,7 +9,7 @@
 [![Tests](https://img.shields.io/badge/tests-CTest-brightgreen)](tests)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-[User Guide](docs/USER_GUIDE.md) · [Design Review](docs/DESIGN_REVIEW.md) · [Architecture](docs/ARCHITECTURE.md) · [Performance](docs/PERFORMANCE.md) · [Low-Latency Design](docs/LATENCY_DESIGN.md) · [Learning Path](docs/LEARNING.md) · [Data Formats](data/README.md)
+[User Guide](docs/USER_GUIDE.md) · [Design Review](docs/DESIGN_REVIEW.md) · [Architecture](docs/ARCHITECTURE.md) · [Performance](docs/PERFORMANCE.md) · [Low-Latency Design](docs/performance/design.md) · [Learning Path](docs/LEARNING.md) · [Data Formats](data/README.md)
 
 </div>
 
@@ -38,7 +38,7 @@ left — and that machinery is the thing this repository is a demonstration of.
 **The instrument: a low-latency C++20 replay engine.** A market data reader, an L2 ladder, a matching engine with
 price–time priority and a queue model, an order state machine, a fee model, and a portfolio ledger — re-derived by four
 gate tiers on every commit. What was measured about the engine itself is in [Low-Latency
-Design](docs/LATENCY_DESIGN.md) and [Performance](docs/PERFORMANCE.md): a line reader that was 61 percent of an event
+Design](docs/performance/design.md) and [Performance](docs/PERFORMANCE.md): a line reader that was 61 percent of an event
 and was halved, a ladder sized for one instrument, per-symbol state keyed by an integer id, a single-producer ring
 between the feed and the strategy, a stage profiler, and an integer-plus-scale price parse that is bit-identical to the
 decimal one.
@@ -343,9 +343,10 @@ model that is not measured cannot be a reason either:
 | [Main Line](docs/MAINLINE.md) | The eleven steps to read the source in, with the measured result each step produced, and the per-part verdict on what to keep, freeze or delete |
 | [Architecture](docs/ARCHITECTURE.md) | Data flow, module responsibilities, matching rules, order lifecycle |
 | [Performance](docs/PERFORMANCE.md) | Workloads, how to measure on this host, the current stage breakdown, and the ledger of every optimization attempted |
-| [Low-Latency Design](docs/LATENCY_DESIGN.md) | Why each low-latency change is faster, how it was verified, and what was measured and rejected |
-| [Performance History](docs/PERFORMANCE_HISTORY.md) | The measurements in the order they were taken, superseded ones included |
-| [Documentation Index](docs/index.md) | Which document to read for which question, and what keeps each of them honest |
+| [Low-Latency Design](docs/performance/design.md) | Why each low-latency change is faster, how it was verified, and what was measured and rejected |
+| [Performance History](docs/PERFORMANCE_HISTORY.md) | The measurements in the order they were taken, superseded ones included, in one index and three parts |
+| [The studies](docs/archive/studies.md) | The research record behind the closures: the phases, the venues, the carry gates, the options line |
+| [Documentation Index](docs/index.md) | Which document to read for which question, in three tiers, and what keeps each of them honest |
 | [Roadmap](docs/ROADMAP.md) | What is still worth building, the boundary that stops it expanding, and what is deliberately not planned |
 | [Data Files](data/README.md) | Tick CSV format, runtime outputs, typical workflow |
 | [Tools](tools/README.md) | Which script answers which question, and which of them the gate runs |

@@ -5,7 +5,7 @@ record: the problem, the structure that was chosen, the mechanism that makes it 
 proved to be behavior preserving.
 
 Numbers are *not* restated here. Each section points at a row of the
-[optimization ledger](PERFORMANCE.md#5-optimization-ledger), which is the single place where
+[optimization ledger](../PERFORMANCE.md#5-optimization-ledger), which is the single place where
 measurements live, along with the measurement method itself. Sections here quote a figure only where
 the figure *is* the motivation for the design.
 
@@ -22,7 +22,7 @@ Every section has the same five parts:
 
 ## 1. The line layer: `LineReader`
 
-Ledger row: [Buffered line reader](PERFORMANCE.md#5-optimization-ledger).
+Ledger row: [Buffered line reader](../PERFORMANCE.md#5-optimization-ledger).
 
 ### Problem
 
@@ -102,7 +102,7 @@ the layer above.**
 
 ## 2. The L2 book container: `TickLadder`
 
-Ledger row: [`TickLadder` book container](PERFORMANCE.md#5-optimization-ledger). This is the largest
+Ledger row: [`TickLadder` book container](../PERFORMANCE.md#5-optimization-ledger). This is the largest
 single change in the project and the most transferable one.
 
 ### Problem
@@ -382,7 +382,7 @@ making it ten times faster there would still only return 16%.
 
 ## 3. The engine's per-symbol state: symbol ids
 
-Ledger row: [Symbol id registry](PERFORMANCE.md#5-optimization-ledger).
+Ledger row: [Symbol id registry](../PERFORMANCE.md#5-optimization-ledger).
 
 ### Problem
 
@@ -508,7 +508,7 @@ host's noise floor: 30 ns of a ~1000 ns event is 3%.
 ## 4. Measurement itself: `StageProfiler`
 
 Ledger row: none, this is the instrument. See
-[stage timing](PERFORMANCE.md#35-stage-timing).
+[stage timing](../PERFORMANCE.md#35-stage-timing).
 
 ### Problem
 
@@ -555,7 +555,7 @@ overhead is positive.
 
 ## 5. The number conversions
 
-Ledger row: [Integer-plus-scale price parse](PERFORMANCE.md#5-optimization-ledger).
+Ledger row: [Integer-plus-scale price parse](../PERFORMANCE.md#5-optimization-ledger).
 
 ### Problem
 
@@ -573,7 +573,7 @@ An earlier version of this section explained the invisibility differently, as gp
 half of `read+parse` with the other half in library code. That comparison was invalid — it set a
 RelWithDebInfo `-pg` build against a Debug build across two sessions — and when the candidates were
 counted directly they were all too small to matter. See
-[section 6 of the performance reference](PERFORMANCE.md#6-where-the-remaining-time-is).
+[section 6 of the performance reference](../PERFORMANCE.md#6-where-the-remaining-time-is).
 
 ### Design
 
@@ -731,7 +731,7 @@ counts its waits and the pacing line reports the feed falling behind rather than
 
 ### Why it is faster
 
-Not because of the atomics. The isolation bench ([PERFORMANCE.md §3.9](PERFORMANCE.md#39-the-hand-off-between-two-threads))
+Not because of the atomics. The isolation bench ([PERFORMANCE.md §3.9](../PERFORMANCE.md#39-the-hand-off-between-two-threads))
 measures a push and a pop round trip at 2.26 ns and a refused push at 0.45 ns, so the publication is a
 couple of nanoseconds of a two digit number, and the same table shows what the rest of it is: **the
 payload**. A trivially copyable structure of exactly the event's size (296 bytes, pinned by a
@@ -758,13 +758,13 @@ into the common case.
   replay reports every number the direct run reports (only `[LATENCY]` may differ) and its hand-off count
   equals the run's own event count.
 - The benchmark's deterministic fields are re-derived by the gate: the marked block in
-  [PERFORMANCE.md §3.9](PERFORMANCE.md#39-the-hand-off-between-two-threads) requires the message count, the
+  [PERFORMANCE.md §3.9](../PERFORMANCE.md#39-the-hand-off-between-two-threads) requires the message count, the
   payload size and a checksum over everything that crossed, so a ring that dropped, reordered or raced a
   value fails a build even though no nanosecond is asserted.
 
 ### Result
 
-Ledger rows in [section 5 of the performance reference](PERFORMANCE.md#5-optimization-ledger): the ring is
+Ledger rows in [section 5 of the performance reference](../PERFORMANCE.md#5-optimization-ledger): the ring is
 kept at 18.3 ns/message for a trivial payload and 169.9 for the event the replay carries, 1.8x the mutex
 hand-off, with the payload's own move and destructor as the dominant term.
 
