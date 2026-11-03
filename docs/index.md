@@ -50,8 +50,8 @@ document that starts explaining something in another document's row is the failu
 |---|---|---:|---|---|
 | [Retrospective](RETROSPECTIVE.md) | 1 | the eight closures, the number that closed each, the rules that came out of them | what exists in the code, or how to run it | prose linted |
 | [Design Review](DESIGN_REVIEW.md) | 1 | why the instrument is built this way, the C++ decisions with anchors, the headline results, the questions a reader asks, the limitations | the module reference, or the raw measurement records | prose linted; the size, test count, flags and tool paths it states are re-counted |
-| [User Guide](USER_GUIDE.md) | 1 | every mode, every flag, the data contracts, and the failure modes that waste an afternoon | why anything is designed the way it is | prose linted, so a flag it forgets or invents fails the build |
-| [Architecture](ARCHITECTURE.md) | 2 | what each module is, the contracts between them, the matching rules | the rationale and the trade-offs | marked blocks re-run on every gate run |
+| [User Guide](USER_GUIDE.md) | 1 | every mode, every flag, the data contracts, and the failure modes that waste an afternoon: an index over seven parts in `docs/using/` | why anything is designed the way it is, or what a field means | prose linted, so a flag it forgets or invents fails the build |
+| [Architecture](ARCHITECTURE.md) | 2 | what each module is, the contracts between them, the matching rules: an index over six parts in `docs/architecture/` | the rationale and the trade-offs | marked blocks re-run on every gate run |
 | [Main Line](MAINLINE.md) | 2 | the order to read the source in, the measured result each step produced, the verdict on what to keep, freeze or delete | how to run anything, or the mechanism behind a result | prose linted |
 | [Learning Path](LEARNING.md) | 2 | the mechanisms the instrument has to model, and the field reference for each output line | engineering decisions, or how to run anything | prose linted |
 | [Performance](PERFORMANCE.md) | 2 | workloads, how to measure on this host, the current stage breakdown, and every optimisation attempted | the mechanism of a change, or the whole history | its ledger is paired measurements from `tools/study/measure_l2_baseline.py` |
@@ -71,6 +71,10 @@ contract lifecycle, and no portfolio risk model beyond signed notional. The pre-
 switch, fat finger, rate, exposure, position), not a broker or exchange risk gateway. Each of those is a limitation in
 the [Design Review](DESIGN_REVIEW.md) and a boundary with a reason in the
 [Roadmap](ROADMAP.md#deliberately-not-planned), rather than a gap that nobody wrote down.
+
+What keeps this table true is mechanical, which is the only reason to trust it: `tools/gate/lint_prose.py` re-counts every
+flag, queue model, tool path and size figure a document states, `tools/gate/check_docs.py` re-runs the command behind
+every quoted number, and `tools/gate/check_links.py` follows every link and anchor in the three tiers.
 
 | [Performance History](PERFORMANCE_HISTORY.md) | 3 | the measurements in the order they were taken, superseded ones included: one index and three parts | the current conclusions | every marked block re-run on every gate run |
 | [Low-Latency Design](performance/design.md) | 3 | why each low-latency change is faster: the problem, the mechanism, the designs that were rejected | the numbers themselves | prose linted |

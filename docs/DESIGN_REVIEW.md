@@ -15,7 +15,7 @@ legacy CSV / UDP / Binance ─────────────────�
 |---|---|
 | **Size** | 110 files, 24,576 lines: `app` 8762, `market` 4069, `legacy` 1851, `lines` 2602, `strategy` 1958, `exchange` 1360, `common` 811, `backtest` 611, `bench` 563, `orderbook` 587, `accounting` 708, `utils` 488, `concurrency` 176, `main` 30 |
 | **Tests** | 30 test binaries, at least one per module, run by tier 0 of the gate |
-| **Tools** | 45 scripts (`*.py` and `*.sh` under `tools/`, grouped by what they do) and one C harness: the gate and its four lints in `tools/gate/`, the measurement sweeps, the source fetches, the one-off studies, and the live harnesses. `tools/README.md` is the map |
+| **Tools** | 46 scripts (`*.py` and `*.sh` under `tools/`, grouped by what they do) and one C harness: the gate and its five lints in `tools/gate/`, the measurement sweeps, the source fetches, the one-off studies, and the live harnesses. `tools/README.md` is the map |
 | **Build** | CMake + presets, C++20, standard library only (zlib for `.gz` inputs) |
 | **Numbers** | every figure below is re-derived by `bash tools/gate/verify_l2.sh fast` on every change |
 
@@ -243,7 +243,7 @@ Counts from the repository, so this is an inventory rather than a slogan:
 
 ```cpp
 // src/app/pipeline.cpp — one event path for every input format
-std::visit([this](const auto& value)
+std::visit([this](const) auto& value)
 {
     using Event = std::decay_t<decltype(value)>;
     if constexpr (std::is_same_v<Event, MarketTrade>) { ... }
@@ -328,7 +328,7 @@ void MatchingEngine::advance_to(uint64_t ts)
     now_us_ = std::max(now_us_, ts);
     if (in_flight_orders_.empty()) return;
     std::stable_sort(in_flight_orders_.begin(), in_flight_orders_.end(),
-                     [](const auto& left, const auto& right) { return left.first < right.first; });
+                     [](const) auto& left, const auto& right) { return left.first < right.first; });
     ...
 }
 ```

@@ -115,7 +115,7 @@ nothing.
    strategy's order fills about 24 shares at a time and therefore pays a quarter of its commission against the
    whole 0.35 floor. The tier pays in full only where orders fill in full, which is a factor or taker book, and
    about 15 percent where they do not; the measured table is in
-   [Performance History](../PERFORMANCE_HISTORY.md#what-the-queue-model-decides-and-what-the-per-order-floor-does).
+   [Performance History](../performance/history-03-studies.md#what-the-queue-model-decides-and-what-the-per-order-floor-does)
 2. **Tiered rather than Fixed**, for any maker. The rebate is 0.0013 a share, worth 37 percent of a
    0.0035 commission, and Fixed neither collects nor passes it through.
 3. **The minimum per order has to move with the tier, or the discount is confiscated.** The floor is 0.35

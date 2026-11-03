@@ -95,7 +95,7 @@ around.
 invariants remain in `tools/gate/verify_l2.sh fast`. New strategy work belongs to the L2 path, and a change to the
 legacy makers that moves those numbers is a change to a recorded result rather than an improvement. The
 documentation that describes the line as it still runs is in
-[User Guide](../USER_GUIDE.md#current-modes) and [Architecture](../ARCHITECTURE.md).
+[User Guide](../using/02-modes.md#current-modes) and [Architecture](../ARCHITECTURE.md).
 
 ## Quote Width and the Fee Frontier
 

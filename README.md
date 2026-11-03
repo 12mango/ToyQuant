@@ -72,6 +72,8 @@ Every number in these documents is re-derived from the binary, and the gate is w
   AddressSanitizer and UndefinedBehaviorSanitizer;
 * `tools/gate/lint_prose.py` refuses a flag or a queue model named in a document that the binary does not accept, and
   `tools/gate/check_docs.py` re-derives every quoted run block;
+* `tools/gate/check_links.py` follows every link in every document, including the `#anchor`, so a document that moves
+  and a section that is reworded fail the build instead of becoming a dead end;
 * the strategy rules and the pass criteria were written down **before** the data that decided them was bought, and every
   download is priced with a free query first — `tools/study/screen_spread.py` and `tools/study/venue_ratio.py` refuse to spend
   without a cap.

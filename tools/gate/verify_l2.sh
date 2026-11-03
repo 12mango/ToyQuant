@@ -144,6 +144,11 @@ tier1() {
   # source: flags, queue models and tool paths.
   local prose_check=0
   python3 tools/gate/lint_prose.py docs/*.md docs/*/*.md > "$PROSE_CHECK_LOG" 2>&1 || prose_check=1
+  # A link is the only thing in the documents that a reader follows rather than reads, and nothing checked one until a
+  # split moved a hundred of them: the file has to exist and the `#anchor` has to match a heading in it. Counting the
+  # openings as well catches the other half -- a link whose parentheses do not balance is invisible to a pattern that
+  # wants a well-formed one, so it would silently drop out of this check instead of failing it.
+  python3 tools/gate/check_links.py >> "$PROSE_CHECK_LOG" 2>&1 || prose_check=1
   python3 tools/gate/check_layering.py >> "$PROSE_CHECK_LOG" 2>&1 || prose_check=1
   # The eight closed lines are claims about arithmetic too, and a copied number drifts the way a copied claim does.
   # This re-derives every quotient from the recorded inputs, checks that the first gate to fire is the one the line

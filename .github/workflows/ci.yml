@@ -33,3 +33,6 @@ jobs:
       - name: Every documented flag, queue model and tool path exists
         run: |
           python3 tools/gate/lint_prose.py docs/*.md docs/*/*.md
+
+      - name: Every link and anchor resolves
+        run: python3 tools/gate/check_links.py

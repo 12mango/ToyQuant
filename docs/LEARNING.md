@@ -222,6 +222,8 @@ for execution quality; `[STRATEGY_METRICS]` carries only what a strategy owns.
 | `position_limit`, `risk_rejected_orders` | The pre-trade gate, and how many orders it refused |
 | `strategy_net_position`, `strategy_position_mismatches` | The strategy's own position, and any divergence from the pipeline's |
 | `working_orders` | Orders still resting when the input ended |
+| `audited_rejected_orders` | Orders that ended in a venue, broker or timeout rejection, appended to `[EXECUTION]` only when non-zero. A `Rejected` report carries `reject_reason` and is terminal like a cancel: pending quantity is released and the order leaves the strategy's open set |
+| `cancel_reason` (on a `Cancelled` report) | Why the order left: `user`, `venue`, `ioc`, `fok`, `post_only`, `self_trade` or `timeout`. The distinction is what lets a strategy tell its own cancel from the venue cancelling on it, and `post_only` is the venue declining a quote that would have traded on arrival |
 | `[PORTFOLIO]` `cash`, `realized_pnl`, `unrealized_pnl`, `equity`, `fees_paid` | The account, marked to market at the last price |
 | `[FUNDING]` `funding_points`, `funding_span_hours`, `funding_sum_rate`, `funding_annualized_rate` | The rate series the run was given: how many settlements it holds, over what span, and what a long holding one unit of notional paid over it and over a year |
 | `[FUNDING]` `funding_settlements`, `funding_flow_usd` | What the window did with it: settlements the event clock passed, and the USD they credited to cash. A settlement reached before the account holds a position is counted and moves nothing, so the two disagree by design. Printed only when `--funding-rates` supplied a series |

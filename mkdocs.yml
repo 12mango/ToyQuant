@@ -39,7 +39,22 @@ nav:
   - Roadmap: ROADMAP.md
   - Retrospective: RETROSPECTIVE.md
   - User Guide: USER_GUIDE.md
+  - "Using it":
+      - "1. Getting started": using/01-getting-started.md
+      - "2. Modes": using/02-modes.md
+      - "3. The L2 replay": using/03-l2-replay.md
+      - "4. A live session and the carry line": using/04-live-and-carry.md
+      - "5. Scenarios and reports": using/05-scenarios-and-reports.md
+      - "6. Reading the output": using/06-reading-the-output.md
+      - "7. Troubleshooting": using/07-troubleshooting.md
   - Architecture: ARCHITECTURE.md
+  - "The module reference":
+      - "1. System map": architecture/01-system-map.md
+      - "2. Inputs and shared types": architecture/02-inputs-and-types.md
+      - "3. The coordinator and the book": architecture/03-coordinator-and-book.md
+      - "4. The matching engine": architecture/04-matching-engine.md
+      - "5. Strategy": architecture/05-strategy.md
+      - "6. Accounting and the summary": architecture/06-accounting-and-the-summary.md
   - Performance:
       - Current numbers: PERFORMANCE.md
       - Low-Latency Design: performance/design.md

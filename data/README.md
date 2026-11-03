@@ -66,7 +66,7 @@ This command creates files such as:
 - data/scenarios/random_ticks.csv
 - data/scenarios/synthetic_ticks.csv
 
-See the [User Guide](../docs/USER_GUIDE.md#scenarios) for the purpose of each scenario.
+See the [User Guide](../docs/using/05-scenarios-and-reports.md#scenarios) for the purpose of each scenario.
 
 ## Slice L2 Snapshots
 

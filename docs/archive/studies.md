@@ -387,7 +387,7 @@ decided venue by venue rather than in general, which is why it is a question for
 plan on.
 
 What that does to the fee arithmetic is in
-[Performance History](../PERFORMANCE_HISTORY.md#what-the-accounts-fee-schedule-adds), and it is not small. Reading the
+[Performance History](../performance/history-03-studies.md#what-the-accounts-fee-schedule-adds) and it is not small. Reading the
 same pages for the terms themselves gives three numbers that matter: the **SEC fee is 0.0000206 of the proceeds of a
 sale**, so in ticks it **scales with the share price** -- 0.685 of a tick on a 332 dollar share and 1.58 on a 765
 dollar one -- and it is the largest single term in an equity fill; the **Nasdaq credit for adding displayed
@@ -547,7 +547,7 @@ cannot represent any of it. Adding it is the next capability, and it is delibera
   plumbing exists, in the same way the queue model was verified before live fills were discussed.
   **Done:** `Portfolio::accrue_interval_flow` and its per-interval pass over the whole book, with those three
   fields asserted after N intervals in `tests/portfolio_test.cpp` for a price-quoted position, a fixed-face
-  contract and a short, and the channel described in [Architecture](../ARCHITECTURE.md#7-backtest-and-performance-metrics).
+  contract and a short, and the channel described in [Architecture](../architecture/06-accounting-and-the-summary.md#7-backtest-and-performance-metrics)
   The rate is the per-interval return to a long on the position's notional, so the position's sign decides the
   direction and one rate serves both sides of a market, which is the shape the next step needs.
 * **Then a rate series as an input**, because the real rate varies by the hour and changes sign. The free sources are
@@ -575,7 +575,7 @@ the position needed 745 hours to pay for itself rather than the 728 it ran. Held
 position loses 35.58 USD with a negative ratio. The criterion's answer is therefore that the line has a number
 where the market-making line had none — and that a criterion expressed as an annualized ratio against a one-off
 fee can read as a winner on a position that did not quite pay for itself. The two runs and every field of them are
-recorded in [Performance History](../PERFORMANCE_HISTORY.md#the-acceptance-number) with the command that re-derives
+recorded in [Performance History](../performance/history-03-studies.md#the-acceptance-number) with the command that re-derives
 them, and the two funding files are fetched with one command each, named in
 [the data index](https://github.com/12mango/ToyQuant-v1/blob/main/data/README.md).
 
@@ -600,7 +600,7 @@ maker rates:
 * The capture only exceeds that cost at eight ticks of width, where one fill traded and nothing closed: the door
   exists and its width is unknown, which is a statement about sample size rather than about the mechanism.
 * Both tables are recorded with every field in
-  [Performance History](../PERFORMANCE_HISTORY.md#the-maker-fee-each-window-would-have-needed).
+  [Performance History](../performance/history-03-studies.md#the-maker-fee-each-window-would-have-needed)
 
 The order this leaves, each step measurable on its own:
 
@@ -669,7 +669,7 @@ commission, so the number understates the economics on that side — and it also
 fees of a few hundredths of a cent a share on the other. **And the window does not survive latency**: one
 millisecond of one-way delay takes it from +262.51 to +1.89 and five milliseconds ends the run holding a position
 marked at -1143.75, which is the sixth gate of phase 2b failing and is recorded in
-[Performance History](../PERFORMANCE_HISTORY.md#the-latency-that-window-would-have-needed).
+[Performance History](../performance/history-03-studies.md#the-latency-that-window-would-have-needed)
 
 ## From a Positive Window to a Running System
 
@@ -738,7 +738,7 @@ it changes what the search has to find: not a market whose fee is small, but one
 that a fill's capture clears the fee even at the model's lower bound. The measurement behind that, the equity
 book's churn against its traded volume, and why the effect is larger here than the perpetuals' small fill
 counts could show are in
-[Performance History](../PERFORMANCE_HISTORY.md#the-same-measurement-on-an-equity-book).
+[Performance History](../performance/history-02-l2.md#the-same-measurement-on-an-equity-book)
 
 **Two things have since been measured about that sentence, and the second narrows it.** The tape says which
 model is the right one: on AAPL and on AMD, **5.0 and 4.0 percent of the units that leave a price level leave
@@ -749,7 +749,7 @@ ticks a unit, and **lose money in all four**, 2,026 to 2,207 USD on the same two
 the fill count and the capture, and against what a fill actually pays it does not decide the sign. The tables,
 the clip sweep that shows the per order floor diluting from 0.418 to 0.270 ticks a unit, and the refresh sweep
 that shows the floor is bought with capture, are in
-[Performance History](../PERFORMANCE_HISTORY.md#what-the-queue-model-decides-and-what-the-per-order-floor-does).
+[Performance History](../performance/history-03-studies.md#what-the-queue-model-decides-and-what-the-per-order-floor-does)
 
 The screen is therefore **the half spread at the trades, at least three times the fee per side**, measured by
 `tools/study/screen_spread.py` from top of book before any depth is bought; the tool prices a window before it spends
@@ -760,7 +760,7 @@ hours, for **0.52 USD**, and the two that pass both halves of the gate are **AAP
 which are among the most liquid names in the market rather than away from it: on a single venue their displayed
 books are three to six cents wide where SPY's is two, and 72% of their trades print against those wider quotes.
 The run itself, and what those two symbols then did in the engine, are in
-[Performance History](../PERFORMANCE_HISTORY.md#the-screen-run-and-the-first-two-symbols-that-pass-it).
+[Performance History](../performance/history-03-studies.md#the-screen-run-the-first-two-symbols-that-pass-it).
 
 ### The activity floor, pre-registered
 
@@ -910,7 +910,7 @@ result rather than a setback, and it is the reason these seven come before any l
 **The sixth gate has now been run, and it returned a failure.** The positive window goes to zero at one
 millisecond each way and gives the price away at five, the tolerance is not a personal account's to control, and
 the reflex fix of quoting more slowly measures worse rather than better. The rows and the mechanism are in
-[Performance History](../PERFORMANCE_HISTORY.md#the-latency-that-window-would-have-needed), and the sweep that
+[Performance History](../performance/history-03-studies.md#the-latency-that-window-would-have-needed) and the sweep that
 reproduces them is `tools/sweep/latency_sweep.sh`. That sweep's own last paragraph says the one cheap test left is a
 symbol whose spread is wide enough to absorb the same delay, and that test is the screen.
 
@@ -941,7 +941,7 @@ window position draw on the order of 3,000 USD against an edge of 37 to 100 make
 3,600 to 26,000 windows, or fifteen years of daily two-hour sessions at the cheap end. Smaller size does not help,
 because both terms are proportional to the volume quoted, which is what makes this a dead end rather than a
 funding problem. The rows are in
-[Performance History](../PERFORMANCE_HISTORY.md#what-the-accounts-fee-schedule-adds).
+[Performance History](../performance/history-03-studies.md#what-the-accounts-fee-schedule-adds)
 
 **The cheap schema was priced as a way around that, and measured against the expensive one instead of assumed.**
 The screen's own downloads are top of book only, under the cached files in `data/v2/screen/`, and an AAPL file for
