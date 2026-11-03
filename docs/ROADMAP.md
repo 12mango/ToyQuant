@@ -1,21 +1,26 @@
 # Roadmap
 
-Two goals, one codebase: a demo that shows the engineering, and the option of a personal execution system.
-**The demo comes first**, so the phases are ordered by what a reader can see, and each step is chosen so that
-it also keeps the later path open instead of paying for it now.
+The product of this repository is evidence: eight markets closed by numbers, with the [Retrospective](RETROSPECTIVE.md)
+as the closing document and the [Design Review](DESIGN_REVIEW.md) as the argument for the instrument that produced them.
+**This document is the plan for what is still worth building, and the boundary that stops it from expanding** — the demo
+that shows the engineering is complete, a personal execution system is one possible request away rather than a
+backlog item, and everything deferred is recorded here with the reason it was deferred, so that "not now" is a decision
+rather than an omission.
 
-The seam that makes both possible already exists: `Strategy` and `IMatchingEngine` are the only interfaces
-the pipeline knows about, and `src/market/` holds one reader per input format. A live feed is another
-reader, and paper trading is the existing book and matching engine against that feed.
+The seam that makes more possible already exists: `Strategy` and `IMatchingEngine` are the only interfaces the pipeline
+knows about, and `src/market/` holds one reader per input format. A live feed is another reader, and paper trading is
+the existing book and matching engine against that feed.
 
 ## Where the project stands
 
 | | |
 |---|---|
-| Delivered | the queue model, the fee model, the two latency legs, the order trace and the queue distribution, four sweeps of the strategy levers, a four-tier gate, and a three-command demo path |
+| Delivered | the queue model, the fee model, the two latency legs, the order trace and the queue distribution, four sweeps of the strategy levers, a four-tier gate that re-derives every quoted number, the interval a mean carries, and a three-command demo path |
 | The binding result | at a one-tick spread the fee is 2.57 ticks against 0.088 captured, and no lever moves that ratio |
+| Closed | eight markets, each by a quotient; the inputs and the binding gate of each are in `tests/fixtures/verdicts.json` and re-derived by `tools/study/viability.py` on every gate run |
 | Frozen | the pre-queue-model line is tagged `v1.0-demo` |
-| Open | the conclusions rest on one day, and nothing has been run against a venue's own live feed; the paced replay, the recorder and the websocket reader are in place, so the seam is closed at the desk and what remains is a credential; phase 2b is the plan from the first positive window to a running system |
+| Open | the conclusions rest on one day per window, and nothing has been run against a venue's own live feed; the paced replay, the recorder and the websocket reader are in place, so the seam is closed at the desk and what remains is a credential. Phase 2b is the plan from the first positive window to a running system |
+| Stopped | the per-fill PnL column, a latency budget in the gate, an id that survives a restart and a fuzz tier — recorded with their verdicts below, not scheduled |
 
 ## Current iteration plan (maintained)
 
@@ -235,7 +240,8 @@ table or in the item that named it; none is scheduled, and lifting one takes a n
 | 2026-11-02 | The halt path completed. The kill switch used to refuse every order — including the one that would close the position — and the account was never marked during a run, so its `realised + unrealised` reading had the loss sitting in the position rather than in the PnL. It now exits only (a flip is not an exit, which is what its magnitude-based neighbour would have allowed), marks the book each cycle while it is armed, closes at the touch when it latches, and prices that exit: 5.39 bps on the 200k window, with `[EXPOSURE] symbols=0` afterwards where it used to leave a leg open. A limit the run never reaches changes nothing, so every recorded number stands | `355b215` |
 | 2026-11-02 | Every number this project quotes is a mean over a handful of events, and the "below thirty fills is not a conclusion" rule had only ever been applied by hand. `tools/study/pnl_interval.py` now resamples the mean and prints the interval, the median, the range and the thin-sample flag, with its own hand-checked self-test in the gate. Applied to one snapshot slice a month for five months, the maker break-even rate moves from −3.19 to −0.44 bps: the interval around the mean is −2.84 to −0.90, narrower than the 2.75 bps the five draws span, which is the difference between "this mean is pinned" and "this population is one thing". The paired same-day difference is negative on both windows available, so the BTC/ETH gap keeps its sign and loses its size | this commit |
 | 2026-11-02 | The L2 path's data-quality accounting was inert: the validator's `stale_trades`/`dislocated_trades` need a best bid and offer, and the three depth readers produce none, so on the path every recorded number comes from those checks never fired and `[L2 DATA]` did not print them either. The prints are now scored against the book's own midpoint in `Pipeline` (correct on the threaded path too, where validation runs on another thread), split into `stale_trades` -- no midpoint, or one more than a second old -- and `dislocated_trades` -- a fresh midpoint the print was more than five basis points from. Measured: 117,889 and 9 on the 200k window, 0 and 554 on the full day, both printed only when non-zero. The tier-2 reference moved by exactly one token and the re-record is justified by stripping it (`270d8085` → `d66e88e0`) | this commit |
-| 2026-11-02 | The tools directory was one flat list of forty-eight files, and nothing in it said which tool answered which question. It is now seven directories by kind -- `gate/`, `sweep/`, `fetch/`, `study/`, `live/`, `bench/`, `legacy/` -- with `tools/README.md` as the map, and every path in the documents, the source comments, the gate and the CI workflow moved with it. Two files became one entry point (`slice.py`, whose `window` and `snapshot` subcommands are the two shapes a slice takes), the marked-block emission moved into `lib.sh` so four sweeps no longer each spell the marker, and one file was deleted: `lf_windows.sh`, named by nothing and asking the question `equity_schedule_sweep.sh` already asks. The stale `site/` build of the documents went too | this commit |
+| 2026-11-02 | The documents still introduced the project as a toy simulator for learning, with the measurement work as a second half bolted on. They now say what it is: a measurement project with an instrument inside it, eight markets closed by quotients, and every quoted number re-derived by the build. The intro of the README, the documentation index, the Design Review, Architecture, the Main Line, the Learning Path, the User Guide and the Roadmap's opening and status table all say it the same way; the "interview versions" section became "the questions a reader asks", because the plan removed interview material a week ago; and the README's non-goals were rewritten, since the old list claimed there was no persistence and no L2 reconstruction, both of which exist | this commit |
+| 2026-11-02 | The tools directory was one flat list of forty-eight files, and nothing in it said which tool answered which question. It is now seven directories by kind -- `gate/`, `sweep/`, `fetch/`, `study/`, `live/`, `bench/`, `legacy/` -- with `tools/README.md` as the map, and every path in the documents, the source comments, the gate and the CI workflow moved with it. Two files became one entry point (`slice.py`, whose `window` and `snapshot` subcommands are the two shapes a slice takes), the marked-block emission moved into `lib.sh` so four sweeps no longer each spell the marker, and one file was deleted: `lf_windows.sh`, named by nothing and asking the question `equity_schedule_sweep.sh` already asks. The stale `site/` build of the documents went too | `47c6849` |
 | 2026-11-02 | A review of the recent code found three things worth changing and two worth recording. Changed: the OKX depth reader's levels and the live feed's prices went through `parse_double`, so a `nan` level price reached the ladder on the two paths the CSV families had already been hardened against; the OKX depth errors now carry the line number as well. Recorded: the L1 path drops a print far from the BBO while the L2 path counts it, and the recorded windows mix quarter-hour depth with day-long prints -- both in the gaps table, because either fix moves recorded numbers | `7fb6133` |
 | 2026-11-02 | The readers were asked what they do with input nobody promised them, in a test rather than in a review. They already refused every hostile row — truncated, `nan`, negative quantity, wrong-case side — which was better than the test suite knew, and four things were still missing: no message said *which* row, a `nan` price was caught by the validator instead of the reader that could locate it, a batch that left the book crossed was skipped and not counted, and an empty depth file produced a formatted run of zeros with exit code 0. All four are closed; the row numbers come from `LineReader::lines_read()` and the count rides on `[L2 DATA]` only when it is non-zero, so no recorded line moved | `7c62be3` |
 | 2026-10-28 | Order state machine, reject/cancel reasons, risk pipeline, non-market-making line and measurements | `9a691be` … `3b0a180` |
@@ -1865,13 +1871,13 @@ make them worth doing.
 | shared-memory IPC | P3 | C++ relay/TLS first; then a measured IPC share of the event |
 | binary telemetry | P3 | a few thousand orders a second; CSV remains the audit format |
 
-### The same code, second purpose: the demo and the interview
+### The same code, second purpose: the instrument and a live path
 
-Everything below is live-path work or a measurement of it, so the demo and the deployment share one codebase
-rather than paying for two. The repository's existing strengths are already interview material — integer prices,
-one parse per row, a jump table over columns, four updates inline before any allocation, four queue models with
-a calibration behind them, and a four-tier gate whose reference hash has to be justified when it moves. The list
-is what a live path adds on top.
+Everything below is live-path work or a measurement of it, so the instrument and a running system share one codebase
+rather than paying for two. What the repository already has — integer prices, one parse per row, a jump table over
+columns, four updates inline before any allocation, four queue models with a calibration behind them, and a four-tier
+gate whose reference hash has to be justified when it moves — is what a live path would build on. The list is what a
+live path adds on top.
 
 | Iteration | C++ and low-latency surface | What it demonstrates |
 |---|---|---|

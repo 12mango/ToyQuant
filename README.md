@@ -2,7 +2,7 @@
 
 # ToyQuant
 
-**A reproducible C++20 market-making simulator — from ticks to trades to PnL.**
+**Eight markets, closed with numbers — and the C++ instrument that closed them.**
 
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C?logo=cplusplus&logoColor=white)](CMakeLists.txt)
 [![CMake](https://img.shields.io/badge/CMake-3.16+-064F8C?logo=cmake&logoColor=white)](CMakePresets.json)
@@ -15,23 +15,37 @@
 
 ---
 
-ToyQuant replays market data through the complete trading loop — market events, order book, strategy, matching, execution reports, and portfolio metrics — so you can observe every decision a market maker makes.
+ToyQuant asks one question and answers it with arithmetic: **can a personal account's programmatic quote pay for
+itself?** Eight hypotheses were written down before their data was bought, run against venue data that cost 1.27 USD in
+total, and closed — crypto perpetuals, the micro E-mini, SPY, US large cap equities, options at two tenors, a funding
+carry across two venues, and a low-turnover reversion rule. Each is closed by a quotient rather than by an opinion: the
+fee against the tick, the inventory's own move against the edge, the number of actions a window contains, the print
+count against a reference.
 
-It is a toy project for learning and experimentation, not a production trading system. APIs, scenarios, and strategy behavior may change between versions.
+**The simulator is the instrument, not the product.** It is small on purpose — a market data reader, an L2 ladder, a
+matching engine with an explicit queue model, an order state machine, a fee model that charges a broker's schedule the
+way a broker does, and a portfolio ledger — because a cost that is not modelled cannot be the reason for a result. It
+is **not** a production trading system, it has no live venue connectivity, and it claims nothing about future
+profitability.
 
-## What this repository is, in two halves
+**What makes the two halves one project is that every number these documents quote is re-derived by the build.** A
+figure carries the command that produced it, `tools/gate/verify_l2.sh` re-runs that command on every edit, and a number
+that moves fails the gate. The strategies lost. The machinery that can say *why*, with a figure attached, is what is
+left — and that machinery is the thing this repository is a demonstration of.
 
-**A low-latency C++20 replay engine.** A market data reader, an L2 ladder, a matching engine with price–time priority and a
-queue model, an order state machine, a fee model that charges a broker's schedule the way a broker charges it, and a
-portfolio ledger — re-derived by four gate tiers on every commit. The measured work behind it is in
-[Low-Latency Design](docs/LATENCY_DESIGN.md) and [Performance](docs/PERFORMANCE.md): a line reader that was 61 percent of
-an event and was halved, a ladder sized for one instrument, per-symbol state keyed by an integer id, a single-producer
-ring between the feed and the strategy, a stage profiler, and an integer-plus-scale price parse that is bit-identical to
-the decimal one.
+## The instrument, and the evidence it produced
 
-**A measurement project that used it to close eight markets with numbers.** The question was whether a personal
-account's quote can pay for itself, and the answer is no in every market tested, each closed by a quotient rather than
-by an opinion:
+**The instrument: a low-latency C++20 replay engine.** A market data reader, an L2 ladder, a matching engine with
+price–time priority and a queue model, an order state machine, a fee model, and a portfolio ledger — re-derived by four
+gate tiers on every commit. What was measured about the engine itself is in [Low-Latency
+Design](docs/LATENCY_DESIGN.md) and [Performance](docs/PERFORMANCE.md): a line reader that was 61 percent of an event
+and was halved, a ladder sized for one instrument, per-symbol state keyed by an integer id, a single-producer ring
+between the feed and the strategy, a stage profiler, and an integer-plus-scale price parse that is bit-identical to the
+decimal one.
+
+**The evidence: eight markets, closed by numbers.** The question was whether a personal account's quote can pay for
+itself, and the answer is no in every market tested. Six rows carry the eight, because three of them failed the same
+way:
 
 | market | the number that closed it |
 |---|---|
@@ -42,11 +56,11 @@ by an opinion:
 | funding rate carry, two venues, twelve months | 0 of 12 months clear the level and payback gates, and no run pays the 36 USD round trip |
 | a low turnover reversion rule | 4 of 8 windows positive, and the payoff is small wins against large losses |
 
-What that is worth to an engineer is the part an interview cannot fake: **the reason each of those doors is closed,
+What that is worth to an engineer is the part that cannot be faked: **the reason each of those doors is closed,
 measured rather than assumed** — the fee against the tick, the position's own move against the edge, the number of
 actions a window contains, and a 20 ms cancel latency that turned 0.095 ticks of capture into -0.44.
-[Retrospective](docs/RETROSPECTIVE.md) is the closing document and [Roadmap](docs/ROADMAP.md) is the reasoning behind
-it; the total spent on data across all eight lines was 1.27 USD.
+[Retrospective](docs/RETROSPECTIVE.md) is the closing document; [Roadmap](docs/ROADMAP.md) is the reasoning behind it,
+including what is deliberately not planned.
 
 ## Verification, because the claims are the product
 
@@ -73,7 +87,40 @@ L1 strategy set — is frozen at the tag `v1.0-demo` and stays downloadable for 
 results. This branch is the current line: the [Changelog](CHANGELOG.md) says what changed and why, and
 [docs/ROADMAP.md](docs/ROADMAP.md) says what comes next.
 
-## Demo
+## Run it
+
+The mainline is the L2 replay: Deribit trades against incremental depth, the path every number in these documents comes
+from.
+
+```console
+# /tmp/depth_200k_base.csv is the gate's own 200k-row slice; `tools/gate/verify_l2.sh fast` cuts it
+$ ./out/build/linux-debug/toy_quant l2_replay \
+    data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
+    /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation
+
+[L2 DATA] events=236525 trades=119237 depth_snapshots=0 incremental_batches=117288
+          incremental_snapshot_batches=1 stale_trades=117889 dislocated_trades=9
+[EXECUTION] submitted_orders=381 submitted_quantity=381 cancel_requests=378 trade_reports=3
+            fill_rate=0.00787402 cancel_rate=0.992126 trade_report_quantity=3 queue_ahead_consumed=56647
+[PNL] gross_pnl_usd=0.00117791 net_pnl_usd=-0.00482209 gross_closed_pnl_usd=-0.000783024
+      closed_pnl_usd=-0.00678302 maker_notional_usd=30 net_per_fill_usd=-0.00160736
+      gross_closed_per_fill_usd=-0.000261008 breakeven_maker_rate=3.92638e-05
+```
+
+Wrapped here for the page; the lines are single lines in a run. The fields are explained in the
+[Learning Path](docs/LEARNING.md), and the figures a document quotes are the ones the gate re-derives.
+
+The gate is the other command worth knowing:
+
+```console
+$ bash tools/gate/verify_l2.sh all
+tier0 OK
+tier1 OK
+tier2 OK
+tier3 OK
+```
+
+The legacy path still runs, and is what the compatibility invariants pin:
 
 ```console
 $ ./out/build/linux-debug/toy_quant csv data/scenarios/sample_ticks.csv 0 optimized
@@ -84,7 +131,7 @@ $ ./out/build/linux-debug/toy_quant csv data/scenarios/sample_ticks.csv 0 optimi
             fill_rate=0.318 cancel_rate=0.375 trade_report_quantity=414 working_orders=6
 ```
 
-The same input and parameters produce deterministic runtime CSV output for this simulator.
+The same input and parameters produce deterministic runtime CSV output, which is what makes a run quotable at all.
 
 ## How It Works
 
@@ -107,9 +154,11 @@ The same input and parameters produce deterministic runtime CSV output for this 
 - **Deterministic backtests** — realized/unrealized PnL and a reusable drawdown calculation.
 - **Small toolchain** — CMake, a C++20 compiler, and Python 3 for the optional scenario and report tools.
 
-## Evaluation and Validation Protocol
+## Comparing strategies, and keeping the numbers true
 
-ToyQuant now uses a fixed benchmark regime for strategy comparison. The benchmark is designed to avoid false signals from overly short windows and from churn-based strategies that submit many orders without generating durable execution quality.
+A change to a strategy is judged by a fixed benchmark regime before it is believed, and the gate decides afterwards
+whether a number a document quotes is still true. The benchmark is designed to avoid false signals from overly short
+windows and from churn-based strategies that submit many orders without generating durable execution quality.
 
 Primary metrics:
 
@@ -270,24 +319,36 @@ CSV files are overwritten by the next simulation, so generate or copy the report
 
 ## Non-Goals
 
-ToyQuant deliberately excludes real exchange connectivity, FIX, a risk gateway, persistence and recovery, nanosecond-latency claims, and full L2 market reconstruction. Keeping these out of scope is what keeps the core loop small enough to read in one sitting.
+What the instrument deliberately does not do, because a cost that is not modelled cannot be a reason for a result and a
+model that is not measured cannot be a reason either:
+
+- **No live venue, FIX, or broker risk gateway.** The paced replay, the recorder and the WebSocket reader are in place;
+  what is missing is a credential, and the venue would be a process rather than a service.
+- **No market impact.** A fill takes the displayed size, and the participation cap limits how much of it one order may
+  take; nothing models the price moving because of the order.
+- **No calendar or contract lifecycle.** No auctions, halts, half days, expiries or rolls: everything measured here is a
+  continuous event stream, which is what a crypto perpetual is.
+- **No portfolio risk model.** Signed notional is the whole of it: no covariance, no beta, no margin.
+- **No nanosecond-latency claims.** The numbers are stage timings on one host, reported as ranges from paired runs.
+- **No profitability claim.** Of eight markets tested, none cleared its gates; the reasons are the product.
 
 ## Documentation
 
 | Document | Contents |
 |---|---|
-| [Design Review](docs/DESIGN_REVIEW.md) | Why the demo is built this way: the constraints it holds itself to, the decisions and rejected alternatives behind each component, the measured headline results, what is still wrong with it, and the 30-second version of the pitch |
-| [Retrospective](docs/RETROSPECTIVE.md) | The closing document: the eight markets this project closed and the number that closed each one, the three things that survive them, and what the search phase left behind |
+| [Design Review](docs/DESIGN_REVIEW.md) | Why the instrument is built this way: the constraints it holds itself to, the decisions and rejected alternatives behind each component, the measured headline results, and what is still wrong with it |
+| [Retrospective](docs/RETROSPECTIVE.md) | The closing document: the eight markets this project closed and the number that closed each one, the rules that came out of it, and what the search phase left behind |
 | [User Guide](docs/USER_GUIDE.md) | CLI reference, scenarios, experiments, data contracts, and troubleshooting |
-| [Learning Path](docs/LEARNING.md) | The market-making mechanisms the simulator exists to show, and a field reference |
+| [Learning Path](docs/LEARNING.md) | The market-making mechanisms the instrument has to model, and a field reference |
 | [Main Line](docs/MAINLINE.md) | The eleven steps to read the source in, with the measured result each step produced, and the per-part verdict on what to keep, freeze or delete |
 | [Architecture](docs/ARCHITECTURE.md) | Data flow, module responsibilities, matching rules, order lifecycle |
 | [Performance](docs/PERFORMANCE.md) | Workloads, how to measure on this host, the current stage breakdown, and the ledger of every optimization attempted |
 | [Low-Latency Design](docs/LATENCY_DESIGN.md) | Why each low-latency change is faster, how it was verified, and what was measured and rejected |
-| [Performance History](docs/PERFORMANCE_HISTORY.md) | Superseded measurements in the order they were taken |
+| [Performance History](docs/PERFORMANCE_HISTORY.md) | The measurements in the order they were taken, superseded ones included |
 | [Documentation Index](docs/index.md) | Which document to read for which question, and what keeps each of them honest |
-| [Roadmap](docs/ROADMAP.md) | The phases from this demo to a personal execution system, and what is deliberately not planned |
+| [Roadmap](docs/ROADMAP.md) | What is still worth building, the boundary that stops it expanding, and what is deliberately not planned |
 | [Data Files](data/README.md) | Tick CSV format, runtime outputs, typical workflow |
+| [Tools](tools/README.md) | Which script answers which question, and which of them the gate runs |
 
 ## Contributing
 
@@ -295,7 +356,8 @@ Bug reports, documentation improvements, and focused tests are welcome. Please o
 
 ## Disclaimer
 
-This project is for educational purposes only. It does not provide investment advice and must not be used for live trading.
+This project is a measurement exercise, not investment advice, and it must not be used for live trading: it has no venue
+connectivity, and none of the eight markets it examined cleared its gates.
 
 ---
 

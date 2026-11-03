@@ -1,5 +1,5 @@
 site_name: ToyQuant-v1 Docs
-site_description: Technical Documentation for ToyQuant-v1 C++20 Trading Engine Demo.
+site_description: Eight markets closed by numbers, and the C++ instrument that closed them.
 site_url: https://12mango.github.io/ToyQuant-v1/
 repo_url: https://github.com/12mango/ToyQuant-v1
 repo_name: 12mango/ToyQuant-v1

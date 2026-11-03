@@ -1,7 +1,15 @@
 # ToyQuant Documentation
 
-Start from the reason you are reading. The last column says who keeps each document honest, because in this
-project that is a mechanical answer: most of the claims here are re-derived by the build.
+ToyQuant is a measurement project with a small trading simulator inside it. The question it asks is whether a personal
+account's programmatic quote can pay for itself, and the answer it recorded is no in eight markets — each closure a
+quotient rather than an opinion, from the fee against the tick to the inventory's own move against the edge. The
+simulator is the instrument that made those answers computable, not the product: it has no live venue connectivity and
+claims nothing about future profitability.
+
+What makes this one project rather than a notebook is that **most of its claims are re-derived by the build**. A
+document carries the command behind a number, `tools/gate/verify_l2.sh` re-runs that command on every edit, and a figure
+that moves fails the gate. Start from the reason you are reading; the last column says who keeps each document honest,
+because here that is a mechanical answer.
 
 ## Pick the path
 
@@ -20,14 +28,14 @@ project that is a mechanical answer: most of the claims here are re-derived by t
 **If you want the current plan, read the [Current iteration plan](ROADMAP.md#current-iteration-plan-maintained);
 if you want the argument, read the [Design Review](DESIGN_REVIEW.md).** The plan lists what is next, what is
 deferred and where to stop; the review carries the constraints the project holds itself to, the decisions and
-the rejected alternatives behind each component, the measured headline results, an explicit list of what is
-wrong with the demo, and the three lengths of the same story for talking about it out loud.
+the rejected alternatives behind each component, the measured headline results, and an explicit list of what is
+wrong with the instrument.
 
 ## Every document
 
 | Document | What it is for | Not the place for | Kept honest by |
 |---|---|---|---|
-| [Design Review](DESIGN_REVIEW.md) | Why the simulator is built this way, the C++ decisions with code anchors and measured effects, the headline results, the limitations, and the interview versions | the module reference (`ARCHITECTURE`), or the raw measurement records (`PERFORMANCE_HISTORY`) | its prose is checked by `tools/gate/lint_prose.py`: the flags, the queue models, the tool paths, the size figures and the test-binary count it states, and the flags its own `--help` text names |
+| [Design Review](DESIGN_REVIEW.md) | Why the instrument is built this way, the C++ decisions with code anchors and measured effects, the headline results, the questions a reader asks with their answers, and the limitations | the module reference (`ARCHITECTURE`), or the raw measurement records (`PERFORMANCE_HISTORY`) | its prose is checked by `tools/gate/lint_prose.py`: the flags, the queue models, the tool paths, the size figures and the test-binary count it states, and the flags its own `--help` text names |
 | [Roadmap](ROADMAP.md) | The maintained current iteration plan, the phases from this demo to a personal execution system, what each one buys, and what is deliberately not planned | what exists today, or how to run it | prose linted with the rest |
 | [Main Line](MAINLINE.md) | The order to read the source in, the measured result each step produced, what each step is arguing, and the per-part verdict on what to keep, freeze or delete | how to run anything, or the mechanism behind a result (`LEARNING`) | prose linted |
 | [Retrospective](RETROSPECTIVE.md) | The closing document: the eight markets this project closed, the number that closed each one, and the rules that came out of it | what exists in the code, or how to run it | prose linted |

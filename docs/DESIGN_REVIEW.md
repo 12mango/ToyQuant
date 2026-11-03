@@ -1,7 +1,9 @@
 # Design Review
 
-`toy_quant` replays market data through the whole trading loop and reports what a market maker would
-experience, with the queue in front of a quote modelled instead of assumed.
+The instrument. `toy_quant` replays market data through the whole trading loop and reports what a market maker would
+experience, with the queue in front of a quote modelled instead of assumed. Every number in this document comes from it,
+and every number here is re-derived by the gate on every edit; the markets it was pointed at, and what closed each one,
+are in the [Retrospective](RETROSPECTIVE.md).
 
 ```text
 Deribit L2 depth ─► L2OrderBook ─► L2MarketView ─┐
@@ -17,9 +19,10 @@ legacy CSV / UDP / Binance ─────────────────�
 | **Build** | CMake + presets, C++20, standard library only (zlib for `.gz` inputs) |
 | **Numbers** | every figure below is re-derived by `bash tools/gate/verify_l2.sh fast` on every change |
 
-**This is a demo, not a trading system.** No exchange connectivity, no persistence, no market impact; the
-in-process pre-trade risk pipeline is not a broker or exchange risk gateway. The loop is meant to be readable
-in one sitting. What is worth reading is the engineering in sections 2 to 4.
+**This is an instrument, not a trading system.** No exchange connectivity, no persistence across runs beyond the session
+snapshot, no market impact; the in-process pre-trade risk pipeline is not a broker or exchange risk gateway. The loop is
+meant to be readable in one sitting, because a cost that is not modelled cannot be the reason for a result. What is
+worth reading is the engineering in sections 2 to 4.
 
 **What this document is not.** It is not the module reference — [Architecture](ARCHITECTURE.md) is — and it is
 not the measurement record: the numbers here are summaries of records that live in
@@ -507,16 +510,17 @@ rows are in [Performance History](PERFORMANCE_HISTORY.md).
   of a quote, so a fill there is a price event; the history of why the mainline moved to L2 is in
   [Performance History](PERFORMANCE_HISTORY.md).
 
-## 7. Interview versions
+## 7. The questions a reader asks, with the answers
 
-### 30 seconds
+### In one paragraph
 
-> A C++20 market-making simulator: Deribit depth and trades replayed through a book, a strategy, a matching
-> engine with an explicit queue and a portfolio. The two things a normal backtest gets wrong are filling at
-> the touch and summarising everything as PnL, so mine fills on queue position and reports the edge per
-> contract in ticks next to the fee. The headline: at a one-tick spread the strategy captures 0.095 ticks per
-> contract against a fee worth 2.57, so it earns 4% of the fee it pays — and every number in that sentence is
-> re-computed by the build.
+> A measurement project with a C++20 instrument inside it. The question was whether a personal account's programmatic
+> quote can pay for itself; the answer is no in eight markets — crypto perpetuals, the micro E-mini, SPY, US large caps,
+> two option tenors, a funding carry and a reversion rule — and each one is closed by a quotient rather than an opinion,
+> from the fee against the tick to the inventory's own move against the edge. The instrument exists because those
+> quotients need a queue that a quote actually waits behind and a fee model that charges what the venue charges. At a
+> one-tick spread the strategy captures 0.095 ticks per contract against a fee worth 2.57, so it earns 4% of the fee it
+> pays — and every number in that sentence is re-computed by the build.
 
 ### The questions
 

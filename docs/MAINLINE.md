@@ -1,10 +1,10 @@
 # The main line: the order to read this repository in, and what to drop
 
-This repository is 24,576 lines of source and 30 test binaries, and most of that is not the thing worth learning from.
-**The main line is about 5,000 lines**, and it is the path a single market event takes: a file becomes an event, an
-event becomes a book, a book becomes a decision, a decision becomes an order, an order becomes a fill, a fill becomes
-cash, and cash becomes the number a document quotes. Everything else is either evidence for a closed line, a
-compatibility path, or a driver.
+This repository is 24,576 lines of source and 30 test binaries, and it is two things at once: **an instrument about
+five thousand lines long, and the evidence that instrument produced.** The main line is the instrument — the path a
+single market event takes: a file becomes an event, an event becomes a book, a book becomes a decision, a decision
+becomes an order, an order becomes a fill, a fill becomes cash, and cash becomes the number a document quotes.
+Everything else is either evidence for a closed line, a compatibility path, or a driver.
 
 This document is a reading order rather than a tour: each step names the file, what to look at inside it, and **the
 measured result that step produced**, so that reading the code and reading the evidence are the same activity.

@@ -1,12 +1,13 @@
 # User Guide
 
-ToyQuant is a small C++20 market-making simulator. Its current v2 path replays Binance aggregate
-trades and BBO updates as `MarketEvent` values, while legacy CSV and UDP modes remain available for
-simple scenarios and compatibility.
-
-**This document is the how-to-run reference**: modes, flags, inputs, outputs and troubleshooting. It does not
-explain *why* the software is shaped the way it is — that is [Design Review](DESIGN_REVIEW.md) — and it is not
-the module-by-module implementation reference, which is [Architecture](ARCHITECTURE.md).
+ToyQuant is a measurement project with a small C++20 market-making simulator inside it — the eight markets it closed
+are in the [Retrospective](RETROSPECTIVE.md) and the argument for the instrument is in the
+[Design Review](DESIGN_REVIEW.md). **This document is the how-to-run reference**: modes, flags, inputs, outputs and
+troubleshooting. The mainline is `l2_replay` on Deribit trades and incremental depth, which is the only path that models
+the queue a quote waits behind; a Binance Trade+BBO replay and the legacy CSV and UDP modes remain for compatibility and
+for the regression invariants that pin them. It does not explain *why* the software is shaped the way it is — that is
+[Design Review](DESIGN_REVIEW.md) — and it is not the module-by-module implementation reference, which is
+[Architecture](ARCHITECTURE.md).
 
 ## Requirements
 

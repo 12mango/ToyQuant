@@ -1,6 +1,6 @@
 # Architecture
 
-ToyQuant is a small event-driven market-making simulator. It connects market-data input, a simplified order book, strategy decisions, order matching, execution reports, and CSV output. This page explains the implementation by source file; [User Guide](USER_GUIDE.md) contains the commands, scenarios, and experiment workflow.
+This page is the module reference for the instrument: a small event-driven market-making simulator. It connects market-data input, a simplified order book, strategy decisions, order matching, execution reports, and CSV output. What the instrument was pointed at, and what each measurement concluded, is in the [Retrospective](RETROSPECTIVE.md); how to run it is in the [User Guide](USER_GUIDE.md).
 
 ## How to read this document
 
