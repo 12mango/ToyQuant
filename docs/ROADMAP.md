@@ -201,7 +201,8 @@ table or in the item that named it; none is scheduled, and lifting one takes a n
 
 ### Change log
 
-**Scope decisions only.** What changed in the code, release by release, is [CHANGELOG.md](../CHANGELOG.md) — this table
+**Scope decisions only.** What changed in the code, release by release, is
+[CHANGELOG.md](https://github.com/12mango/ToyQuant/blob/main/CHANGELOG.md) — this table
 records the decisions about what the project will and will not build, which is the thing a plan has to remember. A row
 here that also appears there is the same event seen twice: once as work, once as scope.
 

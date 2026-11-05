@@ -7,7 +7,35 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
-## The live paper milestone (current)
+## The evidence milestone (current)
+
+The project stopped asking whether the instrument could be built and started using it to answer. Eight markets were
+closed by measured quotients — crypto perpetuals, the micro E-mini, SPY, US large caps, options at two tenors, a funding
+carry and a low-turnover rule — and the machinery that keeps those answers honest became the deliverable: a four-tier
+gate that re-runs the command behind every quoted number, prose lints that re-count what a paragraph states, and a link
+checker over three tiers of documents.
+
+### Highlights
+
+- **The gate is what makes a number a claim.** Tier 0 runs the unit tests, tier 1 the L2 invariants and 53 recorded
+  runs, tier 2 hashes 1.5 GB of standard output against a stored reference, tier 3 repeats the tests under the
+  sanitizers. A documented figure that moves fails the build, which is why the documents can be trusted by a reader who
+  has not run anything.
+- **Eight closures, each with its binding constraint recorded as data.** `tests/fixtures/verdicts.json` carries the
+  inputs and the gate each line is recorded as binding on, and `tools/study/viability.py` re-derives every quotient on
+  every gate run, so a copied number cannot drift.
+- **An interval on a mean, and the range next to it.** `tools/study/pnl_interval.py` resamples a series and reports the
+  interval, the median, the spread and a thin-sample flag; applied to five monthly windows it showed the interval around
+  a mean is narrower than the spread the draws themselves have, which is what stops a single window being read as a
+  result.
+- **A kill switch that pays for its own exit, and a floor that is now priced.** A latched switch closes what the book
+  holds and reports what that cost — 5.39 bps, fee plus half a tick — which is the same number a crossing pays, arrived
+  at from the other end of the trade.
+- **Three tiers of documents, and a map.** Twelve documents at one level became nine files and three directories: the
+  answer and the argument, the reference, and the evidence, with a table that says what each document owns and what it
+  must not contain.
+
+## The live paper milestone
 
 The websocket reader, the paper mode and the recorder half of a live path, which is roadmap phase 2: the
 seam it closes is the one the roadmap names, that a live feed is another reader and paper trading is the

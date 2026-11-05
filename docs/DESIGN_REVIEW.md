@@ -435,14 +435,20 @@ three minutes; the tier rebuilds incrementally, so accepting a change costs the 
 tier0()  { ctest --test-dir "$build_dir" ...; }                       # a red test cannot pass
 tier1()  {
   python3 tools/gate/check_written_fields.py   # every summary field is actually computed
-  python3 tools/gate/lint_prose.py docs/*.md   # every flag, queue model and tools/ path exists
+  python3 tools/gate/lint_prose.py docs/*.md docs/*/*.md   # flags, queue models, tool paths, size figures
+  python3 tools/gate/check_links.py            # every link and every #anchor resolves
   python3 tools/fetch/fetch_iex_hist.py --self-test   # the pcap/IEX-TP walk, on a file it builds itself
   python3 tools/study/pnl_interval.py --self-test      # the interval's arithmetic, on hand-checked samples
   "$BIN" l2_replay ... | grep -oE 'submitted_orders=406|trade_reports=1|...'   # pinned invariants
-  python3 tools/gate/check_docs.py --binary "$BIN" docs/PERFORMANCE_HISTORY.md docs/ARCHITECTURE.md \
-      docs/DESIGN_REVIEW.md docs/PERFORMANCE.md
+  python3 tools/gate/check_docs.py --binary "$BIN" docs/*.md docs/*/*.md
 }
 ```
+
+Four lints stand behind the four tiers, and each owns one kind of claim. `check_written_fields.py` says every field of
+every summary struct is written somewhere. `lint_prose.py` re-counts what a paragraph states — the flags the binary
+accepts, the queue models that exist, the tool paths and the size figures — so prose cannot describe a model set that
+changed. `check_links.py` follows every link and every anchor, because a reader moves between documents by link and a
+document that is split breaks them silently. `check_docs.py` re-runs the command behind every quoted number.
 
 The last line is the part worth stealing. A table in a document can carry a marker — the first line below is
 written so that it is *not* a marker itself, which matters because the checker matches a line that is exactly
