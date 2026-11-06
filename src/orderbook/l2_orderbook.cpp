@@ -11,7 +11,7 @@ void L2OrderBook::apply_snapshot(const MarketDepthSnapshot& snapshot)
         throw std::invalid_argument("L2 snapshot timestamp and sequence must be positive");
 
     std::lock_guard<std::mutex> lock(mutex_);
-    if (!symbol_.empty() && snapshot.symbol != symbol_)
+    if (!symbol_.empty() && snapshot.symbol != symbol_.str())
         throw std::invalid_argument("L2 snapshot symbol changed");
     if (sequence_ != 0 && snapshot.sequence <= sequence_)
         throw std::invalid_argument("L2 snapshot sequence is not increasing");
@@ -69,7 +69,7 @@ void L2OrderBook::apply_incremental_batch(const IncrementalBookBatch& batch)
 
     std::lock_guard<std::mutex> lock(mutex_);
     if (symbol_.empty()) symbol_ = batch.symbol;
-    if (batch.symbol != symbol_) throw std::invalid_argument("L2 incremental symbol changed");
+    if (batch.symbol != symbol_.str()) throw std::invalid_argument("L2 incremental symbol changed");
     if (timestamp_ != 0 && batch.exchange_ts < timestamp_)
         throw std::invalid_argument("L2 incremental timestamp moved backwards");
     if (local_timestamp_ != 0 && batch.local_ts < local_timestamp_)

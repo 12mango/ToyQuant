@@ -264,7 +264,7 @@ inline std::vector<StrategyOrder> TrendL2Strategy::on_l2_market_view(const L2Mar
     if (quantity == 0) return orders;
 
     const double price = buy ? view.top.ask_price : view.top.bid_price;
-    orders.emplace_back(buy ? Side::Buy : Side::Sell, view.symbol, price, quantity, 0);
+    orders.emplace_back(buy ? Side::Buy : Side::Sell, view.symbol.str(), price, quantity, 0);
     return orders;
 }
 

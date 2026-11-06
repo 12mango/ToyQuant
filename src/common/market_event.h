@@ -14,6 +14,7 @@
 #include <variant>
 #include <vector>
 
+#include "common/symbol.h"
 #include "common/types.h"
 
 struct MarketTrade
@@ -30,7 +31,10 @@ struct MarketTrade
 struct BboQuote
 {
     uint64_t ts{};
-    std::string symbol;
+    // The quote is the type that travels furthest: the pipeline builds one per event, the engine caches two, and each
+    // of those used to copy the name. Sixteen bytes that copy like an integer replace those copies, and the engine's
+    // per-symbol maps key on `symbol.id()` instead of hashing the string.
+    SymbolName symbol;
     double bid_price{};
     uint64_t bid_quantity{};
     double ask_price{};
@@ -231,7 +235,17 @@ inline uint64_t market_event_timestamp(const MarketEvent& event)
 
 // The instrument the event is about, which is what a run carrying several books dispatches on. Every
 // alternative carries one, including a batch: its updates do not, because one batch is one instrument.
+// A `BboQuote` carries the name as an interned handle, whose `str()` is a reference into the intern table,
+// so the reference this returns outlives the call in every case.
 inline const std::string& market_event_symbol(const MarketEvent& event)
 {
-    return std::visit([](const auto& value) -> const std::string& { return value.symbol; }, event);
+    return std::visit(
+        [](const auto& value) -> const std::string&
+        {
+            if constexpr (std::is_same_v<std::decay_t<decltype(value)>, BboQuote>)
+                return value.symbol.str();
+            else
+                return value.symbol;
+        },
+        event);
 }

@@ -37,7 +37,7 @@ class L2OrderBook
     uint64_t crossed_batches() const;
     const std::string& symbol() const
     {
-        return symbol_;
+        return symbol_.str();
     }
 
    private:
@@ -48,7 +48,9 @@ class L2OrderBook
     }
 
     mutable std::mutex mutex_;
-    std::string symbol_;
+    // The name as an interned handle: the book carries it once and every view copies sixteen bytes instead of the name.
+    // The first snapshot or batch interns it, and a symbol that changed mid-run is still refused below.
+    SymbolName symbol_;
     double tick_size_;
     double price_scale_;
     // Bids run from the highest tick down, asks from the lowest tick up. Both grow their range on

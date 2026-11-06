@@ -131,7 +131,7 @@ void Pipeline::process_event(const MarketEvent& event)
 
 void Pipeline::handle_event(const MarketTrade& trade)
 {
-    const auto quote_it = latest_quotes_.find(trade.symbol);
+    const auto quote_it = latest_quotes_.find(SymbolName{trade.symbol}.id());
     if (quote_it == latest_quotes_.end())
     {
         ++filtered_market_trades_;
@@ -151,7 +151,7 @@ void Pipeline::handle_event(const MarketTrade& trade)
 
 void Pipeline::handle_event(const BboQuote& quote)
 {
-    latest_quotes_[quote.symbol] = quote;
+    latest_quotes_[quote.symbol.id()] = quote;
     engine_.process_bbo(quote);
     // A quote is already a top of book, and this used to prove it by writing the quote into an
     // `OrderBook` and reading it straight back out. What that round trip added was one test,
@@ -164,9 +164,9 @@ void Pipeline::handle_event(const BboQuote& quote)
                               ? TopOfBook{quote.bid_price, quote.bid_quantity,
                                           quote.ask_price, quote.ask_quantity}
                               : TopOfBook{};
-    advance_mid(quote.symbol, quote.ts, (quote.bid_price + quote.ask_price) / 2.0);
+    advance_mid(quote.symbol.str(), quote.ts, (quote.bid_price + quote.ask_price) / 2.0);
     record_inventory_sample();
-    process_top_of_book(quote.symbol, quote.ts, top);
+    process_top_of_book(quote.symbol.str(), quote.ts, top);
 }
 
 void Pipeline::handle_event(const MarketDepthSnapshot& snapshot)
@@ -203,7 +203,7 @@ void Pipeline::process_l2_market_view(const L2MarketView& view)
                              .exchange = {}};
 
         profiler_begin(Stage::TopBookKeeping);
-        latest_quotes_.insert_or_assign(view.symbol, quote);
+        latest_quotes_.insert_or_assign(view.symbol.id(), quote);
         profiler_end(Stage::TopBookKeeping);
 
         profiler_begin(Stage::Engine);
@@ -213,7 +213,7 @@ void Pipeline::process_l2_market_view(const L2MarketView& view)
         // The report callback runs inside process_l2_top and reads last_mid_, so this
         // update has to stay after that call.
         profiler_begin(Stage::TopBookKeeping);
-        advance_mid(view.symbol, view.ts, (view.top.bid_price + view.top.ask_price) / 2.0);
+        advance_mid(view.symbol.str(), view.ts, (view.top.bid_price + view.top.ask_price) / 2.0);
         record_market_prints();
         profiler_end(Stage::TopBookKeeping);
     }
@@ -280,10 +280,11 @@ std::unordered_map<std::string, double> Pipeline::latest_marks() const
     // rather than guessed at: the account then values that leg at zero and still reports its quantity, which is
     // the honest reading of a run that never saw a two-sided market in that symbol.
     std::unordered_map<std::string, double> marks;
-    for (const auto& [symbol, quote] : latest_quotes_)
+    for (const auto& [symbol_id, quote] : latest_quotes_)
     {
+        (void)symbol_id;
         if (quote.bid_price > 0.0 && quote.ask_price > 0.0)
-            marks[symbol] = 0.5 * (quote.bid_price + quote.ask_price);
+            marks[quote.symbol.str()] = 0.5 * (quote.bid_price + quote.ask_price);
     }
     return marks;
 }
@@ -300,11 +301,14 @@ RunSummary Pipeline::summary() const
     // One book's own result: the pipeline is built for one instrument, so a single quoted symbol is the book, and a
     // run that carries several books prints this per book. Left empty when the pipeline saw no quote or more than
     // one symbol, which is what keeps a single-book run on the account's line.
+    //
+    // The name comes from the quote and not from the map's key: the map is keyed by the interned id, and `std::string`
+    // would have accepted that id as a single character rather than refusing it.
     PnlSummary book_pnl;
     std::string book_symbol;
     if (latest_quotes_.size() == 1)
     {
-        book_symbol = latest_quotes_.begin()->first;
+        book_symbol = latest_quotes_.begin()->second.symbol.str();
         book_pnl = RunAccounting::pnl_summary_of(portfolio_, book_symbol, last_mid_,
                                                  fill_accounting_.maker_notional_usd(),
                                                  fill_accounting_.trade_reports());
@@ -449,13 +453,13 @@ void Pipeline::submit_strategy_actions(uint64_t ts, std::vector<StrategyOrder> o
         std::unordered_map<std::string, double> marks = account_marks_();
         // This book's own symbols are the ones it has quotes for, and leaving them out is what makes the number
         // "the rest": the account read at the other legs' marks values this leg at zero.
-        for (const auto& entry : latest_quotes_) marks.erase(entry.first);
+        for (const auto& entry : latest_quotes_) marks.erase(entry.second.symbol.str());
         account_other_exposure_usd_ = portfolio_.exposure(marks).gross_usd;
     }
 
     for (auto& order : orders)
     {
-        const auto quote_it = latest_quotes_.find(order.symbol);
+        const auto quote_it = latest_quotes_.find(SymbolName{order.symbol}.id());
         submit_order(order, ts, quote_it != latest_quotes_.end() ? &quote_it->second : nullptr);
     }
 }
@@ -558,7 +562,8 @@ WindDownSummary Pipeline::send_close_order(uint64_t ts)
     WindDownSummary summary;
     const int64_t position = fill_accounting_.position();
     if (position == 0 || latest_quotes_.empty()) return summary;
-    const auto& [symbol, quote] = *latest_quotes_.begin();
+    const BboQuote& quote = latest_quotes_.begin()->second;
+    const std::string& symbol = quote.symbol.str();
     if (quote.bid_price <= 0.0 || quote.ask_price <= 0.0) return summary;
 
     const double mid = 0.5 * (quote.bid_price + quote.ask_price);

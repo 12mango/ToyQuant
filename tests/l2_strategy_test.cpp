@@ -61,9 +61,9 @@ int main()
                                                    .max_quote_age = 10});
     const auto initial_orders = refreshable.on_l2_market_view(view);
     assert(initial_orders.size() == 2);
-    refreshable.on_order_submitted(StrategyOrder{Side::Buy, view.symbol, initial_orders[0].price, 1,
+    refreshable.on_order_submitted(StrategyOrder{Side::Buy, view.symbol.str(), initial_orders[0].price, 1,
                                                  1});
-    refreshable.on_order_submitted(StrategyOrder{Side::Sell, view.symbol, initial_orders[1].price, 1,
+    refreshable.on_order_submitted(StrategyOrder{Side::Sell, view.symbol.str(), initial_orders[1].price, 1,
                                                  2});
     assert(refreshable.on_l2_market_view(view).empty());
     assert(refreshable.cancel_requests().empty());
@@ -83,9 +83,9 @@ int main()
     const auto depth_only_orders = depth_only_updates.on_l2_market_view(view);
     assert(depth_only_orders.size() == 2);
     depth_only_updates.on_order_submitted(
-        StrategyOrder{Side::Buy, view.symbol, depth_only_orders[0].price, 1, 33});
+        StrategyOrder{Side::Buy, view.symbol.str(), depth_only_orders[0].price, 1, 33});
     depth_only_updates.on_order_submitted(
-        StrategyOrder{Side::Sell, view.symbol, depth_only_orders[1].price, 1, 34});
+        StrategyOrder{Side::Sell, view.symbol.str(), depth_only_orders[1].price, 1, 34});
     L2MarketView same_top = view;
     same_top.depth_imbalance = -view.depth_imbalance;
     assert(depth_only_updates.on_l2_market_view(same_top).empty());
@@ -101,9 +101,9 @@ int main()
     const auto queue_orders = queue_patient.on_l2_market_view(view);
     assert(queue_orders.size() == 2);
     queue_patient.on_order_submitted(
-        StrategyOrder{Side::Buy, view.symbol, queue_orders[0].price, 1, 51});
+        StrategyOrder{Side::Buy, view.symbol.str(), queue_orders[0].price, 1, 51});
     queue_patient.on_order_submitted(
-        StrategyOrder{Side::Sell, view.symbol, queue_orders[1].price, 1, 52});
+        StrategyOrder{Side::Sell, view.symbol.str(), queue_orders[1].price, 1, 52});
     queue_patient.on_queue_activity(Side::Buy, 100);
     L2MarketView queue_move = view;
     queue_move.top.bid_price += 0.5;
@@ -127,7 +127,7 @@ int main()
                                                         .signal_mode = L2SignalMode::Flow,
                                                         .flow_guard = true,
                                                         .toxicity_flow_threshold = 0.5});
-    guarded_buy_flow.on_market_trade(MarketTrade{99, view.symbol, 6421.5, 100, Side::Buy, 1,
+    guarded_buy_flow.on_market_trade(MarketTrade{99, view.symbol.str(), 6421.5, 100, Side::Buy, 1,
                                                  "deribit"});
     const auto buy_flow_orders = guarded_buy_flow.on_l2_market_view(view);
     assert(buy_flow_orders.size() == 1);
@@ -140,7 +140,7 @@ int main()
                                                          .signal_mode = L2SignalMode::Flow,
                                                         .flow_guard = true,
                                                          .toxicity_flow_threshold = 0.5});
-    guarded_sell_flow.on_market_trade(MarketTrade{99, view.symbol, 6421.0, 100, Side::Sell, 1,
+    guarded_sell_flow.on_market_trade(MarketTrade{99, view.symbol.str(), 6421.0, 100, Side::Sell, 1,
                                                   "deribit"});
     const auto sell_flow_orders = guarded_sell_flow.on_l2_market_view(view);
     assert(sell_flow_orders.size() == 1);
@@ -154,9 +154,9 @@ int main()
                                                         .flow_guard = true,
                                                   .trade_window = 1,
                                                   .toxicity_flow_threshold = 0.5});
-    short_flow.on_market_trade(MarketTrade{99, view.symbol, 6421.5, 100, Side::Buy, 1,
+    short_flow.on_market_trade(MarketTrade{99, view.symbol.str(), 6421.5, 100, Side::Buy, 1,
                                            "deribit"});
-    short_flow.on_market_trade(MarketTrade{100, view.symbol, 6421.0, 100, Side::Sell, 2,
+    short_flow.on_market_trade(MarketTrade{100, view.symbol.str(), 6421.0, 100, Side::Sell, 2,
                                            "deribit"});
     const auto latest_flow_orders = short_flow.on_l2_market_view(view);
     assert(latest_flow_orders.size() == 1);
@@ -176,11 +176,11 @@ int main()
     const auto initial_inventory_orders = inventory_strategy.on_l2_market_view(view);
     assert(initial_inventory_orders.size() == 2);
     inventory_strategy.on_order_submitted(
-        StrategyOrder{Side::Buy, view.symbol, initial_inventory_orders[0].price, 2, 10});
+        StrategyOrder{Side::Buy, view.symbol.str(), initial_inventory_orders[0].price, 2, 10});
     inventory_strategy.on_order_update(ExecutionReport{.order_id = 10,
                                                         .side = exchange::Side::Buy,
                                                         .exec_type = ExecType::Trade,
-                                                        .symbol = view.symbol,
+                                                        .symbol = view.symbol.str(),
                                                         .price = initial_inventory_orders[0].price,
                                                         .quantity = 2,
                                                         .owner = "MarketMaker"});
@@ -222,8 +222,8 @@ int main()
         .warmup_trades = 2,
         .warmup_views = 2});
     assert(warming.on_l2_market_view(view).empty());
-    warming.on_market_trade(MarketTrade{101, view.symbol, 6421.5, 1, Side::Buy, 1, "test"});
-    warming.on_market_trade(MarketTrade{102, view.symbol, 6421.5, 1, Side::Sell, 2, "test"});
+    warming.on_market_trade(MarketTrade{101, view.symbol.str(), 6421.5, 1, Side::Buy, 1, "test"});
+    warming.on_market_trade(MarketTrade{102, view.symbol.str(), 6421.5, 1, Side::Sell, 2, "test"});
     assert(warming.on_l2_market_view(view).size() == 2);
 
     ActiveL2MarketMaker time_aware(ActiveL2MarketMakerConfig{
@@ -281,9 +281,9 @@ int main()
     const auto pausing_orders = pausing.on_l2_market_view(calm_view);
     assert(pausing_orders.size() == 2);
     pausing.on_order_submitted(
-        StrategyOrder{Side::Buy, view.symbol, pausing_orders[0].price, 2, 21});
+        StrategyOrder{Side::Buy, view.symbol.str(), pausing_orders[0].price, 2, 21});
     pausing.on_order_submitted(
-        StrategyOrder{Side::Sell, view.symbol, pausing_orders[1].price, 2, 22});
+        StrategyOrder{Side::Sell, view.symbol.str(), pausing_orders[1].price, 2, 22});
     L2MarketView shock_view = calm_view;
     shock_view.ts += 1000000;
     shock_view.top.bid_price += 5.0;
@@ -393,11 +393,11 @@ int main()
         const auto resting = flattening.on_l2_market_view(view);
         assert(resting.size() == 2);
         flattening.on_order_submitted(
-            StrategyOrder{Side::Buy, view.symbol, resting[0].price, 5, 31});
+            StrategyOrder{Side::Buy, view.symbol.str(), resting[0].price, 5, 31});
         flattening.on_order_update(ExecutionReport{.order_id = 31,
                                                    .side = exchange::Side::Buy,
                                                    .exec_type = ExecType::Trade,
-                                                   .symbol = view.symbol,
+                                                   .symbol = view.symbol.str(),
                                                    .price = resting[0].price,
                                                    .quantity = 5,
                                                    .owner = "MarketMaker"});
@@ -417,11 +417,11 @@ int main()
                                                   .inventory_limit = 100,
                                                   .tick_size = 0.5});
         const auto carried_open = carried.on_l2_market_view(view);
-        carried.on_order_submitted(StrategyOrder{Side::Buy, view.symbol, carried_open[0].price, 5, 41});
+        carried.on_order_submitted(StrategyOrder{Side::Buy, view.symbol.str(), carried_open[0].price, 5, 41});
         carried.on_order_update(ExecutionReport{.order_id = 41,
                                                 .side = exchange::Side::Buy,
                                                 .exec_type = ExecType::Trade,
-                                                .symbol = view.symbol,
+                                                .symbol = view.symbol.str(),
                                                 .price = carried_open[0].price,
                                                 .quantity = 5,
                                                 .owner = "MarketMaker"});

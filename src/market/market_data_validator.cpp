@@ -119,8 +119,8 @@ void MarketDataValidator::validate_trade(const MarketTrade& trade)
 
 void MarketDataValidator::validate_quote(const BboQuote& quote)
 {
-    validate_ordering(quote_streams_[quote.symbol], quote.ts, quote.sequence,
-                      "BBO stream", quote.symbol);
+    validate_ordering(quote_streams_[quote.symbol.str()], quote.ts, quote.sequence,
+                      "BBO stream", quote.symbol.str());
     if (quote.symbol.empty()) throw std::invalid_argument("BBO symbol cannot be empty");
     require_positive_finite(quote.bid_price, "BBO bid price");
     require_positive_finite(quote.ask_price, "BBO ask price");
@@ -130,7 +130,7 @@ void MarketDataValidator::validate_quote(const BboQuote& quote)
         throw std::invalid_argument("BBO bid price exceeds ask price");
 
     ++summary_.quotes;
-    latest_quotes_.insert_or_assign(quote.symbol, quote);
+    latest_quotes_.insert_or_assign(quote.symbol.str(), quote);
 }
 
 void MarketDataValidator::validate_depth_snapshot(const MarketDepthSnapshot& snapshot)

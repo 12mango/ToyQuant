@@ -294,23 +294,16 @@ class MatchingEngine : public IMatchingEngine
                quote.bid_price <= quote.ask_price;
     }
 
-    // Returns the id for `symbol`, assigning one on first sight.
-    SymbolId symbol_id(const std::string& symbol)
-    {
-        const auto [entry, inserted] = symbol_ids_.try_emplace(symbol, next_symbol_id_);
-        if (inserted) ++next_symbol_id_;
-        return entry->second;
-    }
+    // The id for `symbol`, interning the name on first sight. This used to be a registry owned by the engine; the
+    // intern table behind `SymbolName` is the same idea one level down, so both sides of the hand-off agree on one id
+    // space and neither hashes a name the other already hashed.
+    static SymbolId symbol_id(const SymbolName& symbol) { return symbol.id(); }
 
     uint64_t rejected_orders_{0};
 
-    // Returns the id for `symbol`, or kUnknownSymbol without registering it. Used where the symbol
-    // is only being looked up, so a rejected event does not grow the registry.
-    SymbolId find_symbol(const std::string& symbol) const
-    {
-        const auto entry = symbol_ids_.find(symbol);
-        return entry == symbol_ids_.end() ? kUnknownSymbol : entry->second;
-    }
+    // The id for `symbol`, or kUnknownSymbol for a name that was never interned. Used where the symbol is only being
+    // looked up, so a refused event does not intern a name the engine will never use.
+    static SymbolId find_symbol(const SymbolName& symbol) { return symbol.id(); }
 
     // The body of process_bbo, with the symbol already resolved.
     void process_bbo_for(SymbolId id, const BboQuote& quote);
@@ -343,8 +336,6 @@ class MatchingEngine : public IMatchingEngine
         if (report_cb_) report_cb_(rpt);
     }
 
-    std::unordered_map<std::string, SymbolId> symbol_ids_;
-    SymbolId next_symbol_id_{1};
     std::unordered_map<SymbolId, MEOrderBook> books_;
     std::unordered_map<SymbolId, BboQuote> external_bbo_;
     std::unordered_map<SymbolId, uint64_t> last_bid_trade_ts_;

@@ -114,7 +114,7 @@ class Strategy
 
     virtual std::vector<StrategyOrder> on_l2_market_view(const L2MarketView& view)
     {
-        return on_top_of_book(view.symbol, view.top);
+        return on_top_of_book(view.symbol.str(), view.top);
     }
 
     // Called for venue trades before the next strategy decision.

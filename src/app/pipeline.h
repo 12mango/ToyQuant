@@ -350,7 +350,9 @@ class Pipeline
     IMatchingEngine& engine_;
     Portfolio& portfolio_;
     double tick_size_;
-    std::unordered_map<std::string, BboQuote> latest_quotes_;
+    // Keyed by the interned symbol id rather than by the name: this map is written once per event, and hashing a
+    // thirteen character string for it was the largest single piece of the top-booking stage.
+    std::unordered_map<SymbolId, BboQuote> latest_quotes_;
     std::string market_exchange_;
     std::atomic<uint64_t> next_order_id_{1};
     uint64_t submitted_orders_{0};

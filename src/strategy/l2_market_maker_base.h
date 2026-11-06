@@ -121,8 +121,8 @@ class L2MarketMakerBase : public Strategy
     std::vector<StrategyOrder> on_l2_market_view(const L2MarketView& view) override
     {
         if (view.top.bid_price <= 0.0 || view.top.ask_price <= 0.0)
-            return quote(view.symbol, view.top, 0.0);
-        return quote(view.symbol, view.top, fair_price(view));
+            return quote(view.symbol.str(), view.top, 0.0);
+        return quote(view.symbol.str(), view.top, fair_price(view));
     }
 
     void on_market_trade(const MarketTrade& trade) override

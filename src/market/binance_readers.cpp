@@ -76,7 +76,7 @@ class BinanceBookTickerReader final : public IMarketEventReader
 {
    public:
     BinanceBookTickerReader(const std::string& path, std::string symbol, uint64_t quantity_scale)
-        : reader_(path), symbol_(std::move(symbol)), quantity_scale_(quantity_scale)
+        : reader_(path), symbol_(std::move(symbol)), symbol_name_(symbol_), quantity_scale_(quantity_scale)
     {
     }
 
@@ -92,7 +92,7 @@ class BinanceBookTickerReader final : public IMarketEventReader
                     row_context(reader_.lines_read(), "invalid Binance bookTicker row: expected 7 fields"));
 
             event = BboQuote{.ts = parse_uint64(fields_[5]),
-                             .symbol = symbol_,
+                             .symbol = symbol_name_,
                              .bid_price = parse_price(fields_[1]),
                              .bid_quantity = scaled_quantity(fields_[2], quantity_scale_),
                              .ask_price = parse_price(fields_[3]),
@@ -112,6 +112,8 @@ class BinanceBookTickerReader final : public IMarketEventReader
     LineReader reader_;
     std::vector<std::string_view> fields_;
     std::string symbol_;
+    // Interned once here, so a quote row does not hash the name it already knows.
+    SymbolName symbol_name_;
     uint64_t quantity_scale_;
 };
 }  // namespace

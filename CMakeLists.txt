@@ -207,6 +207,7 @@ add_toy_test(l2_strategy_test)
 add_toy_test(l2_replay_test)
 add_toy_test(market_event_recorder_test)
 add_toy_test(spsc_ring_test)
+add_toy_test(symbol_name_test)
 add_toy_test(threaded_replay_test)
 
 add_toy_test(trend_l2_test)

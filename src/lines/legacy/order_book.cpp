@@ -22,7 +22,7 @@ void OrderBook::on_tick(const legacy::Tick& t)
 void OrderBook::on_bbo(const BboQuote& quote)
 {
     std::lock_guard<std::mutex> lock(mtx_);
-    auto& book = books_[quote.symbol];
+    auto& book = books_[quote.symbol.str()];
     book.external_bbo = quote;
     book.has_external_bbo =
         quote.bid_price > 0.0 && quote.ask_price > 0.0 && quote.bid_price <= quote.ask_price;

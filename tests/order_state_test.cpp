@@ -29,7 +29,7 @@ class ProbeStrategy : public Strategy
 
     std::vector<StrategyOrder> on_l2_market_view(const L2MarketView& view) override
     {
-        return {StrategyOrder(Side::Buy, view.symbol, view.top.ask_price, 10, 0)};
+        return {StrategyOrder(Side::Buy, view.symbol.str(), view.top.ask_price, 10, 0)};
     }
 
     void on_order_submitted(const StrategyOrder& order) override

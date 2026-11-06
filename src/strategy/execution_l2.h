@@ -273,7 +273,7 @@ inline std::vector<StrategyOrder> ExecutionL2Strategy::on_l2_market_view(const L
     }
 
     const double price = crossed ? crossing_price(view.top) : resting_price(view.top);
-    orders.emplace_back(config_.side, view.symbol, price, slice_remaining_, 0,
+    orders.emplace_back(config_.side, view.symbol.str(), price, slice_remaining_, 0,
                         crossed ? TimeInForce::Ioc : TimeInForce::Gtc);
     slice_must_cross_ = false;
     return orders;
