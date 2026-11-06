@@ -22,7 +22,7 @@
 #   tools/sweep/equity_schedule_sweep.sh [binary] [symbol] [day]
 #
 # Defaults to AAPL 2026-09-29, the window the account's schedule was first priced on. The files have to be
-# present: they come from the paid Databento route, see tools/fetch/fetch_databento.py and data/README.md.
+# present: they come from the paid Databento route, see tools/fetch/fetch_databento.py and docs/DATA.md.
 set -u
 cd "$(dirname "$0")/../.." || exit 1
 

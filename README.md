@@ -9,7 +9,7 @@
 [![Tests](https://img.shields.io/badge/tests-CTest-brightgreen)](tests)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-[User Guide](docs/USER_GUIDE.md) · [Design Review](docs/DESIGN_REVIEW.md) · [Architecture](docs/ARCHITECTURE.md) · [Performance](docs/PERFORMANCE.md) · [Low-Latency Design](docs/performance/design.md) · [Learning Path](docs/LEARNING.md) · [Data Formats](data/README.md)
+[User Guide](docs/USER_GUIDE.md) · [Design Review](docs/DESIGN_REVIEW.md) · [Architecture](docs/ARCHITECTURE.md) · [Performance](docs/PERFORMANCE.md) · [Low-Latency Design](docs/performance/design.md) · [Learning Path](docs/LEARNING.md) · [Data Files](docs/DATA.md)
 
 </div>
 
@@ -79,7 +79,7 @@ Every number in these documents is re-derived from the binary, and the gate is w
   without a cap.
 
 The scripts live under `tools/`, grouped by what they do — `gate/`, `sweep/`, `fetch/`, `study/`, `live/`, `bench/`,
-`legacy/` — and [`tools/README.md`](tools/README.md) says which one answers which question and which of them the gate
+`legacy/` — and [`docs/TOOLS.md`](docs/TOOLS.md) says which one answers which question and which of them the gate
 runs.
 
 ## Versions
@@ -350,8 +350,8 @@ model that is not measured cannot be a reason either:
 | [The studies](docs/archive/studies.md) | The research record behind the closures: the phases, the venues, the carry gates, the options line |
 | [Documentation Index](docs/index.md) | Which document to read for which question, in three tiers, and what keeps each of them honest |
 | [Roadmap](docs/ROADMAP.md) | What is still worth building, the boundary that stops it expanding, and what is deliberately not planned |
-| [Data Files](data/README.md) | Tick CSV format, runtime outputs, typical workflow |
-| [Tools](tools/README.md) | Which script answers which question, and which of them the gate runs |
+| [Data Files](docs/DATA.md) | Tick CSV format, runtime outputs, typical workflow |
+| [Tools](docs/TOOLS.md) | Which script answers which question, and which of them the gate runs |
 
 ## Contributing
 

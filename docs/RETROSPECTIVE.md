@@ -80,7 +80,7 @@ Nothing in `src/` or `tests/` is unused. `src/lines/legacy/` holds the L1 market
 `src/app/strategy_factory.cpp`, `src/app/strategy_benchmark.h`, `src/backtest/` and the CSV and UDP feeds all
 include; and each of the six tools that look unreferenced from `docs/` -- `fetch_okx_trades.py`,
 `multi_day_check.sh`, `inspect_source.py`, `check_okx_book.py`, `benchmark_replay_windows.py` and `trace_order.sh` --
-is documented in `data/README.md` or `docs/USER_GUIDE.md`. What was actually redundant was generated or ignored: a
+is documented in `docs/DATA.md` or `docs/USER_GUIDE.md`. What was actually redundant was generated or ignored: a
 stale `site/` build of these documents and the working logs under `out/`, both of which stay out of the repository by
 construction. Deleting a referenced strategy would break the gates that make every number above re-derivable, which
 is the asset this phase produced.
@@ -88,7 +88,7 @@ is the asset this phase produced.
 **The second pass, recorded 2026-11-02.** The directory was flat at that point, forty-eight files in one list, and the
 reader's problem was not that a tool was dead but that nothing said which tool answered which question. So the tools
 are grouped by the kind of thing they do -- `gate/`, `sweep/`, `fetch/`, `study/`, `live/`, `bench/`, `legacy/` --
-with `tools/README.md` as the map, and the two shapes of "cut a slice" became one entry point,
+with `docs/TOOLS.md` as the map, and the two shapes of "cut a slice" became one entry point,
 `tools/fetch/slice.py`, with a subcommand for each. One file was deleted: `lf_windows.sh`, which no document, no
 other tool and no gate tier named, and which asked the question `equity_schedule_sweep.sh` already asks on the same
 windows. The stale `site/` build was deleted again, because a build of these documents that is not rebuilt is a

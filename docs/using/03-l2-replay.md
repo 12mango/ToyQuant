@@ -490,7 +490,7 @@ arrives as a file instead of in the event stream:
 Two free formats are recognised by their header: an OKX daily funding archive
 (`instrument_name,funding_rate,funding_time`, every swap on the venue in one file) and a Binance Vision
 monthly `fundingRate` archive (`calc_time,funding_interval_hours,last_funding_rate`, one symbol).
-`tools/fetch/fetch_funding_rates.py` fetches either for one instrument and `data/README.md` records what the two
+`tools/fetch/fetch_funding_rates.py` fetches either for one instrument and [`DATA.md`](../DATA.md) records what the two
 files this checkout holds are.
 
 The rate in both is the rate longs pay. The pipeline applies each settlement at the first event at or after

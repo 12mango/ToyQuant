@@ -121,9 +121,13 @@ def main():
             problems.append(f"{flag} is accepted by the code and not mentioned in any document")
     for flag in sorted({m for m in DOCUMENTED_FLAG.findall(text)} - mentioned):
         # Flags of the Python tools and of the strategies are documented and are not this parser's, and
-        # --help is the one flag every binary has without saying so.
+        # --help is the one flag every binary has without saying so. `docs/DATA.md` joined the linted set
+        # when it moved into `docs/`, and it documents the fetchers, which is where the last three come
+        # from: `fetch_iex_hist.py` walks a pcap it refuses to download, so the tool's own interface is
+        # the only place those flags are named.
         if flag not in {"--order-size", "--inventory-limit", "--queue-model", "--min-trades-per-second",
                         "--download", "--input", "--pretty-px", "--help",
+                        "--verify", "--sample", "--self-test",
                         # Flags of the venue relay rather than of the engine's parser. They are named in
                         # its own --help and in the roadmap, and the relay is the tool that owns them.
                         "--ping-seconds", "--drop-after-seconds"}:

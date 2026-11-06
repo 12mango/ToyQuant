@@ -15,7 +15,7 @@ legacy CSV / UDP / Binance ─────────────────�
 |---|---|
 | **Size** | 110 files, 24,576 lines: `app` 8762, `market` 4069, `legacy` 1851, `lines` 2602, `strategy` 1958, `exchange` 1360, `common` 811, `backtest` 611, `bench` 563, `orderbook` 587, `accounting` 708, `utils` 488, `concurrency` 176, `main` 30 |
 | **Tests** | 30 test binaries, at least one per module, run by tier 0 of the gate |
-| **Tools** | 46 scripts (`*.py` and `*.sh` under `tools/`, grouped by what they do) and one C harness: the gate and its five lints in `tools/gate/`, the measurement sweeps, the source fetches, the one-off studies, and the live harnesses. `tools/README.md` is the map |
+| **Tools** | 46 scripts (`*.py` and `*.sh` under `tools/`, grouped by what they do) and one C harness: the gate and its five lints in `tools/gate/`, the measurement sweeps, the source fetches, the one-off studies, and the live harnesses. `docs/TOOLS.md` is the map of the directory |
 | **Build** | CMake + presets, C++20, standard library only (zlib for `.gz` inputs) |
 | **Numbers** | every figure below is re-derived by `bash tools/gate/verify_l2.sh fast` on every change |
 
@@ -415,7 +415,7 @@ One script, four tiers, run on every change. `tools/gate/verify_l2.sh all`:
 | Tier | Time | What it checks |
 |---|---|---|
 | 0 | ~1 s | CTest: 30 unit-test binaries |
-| 1 | ~60 s | pinned invariants on an L2 and an L1 run, every number quoted in the documents, the prose lints, and the IEX and futures registries' own checks |
+| 1 | ~60 s | pinned invariants on an L2 and an L1 run, every number quoted in the documents, the prose lints, the site build, and the IEX and futures registries' own checks |
 | 2 | ~15 s | the SHA-256 of the full 1.5 GB standard output against `tests/fixtures/l2_full_ref.sha256`, taken with the mode line filtered out so the reference describes the code rather than one checkout's absolute paths |
 | 3 | ~5 s | the same 30 test binaries and one 200k-row replay under AddressSanitizer and UndefinedBehaviorSanitizer, with leak detection on |
 
@@ -437,6 +437,9 @@ tier1()  {
   python3 tools/gate/check_written_fields.py   # every summary field is actually computed
   python3 tools/gate/lint_prose.py docs/*.md docs/*/*.md   # flags, queue models, tool paths, size figures
   python3 tools/gate/check_links.py            # every link and every #anchor resolves
+  python3 tools/gate/check_layering.py         # the core includes nothing that belongs to a line
+  python3 tools/study/viability.py             # every quotient that closed a line, re-derived
+  mkdocs build --strict                        # the documents, built as a site, no unresolved link
   python3 tools/fetch/fetch_iex_hist.py --self-test   # the pcap/IEX-TP walk, on a file it builds itself
   python3 tools/study/pnl_interval.py --self-test      # the interval's arithmetic, on hand-checked samples
   "$BIN" l2_replay ... | grep -oE 'submitted_orders=406|trade_reports=1|...'   # pinned invariants
@@ -444,11 +447,19 @@ tier1()  {
 }
 ```
 
-Four lints stand behind the four tiers, and each owns one kind of claim. `check_written_fields.py` says every field of
+Five lints stand behind the four tiers, and each owns one kind of claim. `check_written_fields.py` says every field of
 every summary struct is written somewhere. `lint_prose.py` re-counts what a paragraph states — the flags the binary
 accepts, the queue models that exist, the tool paths and the size figures — so prose cannot describe a model set that
 changed. `check_links.py` follows every link and every anchor, because a reader moves between documents by link and a
-document that is split breaks them silently. `check_docs.py` re-runs the command behind every quoted number.
+document that is split breaks them silently. `check_layering.py` reads the `#include` lines, so the core cannot reach
+into a feed family or a closed line. `check_docs.py` re-runs the command behind every quoted number.
+
+The sixth check in that tier is not a lint: `mkdocs build --strict` builds the documents into the site a reader opens,
+and it refuses a link that resolves outside `docs_dir`. Such a link is legal on GitHub and passes `check_links.py`,
+which is satisfied by the file existing — what it violates is the site's rule that every page lives under `docs/`. So a
+paragraph could point outside the published tree and stay green locally, which is how a relative `../CHANGELOG.md`
+survived four green tiers and went red in CI. The check is skipped when mkdocs is not installed — the C++ tiers must
+not depend on a Python package — and it is not skipped in CI, which installs one.
 
 The last line is the part worth stealing. A table in a document can carry a marker — the first line below is
 written so that it is *not* a marker itself, which matters because the checker matches a line that is exactly

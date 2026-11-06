@@ -55,6 +55,8 @@ nav:
       - "4. The matching engine": architecture/04-matching-engine.md
       - "5. Strategy": architecture/05-strategy.md
       - "6. Accounting and the summary": architecture/06-accounting-and-the-summary.md
+  - Data Files: DATA.md
+  - Tools: TOOLS.md
   - Performance:
       - Current numbers: PERFORMANCE.md
       - Low-Latency Design: performance/design.md

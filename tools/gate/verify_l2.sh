@@ -150,6 +150,15 @@ tier1() {
   # wants a well-formed one, so it would silently drop out of this check instead of failing it.
   python3 tools/gate/check_links.py >> "$PROSE_CHECK_LOG" 2>&1 || prose_check=1
   python3 tools/gate/check_layering.py >> "$PROSE_CHECK_LOG" 2>&1 || prose_check=1
+  # The site build is the one document check this gate did not run, and the gap had teeth: `mkdocs build --strict`
+  # refuses a link that resolves outside `docs_dir`, so a relative link to `../CHANGELOG.md` was invisible here and
+  # red in CI -- every local tier green on a site that could not be built. Skipped rather than failed when mkdocs is
+  # not installed, because the checks in this tier must not depend on a Python package; CI installs it, and there the
+  # check is not optional.
+  if command -v mkdocs > /dev/null 2>&1; then
+    mkdir -p out/lat
+    mkdocs build --strict -d out/lat/site_gate >> "$PROSE_CHECK_LOG" 2>&1 || prose_check=1
+  fi
   # The eight closed lines are claims about arithmetic too, and a copied number drifts the way a copied claim does.
   # This re-derives every quotient from the recorded inputs, checks that the first gate to fire is the one the line
   # is recorded as binding on, and refuses an optimistic bound read as an opening. Source-level and data-free, so it

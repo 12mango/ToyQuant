@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Work with IEX HIST, the only free continuous depth feed this repository found that a Hong Kong individual can
-download. **The route is rejected** -- see `data/README.md` and the data table in `docs/ROADMAP.md` -- and this
+download. **The route is rejected** -- see `docs/DATA.md` and the data table in `docs/ROADMAP.md` -- and this
 tool is kept because the container walk below is real work with a self-test tier 1 of the gate runs, and because
 it is the first half of any decoder a future route would need.
 

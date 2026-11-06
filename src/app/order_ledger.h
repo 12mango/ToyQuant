@@ -25,7 +25,7 @@ class IMatchingEngine;
 // do". The coordinator used to hold their state beside its counters and its gates, where a reader had to
 // pick the two fields of twenty-one that belonged to an order.
 //
-// The row shapes are a documented data contract (data/README.md): an order row is
+// The row shapes are a documented data contract (docs/DATA.md): an order row is
 // `ts,symbol,side,price,quantity,order_id`, and a trade row adds the liquidity role and the fee. They
 // live here rather than in the coordinator so that the file and the shape written into it are read
 // together.

@@ -19,7 +19,7 @@ specific claim.**
 | Tier | What it is | Documents | How to read it |
 |---|---|---|---|
 | **1. The answer and the argument** | what the project found, and why the instrument that found it is shaped the way it is | [Retrospective](RETROSPECTIVE.md), [Design Review](DESIGN_REVIEW.md), [User Guide](USER_GUIDE.md) | in that order; about ninety minutes |
-| **2. The reference** | what exists, how to read the code, what each field means, what is left to do | [Architecture](ARCHITECTURE.md), [Main Line](MAINLINE.md), [Learning Path](LEARNING.md), [Performance](PERFORMANCE.md), [Roadmap](ROADMAP.md), [Data Files](https://github.com/12mango/ToyQuant/blob/main/data/README.md), [Tools](https://github.com/12mango/ToyQuant/blob/main/tools/README.md) | open the one that matches the question; none is meant to be read whole |
+| **2. The reference** | what exists, how to read the code, what each field means, what is left to do | [Architecture](ARCHITECTURE.md), [Main Line](MAINLINE.md), [Learning Path](LEARNING.md), [Performance](PERFORMANCE.md), [Roadmap](ROADMAP.md), [Data Files](DATA.md), [Tools](TOOLS.md) | open the one that matches the question; none is meant to be read whole |
 | **3. The evidence** | the measurements in the order they were taken, and the research record behind the closures | [Performance History](PERFORMANCE_HISTORY.md) and its three parts, [Low-Latency Design](performance/design.md), [The studies](archive/studies.md), [Research Notes](archive/research-notes.md) | search it; every part opens with the question it answers |
 
 
@@ -31,9 +31,9 @@ specific claim.**
 | evaluate the design | [Design Review](DESIGN_REVIEW.md) | [Architecture](ARCHITECTURE.md) for what exists |
 | understand market making | [Learning Path](LEARNING.md) | [Design Review](DESIGN_REVIEW.md) section 4 for the gate |
 | read the code | [Main Line](MAINLINE.md) | the module reference in [Architecture](ARCHITECTURE.md) |
-| run it | [User Guide](USER_GUIDE.md) | the [Data Files](https://github.com/12mango/ToyQuant/blob/main/data/README.md) note for the input contracts |
+| run it | [User Guide](USER_GUIDE.md) | the [Data Files](DATA.md) note for the input contracts |
 | review the plan | [Roadmap](ROADMAP.md#current-iteration-plan-maintained) | [The studies](archive/studies.md) for why each line is closed |
-| find the tool behind a number | [tools/README.md](https://github.com/12mango/ToyQuant/blob/main/tools/README.md) | the marked block next to the number, which names the exact command |
+| find the tool behind a number | [Tools](TOOLS.md) | the marked block next to the number, which names the exact command |
 | know what it costs | [Performance](PERFORMANCE.md) | [Low-Latency Design](performance/design.md) for why each change is faster |
 | see how a number was obtained | [Performance History](PERFORMANCE_HISTORY.md) | the part named in whichever document quoted it |
 
@@ -56,8 +56,8 @@ document that starts explaining something in another document's row is the failu
 | [Learning Path](LEARNING.md) | 2 | the mechanisms the instrument has to model, and the field reference for each output line | engineering decisions, or how to run anything | prose linted |
 | [Performance](PERFORMANCE.md) | 2 | workloads, how to measure on this host, the current stage breakdown, and every optimisation attempted | the mechanism of a change, or the whole history | its ledger is paired measurements from `tools/study/measure_l2_baseline.py` |
 | [Roadmap](ROADMAP.md) | 2 | the maintained plan: coverage, backlog, gaps, stop line, what is deliberately not planned | what exists today, or the record of finished studies | prose linted |
-| [Data Files](https://github.com/12mango/ToyQuant/blob/main/data/README.md) | 2 | the tick CSV format, the runtime outputs, the workflow that produces them | anything about the strategy or the design | the data directory it describes is the one the gate reads |
-| [Tools](https://github.com/12mango/ToyQuant/blob/main/tools/README.md) | 2 | which script answers which question, and which of them the gate runs | the results themselves | the documents that cite a tool are prose linted, so a moved script fails the build |
+| [Data Files](DATA.md) | 2 | the tick CSV format, the runtime outputs, the workflow that produces them | anything about the strategy or the design | the data directory it describes is the one the gate reads |
+| [Tools](TOOLS.md) | 2 | which script answers which question, and which of them the gate runs | the results themselves | the documents that cite a tool are prose linted, so a moved script fails the build |
 
 ## What the project covers, and what it deliberately does not
 

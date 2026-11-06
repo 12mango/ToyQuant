@@ -152,7 +152,7 @@ What it says, and it is not one thing:
   of half a day is the honest reading of a criterion that asks whether this line has more to say than the last
   one, and the answer is that it has a number where the other line had none, and that the number is thin.
 
-The second run's fields are the first run's with the sign flipped. `data/README.md` records where the two funding
+The second run's fields are the first run's with the sign flipped. [`DATA.md`](../DATA.md) records where the two funding
 files come from, one command each, and both blocks are re-derived by `tools/gate/check_docs.py` on every gate run.
 
 ## The Maker Fee Each Window Would Have Needed
