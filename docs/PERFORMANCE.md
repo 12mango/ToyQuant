@@ -188,6 +188,12 @@ column sum would come out larger than the wall clock.
 ./out/build/linux-debug/toy_quant l2_replay ...args... --no-output --fast-validation --profile-stages
 ```
 
+It works with `--feed-thread` as well, and then there are **two** reports: each thread has its own profiler, the feed
+prints `read+parse` and `validate` and the consumer the six stages after them, and a stage a thread never brackets prints
+as zero samples. The two blocks are a split of one event rather than two events. That is what makes the threaded path
+measurable per stage at all — `[LATENCY]` counts in microseconds and the hand-off it would have to show is 170 ns. A
+two-book run still refuses the combination, because there one profiler would be written by two pipelines as well.
+
 Reading the output:
 
 - **The numbers depend on the sampling interval.** `read+parse` measures 381-445 at interval 1, 414-551
@@ -590,6 +596,25 @@ The growth margin was the other, and it has now been measured and could not be r
 of a different kind from the ones above and worth keeping in the same place: the knob is inert enough that
 this workload cannot price it, which is more useful to a later session than leaving it as an untuned
 constant with a plausible story attached.
+
+**The event's shape, and why it is not being changed.** [§3.9](#39-the-hand-off-between-two-threads) leaves one number
+standing: the ring hands over `MarketEvent` at 169.9 ns/message against 50.4 for a trivially copyable payload of exactly
+the same size, so about **119 ns per event** is the move and destructor of two `std::string`s and a `std::vector`. Nothing
+else in this document points at a larger single item.
+
+Three measurements, not preferences, say no. The last attempt at the same family of copies — six `std::string` copies and
+two hashes per event, replaced by an interned handle — measured as nothing at all (the ledger row), which is the estimate
+that has been wrong most often here being wrong again: an SSO copy lives in a cache line the event already touches. The
+119 ns is a *type* cost the ring pays per message rather than a copy, but it exists only on the `--feed-thread` path, and
+no recorded number in this repository comes from that path: the gate runs one threaded run to assert it reports what the
+direct run reports, and nothing else is measured there. And it is not a rename — `MarketDepthSnapshot` carries two
+`std::vector<DepthLevel>`, so a trivially copyable event means either a fixed bound on a snapshot's levels, which is a
+behaviour change on the workload that uses snapshots, or a pooled buffer with a return protocol, which is a different
+concurrency contract than "the ring owns the value".
+
+What would change the verdict is a recorded run measured **in threaded mode** whose conclusion depends on its throughput.
+The profiler can now be pointed at that path (§3.5), so the next session can take the measurement instead of arguing about
+it; until then the answer is the one the last experiment gave.
 
 
 

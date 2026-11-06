@@ -218,8 +218,10 @@ a replay that lost an event would not be the run anybody asked for, and the paci
 wait then shows up as a feed that fell behind its schedule. The consumer spins with a pause instruction
 rather than sleeping on a condition variable, because at these rates the wake-up costs more than the
 wait it replaces; the reported occupancy is what would say otherwise. And the two threads do not share
-a `StageProfiler`: it accumulates on whichever thread calls it, so `--feed-thread` with
-`--profile-stages` is refused rather than reported as a race.
+a `StageProfiler`: one instance accumulates on whichever thread calls it, so each thread has its own and
+`--feed-thread` with `--profile-stages` prints two labelled blocks — the feed's `read+parse` and `validate`,
+then the consumer's six — rather than a race. The two-book path still refuses that combination with a reason,
+because there one profiler would be written by two pipelines as well as the feed.
 
 What the hand-off costs is measured rather than described. Each event is stamped when the feed hands it
 over, when the strategy thread takes it, and when the consumer returns, and the three differences are

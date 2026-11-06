@@ -207,9 +207,11 @@ not running ahead.
 
 A full ring is backpressure rather than a lost event: the feed waits for room, the wait is counted, and
 on a paced replay it also shows up in the `[LIVE]` line as a feed that fell behind its own schedule,
-which is what having both lines is for. Two combinations are refused rather than approximated:
-`--feed-thread` with `--profile-stages`, because the profiler accumulates on whichever thread calls it
-and this path calls it from two, and `--feed-thread` on the L1 replay, whose second stream is a BBO
-quote. The threaded path reports the same numbers as the direct one — `bash tools/gate/verify_l2.sh fast`
+which is what having both lines is for. `--profile-stages` works on this path as well as on the direct one, printing
+one block per thread: the feed reports `read+parse` and `validate`, the consumer the six stages after them, and a stage
+a thread never touches prints as zero samples. Two combinations are still refused rather than approximated:
+`--feed-thread` on the L1 replay, whose second stream is a BBO quote, and `--profile-stages` with `--feed-thread` on a
+two-book run, where one profiler would be written by two pipelines and the feed as well.
+The threaded path reports the same numbers as the direct one — `bash tools/gate/verify_l2.sh fast`
 asserts exactly that — because the ring is FIFO and the strategy sees the same sequence either way.
 

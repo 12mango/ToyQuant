@@ -523,16 +523,18 @@ void Application::run_l2_session_mode() const
     StageProfiler stage_profiler(cfg_.profile_sample_interval > 0
                                      ? cfg_.profile_sample_interval
                                      : StageProfiler::kDefaultSampleInterval);
+    // The threaded path brackets two of the eight stages on the feed thread (`read+parse`, `validate`) and the other
+    // six on the consumer, so it needs one profiler per thread. A single instance written from both is a race, which
+    // is why the combination used to be refused rather than measured -- and refusing it left the ring's own cost
+    // unmeasurable, because `[LATENCY]` counts in microseconds and the hand-off is a hundred nanoseconds.
+    StageProfiler feed_stage_profiler(cfg_.profile_sample_interval > 0
+                                          ? cfg_.profile_sample_interval
+                                          : StageProfiler::kDefaultSampleInterval);
     StageProfiler* const profiler = cfg_.profile_sample_interval > 0 ? &stage_profiler : nullptr;
-    // The profiler accumulates samples on whichever thread calls it, and the threaded path calls it
-    // from two: the read and parse stages belong to the feed thread and the strategy stages to the
-    // consumer. Sharing it would make every number in its report a race, so the combination is
-    // refused rather than reported.
-    if (cfg_.feed_thread && profiler != nullptr)
-        throw std::invalid_argument(
-            "--profile-stages and --feed-thread cannot be combined: the profiler accumulates on the "
-            "thread that calls it and this path calls it from two, so its report would be a race "
-            "rather than a measurement");
+    // On the direct path both sides are one thread, and the feed's `start_event()` already opens the event the
+    // consumer fills, so the feed is given the same instance it always was.
+    const bool split_profiler = profiler != nullptr && cfg_.feed_thread;
+    StageProfiler* const feed_profiler = split_profiler ? &feed_stage_profiler : profiler;
 
     // The source string names where the runtime files came from, so a live session records its
     // endpoint where a replay records its two files.
@@ -701,6 +703,10 @@ void Application::run_l2_session_mode() const
     // what makes the threaded path comparable with the direct one rather than merely similar.
     const auto consume = [&](const MarketEvent& event)
     {
+            // With two profilers the feed's `start_event()` opens an event in its own instance, so this thread has to
+            // open the one its brackets belong to. On the direct path the feed already did it and doing it twice
+            // would commit two events per row.
+            if (split_profiler) profiler->start_event();
             // The tap sits before the pipeline, so the file is what the feed delivered rather than
             // what the strategy did with it, and a run that dies inside the strategy still holds
             // everything that arrived before the failure.
@@ -765,7 +771,7 @@ void Application::run_l2_session_mode() const
     }
     if (threaded_feed)
     {
-        threaded_feed->set_profiler(profiler);
+        threaded_feed->set_profiler(feed_profiler);
         threaded_feed->run();
     }
     else
@@ -839,7 +845,20 @@ void Application::run_l2_session_mode() const
     {
         // Written straight to stdout rather than through the logger, because --no-output
         // disables the logger and that is the recommended combination for profiling.
-        std::cout << profiler->report() << std::flush;
+        //
+        // On the threaded path each thread has its own instance and reports only the stages it brackets, so the two
+        // blocks are labelled and the ones a thread never sees print as zero samples. Read them as a split of one
+        // event, not as two events: the feed's `read+parse` and the consumer's stages add up to the same work the
+        // direct path measures in one block.
+        if (split_profiler)
+            std::cout << "[PROFILE] thread=feed  (read+parse, validate)\n";
+        std::cout << (split_profiler ? feed_profiler->report() : profiler->report()) << std::flush;
+        if (split_profiler)
+        {
+            std::cout << "[PROFILE] thread=consumer  (book-apply, market-view, top-booking, engine,"
+                         " queue-acct, strategy)\n";
+            std::cout << profiler->report() << std::flush;
+        }
     }
     if (live_feed != nullptr)
     {
@@ -869,16 +888,17 @@ void Application::run_multi_book_mode() const
         {cfg_.symbol_b, to_abs_path(cfg_.trades_b_path), to_abs_path(cfg_.depth_b_path)},
     }};
 
-    // Per-stage timing is opt-in here exactly as it is there, and the threaded path refuses it for the same
-    // reason: the profiler accumulates on whatever thread calls it, and that path calls it from two.
+    // Per-stage timing is opt-in here exactly as it is there. The two-book path still refuses it with `--feed-thread`,
+    // because one profiler would be written from three places -- two pipelines and a feed -- and the split the
+    // single-book path does (one instance per thread) would need one per pipeline as well. A refusal with that reason
+    // is honest; a report that merged them would not be.
     StageProfiler stage_profiler(cfg_.profile_sample_interval > 0 ? cfg_.profile_sample_interval
                                                                 : StageProfiler::kDefaultSampleInterval);
     StageProfiler* const profiler = cfg_.profile_sample_interval > 0 ? &stage_profiler : nullptr;
     if (cfg_.feed_thread && profiler != nullptr)
         throw std::invalid_argument(
-            "--profile-stages and --feed-thread cannot be combined: the profiler accumulates on the thread "
-            "that calls it and this path calls it from two, so its report would be a race rather than a "
-            "measurement");
+            "--profile-stages with --feed-thread is not supported on the two-book path: the profiler would be "
+            "written by two pipelines and the feed, and its report would be a race rather than a measurement");
 
     // The account is built with the first book's valuation and then told about both, because the two are not
     // interchangeable: a BTC perpetual has a ten dollar face value and an ETH perpetual a one dollar face, and
