@@ -194,6 +194,34 @@ as zero samples. The two blocks are a split of one event rather than two events.
 measurable per stage at all — `[LATENCY]` counts in microseconds and the hand-off it would have to show is 170 ns. A
 two-book run still refuses the combination, because there one profiler would be written by two pipelines as well.
 
+Median of three runs each way on the W1 slice, one session, `p50` in nanoseconds:
+
+| stage | direct | threaded: feed | threaded: consumer |
+|---|---:|---:|---:|
+| `read+parse` | 793 | **774** | — |
+| `validate` | 74 | **94** | — |
+| `book-apply` | 81 | — | **124** |
+| `market-view` | 105 | — | **134** |
+| `top-booking` | 40 | — | **48** |
+| `engine` | 138 | — | **156** |
+| `queue-acct` | 8 | — | **10** |
+| `strategy` | 57 | — | **70** |
+| column sum | 1284 | 868 | 542 |
+
+Two things are worth taking from it, one structural and one measured.
+
+**The split is the thing threading buys.** The feed thread carried 57–68% of the direct block's per-event work, so most
+of an event's cost is the reader's and it now runs beside the strategy instead of in front of it. That is the
+justification for the ring existing, and it is the first time this repository has shown it per stage.
+
+**Every stage came out slower than the same stage done serially**, and the consumer's are the worse half: `book-apply`
++53%, `market-view` +28%, `top-booking` +20%, `engine` +13%, `strategy` +23%, and even the feed's `validate` +27%. The
+ordering held across all three runs; the magnitudes did not, and this session was a noisy one — the consumer's column sum
+was 290, 542 and 607 across the three, so treat the percentages as a direction rather than a size. The direction is the
+useful part: **the hand-off costs more than the 119 ns §3.9 measures**, because that bench hands over a value the consumer
+already has in cache, while a real event is written on one core and read on another. It is also one more reason not to
+spend a restructuring on the event's type to recover 119 ns of it.
+
 Reading the output:
 
 - **The numbers depend on the sampling interval.** `read+parse` measures 381-445 at interval 1, 414-551
