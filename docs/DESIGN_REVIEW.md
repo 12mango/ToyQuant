@@ -439,7 +439,7 @@ tier1()  {
   python3 tools/gate/check_links.py            # every link and every #anchor resolves
   python3 tools/gate/check_layering.py         # the core includes nothing that belongs to a line
   python3 tools/study/viability.py             # every quotient that closed a line, re-derived
-  mkdocs build --strict                        # the documents, built as a site, no unresolved link
+  mkdocs build --strict                        # the documents as a site: no unresolved link, no old repository name
   python3 tools/fetch/fetch_iex_hist.py --self-test   # the pcap/IEX-TP walk, on a file it builds itself
   python3 tools/study/pnl_interval.py --self-test      # the interval's arithmetic, on hand-checked samples
   "$BIN" l2_replay ... | grep -oE 'submitted_orders=406|trade_reports=1|...'   # pinned invariants
@@ -460,6 +460,11 @@ which is satisfied by the file existing — what it violates is the site's rule 
 paragraph could point outside the published tree and stay green locally, which is how a relative `../CHANGELOG.md`
 survived four green tiers and went red in CI. The check is skipped when mkdocs is not installed — the C++ tiers must
 not depend on a Python package — and it is not skipped in CI, which installs one.
+
+It also greps the pages it just built for the repository's **old** name. `site_name` and `repo_name` are the only
+source of the site's title and of its header link, so a value left behind there publishes a page that names a
+repository which does not exist — which is what the published site did for two weeks after the rename, because
+nothing looked at the built pages rather than at the source they came from.
 
 The last line is the part worth stealing. A table in a document can carry a marker — the first line below is
 written so that it is *not* a marker itself, which matters because the checker matches a line that is exactly

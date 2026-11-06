@@ -158,6 +158,14 @@ tier1() {
   if command -v mkdocs > /dev/null 2>&1; then
     mkdir -p out/lat
     mkdocs build --strict -d out/lat/site_gate >> "$PROSE_CHECK_LOG" 2>&1 || prose_check=1
+    # The site carries the repository's name in its title and in the header link, and both come from one place:
+    # `site_name` and `repo_name` in mkdocs.yml. A stale value there publishes a site that names a repository that
+    # no longer exists -- which is exactly what the published site did for two weeks after the rename, because
+    # nothing checked the built pages rather than the source they came from.
+    if grep -rl 'ToyQuant-v1' out/lat/site_gate > /dev/null 2>&1; then
+      echo "FAIL the built site still carries the old repository name: $(grep -rl 'ToyQuant-v1' out/lat/site_gate | head -3 | tr '\n' ' ')" >> "$PROSE_CHECK_LOG"
+      prose_check=1
+    fi
   fi
   # The eight closed lines are claims about arithmetic too, and a copied number drifts the way a copied claim does.
   # This re-derives every quotient from the recorded inputs, checks that the first gate to fire is the one the line
