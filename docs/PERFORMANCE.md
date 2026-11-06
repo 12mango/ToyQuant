@@ -557,9 +557,11 @@ and further tuning there has now been tried twice and paid nothing.
    stdout on the 200k slice — and on this workload neither the ABBA harness nor the libc shim can see a
    growth, so what would settle it is a workload with more ladder growths rather than a better clock (the
    ledger row above).
-3. **`engine`, 13%.** What remains is not lookups. Each batch copies a `BboQuote` (two SSO strings)
-   into `latest_quotes_`, `l2_top_bbo_` and `external_bbo_`, and `MEOrderBook` still uses a
-   `std::map` per price level. The book-container result in the ledger is the argument for measuring
+3. **`engine`, 13%.** What remains is not lookups. Each batch copies a `BboQuote` into `latest_quotes_`,
+   `l2_top_bbo_` and `external_bbo_`, and `MEOrderBook` still uses a `std::map` per price level. The name in that
+   struct is an interned handle now, so the copies that are left carry one SSO string (`exchange`) and sixteen bytes
+   of symbol rather than two strings — measured, and worth nothing (the ledger's interned-symbol row). The
+   book-container result in the ledger is the argument for measuring
    a `TickLadder` there too, but order flow is 406 orders per 117,288 batches on W1, so a workload
    with real order flow is needed before that can show anything.
 4. **`validate` (5%) and `strategy` (4%)** stay out of scope until the three above are settled.
