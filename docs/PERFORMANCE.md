@@ -467,6 +467,22 @@ noted otherwise. The mechanism behind each accepted row is explained in
 | An 8 slot ring to bound the burst earlier | capacity small enough that the producer usually finds the ring full | 59.08 ns/message against 18.29 at 4096 slots, so 4096 is not an oversized default | **rejected** |
 | Interned symbol handle on the L2 quote path | `L2MarketView` and `BboQuote` carry a 16-byte `SymbolName` -- an id and a pointer into an intern table -- instead of a `std::string`, so the name is constructed once per run rather than six times per event, and the engine keys on `symbol.id()` without hashing at all; its own `symbol_ids_` registry, and the second id space that came with it, are gone | **not resolvable on this host, and pointing the wrong way**: five ABBA blocks with the null control measured in the same session moved `top-booking` **+79.4%** against a **+69.8%** null, `strategy` **+17.1%** against **+14.3%**, `engine` −3.8% against a +5.0% null, and the end-to-end wall clock **−0.6%** (t = −0.12); output byte-identical over 11,403,032 batches | kept, unproven: what it removes is a duplicate registry, and the copies it removes were cheaper than the estimate that motivated them |
 
+### Where each attempt is argued
+
+The numbers are the table above; the mechanism behind them is in
+[Low-Latency Design](performance/design.md), one section per design, and each of its sections opens with the ledger row
+it explains. This is the same pairing read from the other end, so a row can be found without scanning that document:
+
+| Section of the design record | The rows above it argues |
+|---|---|
+| [1. The line layer](performance/design.md#1-the-line-layer-linereader) | the buffered line reader |
+| [2. The book container](performance/design.md#2-the-l2-book-container-tickladder) | `TickLadder`, the single-pass top-level walk, and the growth margin |
+| [3. Per-symbol state](performance/design.md#3-the-engines-per-symbol-state-symbol-ids) | the symbol id registry, and the interned symbol handle |
+| [4. The instrument](performance/design.md#4-measurement-itself-stageprofiler) | none — it is the `StageProfiler` that the rows above were measured with |
+| [5. The number conversions](performance/design.md#5-the-number-conversions) | the integer-plus-scale price parse, and the `parse_uint64` fast path |
+| [6. The hand-off](performance/design.md#6-the-hand-off-between-two-threads-spscring) | the ring, and the capacity that bounds it |
+| [7. Measured and rejected](performance/design.md#7-designs-that-were-measured-and-rejected) | the sorted vector, the first price parse, the word-at-a-time split, the book mutex, both mutex hand-offs, and the reader micro-optimizations |
+
 ### Resolution
 
 Read the numbers above with the floor in [section 3.2](#32-paired-alternation) in mind: at five blocks

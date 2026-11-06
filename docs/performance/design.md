@@ -20,6 +20,10 @@ Every section has the same five parts:
 - **Verification** — how it was shown not to change behavior.
 - **Result** — what it moved, in one line, pointing at the ledger.
 
+The pairing reads both ways: the ledger in [§5 of the performance reference](../PERFORMANCE.md#5-optimization-ledger)
+ends with the mirror image of this list — which section argues which rows — so a number can be traced to its mechanism
+without scanning either document.
+
 ## 1. The line layer: `LineReader`
 
 Ledger row: [Buffered line reader](../PERFORMANCE.md#5-optimization-ledger).

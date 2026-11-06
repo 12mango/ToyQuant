@@ -179,7 +179,7 @@ claim can be honestly produced and still be under-powered.
 
 Stop when the P1 items that buy a new technical point are done. The current iteration is complete when:
 
-1. `ctest` is 30/30 and `tools/gate/verify_l2.sh fast` is tier 0 and tier 1 OK;
+1. `ctest` is 31/31 and `tools/gate/verify_l2.sh fast` is tier 0 and tier 1 OK;
 2. one L2 event, one risk refusal/backoff and one order-state path can be traced end to end;
 3. one short replay and `tools/sweep/risk_check.sh` can be shown if asked, without claiming a profitable strategy;
 4. this plan and the five core documents still describe the binary;
