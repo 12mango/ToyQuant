@@ -10,7 +10,7 @@ This page is the module reference for the instrument: a small event-driven marke
 | Input formats and validation | [Shared Types and Input Boundary](architecture/02-inputs-and-types.md#2-shared-types-and-input-boundary) |
 | Object ownership and callbacks | [Application Coordinator](architecture/03-coordinator-and-book.md#3-application-coordinator) |
 | External book versus strategy orders | [OrderBook](architecture/03-coordinator-and-book.md#4-orderbook-the-frozen-lines-external-view) and [MatchingEngine](architecture/04-matching-engine.md#5-matchingengine-orders-queues-and-reports) |
-| How strategies make decisions | [Strategy](architecture/05-strategy.md#6-strategy-the-main-decision-module) |
+| How strategies make decisions | [Strategy](architecture/05-strategy/01-the-model-and-the-baselines.md#6-strategy-the-main-decision-module) |
 | PnL and reusable metrics | [Backtest and Performance Metrics](architecture/06-accounting-and-the-summary.md#7-backtest-and-performance-metrics) |
 | What the engine costs and how that is measured | [Performance](PERFORMANCE.md) |
 | Why a latency-critical design is built the way it is | [Low-Latency Design](performance/design.md) |
@@ -50,7 +50,7 @@ decide, and what does the run report.
 | [2. Inputs and shared types](architecture/02-inputs-and-types.md) | every reader, the event types they produce, and the validation boundary between them | 2 |
 | [3. Coordinator and the book](architecture/03-coordinator-and-book.md) | how the application wires the pieces together, then the external book view the strategies read | 3, 4 |
 | [4. Matching engine](architecture/04-matching-engine.md) | price–time priority, the queue model, partial fills, self-trade prevention, and the reports | 5 |
-| [5. Strategy](architecture/05-strategy.md) | the decision layer, its lifecycle, the order state machine, and every strategy family including the mainline | 6 |
+| [5. Strategy](architecture/05-strategy.md), in two parts | the decision layer, its lifecycle, the order state machine, and every strategy family including the mainline | 6 |
 | [6. Accounting and the summary](architecture/06-accounting-and-the-summary.md) | what a fill does to cash and inventory, and what every field of every report line means | 7 |
 
 Read 1 and 3 first if you want the shape; read 5 if you are working on a strategy; read 6 when you are reading a report

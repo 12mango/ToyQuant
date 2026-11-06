@@ -122,11 +122,22 @@ def dict_of(text):
     return values
 
 
+def expand(documents):
+    """A directory argument becomes every markdown file under it, for the reason `lint_prose.py` gives: a glob that is
+    exactly two levels deep stops covering the tree the first time a section is split into its own subdirectory."""
+    expanded = []
+    for path in documents:
+        expanded.extend(sorted(path.rglob("*.md")) if path.is_dir() else [path])
+    return expanded
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("documents", type=Path, nargs="+")
+    parser.add_argument("documents", type=Path, nargs="+",
+                        help="documents, or directories of them, which are walked for *.md")
     parser.add_argument("--binary", default="out/build/linux-debug/toy_quant")
     args = parser.parse_args()
+    args.documents = expand(args.documents)
 
     checked = 0
     failures = []

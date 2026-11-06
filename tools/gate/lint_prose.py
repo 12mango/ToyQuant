@@ -17,7 +17,8 @@ or a ratio between two numbers that were never measured against each other. The 
 a single source of truth that a program can read.
 
 Usage:
-    python3 tools/gate/lint_prose.py docs/PERFORMANCE_HISTORY.md docs/ARCHITECTURE.md docs/USER_GUIDE.md ...
+    python3 tools/gate/lint_prose.py docs                     # every document under a directory
+    python3 tools/gate/lint_prose.py docs/PERFORMANCE.md ...   # or the documents named
 """
 
 import argparse
@@ -83,9 +84,24 @@ def counted_source(root):
     return counts
 
 
+def expand(documents):
+    """A directory argument becomes every markdown file under it.
+
+    The gate used to pass `docs/*.md docs/*/*.md`, which is exactly two levels deep. The day a section was split into a
+    subdirectory of its own, the lint silently stopped reading those pages: "no problem" meant "not checked", and nine
+    documented flags went missing at once while every tier stayed green. A directory cannot narrow that way, so the
+    callers pass `docs` and this walks it.
+    """
+    expanded = []
+    for path in documents:
+        expanded.extend(sorted(path.rglob("*.md")) if path.is_dir() else [path])
+    return expanded
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("documents", type=Path, nargs="+")
+    parser.add_argument("documents", type=Path, nargs="+",
+                        help="documents, or directories of them, which are walked for *.md")
     parser.add_argument("--config", type=Path, default=Path("src/app/app_config.cpp"),
                         help="the main binary's parser, whose flags the documents have to cover")
     # The benchmark driver has a parser of its own, and a documented `--timeline` failed this check the
@@ -101,6 +117,7 @@ def main():
     parser.add_argument("--source", type=Path, default=Path("src"))
     parser.add_argument("--cmake", type=Path, default=Path("CMakeLists.txt"))
     args = parser.parse_args()
+    args.documents = expand(args.documents)
 
     config = args.config.read_text()
     types = args.types.read_text()

@@ -42,7 +42,11 @@ nav:
   - "Using it":
       - "1. Getting started": using/01-getting-started.md
       - "2. Modes": using/02-modes.md
-      - "3. The L2 replay": using/03-l2-replay.md
+      - "3. The L2 replay":
+          - "Overview": using/03-l2-replay.md
+          - "1. The run and its inputs": using/03-l2-replay/01-the-run-and-its-inputs.md
+          - "2. The venue side": using/03-l2-replay/02-the-venue-side.md
+          - "3. Funding and what is frozen": using/03-l2-replay/03-funding-and-what-is-frozen.md
       - "4. A live session and the carry line": using/04-live-and-carry.md
       - "5. Scenarios and reports": using/05-scenarios-and-reports.md
       - "6. Reading the output": using/06-reading-the-output.md
@@ -53,7 +57,10 @@ nav:
       - "2. Inputs and shared types": architecture/02-inputs-and-types.md
       - "3. The coordinator and the book": architecture/03-coordinator-and-book.md
       - "4. The matching engine": architecture/04-matching-engine.md
-      - "5. Strategy": architecture/05-strategy.md
+      - "5. Strategy":
+          - "Overview": architecture/05-strategy.md
+          - "1. The model and the baselines": architecture/05-strategy/01-the-model-and-the-baselines.md
+          - "2. The L2 mainline and the comparison": architecture/05-strategy/02-the-l2-mainline.md
       - "6. Accounting and the summary": architecture/06-accounting-and-the-summary.md
   - Data Files: DATA.md
   - Tools: TOOLS.md

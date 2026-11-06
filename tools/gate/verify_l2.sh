@@ -143,7 +143,7 @@ tier1() {
   # describes a stale model set is exactly what that leaves behind. This compares the claims against the
   # source: flags, queue models and tool paths.
   local prose_check=0
-  python3 tools/gate/lint_prose.py docs/*.md docs/*/*.md > "$PROSE_CHECK_LOG" 2>&1 || prose_check=1
+  python3 tools/gate/lint_prose.py docs > "$PROSE_CHECK_LOG" 2>&1 || prose_check=1
   # A link is the only thing in the documents that a reader follows rather than reads, and nothing checked one until a
   # split moved a hundred of them: the file has to exist and the `#anchor` has to match a heading in it. Counting the
   # openings as well catches the other half -- a link whose parentheses do not balance is invisible to a pattern that
@@ -381,7 +381,7 @@ tier1() {
   # a "thirty times per fill" that a re-measurement turned into ten. They are checked at the same gate
   # as the invariants, on the same slices, so a documented value that stops being true fails a run.
   local doc_check=0
-  python3 tools/gate/check_docs.py --binary "$BIN" docs/*.md docs/*/*.md \
+  python3 tools/gate/check_docs.py --binary "$BIN" docs \
     > "$DOC_CHECK_LOG" 2>&1 || doc_check=1
   # The IEX HIST reader walks the pcap, IP, UDP and IEX-TP framing that a decoder sits on top of. The file it
   # walks in this test is built by the tool rather than downloaded, because the archive is behind an account,

@@ -37,8 +37,10 @@ specific claim.**
 | know what it costs | [Performance](PERFORMANCE.md) | [Low-Latency Design](performance/design.md) for why each change is faster |
 | see how a number was obtained | [Performance History](PERFORMANCE_HISTORY.md) | the part named in whichever document quoted it |
 
-`docs/` holds tiers 1 and 2 at the top level, and two directories for tier 3: `performance/` for the measurement of the
-engine and `archive/` for the research record. Nothing in tier 3 is unfinished or disowned — it is the material that made
+`docs/` holds tiers 1 and 2 at the top level. `using/` and `architecture/` hold the parts of the two longest references —
+the guide and the module reference — and each of those two has its own part split into smaller pages where a section grew
+past six hundred lines. `performance/` and `archive/` hold tier 3: the measurement of the engine, and the research record.
+Nothing in tier 3 is unfinished or disowned — it is the material that made
 the closures in tier 1 possible, kept because a reason that is not written down is a reason nobody can check.
 
 ## Who owns what

@@ -435,7 +435,7 @@ three minutes; the tier rebuilds incrementally, so accepting a change costs the 
 tier0()  { ctest --test-dir "$build_dir" ...; }                       # a red test cannot pass
 tier1()  {
   python3 tools/gate/check_written_fields.py   # every summary field is actually computed
-  python3 tools/gate/lint_prose.py docs/*.md docs/*/*.md   # flags, queue models, tool paths, size figures
+  python3 tools/gate/lint_prose.py docs   # flags, queue models, tool paths, size figures
   python3 tools/gate/check_links.py            # every link and every #anchor resolves
   python3 tools/gate/check_layering.py         # the core includes nothing that belongs to a line
   python3 tools/study/viability.py             # every quotient that closed a line, re-derived
@@ -443,7 +443,7 @@ tier1()  {
   python3 tools/fetch/fetch_iex_hist.py --self-test   # the pcap/IEX-TP walk, on a file it builds itself
   python3 tools/study/pnl_interval.py --self-test      # the interval's arithmetic, on hand-checked samples
   "$BIN" l2_replay ... | grep -oE 'submitted_orders=406|trade_reports=1|...'   # pinned invariants
-  python3 tools/gate/check_docs.py --binary "$BIN" docs/*.md docs/*/*.md
+  python3 tools/gate/check_docs.py --binary "$BIN" docs
 }
 ```
 

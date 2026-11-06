@@ -19,7 +19,7 @@ mode, replay the mainline, run it live, read what came out, and fix what went wr
 |---|---|
 | [1. Getting started](using/01-getting-started.md) | requirements, the build, the tests, and the three-command demo path |
 | [2. Modes](using/02-modes.md) | the four input modes, what each is for, and the legacy CSV and UDP commands |
-| [3. The L2 replay](using/03-l2-replay.md) | the mainline: trades plus incremental depth, every flag that changes it, and what each one does to the run |
+| [3. The L2 replay](using/03-l2-replay.md), in three parts | the mainline: trades plus incremental depth, every flag that changes it, and what each one does to the run |
 | [4. A live session and the carry line](using/04-live-and-carry.md) | the WebSocket session over a local sender, and the two-legged funding carry |
 | [5. Scenarios and reports](using/05-scenarios-and-reports.md) | the synthetic tick files, and the static report with a plot |
 | [6. Reading the output](using/06-reading-the-output.md) | what each line reports, and how sure a number is |
