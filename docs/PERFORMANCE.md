@@ -551,8 +551,8 @@ and further tuning there has now been tried twice and paid nothing.
    time**, and the question that decides it is whether reordering the work can beat a loop that is no
    longer doing anything obviously wasteful.
 2. **`market-view`: done, and the stage is now about 8% of the event.** The single-pass walk landed
-   (ledger above). What remains inside the stage is two `price_from_tick` conversions, a `std::string`
-   copy of the symbol per view, and the imbalance arithmetic. The 1024-slot growth margin was the fourth
+   (ledger above). What remains inside the stage is two `price_from_tick` conversions, the arithmetic,
+   and the sixteen byte handle the view now carries instead of a copy of the name. The 1024-slot growth margin was the fourth
    candidate here, and it has been measured: the margin is capacity only — both values print byte-identical
    stdout on the 200k slice — and on this workload neither the ABBA harness nor the libc shim can see a
    growth, so what would settle it is a workload with more ladder growths rather than a better clock (the
