@@ -51,6 +51,7 @@ set(MARKET_READER_SOURCES
 set(CORE_SOURCES
     src/accounting/portfolio.cpp
     src/backtest/performance.cpp
+    src/common/symbol.cpp
     src/exchange/matching_engine.cpp
     src/market/l2_replay_feed.cpp
     src/market/line_reader.cpp

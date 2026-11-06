@@ -13,7 +13,7 @@ legacy CSV / UDP / Binance ─────────────────�
 
 | | |
 |---|---|
-| **Size** | 111 files, 24,713 lines: `app` 8769, `market` 4071, `legacy` 1851, `lines` 2602, `strategy` 1958, `exchange` 1351, `common` 944, `backtest` 611, `bench` 563, `orderbook` 591, `accounting` 708, `utils` 488, `concurrency` 176, `main` 30 |
+| **Size** | 112 files, 24,720 lines: `app` 8769, `market` 4071, `legacy` 1851, `lines` 2602, `strategy` 1958, `exchange` 1351, `common` 951, `backtest` 611, `bench` 563, `orderbook` 591, `accounting` 708, `utils` 488, `concurrency` 176, `main` 30 |
 | **Tests** | 31 test binaries, at least one per module, run by tier 0 of the gate |
 | **Tools** | 46 scripts (`*.py` and `*.sh` under `tools/`, grouped by what they do) and one C harness: the gate and its five lints in `tools/gate/`, the measurement sweeps, the source fetches, the one-off studies, and the live harnesses. `docs/TOOLS.md` is the map of the directory |
 | **Build** | CMake + presets, C++20, standard library only (zlib for `.gz` inputs) |

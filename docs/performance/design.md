@@ -505,6 +505,34 @@ byte-identical to the pre-change output across 11,403,032 batches.
 further, `-31.7%`, because the stage's rare stalls shrank too. End-to-end the effect is below this
 host's noise floor: 30 ns of a ~1000 ns event is 3%.
 
+### The rest of the copies, measured as a null result
+
+Resolving the symbol once was the first half. The second was the name itself, which still travelled as a `std::string`:
+copied into the view the book returns, into the `BboQuote` the pipeline builds from that view, and twice more inside the
+engine's cached quotes, and hashed again for the pipeline's per-symbol map. That is six constructions and two hashes of a
+thirteen character string on every one of 1.3M events, and the estimate that motivated replacing it was three to five per
+cent of the event.
+
+`SymbolName` replaces the string with sixteen bytes -- an id and a pointer into a process-wide intern table -- so the
+handle copies like an integer, and the engine keys on `symbol.id()` and hashes nothing. The table interns a name once and
+hands back an address that stays valid for the life of the process, which is why a handle can be copied freely.
+
+**Measured, it is worth nothing.** Five ABBA blocks with the null control in the same session moved `top-booking` by
++79.4% against a +69.8% null, `strategy` by +17.1% against +14.3%, and the end-to-end wall clock by −0.6% (`t = −0.12`);
+`engine` moved −3.8%, the only stage pointing the right way, and that is inside the null's +5.0%. The output is
+byte-identical over 11,403,032 batches, so nothing about the run changed but the representation.
+
+The estimate was wrong for the reason every estimate in this document is wrong: a copy of an SSO string is three to four
+nanoseconds, the string sits in a cache line the event already touches, and the hash it replaces overlaps with
+independent work instead of extending the dependency chain. The change is kept for what it removes -- the engine's own
+registry, and with it the possibility of two id spaces keying the same symbol differently on either side of a hand-off --
+and it is recorded as a null result because a change that cannot move a number you can measure has to say so.
+
+What this leaves standing is the number it does not touch: the ring hands over a `MarketEvent` whose move and destructor
+cost about 93 ns, and that one is real, is 12% of a threaded event, and is a change to the event's *shape* -- no
+`std::string`, no `std::vector` -- rather than to the names inside it. The measurements here are the evidence that
+renaming the members would not have been enough.
+
 ## 4. Measurement itself: `StageProfiler`
 
 Ledger row: none, this is the instrument. See
