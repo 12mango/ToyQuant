@@ -451,8 +451,10 @@ Five lints stand behind the four tiers, and each owns one kind of claim. `check_
 every summary struct is written somewhere. `lint_prose.py` re-counts what a paragraph states — the flags the binary
 accepts, the queue models that exist, the tool paths and the size figures — so prose cannot describe a model set that
 changed. `check_links.py` follows every link and every anchor, because a reader moves between documents by link and a
-document that is split breaks them silently. `check_layering.py` reads the `#include` lines, so the core cannot reach
-into a feed family or a closed line. `check_docs.py` re-runs the command behind every quoted number.
+document that is split breaks them silently — and it follows an absolute GitHub URL back to the path it names as well,
+so the handful of links that `mkdocs` forces out of the tree are checked rather than skipped. `check_layering.py` reads
+the `#include` lines, so the core cannot reach into a feed family or a closed line. `check_docs.py` re-runs the command
+behind every quoted number.
 
 The sixth check in that tier is not a lint: `mkdocs build --strict` builds the documents into the site a reader opens,
 and it refuses a link that resolves outside `docs_dir`. Such a link is legal on GitHub and passes `check_links.py`,
