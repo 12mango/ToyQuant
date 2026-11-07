@@ -145,6 +145,10 @@ def main():
         if flag not in {"--order-size", "--inventory-limit", "--queue-model", "--min-trades-per-second",
                         "--download", "--input", "--pretty-px", "--help",
                         "--verify", "--sample", "--self-test",
+                        # `tools/study/pnl_interval.py` replays the free sample days and summarises one field of the
+                        # run; these name which field and how to scale it, so they are the tool's flags, not the
+                        # engine's.
+                        "--window-field", "--window-scale",
                         # Flags of the venue relay rather than of the engine's parser. They are named in
                         # its own --help and in the roadmap, and the relay is the tool that owns them.
                         "--ping-seconds", "--drop-after-seconds"}:

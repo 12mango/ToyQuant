@@ -296,20 +296,35 @@ mode replays the windows itself rather than reading a saved log, so the series c
 here differs by the month and by nothing the measurement chose: the same configuration as the table above, one
 25-level snapshot slice per month at 200k rows, five months of the archive.
 
-| month | slice covers | fills | break-even maker rate |
-|---|---:|---:|---:|
-| 2020-04-01 | 0.49 h | 146 | -3.19 bps |
-| 2020-05-01 | 0.59 h | 58 | -2.96 bps |
-| 2020-06-01 | 0.86 h | 31 | -1.93 bps |
-| 2020-07-01 | 2.16 h | 29 | -0.86 bps |
-| 2020-08-01 | 0.62 h | 26 | -0.44 bps |
+| month | slice covers | fills | break-even maker rate | captured edge |
+|---|---:|---:|---:|---:|
+| 2020-04-01 | 0.49 h | 146 | -3.19 bps | 0.086 ticks |
+| 2020-05-01 | 0.59 h | 58 | -2.96 bps | 0.035 ticks |
+| 2020-06-01 | 0.86 h | 31 | -1.93 bps | 0.242 ticks |
+| 2020-07-01 | 2.16 h | 29 | -0.86 bps | 0.379 ticks |
+| 2020-08-01 | 0.62 h | 26 | -0.44 bps | 0.462 ticks |
 
 <!-- toyquant:check
 tool: python3 tools/study/pnl_interval.py --window btc-months
 then: n=5 mean=-1.87368 median=-1.93129 ci95_lo=-2.84287 ci95_hi=-0.904496 spread=2.74983 includes_zero=0 sign_consistent=1 thin_sample=1
 -->
 
-Five things follow, and the first changes how the rest of this section should be read:
+<!-- toyquant:check
+tool: python3 tools/study/pnl_interval.py --window btc-months --window-field captured_edge_per_unit_ticks --unit ticks
+then: n=5 mean=0.240576 median=0.241935 ci95_lo=0.096171 ci95_hi=0.384726 spread=0.427055 includes_zero=0 sign_consistent=1 thin_sample=1
+-->
+
+The second column of each row is the same replay's other half: `--window-field` summarises any `name=value` a run prints,
+so the capture side is measured on the same days at the same setting rather than quoted from a different run.
+
+Six things follow, and the first two change how the rest of this section should be read:
+
+- **The binding ratio is not one window's accident, which is the point of measuring the second column.** The five free
+  days give the capture side as well as the rate, and the capture is 0.086, 0.035, 0.242, 0.379 and 0.462 ticks against a
+  fee worth 2.57. On every day the policy earns between **1.2% and 18% of the fee it pays**, and even the best day is
+  5.6 times short — so the sign of the conclusion survives the month, and so does the ratio, which is a stronger
+  statement than the break-even rate alone supports. The two columns move together (April worst on both, August best on
+  both), which is the month effect appearing in both rather than a second finding.
 
 - **The number is not one number, and the interval is narrower than the thing it estimates.** The mean is -1.87 bps
   with a 95% interval of -2.84 to -0.90, while the five draws themselves span 2.75 bps, from -3.19 to -0.44, and

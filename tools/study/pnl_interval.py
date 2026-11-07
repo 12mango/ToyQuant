@@ -298,12 +298,16 @@ def extract_column(paths, column):
     return values
 
 
-def replay(window, binary):
-    """Run one window and return its break-even maker rate in basis points, with its fill count.
+def replay(window, binary, field="breakeven_maker_rate", scale=None):
+    """Run one window and return one field of its summary, with its fill count.
 
-    The rate comes from `[PNL]`, which reports it as a fraction, so it is scaled here rather than in the table:
-    every other number in this file is in basis points, and a table that mixed the two units would be unreadable
-    to everyone including the person who wrote it.
+    The default is the break-even maker rate, which `[PNL]` reports as a fraction and which is scaled here rather than
+    in the table: every other number in this file is in basis points, and a table that mixed the two units would be
+    unreadable to everyone including the person who wrote it.
+
+    `field` exists because the same five windows answer a second question -- how much the quote captured -- and it has
+    to be answerable on the same days at the same setting for the headline to be a result rather than one window's
+    accident. The scale is chosen from the field when it is not given: only the rate is a fraction.
     """
     depth = window.ensure_slice()
     command = ([str(binary), "l2_replay", TRADES.format(day=window.day, symbol=window.symbol), str(depth),
@@ -313,13 +317,14 @@ def replay(window, binary):
         raise SystemExit(f"{window.name} exited {completed.returncode}: "
                          f"{completed.stderr.strip().splitlines()[:1]}")
     fields = {name: value for name, value in FIELD.findall(completed.stdout + completed.stderr)}
-    if "breakeven_maker_rate" not in fields:
-        raise SystemExit(f"{window.name} printed no breakeven_maker_rate=: the window produced no [PNL] line")
-    return float(fields["breakeven_maker_rate"]) * 1e4, int(float(fields.get("trade_reports", "0")))
+    if field not in fields:
+        raise SystemExit(f"{window.name} printed no {field}=: the window has no [PNL] line, or the field is misspelt")
+    factor = scale if scale else (1e4 if field == "breakeven_maker_rate" else 1.0)
+    return float(fields[field]) * factor, int(float(fields.get("trade_reports", "0")))
 
 
-def window_series(spec, binary):
-    """The break-even rates of a chosen set of windows, or the paired differences between the two instruments.
+def window_series(spec, binary, field="breakeven_maker_rate", scale=None, unit="bps"):
+    """The chosen field of a chosen set of windows, or the paired differences between the two instruments.
 
     `btc-months` is the series a claim should be made on, and it is not the largest one available: one snapshot
     slice a month, same venue, same file type, same length, so the draws differ by the month and by nothing the
@@ -331,8 +336,8 @@ def window_series(spec, binary):
     stronger claim, and both are printed rather than one being chosen.
     """
     if spec == "btc-eth":
-        left = {window.key: replay(window, binary) for window in WINDOWS if window.symbol == "BTC-PERPETUAL"}
-        right = {window.key: replay(window, binary) for window in WINDOWS if window.symbol == "ETH-PERPETUAL"}
+        left = {window.key: replay(window, binary, field, scale) for window in WINDOWS if window.symbol == "BTC-PERPETUAL"}
+        right = {window.key: replay(window, binary, field, scale) for window in WINDOWS if window.symbol == "ETH-PERPETUAL"}
         shared = [key for key in left if key in right]
         if not shared:
             raise SystemExit("no window exists on both instruments, so there is no pair to difference")
@@ -352,10 +357,10 @@ def window_series(spec, binary):
         raise SystemExit(f"no window for {spec}")
     values = []
     for window in chosen:
-        rate, fills = replay(window, binary)
-        print(f"  {window.name}: {rate:.4f} bps over {fills} fills")
+        rate, fills = replay(window, binary, field, scale)
+        print(f"  {window.name}: {rate:.4f} {unit} over {fills} fills")
         values.append(rate)
-    return values, "bps"
+    return values, unit
 
 
 def self_test():
@@ -465,6 +470,15 @@ def main():
                         help="multiply every value, e.g. 1e4 to read a rate as basis points; the window mode "
                              "ignores it, because what it replays is already in basis points")
     parser.add_argument("--unit", default="value", help="what the numbers are, for the printed line")
+    # The window mode replays the free sample days, and which field of a replay it summarises is a choice: the default
+    # is the break-even maker rate, and `captured_edge_per_unit_ticks` asks the other half of the same question on the
+    # same days. A series of a different field is the same measurement with the same confound, so the tool does not
+    # pretend otherwise -- only the field changes.
+    parser.add_argument("--window-field", default="breakeven_maker_rate",
+                        help="which name=value field a --window replay contributes (default: break-even maker rate)")
+    parser.add_argument("--window-scale", type=float, default=0.0,
+                        help="multiply that field by this; 0 picks it from the field name, where only the rate is a "
+                             "fraction")
     parser.add_argument("--level", type=float, default=0.95)
     parser.add_argument("--resamples", type=int, default=2000)
     parser.add_argument("--seed", type=int, default=20261101)
@@ -489,7 +503,8 @@ def main():
             raise SystemExit("--window replays the windows itself and takes no files")
         if not args.binary.exists():
             raise SystemExit(f"--window needs a binary and {args.binary} is not there")
-        values, unit = window_series(args.window, args.binary)
+        values, unit = window_series(args.window, args.binary, args.window_field, args.window_scale,
+                                     "bps" if args.unit == "value" else args.unit)
         # The window mode reports the unit the replay is in whatever the caller said, because that is what the
         # table in the document is in and a series that redefined its own units could not be quoted beside it.
         args.unit = unit

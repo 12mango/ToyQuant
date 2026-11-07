@@ -15,7 +15,7 @@ outcome by an order of magnitude.**
 
 | attempt | what it cost | why it ended |
 |---|---:|---|
-| Crypto perpetuals (Deribit, Binance, OKX) | free archives | a fee of 2.57 ticks against 0.088 ticks captured a fill: the fee is a multiple of the edge, and no lever moves a ratio like that |
+| Crypto perpetuals (Deribit, Binance, OKX) | free archives | a fee of 2.57 ticks against 0.088 ticks captured a fill — and the ratio holds on each of the five free sample days, where the capture runs 0.035 to 0.462 ticks, so the best day still earns 18% of the fee. The fee is a multiple of the edge, and no lever moves a ratio like that |
 | Micro E-mini futures | 0.97 USD | a commission of about half a tick against 0.0131 ticks captured, which is the same wall one market over |
 | SPY, the window that started the fee question | 0.36 USD | capture 0.268 ticks against a 0.35 fee, and the latency gate then killed it: 1 ms of order latency took +262 USD to +1.89, and 5 ms took it to -1143 |
 | The latency gate itself | free | a personal account does not control its round trip, so this is a structural ceiling rather than a parameter |
