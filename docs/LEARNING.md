@@ -213,7 +213,7 @@ for execution quality; `[STRATEGY_METRICS]` carries only what a strategy owns.
 | `buy/sell_queue_from_quantity_changes` | Queue in front of us removed by level-decrease inference |
 | `quote_at_touch_orders`, `quote_behind_touch_orders` | Where the quote sat relative to the venue touch |
 | `captured_edge`, `adverse_selection` | Raw sums of price differences; the tick and USD fields below are the readable form |
-| `captured_edge_per_unit_ticks`, `markout_per_unit_ticks` | Quantity-weighted averages in ticks, comparable with a half-spread |
+| `captured_edge_per_unit_ticks`, `markout_per_unit_ticks` | Quantity-weighted averages in ticks, comparable with a half-spread. The second is resolved `--markout-horizon` quote cycles after the fill -- five by default in every recorded run -- so it is a measurement of what happened next rather than of the fill, and it is the only field here whose value a flag changes |
 | `captured_edge_usd`, `markout_usd`, `fees_paid` | The same quantities in the unit fees are charged in |
 | `queue_profile_orders`, `queue_zero_orders`, `queue_min_fraction_p50`, `queue_min_fraction_p10`, `queue_end_fraction_p50` | The queue distribution over orders rather than over fills: how many orders were profiled, how many saw their queue reach zero, and the median and tenth-percentile closest approach and end-of-life queue, each as a fraction of the queue the order joined behind. Both fractions are zero on a path whose model gives a quote no queue at rest, which is the L1 replay. |
 | `markout_count` | Fills old enough for the five-cycle markout to have resolved |

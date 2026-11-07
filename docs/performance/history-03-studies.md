@@ -771,6 +771,54 @@ the F4 table above was measured with an explicit limit of 1,000 shares, which is
 term large enough to dominate; the same measurement at the harness's default would have shown a smaller number for
 SPY as well, and a different sign on it.
 
+### What a fill was worth later, and why that is not the quote
+
+The rows above price the fill and price the drift put on afterwards, and the two are easy to conflate. The SPY
+window's net is **+262.51** while its fill-level capture is `captured_edge_usd=89.335` against 116.73 of commission,
+so the quote alone is **27.40 USD short** of paying for itself and the rest of that net is the position. The archived
+F4 write-up says the opposite in one sentence -- "it is quoting, not the position, that earned it" -- and it is not a
+contradiction: that sentence is about *closed versus still open* (+330.52 against -68.01), both of which are the price
+moving on inventory the quotes put on. Capture against drift is the other split, and only the second one decides
+whether a quote is a business.
+
+`--markout-horizon` makes that split measurable instead of argued: the same run, with the fill markout resolved five
+quote cycles out or two hundred.
+
+| markout horizon, quote cycles | markout, ticks | markout USD | net USD |
+|---:|---:|---:|---:|
+| 5, the default and the row above | +0.092 | 30.66 | 262.51 |
+| 200 | +0.333 | 111.13 | 262.51 |
+
+<!-- toyquant:check
+run: l2_replay data/v2/equities/xnas_SPY_trades_2026-09-29_1330_1530.csv.gz data/v2/equities/xnas_SPY_depth_2026-09-29_1330_1530.csv.gz SPY 0 active_l2 1 conservative --order-size=100 --inventory-limit=1000 --base-spread-ticks=1 --markout-horizon=200
+then: trade_reports=799 captured_edge_per_unit_ticks=0.267855 markout_per_unit_ticks=0.333188 markout_usd=111.125 net_pnl_usd=262.508
+-->
+
+Three things follow. **The drift is the term that grows and the capture is the term that does not**: across the four
+horizons swept (5, 20, 60 and 200 cycles, of which the two endpoints are pinned above and the middle two are not
+quoted) the capture and the net are identical to the last digit and only the markout moves. So the SPY window is not
+evidence that quoting pays on that venue; it is evidence that the fills sat on the right side of a move which kept
+going, and the 27.40 USD by which the capture misses the commission is the same fact stated the other way round.
+
+**A knob on the drift term is a lens and not a lever, which is a problem for anything that reads it as a cost.**
+`--markout-cover` refuses quotes the measured markout cannot pay for, and on SPY it removed profitable fills and lowered
+the window from 262.51 to 100.27: a filter whose input grows with the horizon it chose is measuring a drift that is in
+the position's favour and calling it adverse selection. That is why it is off in every recorded run of this document.
+
+**Two markets, opposite signs, and the size is the finding.** Running the same configuration over MU's eight windows --
+the symbol the hibernation row counts -- prints the quoting margin positive in all eight (capture 9.77 to 14.97 ticks
+against a 0.35 tick commission) with the markout negative in all eight (-3.59 to -7.08 ticks), and six of the eight end
+net positive because the inventory carried the move. The sign is not a property of the venue; the size against a 0.35
+tick fee is, and it is the 941 USD capture against the 10,588 USD position sigma the eight-line table records. Those
+eight rows are deliberately not in any table here: their tick decomposition does not reconcile with `closed_pnl_usd`
+(the caveat `CHANGELOG.md` carries for this sweep), so the row below is pinned as an example of the shape and not as a
+number to quote. `tools/sweep/f4_windows.sh` prints all eight.
+
+<!-- toyquant:check
+run: l2_replay data/v2/equities/xnas_MU_trades_2026-09-28_1330_1530.csv.gz data/v2/equities/xnas_MU_depth_2026-09-28_1330_1530.csv.gz MU 0 active_l2 1 conservative --order-size=100 --inventory-limit=1000 --base-spread-ticks=1
+then: trade_reports=804 captured_edge_per_unit_ticks=9.76631 markout_per_unit_ticks=-3.72431 net_pnl_usd=18960.9
+-->
+
 ### What this changes
 
 The wall moved rather than fell. On these two symbols the fee is no longer the binding constraint -- the capture

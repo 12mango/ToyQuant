@@ -73,6 +73,20 @@ WINDOWS=(
   "tsla_limit200|TSLA|$TSLA_T|$TSLA_D|conservative|--order-size=100 --inventory-limit=200 --base-spread-ticks=1"
   "tsla_derived|TSLA|$TSLA_T|$TSLA_D|conservative|--order-size=100 --base-spread-ticks=1"
 )
+# MU's eight windows: one session a day on the symbol the hibernation row counts, and the only multi-day series this
+# repository has on a US venue. They are here rather than in the pinned list because eight replays of a twelve-second
+# window cost more gate time than the claim needs -- one of them is pinned in the document -- but the rows exist so
+# that the "eight windows" that row counts can be reproduced with this one command. A clone without the downloads
+# skips them with a note instead of replaying a file that is not there, which is the rule the eight files above follow.
+for day in 2026-09-22 2026-09-23 2026-09-24 2026-09-25 2026-09-28 2026-09-29 2026-09-30 2026-10-01; do
+  mu_t="data/v2/equities/xnas_MU_trades_${day}_1330_1530.csv.gz"
+  mu_d="data/v2/equities/xnas_MU_depth_${day}_1330_1530.csv.gz"
+  if [ -f "$mu_t" ] && [ -f "$mu_d" ]; then
+    WINDOWS+=("mu_${day//-/}|MU|$mu_t|$mu_d|conservative|--order-size=100 --inventory-limit=1000 --base-spread-ticks=1")
+  else
+    echo "skipping MU $day: $mu_t and $mu_d are not on disk, see tools/fetch/fetch_databento.py" >&2
+  fi
+done
 # The rows the per-edit gate re-derives: one per market, because each is a claim that has to stay true -- the
 # window that put the fee question in play, the two whose capture is the first to cover the fee, and the micro
 # E-mini, which is the row `tools/study/viability.py` reads the fee gate for. Each pinned row costs about three
