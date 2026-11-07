@@ -16,7 +16,7 @@ the existing book and matching engine against that feed.
 | | |
 |---|---|
 | Delivered | the queue model, the fee model, the two latency legs, the order trace and the queue distribution, four sweeps of the strategy levers, a four-tier gate that re-derives every quoted number, the interval a mean carries, and a three-command demo path |
-| The binding result | at a one-tick spread the fee is 2.57 ticks against 0.088 captured, and no lever moves that ratio |
+| The binding result | at a one-tick spread the fee is 2.57 ticks against 0.088 captured, and no lever moves that ratio. On the five free sample days the capture runs 0.035 to 0.462 ticks, so the ratio holds every day with the best day 5.6 times short |
 | Closed | eight markets, each by a quotient; the inputs and the binding gate of each are in `tests/fixtures/verdicts.json` and re-derived by `tools/study/viability.py` on every gate run |
 | Frozen | the pre-queue-model line is tagged `v1.0-demo` |
 | Open | the conclusions rest on the free sample days — one 200k-row slice from the first of each month, five months — so what is measured is a series over windows rather than over months, and nothing has been run against a venue's own live feed; the paced replay, the recorder and the websocket reader are in place, so the seam is closed at the desk and what remains is a credential. Phase 2b is the plan from the first positive window to a running system |
