@@ -595,9 +595,12 @@ and further tuning there has now been tried twice and paid nothing.
    `l2_top_bbo_` and `external_bbo_`, and `MEOrderBook` still uses a `std::map` per price level. The name in that
    struct is an interned handle now, so the copies that are left carry one SSO string (`exchange`) and sixteen bytes
    of symbol rather than two strings — measured, and worth nothing (the ledger's interned-symbol row). The
-   book-container result in the ledger is the argument for measuring
-   a `TickLadder` there too, but order flow is 406 orders per 117,288 batches on W1, so a workload
-   with real order flow is needed before that can show anything.
+   book-container result in the ledger is the argument for measuring a `TickLadder` in `MEOrderBook` too, and counting
+   settles it without a measurement: this strategy posts **406** orders over 117,288 batches, and the most any setting
+   reached was **685** (`--refresh-price-ticks=1 --edge-cover-ticks=0`) and **682** (`--base-spread-ticks=1
+   --refresh-price-ticks=1`). At one or two resting levels a side, a `std::map` costs tens of nanoseconds per *own*
+   order — a few tens of microseconds in a run — so the container is not a latency item at this order flow, and
+   manufacturing more of it would mean a strategy the project does not have.
 4. **`validate` (5%) and `strategy` (4%)** stay out of scope until the three above are settled.
 
 Those four are the whole of what is left, and each is stated with the measurement that would settle it,
@@ -615,10 +618,12 @@ rows it is larger than, so `queue-acct` and `top-booking` are read as approximat
 costs. That closes the last loose end in this document: the numbers that could not be trusted carry their
 caveat, and the two that can be trusted up here are named.
 
-What is left for a later session is therefore a choice rather than a search. The one candidate worth the
-next measurement is `MEOrderBook`'s `std::map` per level, which the ledger's book-container row argues for
-measuring but which needs a workload with real order flow before it can show anything — 406 orders per
-117,288 batches on W1 will not.
+What is left for a later session is therefore a choice rather than a search, and the choice has narrowed to one item that
+counting retired rather than measured: `MEOrderBook`'s `std::map` per level is not a latency item at this order flow. The
+`engine` bullet above gives the three counts — 406 orders at the recorded setting, 685 with the refresh threshold at a
+tick and the fee gate off, 682 at the touch — and one or two resting levels a side puts the container at tens of
+nanoseconds per *own* order, a few tens of microseconds in a run. Manufacturing more order flow would mean a strategy this
+project does not have, and the conservative quoter is not an accident: it is the finding.
 
 The growth margin was the other, and it has now been measured and could not be resolved. That is a result
 of a different kind from the ones above and worth keeping in the same place: the knob is inert enough that
