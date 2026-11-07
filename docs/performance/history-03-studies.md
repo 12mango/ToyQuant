@@ -296,13 +296,13 @@ mode replays the windows itself rather than reading a saved log, so the series c
 here differs by the month and by nothing the measurement chose: the same configuration as the table above, one
 25-level snapshot slice per month at 200k rows, five months of the archive.
 
-| month | slice covers | fills | break-even maker rate | captured edge |
-|---|---:|---:|---:|---:|
-| 2020-04-01 | 0.49 h | 146 | -3.19 bps | 0.086 ticks |
-| 2020-05-01 | 0.59 h | 58 | -2.96 bps | 0.035 ticks |
-| 2020-06-01 | 0.86 h | 31 | -1.93 bps | 0.242 ticks |
-| 2020-07-01 | 2.16 h | 29 | -0.86 bps | 0.379 ticks |
-| 2020-08-01 | 0.62 h | 26 | -0.44 bps | 0.462 ticks |
+| month | slice covers | fills | break-even maker rate | captured edge | net per fill |
+|---|---:|---:|---:|---:|---:|
+| 2020-04-01 | 0.49 h | 146 | -3.19 bps | 0.086 ticks | -0.0052 USD |
+| 2020-05-01 | 0.59 h | 58 | -2.96 bps | 0.035 ticks | -0.0050 USD |
+| 2020-06-01 | 0.86 h | 31 | -1.93 bps | 0.242 ticks | -0.0039 USD |
+| 2020-07-01 | 2.16 h | 29 | -0.86 bps | 0.379 ticks | -0.0029 USD |
+| 2020-08-01 | 0.62 h | 26 | -0.44 bps | 0.462 ticks | -0.0024 USD |
 
 <!-- toyquant:check
 tool: python3 tools/study/pnl_interval.py --window btc-months
@@ -314,6 +314,14 @@ tool: python3 tools/study/pnl_interval.py --window btc-months --window-field cap
 then: n=5 mean=0.240576 median=0.241935 ci95_lo=0.096171 ci95_hi=0.384726 spread=0.427055 includes_zero=0 sign_consistent=1 thin_sample=1
 -->
 
+<!-- toyquant:check
+tool: python3 tools/study/pnl_interval.py --window btc-months --window-field net_per_fill_usd --unit usd
+then: n=5 mean=-0.00387368 median=-0.00393129 ci95_lo=-0.00484287 ci95_hi=-0.0029045 spread=0.00274983 includes_zero=0 sign_consistent=1 thin_sample=1
+-->
+
+The last column is the same replay's third answer, and it is the one with the least room to argue: a fill costs between
+two and five tenths of a cent on every day of the series.
+
 The second column of each row is the same replay's other half: `--window-field` summarises any `name=value` a run prints,
 so the capture side is measured on the same days at the same setting rather than quoted from a different run.
 
@@ -324,7 +332,8 @@ Six things follow, and the first two change how the rest of this section should 
   fee worth 2.57. On every day the policy earns between **1.2% and 18% of the fee it pays**, and even the best day is
   5.6 times short — so the sign of the conclusion survives the month, and so does the ratio, which is a stronger
   statement than the break-even rate alone supports. The two columns move together (April worst on both, August best on
-  both), which is the month effect appearing in both rather than a second finding.
+  both), which is the month effect appearing in both rather than a second finding. What the second column cannot say is
+  whether the month is the cause: that is the slice-length question, and the clock-cut series below answers it.
 
 - **The number is not one number, and the interval is narrower than the thing it estimates.** The mean is -1.87 bps
   with a 95% interval of -2.84 to -0.90, while the five draws themselves span 2.75 bps, from -3.19 to -0.44, and
@@ -342,15 +351,73 @@ Six things follow, and the first two change how the rest of this section should 
   consistent; the interval over two points is the range between them, so nothing else is. That is what "recorded as
   a hint" should have meant from the start, and the honest version of the hint is a direction rather than a number
   to two decimals.
-- **The slice length is a confound the tool cannot remove.** A 200k-row slice covers half an hour in April and more
-  than two hours in July, because the archive is a stream of rows rather than of time, so the five draws differ by
-  the month *and* by how much of the day the slice happened to cover. The series is still the honest one available
-  -- the alternative is one window and no interval at all -- but it is a series over windows, not over months, and
-  a reader who takes it as a month effect is reading more than was measured.
+- **The slice length is a confound, and the section below removes it rather than only naming it.** A 200k-row slice
+  covers half an hour in April and more than two hours in July, because the archive is a stream of rows rather than of
+  time, so the five draws differ by the month *and* by how much of the day the slice happened to cover. The series is
+  still the honest one available at this length -- the alternative is one window and no interval at all -- but it is a
+  series over windows, not over months, and a reader who takes it as a month effect is reading more than was measured.
+  Bounding the windows by the clock instead is what says how much of it was the slice, and the answer is not "none":
+  the ordering two bullets up does not survive it.
 - **The floor numbers need no interval, which is the useful contrast.** The 5.39 bps a crossing costs is fee plus
   half a tick and is arithmetic: run it twice and it is the same to the last digit, so its interval has zero width
   and quoting one would be theatre. Intervals belong to the numbers that are estimates over a sample, and the value
   of the distinction is that it sorts this document's claims into two piles that were previously one.
+
+### The same five days cut by the clock
+
+The fifth bullet above names the slice length as a confound, which is not the same as removing it: `rows` is not the only
+thing a window can be bounded by. The same tool cuts by **time** as well, keeping the first half hour of each day, and
+thirty minutes is the closest round span to what the largest slice above already covers
+-- April's 200k rows are 0.49 h -- so April barely moves and the other four are cut down to meet it, which is the
+direction a confound has to be removed in. The row count then becomes the thing that varies, and it varies by a factor
+of 2.8: the same half hour carries 204k rows in April and 73k in July.
+
+| day (first 0.5 h) | rows | fills | break-even maker rate | captured edge | net per fill |
+|---|---:|---:|---:|---:|---:|
+| 2020-04-01 | 204,139 | 149 | -3.14 bps | 0.094 ticks | -0.0051 USD |
+| 2020-05-01 | 174,264 | 53 | -3.52 bps | -0.038 ticks | -0.0055 USD |
+| 2020-06-01 | 138,032 | 27 | -1.38 bps | 0.222 ticks | -0.0034 USD |
+| 2020-07-01 | 72,807 | 17 | **+0.05 bps** | 0.353 ticks | -0.0020 USD |
+| 2020-08-01 | 156,549 | 23 | -2.26 bps | 0.326 ticks | -0.0043 USD |
+
+<!-- toyquant:check
+tool: python3 tools/study/pnl_interval.py --window btc-months-span
+then: n=5 mean=-2.04956 median=-2.25572 ci95_lo=-3.11574 ci95_hi=-0.875152 spread=3.569 includes_zero=0 sign_consistent=0 thin_sample=1
+-->
+
+<!-- toyquant:check
+tool: python3 tools/study/pnl_interval.py --window btc-months-span --window-field captured_edge_per_unit_ticks --unit ticks
+then: n=5 mean=0.191495 median=0.222222 ci95_lo=0.0613679 ci95_hi=0.310685 spread=0.390677 includes_zero=0 sign_consistent=0 thin_sample=1
+-->
+
+<!-- toyquant:check
+tool: python3 tools/study/pnl_interval.py --window btc-months-span --window-field net_per_fill_usd --unit usd
+then: n=5 mean=-0.00404956 median=-0.00425572 ci95_lo=-0.00511574 ci95_hi=-0.00287515 spread=0.003569 includes_zero=0 sign_consistent=1 thin_sample=1
+-->
+
+Four things follow, and the first is a correction to what the series above appeared to show:
+
+- **Removing the confound moves the answer, and one draw crosses zero.** The mean goes from -1.87 to -2.05 bps and the
+  spread widens from 2.75 to 3.57, but the change that matters is July: its break-even rate stops being the best of a
+  bad set and becomes **+0.05 bps**, so the tool's `sign_consistent` flag falls from 1 to 0 and it prints that the
+  draws do not all fall on one side of zero. The ordering the row-count series showed -- "they fall in order" from -3.19
+  to -0.44 -- does not survive at equal time: -3.14, -3.52, -1.38, +0.05, -2.26 is not a slope. Part of that trend was
+  the slice length, so the caveat the series carried ("a series over windows, not over months") was the right one, and
+  the way to find out how much was to remove the confound rather than to describe it again.
+- **The capture shows the same crack, one day wide.** May's capture is -0.038 ticks, which is a loss per contract on a
+  half hour of quoting, and it is the same crack the break-even column shows in July: one draw of five against the sign
+  the other four share. What the fee comparison loses in tidiness it keeps in margin: the best capture is 0.353 ticks
+  against a fee worth 2.57, so even at equal time the policy earns at most 14% of what it pays, and the conclusion that
+  the fee is a multiple of the edge does not depend on the sign of a draw.
+- **What survives, and it is the claim the dead-ends table rests on, is the money.** Net per fill is negative on all
+  five days, from -0.0055 to -0.0020 USD, mean -0.0040 with an interval of -0.0051 to -0.0029, and the flag agrees. A
+  day that samples +0.05 bps is 0.00005 USD a fill on a 10 USD contract — five thousandths of a cent, against the two
+  tenths of a cent that same day loses at the fee it actually pays — so the honest way to report it is the flag the tool
+  prints rather than a rounding to the sign the other four days have.
+- **The cost is fills, which is why both series stay.** July drops from 29 fills to 17 and May from 58 to 53, so the
+  controlled design buys its control with sample size -- and on five draws that are each under thirty fills, neither
+  series is a conclusion. The half-hour series is the one that answers "is this the month or the slice?", and the
+  row-count series is the one the rest of this document quotes, because those are the runs recorded elsewhere.
 
 What is not here is a per-fill interval. A fill's own PnL is not on disk: the trade report carries price, quantity,
 side, fee and liquidity role, so a per-fill series would have to be reconstructed by matching trades, which is a

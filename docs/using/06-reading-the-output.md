@@ -47,6 +47,7 @@ python3 tools/study/pnl_interval.py --column gross_closed_per_fill_usd data/runt
 
 # the windows on disk, replayed under one configuration rather than read from a log
 python3 tools/study/pnl_interval.py --window btc-months
+python3 tools/study/pnl_interval.py --window btc-months-span   # the same days cut by the clock, not by the row count
 python3 tools/study/pnl_interval.py --window btc-eth      # the same-day pairs, differenced
 ```
 

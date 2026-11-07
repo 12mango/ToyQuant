@@ -74,23 +74,29 @@ class Window:
     `rows` is part of the identity rather than a footnote, because it changes the answer: the same day's same
     file at 200k and at 2M rows gives two different rates, and a series that mixed the lengths would be mixing a
     short window with a long one.
+
+    `span` (seconds) is the other way to bound a window, and for a comparison across months it is the better one. The
+    archive is a stream of rows rather than of time, so an equal number of rows covers half an hour in April and more
+    than two hours in July, which makes the slice length a confound the draws carry. A span cut keeps the first `span`
+    seconds of the day instead, so the row count becomes the thing that varies and the clock does not.
     """
 
-    def __init__(self, symbol, day, kind, rows, source):
+    def __init__(self, symbol, day, kind, rows, source, span=0):
         self.symbol = symbol
         self.day = day
         self.kind = kind
         self.rows = rows
         self.source = source
+        self.span = span
 
     @property
     def key(self):
         """What two windows have to share to be compared as a pair: the day, the file type and the length."""
-        return (self.day, self.kind, self.rows)
+        return (self.day, self.kind, self.rows if not self.span else f"{self.span}s")
 
     @property
     def name(self):
-        return f"{self.symbol.split('-')[0]}/{self.day}/{self.kind}/{self.rows}"
+        return f"{self.symbol.split('-')[0]}/{self.day}/{self.kind}/{self.rows if not self.span else str(self.span) + 's'}"
 
     def slice_path(self):
         """The cached slice, under the name `tools/gate/verify_l2.sh` already cuts it as.
@@ -99,6 +105,8 @@ class Window:
         names would mean two copies of several hundred megabytes in /tmp and two chances to cut one of them wrong.
         """
         incremental = self.symbol == "BTC-PERPETUAL"
+        if self.span:
+            return Path(f"/tmp/snap_{self.day.replace('-', '')}_{self.span}s.csv")
         if self.kind == "incremental" and self.rows == 200001:
             return Path("/tmp/depth_200k_base.csv" if incremental else "/tmp/eth_depth_200k.csv")
         if self.kind == "incremental" and self.rows == 2000001:
@@ -122,8 +130,26 @@ class Window:
             raise SystemExit(f"{source} is not on disk, so {self.name} cannot be replayed")
         opener = gzip.open if source.suffix == ".gz" else open
         with opener(source, "rt", encoding="utf-8") as handle, path.open("w", encoding="utf-8") as out:
-            for count, line in enumerate(handle):
-                if count >= self.rows:
+            if not self.span:
+                for count, line in enumerate(handle):
+                    if count >= self.rows:
+                        break
+                    out.write(line)
+                return path
+            # A span cut keeps the header and then rows until the clock has moved on by `span` seconds, so every window
+            # in the series covers the same amount of time whatever the month's message rate happens to be. The row
+            # that crosses the boundary is dropped rather than included, which makes the window a half-open interval.
+            header = handle.readline()
+            out.write(header)
+            column = header.rstrip("\n").split(",").index("timestamp")
+            start = None
+            for line in handle:
+                if not line.strip():
+                    continue
+                stamp = int(line.split(",", column + 1)[column])
+                if start is None:
+                    start = stamp
+                if (stamp - start) / 1e6 >= self.span:
                     break
                 out.write(line)
         return path
@@ -152,6 +178,21 @@ WINDOWS = (
            "data/v2/crypto/deribit_incremental_book_L2_2020-04-01_ETH-PERPETUAL.csv.gz"),
     Window("ETH-PERPETUAL", "2020-04-01", "incremental", 2000001,
            "data/v2/crypto/deribit_incremental_book_L2_2020-04-01_ETH-PERPETUAL.csv.gz"),
+    # The same five BTC days cut by the clock instead of by the row count: the first half hour of each. Thirty minutes
+    # is the closest round span to what the largest slice above already covers -- April's 200k rows are 0.49 h -- so
+    # April hardly moves and the other four are cut down to meet it, which is the direction a confound has to be
+    # removed in. `rows` is zero because a span window has no row count to identity: what it has is a clock, and
+    # `slice_path` turns that into the file name.
+    Window("BTC-PERPETUAL", "2020-04-01", "snapshot", 0,
+           "data/v2/crypto/deribit_book_snapshot_25_2020-04-01_BTC-PERPETUAL.csv", span=1800),
+    Window("BTC-PERPETUAL", "2020-05-01", "snapshot", 0,
+           "data/v2/crypto/deribit_book_snapshot_25_2020-05-01_BTC-PERPETUAL.csv.gz", span=1800),
+    Window("BTC-PERPETUAL", "2020-06-01", "snapshot", 0,
+           "data/v2/crypto/deribit_book_snapshot_25_2020-06-01_BTC-PERPETUAL.csv.gz", span=1800),
+    Window("BTC-PERPETUAL", "2020-07-01", "snapshot", 0,
+           "data/v2/crypto/deribit_book_snapshot_25_2020-07-01_BTC-PERPETUAL.csv.gz", span=1800),
+    Window("BTC-PERPETUAL", "2020-08-01", "snapshot", 0,
+           "data/v2/crypto/deribit_book_snapshot_25_2020-08-01_BTC-PERPETUAL.csv.gz", span=1800),
 )
 
 # The trade file names follow the archive's own pattern rather than being listed twice: the day and the symbol are
@@ -334,10 +375,17 @@ def window_series(spec, binary, field="breakeven_maker_rate", scale=None, unit="
     A pair is the comparison that controls for the day: two instruments on the same day, the same file type and
     the same length differ by the tick and by the instrument, not by the month. It has the smaller n and the
     stronger claim, and both are printed rather than one being chosen.
+
+    `btc-months-span` is the same five days with the confound removed rather than described: each window is the first
+    half hour of its day, so the draws differ by the month and not by how much of the day 200k rows happened to cover.
+    It costs fills -- a half hour of July carries far fewer than 200k rows -- so it is a second series rather than a
+    replacement, and a claim that needs both says so.
     """
     if spec == "btc-eth":
-        left = {window.key: replay(window, binary, field, scale) for window in WINDOWS if window.symbol == "BTC-PERPETUAL"}
-        right = {window.key: replay(window, binary, field, scale) for window in WINDOWS if window.symbol == "ETH-PERPETUAL"}
+        left = {window.key: replay(window, binary, field, scale)
+                for window in WINDOWS if window.symbol == "BTC-PERPETUAL" and not window.span}
+        right = {window.key: replay(window, binary, field, scale)
+                 for window in WINDOWS if window.symbol == "ETH-PERPETUAL" and not window.span}
         shared = [key for key in left if key in right]
         if not shared:
             raise SystemExit("no window exists on both instruments, so there is no pair to difference")
@@ -349,10 +397,13 @@ def window_series(spec, binary, field="breakeven_maker_rate", scale=None, unit="
             values.append(value)
         return values, "bps_btc_minus_eth"
     if spec == "btc-months":
-        chosen = [window for window in WINDOWS if window.symbol == "BTC-PERPETUAL" and window.kind == "snapshot"]
+        chosen = [window for window in WINDOWS
+                  if window.symbol == "BTC-PERPETUAL" and window.kind == "snapshot" and not window.span]
+    elif spec == "btc-months-span":
+        chosen = [window for window in WINDOWS if window.symbol == "BTC-PERPETUAL" and window.span]
     else:
         symbol = {"btc": "BTC-PERPETUAL", "eth": "ETH-PERPETUAL"}[spec]
-        chosen = [window for window in WINDOWS if window.symbol == symbol]
+        chosen = [window for window in WINDOWS if window.symbol == symbol and not window.span]
     if not chosen:
         raise SystemExit(f"no window for {spec}")
     values = []
@@ -461,7 +512,7 @@ def main():
     source.add_argument("--values", nargs="+", type=float, help="the series, on the command line")
     source.add_argument("--field", help="pull this name=value field out of each file named")
     source.add_argument("--column", help="pull this CSV column out of each file named")
-    source.add_argument("--window", choices=["btc", "btc-months", "eth", "btc-eth"],
+    source.add_argument("--window", choices=["btc", "btc-months", "btc-months-span", "eth", "btc-eth"],
                         help="replay the windows on disk rather than read a series")
     parser.add_argument("files", nargs="*", help="logs for --field, CSVs for --column")
     parser.add_argument("--binary", type=Path, default=ROOT / "out/build/linux-debug/toy_quant",
