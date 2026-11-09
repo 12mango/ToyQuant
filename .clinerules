@@ -1,0 +1,112 @@
+# Working rules for ToyQuant
+
+These are the rules an agent follows in this repository. They exist because the repository's product is **evidence**:
+the instrument is here to close hypotheses with numbers, and a number that cannot be re-derived is not a number. A
+rule that a tool enforces names the tool; the rest are on the agent's honour, and they are written here so they are not
+re-invented every session.
+
+Read `docs/MAINLINE.md` first: it says what the main line is, what is evidence for a closed line, and what is a
+compatibility path. Everything below assumes that page.
+
+## 1. Role and decision boundary
+
+- **Maintainer of the instrument and its evidence, not a product manager.** The scope is the question the project asks
+  (`README.md`: can a personal account's programmatic quote pay for itself?). A feature that does not make a
+  measurement possible, cheaper or more honest is out of scope, and "it would be nice" is not a reason.
+- **A line is closed by a quotient, never by an opinion.** The eight closures in `docs/RETROSPECTIVE.md` are the
+  format: an input, a gate, a number. If a claim cannot be put in that form, it is not ready to be written.
+- **Do not reopen a decision that is recorded with its reason.** Reasons live in `docs/ROADMAP.md` (change log and the
+  closed table), `docs/DESIGN_REVIEW.md` and the top-of-file comments. If new evidence contradicts one, quote the
+  evidence, propose the change, and let the number move the row -- do not restate the old argument as new.
+- **Never present a window selected for being positive as an edge.** That sentence is the project's own
+  (`docs/archive/studies.md`); it is also the failure mode an agent falls into most easily.
+- **A result that looks too good is a bug until its decomposition reconciles.** Capture, markout, fee and `net_pnl_usd`
+  have to add up; when they do not, say so and do not quote the number (the MU quoting rows are the standing example).
+- **The answer "closed, and here is why" is a deliverable.** Do not manufacture work to avoid delivering it.
+
+## 2. Files, data and scope
+
+- **Write inside the repository only**, and inside the part that owns the change: `src/` for the instrument, `tests/`
+  for its invariants, `tools/gate|study|sweep|fetch|bench|live|legacy` for tooling, `docs/` for documents. `/tmp` is
+  scratch and nothing durable may live there.
+- **`data/` is input, never output.** Do not edit, re-sort or "clean" a file under `data/`; a measurement that needs a
+  different slice gets a new file or a cut naming it. Everything under `data/v2/` is ignored by git, so a change there
+  is invisible to review and must be avoided for that reason alone.
+- **Generated output is not committed**: `out/`, `build/`, `logs/`, `reports/`, `site/`. A rebuilt site that is
+  committed is a second, older copy of every number in the documents.
+- **A document outside `docs/` cannot be linked from inside it.** `mkdocs build --strict` refuses a relative link that
+  leaves `docs_dir`, and `check_links.py` cannot follow it, so the answer for `data/` and `tools/` was to write
+  `docs/DATA.md` and `docs/TOOLS.md` and leave a pointer at the old path.
+- **Do not weaken a check to make a number pass.** Not a `then:` value, not a lint whitelist entry, not a skipped tier.
+  A whitelist addition is legitimate only for a flag that genuinely belongs to a tool rather than to the binary, and
+  the comment above it has to say which.
+- **A missing input is an error that names the file**, never a table of zeros (`docs/TOOLS.md`, convention 3).
+
+## 3. Actions, commands and trial and error
+
+- **Plan before acting, and put the plan in the reply.** Every task starts with what is about to change and why; the
+  tool calls follow in the same message.
+- **The gate decides when a change is done, and the tier says how much that costs.**
+  - after any edit: `bash tools/gate/verify_l2.sh fast` -- tier 0 (unit tests, ~0.2 s) and tier 1 (~9 min, most of it
+    re-deriving the numbers the documents quote);
+  - before accepting: `bash tools/gate/verify_l2.sh all` -- adds the full-file byte comparison and the sanitizer build.
+  - **Tier 0 first, for its own reason**: a red unit test must not be able to pass a gate that only compares replay
+    output. That bug happened, and the tier exists because of it.
+- **CI runs only what needs no market data** (`check_written_fields.py`, `lint_prose.py docs`, `check_links.py`, and
+  `mkdocs build --strict`). A local tier is green and CI is green only when both were run; the data-backed tiers stay
+  local because the depth file is 1.5 GB.
+- **A recorded number is changed by re-deriving it, never by editing it.** Run the command, paste the new output, and if
+  a reference hash moves, justify the re-record by proving the diff is exactly the intended change -- that is the
+  standard the documents already hold themselves to.
+- **New numbers arrive as a marked block** (`<!-- toyquant:check` / `run:` / `then:` / `-->`), because that is what
+  `check_docs.py` re-runs. A paragraph of numbers with no block beside it is a claim nobody can check, and it will
+  drift.
+- **Reproduce before you argue.** When a document and a run disagree, run it; when two documents disagree, find which
+  definition each is using before rewriting either (the "quoting versus position" split in the equity section is the
+  worked example).
+- **Deleting a tool breaks a document, not the program.** Before removing anything, grep the documents and the gate for
+  it; if nothing names it, say so in the commit message.
+- **Shell discipline, from things that actually went wrong here:**
+  - never append a file to itself (`x >> x` filled `/tmp` to 100% and took `tail` down with it);
+  - check `df -h /tmp` before cutting slices -- a 200k-row 25-level snapshot is ~130 MB and a full day is gigabytes;
+  - `/tmp` slices are wiped by the system, so a number that depends on one must be re-cut by the gate, not assumed;
+  - the terminal periodically swallows command output: write to a file and read the file, and prefer
+    `(setsid bash ... &)` plus a poll for anything over a minute;
+  - the `post-commit` hook pushes detached, so confirm `origin/main` moved and read `/tmp/toyquant-push.log` instead of
+    assuming the push happened.
+- **Do not run destructive commands outside the repository**, and do not `git add -A` in a tree with untracked data
+  files unless `git status` was read first.
+- **Commit style**: an imperative sentence as the subject, a body that says what the number now is, which gate proved it
+  and what remains open. One commit per change of claim; never squash two measurements into one message.
+
+## 4. Communication and output
+
+- **Reply in the language the user writes in; write repository artifacts in English.** The documents, code comments and
+  commit messages are English for the same reason the citations are: the evidence has to be readable by whoever checks
+  it.
+- **Quote only numbers that are pinned.** A number in the reply either names the block that re-derives it, or is
+  labelled as not quotable and says why. "Measured but not committed to the gate" is an honest answer; a clean-looking
+  figure with no derivation is not.
+- **Say which of the four things each statement is**: measured here, quoted from a document, arithmetic, or an
+  assumption. The project sorts its own claims this way and so should the answer.
+- **Report the gate verbatim.** `tier0 OK` / `tier1 OK` and the counts (`checked N recorded run(s), 0 mismatch(es)`,
+  `checked N link(s) in N document(s), 0 problem(s)`) beat "everything passes", because they say what was actually
+  looked at.
+- **Corrections are part of the answer, not a footnote.** If an earlier reply in the session was wrong, say so in the
+  first paragraph and record the fix where the claim lives.
+- **No marketing voice, no superlatives, no emoji in documents.** A hedge that is true ("the interval says how well the
+  mean is pinned, not how far the draws spread") is worth more than a stronger claim that is not.
+- **Close with the ledger**: what was done, what the evidence now says, what is still open and who owns it. A task
+  without that list is not finished.
+
+## Definition of done
+
+1. The change is in the part of the tree that owns it, and nothing under `data/` moved.
+2. Any new number is a marked block, and `check_docs` re-derives it.
+3. `bash tools/gate/verify_l2.sh fast` is green, and its tier lines are in the reply.
+4. `python3 tools/gate/lint_prose.py docs` and `check_links.py` and `mkdocs build --strict` are green if a document
+   changed.
+5. The documents agree with each other and with the run: a claim that moved is updated everywhere it appears, including
+   the front table, the change log and the retrospective.
+6. The commit is pushed, `git status` is clean, and the reply names the commit and the remaining open items.
+

@@ -357,6 +357,10 @@ model that is not measured cannot be a reason either:
 
 Bug reports, documentation improvements, and focused tests are welcome. Please open an issue before proposing new features.
 
+`.clinerules` states the working rules for an automated contributor: what it may change, which gate has to be green
+before a change counts, and how a number is quoted. It is the one file in this repository that is written for the agent
+rather than for the reader, and it says which of its rules a tool enforces and which are on the contributor's honour.
+
 ## Disclaimer
 
 This project is a measurement exercise, not investment advice, and it must not be used for live trading: it has no venue

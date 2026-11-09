@@ -7,7 +7,9 @@
 # pass before it is accepted:
 #
 #   tier 0  (~0.2 s) the unit tests, because a red test must not be able to pass this gate
-#   tier 1  (~64 s, and about a minute of that is re-deriving the numbers the documents quote)   L2 200k slice and L1 invariants: batch counts, orders, fills, PnL, queue ahead, the record-and-replay and direct-versus-threaded round trips, the pre-trade controls measured by tools/sweep/risk_check.sh, every number a document quotes -- re-derived, including the interval a five-window series carries -- and the tools' own self-tests
+#   tier 1  (~8 min on the development host, and almost all of that is re-deriving the numbers the documents
+#            quote -- the 64 s this line used to claim was measured before the equity, interval and studies blocks
+#            existed, and a cost claim that grows silently is a cost claim that is wrong)  L2 200k slice and L1 invariants: batch counts, orders, fills, PnL, queue ahead, the record-and-replay and direct-versus-threaded round trips, the pre-trade controls measured by tools/sweep/risk_check.sh, every number a document quotes -- re-derived, including the interval a five-window series carries -- and the tools' own self-tests
 #   tier 2  (~15 s)  full 1.5 GB stdout hash against a cached reference
 #   tier 3  (~8 s)   the same tests and one short replay under ASan and UBSan
 #
