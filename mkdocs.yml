@@ -74,6 +74,11 @@ nav:
   - Archive:
       - The studies: archive/studies.md
       - Research Notes: archive/research-notes.md
+  - Decisions:
+      - "What an ADR is, and the rules": adr/index.md
+      - "0001. The event stays a variant": adr/0001-the-event-stays-a-variant.md
+      - "0002. The order book's map, retired by counting": adr/0002-retire-the-orderbook-map-by-counting.md
+      - "0003. Split the gate by what a change pays for": adr/0003-split-the-gate-by-what-a-change-pays-for.md
 
 markdown_extensions:
   - toc:

@@ -206,6 +206,10 @@ table or in the item that named it; none is scheduled, and lifting one takes a n
 records the decisions about what the project will and will not build, which is the thing a plan has to remember. A row
 here that also appears there is the same event seen twice: once as work, once as scope.
 
+A decision that closes a **technical** question rather than a scope question gets a file of its own under
+[`docs/adr/`](adr/index.md) — context, decision, what it costs, and the links that measure it — because the thing a
+reader needs for "why is the event a variant?" is a link they can send, and a row in this table cannot be that link.
+
 | Date | Change | Commit |
 |---|---|---|
 | 2026-10-28 | Consolidated the plan here; removed `PROJECT_BRIEF` and the separate decision log; reset the boundary to "deferred, can be lifted" | `2d23d5d` |

@@ -20,7 +20,7 @@ specific claim.**
 |---|---|---|---|
 | **1. The answer and the argument** | what the project found, and why the instrument that found it is shaped the way it is | [Retrospective](RETROSPECTIVE.md), [Design Review](DESIGN_REVIEW.md), [User Guide](USER_GUIDE.md) | in that order; about ninety minutes |
 | **2. The reference** | what exists, how to read the code, what each field means, what is left to do | [Architecture](ARCHITECTURE.md), [Main Line](MAINLINE.md), [Learning Path](LEARNING.md), [Performance](PERFORMANCE.md), [Roadmap](ROADMAP.md), [Data Files](DATA.md), [Tools](TOOLS.md) | open the one that matches the question; none is meant to be read whole |
-| **3. The evidence** | the measurements in the order they were taken, and the research record behind the closures | [Performance History](PERFORMANCE_HISTORY.md) and its three parts, [Low-Latency Design](performance/design.md), [The studies](archive/studies.md), [Research Notes](archive/research-notes.md) | search it; every part opens with the question it answers |
+| **3. The evidence** | the measurements in the order they were taken, the research record behind the closures, and one file per technical decision | [Performance History](PERFORMANCE_HISTORY.md) and its three parts, [Low-Latency Design](performance/design.md), [The studies](archive/studies.md), [Research Notes](archive/research-notes.md), [Decisions](adr/index.md) | search it; every part opens with the question it answers, and a decision is one file you can send as a link |
 
 
 ## Pick the path
@@ -82,4 +82,5 @@ every quoted number, and `tools/gate/check_links.py` follows every link and anch
 | [Low-Latency Design](performance/design.md) | 3 | why each low-latency change is faster: the problem, the mechanism, the designs that were rejected | the numbers themselves | prose linted |
 | [The studies](archive/studies.md) | 3 | the research record: the phases, the venues, the carry gates, the options line, the plan from a positive window to a running system | what is still open | prose linted |
 | [Research Notes](archive/research-notes.md) | 3 | external cases of individual quantitative trading, and what a personal account can do about the fee | any measurement of this repository, or a plan | every external claim carries a `[read]`, `[reported]` or `[not verified]` mark |
+| [Decisions](adr/index.md) | 3 | one file per technical decision that closed a question: the context, the decision, what it costs, and the two or three links that measure it | the numbers themselves, or the research behind a market | a record quotes no figure it does not own, so every number in it is a link to a block the gate re-runs and the record cannot drift |
 
