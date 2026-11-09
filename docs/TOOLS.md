@@ -34,6 +34,10 @@ file, and the directory names say which kind a tool is:
 
 - To accept a change: `tools/gate/verify_l2.sh all`.
 - To see what a gate tier actually checks: the comment block at the top of `tools/gate/verify_l2.sh`.
+- To pick the cheapest check that can see your mistake: `smoke` (two replays, about a second), `code` (tier 0 and the
+  invariants, about fifteen seconds) and `docs <pages>` (the documents, page by page) are the halves of tier 1 that a
+  change pays for separately. `fast` is the whole of tier 1 and belongs once per task, not once per edit: the document
+  half is about two minutes and almost all of it is one page whose blocks replay Databento equity windows.
 - To reproduce a number a document quotes: the marked block next to it names the command, and `check_docs.py` runs
   exactly that command.
 - To add a measurement: put the script in `sweep/` if it prints a table for a document, in `study/` if it answers one

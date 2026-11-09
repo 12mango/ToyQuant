@@ -4,29 +4,54 @@
 #
 # The full-file comparison is the strong check, but it reads 1.5 GB, so it is not worth running on
 # every edit. This splits the checks into what a change has to pass immediately and what it has to
-# pass before it is accepted:
+# pass before it is accepted, and the times below are measured on the development host rather than
+# estimated:
 #
-#   tier 0  (~0.2 s) the unit tests, because a red test must not be able to pass this gate
-#   tier 1  (~8 min on the development host, and almost all of that is re-deriving the numbers the documents
-#            quote -- the 64 s this line used to claim was measured before the equity, interval and studies blocks
-#            existed, and a cost claim that grows silently is a cost claim that is wrong)  L2 200k slice and L1 invariants: batch counts, orders, fills, PnL, queue ahead, the record-and-replay and direct-versus-threaded round trips, the pre-trade controls measured by tools/sweep/risk_check.sh, every number a document quotes -- re-derived, including the interval a five-window series carries -- and the tools' own self-tests
+#   tier 0  (~1 s)   the unit tests, because a red test must not be able to pass this gate
+#   tier 1  code half (~10-15 s)  about twenty invariants on the 200k slice and the L1 fixtures -- events, orders,
+#                    fills, PnL, queue consumed, the recorder round trip, direct against threaded, the paper
+#                    broker and its reconciliation, the two-book run, the session and halt paths, the depth
+#                    guards -- plus the source-level checks (every field written, the layering, the eight
+#                    verdicts) and the three tool self-tests
+#   tier 1  docs half (~110 s)  every number a document quotes, re-derived; the prose, link and layering lints;
+#                    `mkdocs build --strict` and the site's repository name. Almost all of those seconds are one
+#                    page: `docs/performance/history-03-studies.md` alone takes ~95 s, because its blocks replay
+#                    Databento equity windows at about thirty-five seconds a run against a tenth of a second for
+#                    a Deribit slice. A page with no equity block costs about six seconds
+#   tier 1  whole (~2 min)  both halves; this is what `fast` runs
 #   tier 2  (~15 s)  full 1.5 GB stdout hash against a cached reference
 #   tier 3  (~8 s)   the same tests and one short replay under ASan and UBSan
 #
+# The halves are separate verbs because they are paid for by different kinds of change, and paying a hundred
+# seconds to learn nothing about the line that was just edited is not a gate, it is a tax:
+#
+#   smoke            two replays, six fields each: ~1 s, the cheapest thing that can see a broken line
+#   code             tier 0 plus the code half: ~10-15 s, the loop for a change under src/ or tests/
+#   docs [paths]     the document half, on the whole set or on the pages named: ~6 s a page, ~95 s for the page
+#                    with the equity windows, ~110 s for the set
+#   fast             tier 0 plus both halves: ~2 min, once per task and before a commit
+#   all              everything: the acceptance gate
+#
+# An incremental build after touching one source file is ~16 s on this host, so the smallest honest code
+# loop is build plus `smoke`, then build plus `code`, and the document loop is `docs <page>` on the pages that
+# changed. Tier 0 first because a red unit test must not be able to pass a gate that only compares replay
+# output; that bug happened, and the tier exists because of it.
+#
 # Tier 1 catches essentially everything a reader or book change can get wrong, because it compares
 # event counts, order and fill counts, realised PnL and consumed queue position. Tier 2 is what makes
-# a timing claim defensible: it rules out every explanation except cost. Tier 0 was added after a
-# commit landed carrying a failing assertion: this script compared replay outputs only, so the unit
-# tests could be red while the gate reported success. Tier 3 is the one standard C++ check the project
-# did not run: a leak in the block reader, an out-of-range slot in the ladder or a signed overflow in
-# the parser is invisible in a normal build.
+# a timing claim defensible: it rules out every explanation except cost. Tier 3 is the one standard C++
+# check the project did not run: a leak in the block reader, an out-of-range slot in the ladder or a
+# signed overflow in the parser is invisible in a normal build.
 #
 # Usage:
-#   tools/gate/verify_l2.sh fast [binary]   # tier 0 and tier 1, the per-edit loop
-#   tools/gate/verify_l2.sh ref  [binary]   # store the current full-file output as the reference
-#   tools/gate/verify_l2.sh full [binary]   # tier 2 only, against the stored reference
+#   tools/gate/verify_l2.sh smoke            # two replays, six fields: the smallest real assertion
+#   tools/gate/verify_l2.sh code  [binary]   # tier 0 and the code half of tier 1, the code loop
+#   tools/gate/verify_l2.sh docs  [pages...] # the document half, on everything or on the pages named
+#   tools/gate/verify_l2.sh fast  [binary]   # tier 0 and tier 1, once per task and before a commit
+#   tools/gate/verify_l2.sh ref   [binary]   # store the current full-file output as the reference
+#   tools/gate/verify_l2.sh full  [binary]   # tier 2 only, against the stored reference
 #   tools/gate/verify_l2.sh asan            # tier 3 only, the sanitizer build
-#   tools/gate/verify_l2.sh all  [binary]   # all tiers, for accepting a change
+#   tools/gate/verify_l2.sh all   [binary]   # all tiers, for accepting a change
 #
 # Binary defaults to out/build/linux-debug/toy_quant. Output is one line per tier on success, and
 # the expected/actual values on failure. Exit status is 0 when every requested tier matched.
@@ -34,7 +59,12 @@
 set -u
 cd "$(dirname "$0")/../.." || exit 1
 
-BIN="${2:-out/build/linux-debug/toy_quant}"
+# Every verb but `docs` takes the binary as its second argument. `docs` takes pages instead, and the one verb whose
+# second argument is not a binary is the one that broke: `verify_l2.sh docs docs/PERFORMANCE.md` read the page as the
+# binary, so every block that names its own binary looked for `docs/ring_bench`. A page argument is not a path to a
+# program, so the binary for that verb comes from GATE_BIN and defaults like the rest.
+DEFAULT_BIN=out/build/linux-debug/toy_quant
+BIN="${2:-$DEFAULT_BIN}"
 DOC_CHECK_LOG="$(mktemp)"
 FIELD_CHECK_LOG="$(mktemp)"
 PROSE_CHECK_LOG="$(mktemp)"
@@ -135,16 +165,31 @@ tier0() {
 }
 
 tier1() {
-  local l2 l1 rc=0
+  # `tier1 [full|code|docs] [documents...]` runs the whole tier, the code half of it, or the document half. The split
+  # exists because the two halves are paid for by different kinds of change: the code half asserts about twenty
+  # invariants on a 200k-row slice and costs about twelve seconds, while the document half re-derives every number a
+  # document quotes and costs about seventy-five -- sixty of them in one page, because its block replays Databento
+  # windows rather than Deribit slices. A loop that pays seventy-five seconds to learn nothing about the line it just
+  # edited is not a gate, it is a tax.
+  local mode=${1:-full}
+  if [ $# -gt 0 ]; then shift; fi
+  local l2=$L2_WANT l1=$L1_WANT rc=0
+  # Declared unconditionally because a mode skips blocks, and `set -u` refuses to read a counter that the skipped
+  # block would have declared: the summary asks about every one of them whichever half was run.
+  local fields_check=0 prose_check=0 verdict_check=0 risk_check=0 rec_ok=0 thr_ok=0 broker_ok=0 multi_ok=0 \
+        session_ok=0 close_ok=0 halt_ok=0 depth_guard_ok=0 doc_check=0 tool_check=0
   # Every metric field a summary prints has to be written somewhere. A field that is read but never
   # written looks exactly like a field whose value is zero, and this project shipped four of those in
   # one line before. Source-level, so it costs nothing and runs on every edit.
   local fields_check=0
+  if [ "$mode" != docs ]; then
   python3 tools/gate/check_written_fields.py > "$FIELD_CHECK_LOG" 2>&1 || fields_check=1
+  fi
   # Prose is not covered by check_docs.py, which only reads marked number blocks, and a paragraph that
   # describes a stale model set is exactly what that leaves behind. This compares the claims against the
   # source: flags, queue models and tool paths.
   local prose_check=0
+  if [ "$mode" != code ]; then
   python3 tools/gate/lint_prose.py docs > "$PROSE_CHECK_LOG" 2>&1 || prose_check=1
   # A link is the only thing in the documents that a reader follows rather than reads, and nothing checked one until a
   # split moved a hundred of them: the file has to exist and the `#anchor` has to match a heading in it. Counting the
@@ -169,6 +214,8 @@ tier1() {
       prose_check=1
     fi
   fi
+  fi
+  if [ "$mode" != docs ]; then
   # The eight closed lines are claims about arithmetic too, and a copied number drifts the way a copied claim does.
   # This re-derives every quotient from the recorded inputs, checks that the first gate to fire is the one the line
   # is recorded as binding on, and refuses an optimistic bound read as an opening. Source-level and data-free, so it
@@ -379,17 +426,26 @@ tier1() {
   "$BIN" l2_replay "$TRADES" "$SLICE_200K" BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation 2>&1 |
     grep -q 'crossed_book_batches' && depth_guard_ok=1
   rm -rf "$guard_dir"
+  fi
   # The numbers the documents quote are claims about this code, and hand-copied claims drift: one did,
   # a "thirty times per fill" that a re-measurement turned into ten. They are checked at the same gate
   # as the invariants, on the same slices, so a documented value that stops being true fails a run.
   local doc_check=0
-  python3 tools/gate/check_docs.py --binary "$BIN" docs \
-    > "$DOC_CHECK_LOG" 2>&1 || doc_check=1
+  if [ "$mode" != code ]; then
+    # A named document is what a documentation edit is about, and the whole set is what a commit is about: the verb
+    # passes `docs` by default and the paths when it has them, so a page costs its own seconds rather than the set's.
+    local doc_paths=docs
+    if [ $# -gt 0 ]; then doc_paths="$@"; fi
+    # shellcheck disable=SC2086
+    python3 tools/gate/check_docs.py --binary "$BIN" $doc_paths \
+      > "$DOC_CHECK_LOG" 2>&1 || doc_check=1
+  fi
   # The IEX HIST reader walks the pcap, IP, UDP and IEX-TP framing that a decoder sits on top of. The file it
   # walks in this test is built by the tool rather than downloaded, because the archive is behind an account,
   # so the container walk is the part that can be checked on every edit. It says nothing about DEEP messages,
   # which is why the tool decodes none.
   local tool_check=0
+  if [ "$mode" != docs ]; then
   python3 tools/fetch/fetch_iex_hist.py --self-test > "$TOOL_CHECK_LOG" 2>&1 || tool_check=1
   # The capacity table is arithmetic over the fee schedule, and that schedule is what every equities row in the
   # documents is priced with: a table of money is worth what its arithmetic is, so its own hand-checked cells run
@@ -400,6 +456,10 @@ tier1() {
   # touches look more settled than it is. Its replay mode is exercised by the marked block in
   # docs/PERFORMANCE_HISTORY.md, which the doc check above runs, so this tier does not replay the windows twice.
   python3 tools/study/pnl_interval.py --self-test >> "$TOOL_CHECK_LOG" 2>&1 || tool_check=1
+  fi
+  local label=tier1
+  [ "$mode" = code ] && label=code
+  [ "$mode" = docs ] && label=docs
   if [ $rc -eq 0 ] && [ $rec_ok -eq 0 ] && [ $thr_ok -eq 0 ] && [ $broker_ok -eq 0 ] &&
      [ $multi_ok -eq 0 ] &&
      [ $session_ok -eq 0 ] &&
@@ -409,10 +469,10 @@ tier1() {
      [ $doc_check -eq 0 ] &&
      [ $fields_check -eq 0 ] && [ $prose_check -eq 0 ] && [ $tool_check -eq 0 ] &&
      [ $verdict_check -eq 0 ]; then
-    echo "tier1 OK"
+    echo "$label OK"
     return 0
   fi
-  echo "tier1 MISMATCH"
+  echo "$label MISMATCH"
   [ $rec_ok -eq 0 ] || echo "  recorder: replaying the recording did not reproduce the run"
   [ $thr_ok -eq 0 ] || echo "  threads: the threaded run did not match the direct run, or its hand-off count did not"
   [ $broker_ok -eq 0 ] || echo "  broker: the brokered run did not match the direct one, or a lost report was not reported"
@@ -499,11 +559,31 @@ tier3() {
   return 1
 }
 
+# The smallest real assertion in the repository: two replays and the six fields they are checked on, a third of a
+# second with the slices cut. It exists because the gap between "it compiles" and "it is worth twelve seconds of
+# invariants" is where most of a change's mistakes are, and the six fields below are the cheapest thing that can see
+# them: an event count, the order count, the fill count, the queue consumed, the PnL and the final equity.
+smoke() {
+  ensure_slices
+  local l2 l1 rc=0
+  l2=$("$BIN" l2_replay "$TRADES" "$SLICE_200K" BTC-PERPETUAL 0 active_l2 1 conservative \
+        --fast-validation 2>&1 | grep -oE 'incremental_batches=117288|submitted_orders=406|trade_reports=1|queue_ahead_consumed=55460|realized_pnl=-0.002|equity=1000' | tokens)
+  l1=$("$BIN" replay "$L1_TRADES" "$L1_BBO" BTCUSDT 0 optimized 1000000 2>&1 |
+        grep -oE 'submitted_orders=13734|trade_reports=2277|fill_rate=0.175872|realized_pnl=-33.7861|equity=966.196' | tokens)
+  [ "$l2" = "$L2_WANT" ] || { echo "smoke MISMATCH"; echo "  L2 want: $L2_WANT"; echo "  L2 got : $l2"; rc=1; }
+  [ "$l1" = "$L1_WANT" ] || { [ $rc -eq 0 ] && echo "smoke MISMATCH"; echo "  L1 want: $L1_WANT"; echo "  L1 got : $l1"; rc=1; }
+  [ $rc -eq 0 ] && echo "smoke OK"
+  return $rc
+}
+
 case "${1:-fast}" in
+  smoke) smoke ;;
+  code) ensure_slices; rc=0; tier0 || rc=1; tier1 code || rc=1; exit $rc ;;
+  docs) shift; ensure_slices; BIN="${GATE_BIN:-$DEFAULT_BIN}"; tier1 docs "$@" ;;
   fast) ensure_slices; rc=0; tier0 || rc=1; tier1 || rc=1; exit $rc ;;
   ref)  ensure_slices; full_hash > "$REF_HASH"; echo "reference stored: $(cat "$REF_HASH")" ;;
   full) ensure_slices; tier2 ;;
   asan) ensure_slices; tier3 ;;
   all)  ensure_slices; rc=0; tier0 || rc=1; tier1 || rc=1; tier2 || rc=1; tier3 || rc=1; exit $rc ;;
-  *)    echo "usage: tools/gate/verify_l2.sh fast|ref|full|asan|all [binary]" >&2; exit 2 ;;
+  *)    echo "usage: tools/gate/verify_l2.sh smoke|code|docs [paths]|fast|ref|full|asan|all [binary]" >&2; exit 2 ;;
 esac

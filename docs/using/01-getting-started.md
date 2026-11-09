@@ -35,7 +35,7 @@ The main programs are `out/build/linux-debug/toy_quant` for simulation/replay an
 ## A short demo path
 
 After the build above, these three commands are the shortest ordered tour of the project. The first is the
-per-edit gate, the second isolates the pre-trade controls, and the third shows one non-market-making cell
+commit gate, the second isolates the pre-trade controls, and the third shows one non-market-making cell
 rather than the full grid. Run them in this order because the first command also cuts the 200k-row depth
 slice that the other two read.
 

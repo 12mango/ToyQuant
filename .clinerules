@@ -46,12 +46,30 @@ compatibility path. Everything below assumes that page.
 
 - **Plan before acting, and put the plan in the reply.** Every task starts with what is about to change and why; the
   tool calls follow in the same message.
-- **The gate decides when a change is done, and the tier says how much that costs.**
-  - after any edit: `bash tools/gate/verify_l2.sh fast` -- tier 0 (unit tests, ~0.2 s) and tier 1 (~9 min, most of it
-    re-deriving the numbers the documents quote);
-  - before accepting: `bash tools/gate/verify_l2.sh all` -- adds the full-file byte comparison and the sanitizer build.
-  - **Tier 0 first, for its own reason**: a red unit test must not be able to pass a gate that only compares replay
-    output. That bug happened, and the tier exists because of it.
+- **Match the check to what changed; the full gate is a commit-time cost, not a per-edit one.** Measured on this host,
+  so these are not estimates:
+
+  | what you are doing | the command | costs |
+  |---|---|---|
+  | nothing compiles yet | `cmake --build out/build/linux-debug -j4` | ~16 s after one source file |
+  | one line changed, does it still run | `bash tools/gate/verify_l2.sh smoke` | ~1 s |
+  | a change under `src/` or `tests/` | `bash tools/gate/verify_l2.sh code` | ~10-15 s |
+  | a change under `docs/` | `bash tools/gate/verify_l2.sh docs <the pages you touched>` | ~6 s a page, ~95 s for `history-03-studies.md` |
+  | the task is finished, before the commit | `bash tools/gate/verify_l2.sh fast` | ~2 min, **once** |
+  | accepting a change for good | `bash tools/gate/verify_l2.sh all` | adds the 1.5 GB hash and the sanitizer build |
+
+  The document half is almost all one page: `docs/performance/history-03-studies.md` replays Databento equity windows
+  at ~35 s a run against ~0.1 s for a Deribit slice, so a documentation edit names its pages instead of paying for the
+  set. Running `fast` after every edit "to be safe" is the anti-pattern this table exists to stop: it is a hundred
+  seconds to learn nothing about the line just written, and the log is long enough to bury the failure that matters.
+- **Batch the edits, then verify.** When a change spans files -- a header, its implementation, the test and the page
+  that documents it -- make all of them in one pass and run the checks once at the end of the pass. Verifying between
+  every file is how a task spends its budget on gates instead of on the change.
+- **A red gate is not a prompt to retry it.** Go back to `smoke` or `code`, reproduce the failure on the smallest
+  input that shows it, fix it there, and only then return to `fast`. Re-running the full gate against a guess is the
+  other half of the same anti-pattern, and it hides which edit moved the number.
+- **Tier 0 first, for its own reason**: a red unit test must not be able to pass a gate that only compares replay
+  output. That bug happened, and the tier exists because of it.
 - **CI runs only what needs no market data** (`check_written_fields.py`, `lint_prose.py docs`, `check_links.py`, and
   `mkdocs build --strict`). A local tier is green and CI is green only when both were run; the data-backed tiers stay
   local because the depth file is 1.5 GB.
@@ -103,7 +121,8 @@ compatibility path. Everything below assumes that page.
 
 1. The change is in the part of the tree that owns it, and nothing under `data/` moved.
 2. Any new number is a marked block, and `check_docs` re-derives it.
-3. `bash tools/gate/verify_l2.sh fast` is green, and its tier lines are in the reply.
+3. `bash tools/gate/verify_l2.sh fast` is green **once**, at the end of the task, and its tier lines are in the reply
+   (`code`/`docs` results during the task are not a substitute for this one).
 4. `python3 tools/gate/lint_prose.py docs` and `check_links.py` and `mkdocs build --strict` are green if a document
    changed.
 5. The documents agree with each other and with the run: a claim that moved is updated everywhere it appears, including
