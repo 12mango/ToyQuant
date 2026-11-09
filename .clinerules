@@ -20,6 +20,11 @@ compatibility path. Everything below assumes that page.
   evidence, propose the change, and let the number move the row -- do not restate the old argument as new.
 - **Never present a window selected for being positive as an edge.** That sentence is the project's own
   (`docs/archive/studies.md`); it is also the failure mode an agent falls into most easily.
+- **There are two front doors, and they are the same shape.** The repository page is `README.md`; the published site's
+  home is `docs/index.md`, because `mkdocs.yml` maps `Home` to it. A reader arrives at one or the other, so both are the
+  same three parts -- the pitch, one command, the hook into the vault -- and both point at `docs/MAP.md` for the tiers,
+  the path for a question and who owns what. Changing one and calling the documentation front door done is the mistake
+  this rule exists to prevent: the review that found it had to visit the published site to see it.
 - **The low-latency line keeps a standing retrospective, and it is not an ADR.** `docs/LOW_LATENCY.md` describes the
   engine line as a whole — what it was for, the order the attempts came in, the condition that stopped it, and what it
   never measured — while the records in `docs/adr/` are one decision each. Neither replaces the other: a new candidate
