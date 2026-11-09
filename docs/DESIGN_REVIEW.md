@@ -391,7 +391,9 @@ real run: that is the state a rule drifts out of, not the state it drifts into.
 ## 3. Where the time went
 
 One line per attempt, including the ones that paid nothing. "Effect" is a paired measurement on a fixed
-workload; the full table and the derivations are in [Performance](PERFORMANCE.md).
+workload; the full table and the derivations are in [Performance](PERFORMANCE.md). What this section does not do is
+narrate the line: the order the attempts came in, the condition that ended it and what it never measured are in the
+[low-latency retrospective](LOW_LATENCY.md).
 
 | Change | Effect | Status |
 |---|---|---|

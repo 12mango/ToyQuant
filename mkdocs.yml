@@ -38,6 +38,7 @@ nav:
   - Main Line: MAINLINE.md
   - Roadmap: ROADMAP.md
   - Retrospective: RETROSPECTIVE.md
+  - Low-Latency Retrospective: LOW_LATENCY.md
   - User Guide: USER_GUIDE.md
   - "Using it":
       - "1. Getting started": using/01-getting-started.md

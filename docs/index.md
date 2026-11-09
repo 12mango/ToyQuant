@@ -18,7 +18,7 @@ specific claim.**
 
 | Tier | What it is | Documents | How to read it |
 |---|---|---|---|
-| **1. The answer and the argument** | what the project found, and why the instrument that found it is shaped the way it is | [Retrospective](RETROSPECTIVE.md), [Design Review](DESIGN_REVIEW.md), [User Guide](USER_GUIDE.md) | in that order; about ninety minutes |
+| **1. The answer and the argument** | what the project found, why the instrument that found it is shaped the way it is, and what that line of work did not measure | [Retrospective](RETROSPECTIVE.md), [Low-Latency Retrospective](LOW_LATENCY.md), [Design Review](DESIGN_REVIEW.md), [User Guide](USER_GUIDE.md) | in that order; about ninety minutes |
 | **2. The reference** | what exists, how to read the code, what each field means, what is left to do | [Architecture](ARCHITECTURE.md), [Main Line](MAINLINE.md), [Learning Path](LEARNING.md), [Performance](PERFORMANCE.md), [Roadmap](ROADMAP.md), [Data Files](DATA.md), [Tools](TOOLS.md) | open the one that matches the question; none is meant to be read whole |
 | **3. The evidence** | the measurements in the order they were taken, the research record behind the closures, and one file per technical decision | [Performance History](PERFORMANCE_HISTORY.md) and its three parts, [Low-Latency Design](performance/design.md), [The studies](archive/studies.md), [Research Notes](archive/research-notes.md), [Decisions](adr/index.md) | search it; every part opens with the question it answers, and a decision is one file you can send as a link |
 
@@ -51,6 +51,7 @@ document that starts explaining something in another document's row is the failu
 | Document | Tier | What it owns | Not the place for | Kept honest by |
 |---|---|---:|---|---|
 | [Retrospective](RETROSPECTIVE.md) | 1 | the eight closures, the number that closed each, the rules that came out of them | what exists in the code, or how to run it | prose linted |
+| [Low-Latency Retrospective](LOW_LATENCY.md) | 1 | the engine line as a whole: what it was for, the order the attempts came in, what returned, the condition that stopped it, and what it never measured | a number, the mechanism of a change, or the measurement record | prose linted; every figure it needs is a link to a block the gate re-runs |
 | [Design Review](DESIGN_REVIEW.md) | 1 | why the instrument is built this way, the C++ decisions with anchors, the headline results, the questions a reader asks, the limitations | the module reference, or the raw measurement records | prose linted; the size, test count, flags and tool paths it states are re-counted |
 | [User Guide](USER_GUIDE.md) | 1 | every mode, every flag, the data contracts, and the failure modes that waste an afternoon: an index over seven parts in `docs/using/` | why anything is designed the way it is, or what a field means | prose linted, so a flag it forgets or invents fails the build |
 | [Architecture](ARCHITECTURE.md) | 2 | what each module is, the contracts between them, the matching rules: an index over six parts in `docs/architecture/` | the rationale and the trade-offs | marked blocks re-run on every gate run |

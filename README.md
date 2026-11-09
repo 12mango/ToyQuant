@@ -65,7 +65,7 @@ a reader who asks "why is the event a variant?" has a link to send rather than a
 |---|---|
 | to run something | [Getting started](docs/using/01-getting-started.md), then [the L2 replay](docs/using/03-l2-replay.md) |
 | what the project found | [Retrospective](docs/RETROSPECTIVE.md) |
-| how the engine is built | [Main line](docs/MAINLINE.md), then the [module reference](docs/ARCHITECTURE.md) |
+| how the engine is built | [Low-latency retrospective](docs/LOW_LATENCY.md), then [Main line](docs/MAINLINE.md) and the [module reference](docs/ARCHITECTURE.md) |
 | a field, a flag or a format | [Learning path](docs/LEARNING.md), [Data files](docs/DATA.md), [Tools](docs/TOOLS.md) |
 | the evidence behind one number | [Performance history](docs/PERFORMANCE_HISTORY.md), [the studies](docs/archive/studies.md), [Decisions](docs/adr/index.md) |
 | what comes next | [Roadmap](docs/ROADMAP.md) |

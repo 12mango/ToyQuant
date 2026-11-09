@@ -20,6 +20,11 @@ compatibility path. Everything below assumes that page.
   evidence, propose the change, and let the number move the row -- do not restate the old argument as new.
 - **Never present a window selected for being positive as an edge.** That sentence is the project's own
   (`docs/archive/studies.md`); it is also the failure mode an agent falls into most easily.
+- **The low-latency line keeps a standing retrospective, and it is not an ADR.** `docs/LOW_LATENCY.md` describes the
+  engine line as a whole — what it was for, the order the attempts came in, the condition that stopped it, and what it
+  never measured — while the records in `docs/adr/` are one decision each. Neither replaces the other: a new candidate
+  updates the stop condition there and writes a record only if it was accepted or retired. Do not fold the page into an
+  ADR, and do not let a record grow into a narrative.
 - **A performance change needs a counting measurement before it needs a design.** The order book's `std::map` was
   retired by counting the orders it holds on three settings, not by replacing the container
   ([ADR 0002](https://github.com/12mango/ToyQuant/blob/main/docs/adr/0002-retire-the-orderbook-map-by-counting.md)); a
