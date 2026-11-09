@@ -20,6 +20,11 @@ compatibility path. Everything below assumes that page.
   evidence, propose the change, and let the number move the row -- do not restate the old argument as new.
 - **Never present a window selected for being positive as an edge.** That sentence is the project's own
   (`docs/archive/studies.md`); it is also the failure mode an agent falls into most easily.
+- **A performance change needs a counting measurement before it needs a design.** The order book's `std::map` was
+  retired by counting the orders it holds on three settings, not by replacing the container
+  ([ADR 0002](https://github.com/12mango/ToyQuant/blob/main/docs/adr/0002-retire-the-orderbook-map-by-counting.md)); a
+  change that cannot be sized by a count is not ready to be written, and a gain smaller than the spread of the
+  measurement is not a gain.
 - **A result that looks too good is a bug until its decomposition reconciles.** Capture, markout, fee and `net_pnl_usd`
   have to add up; when they do not, say so and do not quote the number (the MU quoting rows are the standing example).
 - **The answer "closed, and here is why" is a deliverable.** Do not manufacture work to avoid delivering it.
