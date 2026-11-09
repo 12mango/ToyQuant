@@ -1,6 +1,6 @@
 # Data Files
 
-*Part of the reference tier. The map of the documents is [`index.md`](index.md).*
+*Part of the reference tier. The map of the documents is [`MAP.md`](MAP.md).*
 
 This directory has two purposes:
 

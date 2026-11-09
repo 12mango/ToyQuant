@@ -27,7 +27,7 @@ worth reading is the engineering in sections 2 to 4.
 **What this document is not.** It is not the module reference — [Architecture](ARCHITECTURE.md) is — and it is
 not the measurement record: the numbers here are summaries of records that live in
 [Performance History](PERFORMANCE_HISTORY.md) and [Performance](PERFORMANCE.md). Its job is the argument, and
-the boundaries between the documents are listed in the [documentation index](index.md).
+the boundaries between the documents are listed in the [documentation map](MAP.md).
 
 ## 1. The loop, in code
 

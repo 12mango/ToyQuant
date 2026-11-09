@@ -1,6 +1,6 @@
 # The tools directory
 
-*Part of the reference tier. The map of the documents is [`index.md`](index.md).*
+*Part of the reference tier. The map of the documents is [`MAP.md`](MAP.md).*
 
 Everything here exists to turn a claim into a number that somebody else can reproduce. There are three kinds of
 file, and the directory names say which kind a tool is:

@@ -1,6 +1,6 @@
 # Architecture decision records
 
-*Part of the reference tier. The map of the documents is [`index.md`](../index.md).*
+*Part of the reference tier. The map of the documents is [`MAP.md`](../MAP.md).*
 
 A decision that closes a technical question rather than a scope question gets a file of its own here. The
 [change log](../ROADMAP.md#change-log) records what the project will and will not build, one row per release; a row is the

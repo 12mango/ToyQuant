@@ -1,6 +1,6 @@
 # The low-latency line: what was tried, what it returned, and where it stopped
 
-*Part of the reference tier. The map of the documents is [`index.md`](index.md).*
+*The map of the documents is [`MAP.md`](MAP.md).*
 
 This is the retrospective of the engine work. It is not the place for a number — those are in the
 [optimization ledger](PERFORMANCE.md#5-optimization-ledger) — and not the place for a mechanism, which is in

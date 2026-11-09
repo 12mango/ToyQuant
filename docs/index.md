@@ -1,87 +1,62 @@
-# ToyQuant Documentation
+# ToyQuant
 
-ToyQuant is a measurement project with a small trading simulator inside it. The question it asks is whether a personal
-account's programmatic quote can pay for itself, and the answer it recorded is no in eight markets — each closure a
-quotient rather than an opinion, from the fee against the tick to the inventory's own move against the edge. The
-simulator is the instrument that made those answers computable, not the product: it has no live venue connectivity and
-claims nothing about future profitability.
+**A C++20 limit-order-book replay engine, built to answer one question with arithmetic: can a personal account's
+programmatic quote pay for itself?**
 
-What makes this one project rather than a notebook is that **most of its claims are re-derived by the build**. A
-document carries the command behind a number, `tools/gate/verify_l2.sh` re-runs that command on every edit, and a figure
-that moves fails the gate.
+The answer it recorded is **no, in eight markets**, and each closure is a quotient rather than an opinion: the fee against
+the tick, the position's own move against the edge, the number of actions a window contains, the print count against a
+reference. The strategies lost. What is left is the machinery that can say *why*, with a figure attached.
 
-## Three tiers
+**Every number these documents quote is re-derived by the build.** A figure carries the command that produced it,
+`tools/gate/verify_l2.sh` re-runs that command, and a number that moves fails the gate.
 
-Twelve documents at one level was too many to read in any order, so they are in three tiers. The tier is the whole of
-the reading advice: **read tier 1, look things up in tier 2, and open tier 3 only when you want the evidence for one
-specific claim.**
+## Start here
 
-| Tier | What it is | Documents | How to read it |
-|---|---|---|---|
-| **1. The answer and the argument** | what the project found, why the instrument that found it is shaped the way it is, and what that line of work did not measure | [Retrospective](RETROSPECTIVE.md), [Low-Latency Retrospective](LOW_LATENCY.md), [Design Review](DESIGN_REVIEW.md), [User Guide](USER_GUIDE.md) | in that order; about ninety minutes |
-| **2. The reference** | what exists, how to read the code, what each field means, what is left to do | [Architecture](ARCHITECTURE.md), [Main Line](MAINLINE.md), [Learning Path](LEARNING.md), [Performance](PERFORMANCE.md), [Roadmap](ROADMAP.md), [Data Files](DATA.md), [Tools](TOOLS.md) | open the one that matches the question; none is meant to be read whole |
-| **3. The evidence** | the measurements in the order they were taken, the research record behind the closures, and one file per technical decision | [Performance History](PERFORMANCE_HISTORY.md) and its three parts, [Low-Latency Design](performance/design.md), [The studies](archive/studies.md), [Research Notes](archive/research-notes.md), [Decisions](adr/index.md) | search it; every part opens with the question it answers, and a decision is one file you can send as a link |
+Requirements: CMake 3.16+, a C++20 compiler, and Python 3.
 
+```bash
+cmake --preset linux-debug
+cmake --build --preset linux-debug
+bash tools/gate/verify_l2.sh fast      # tier 0 and tier 1: the invariants, and every quoted number re-derived
+```
 
-## Pick the path
+Then [the getting-started guide](using/01-getting-started.md) walks one replay from input to output, with one command per
+input format on [the modes page](using/02-modes.md). The mainline is the Deribit L2 replay, which is the path every number
+in these documents came from.
 
-| If you want to... | Read | Then |
-|---|---|---|
-| see what the project found | [Retrospective](RETROSPECTIVE.md) | [Design Review](DESIGN_REVIEW.md) for how each closure was measured |
-| evaluate the design | [Design Review](DESIGN_REVIEW.md) | [Architecture](ARCHITECTURE.md) for what exists |
-| understand market making | [Learning Path](LEARNING.md) | [Design Review](DESIGN_REVIEW.md) section 4 for the gate |
-| read the code | [Main Line](MAINLINE.md) | the module reference in [Architecture](ARCHITECTURE.md) |
-| run it | [User Guide](USER_GUIDE.md) | the [Data Files](DATA.md) note for the input contracts |
-| review the plan | [Roadmap](ROADMAP.md#current-iteration-plan-maintained) | [The studies](archive/studies.md) for why each line is closed |
-| find the tool behind a number | [Tools](TOOLS.md) | the marked block next to the number, which names the exact command |
-| know what it costs | [Performance](PERFORMANCE.md) | [Low-Latency Design](performance/design.md) for why each change is faster |
-| see how a number was obtained | [Performance History](PERFORMANCE_HISTORY.md) | the part named in whichever document quoted it |
+## What it is
 
-`docs/` holds tiers 1 and 2 at the top level. `using/` and `architecture/` hold the parts of the two longest references —
-the guide and the module reference — and each of those two has its own part split into smaller pages where a section grew
-past six hundred lines. `performance/` and `archive/` hold tier 3: the measurement of the engine, and the research record.
-Nothing in tier 3 is unfinished or disowned — it is the material that made
-the closures in tier 1 possible, kept because a reason that is not written down is a reason nobody can check.
+A market data reader, an L2 ladder, a matching engine with price-time priority and an explicit queue model, an order state
+machine, a fee model that charges a broker's schedule the way a broker does, and a portfolio ledger -- re-derived by four
+gate tiers on every commit. It is described in [the architecture](ARCHITECTURE.md), the order to read the source in is
+[the main line](MAINLINE.md), and what each output field means is [the learning path](LEARNING.md).
 
-## Who owns what
+It is **not** a production trading system: no venue connectivity, no authentication, no market impact, no contract
+lifecycle, and no claim about future profitability. Each boundary has a reason in [the design review](DESIGN_REVIEW.md)
+and [the roadmap](ROADMAP.md#deliberately-not-planned).
 
-Each document owns one kind of claim, and the fourth column is the part that keeps them from growing into each other. A
-document that starts explaining something in another document's row is the failure this table exists to prevent.
+## The graveyard
 
-| Document | Tier | What it owns | Not the place for | Kept honest by |
-|---|---|---:|---|---|
-| [Retrospective](RETROSPECTIVE.md) | 1 | the eight closures, the number that closed each, the rules that came out of them | what exists in the code, or how to run it | prose linted |
-| [Low-Latency Retrospective](LOW_LATENCY.md) | 1 | the engine line as a whole: what it was for, the order the attempts came in, what returned, the condition that stopped it, and what it never measured | a number, the mechanism of a change, or the measurement record | prose linted; every figure it needs is a link to a block the gate re-runs |
-| [Design Review](DESIGN_REVIEW.md) | 1 | why the instrument is built this way, the C++ decisions with anchors, the headline results, the questions a reader asks, the limitations | the module reference, or the raw measurement records | prose linted; the size, test count, flags and tool paths it states are re-counted |
-| [User Guide](USER_GUIDE.md) | 1 | every mode, every flag, the data contracts, and the failure modes that waste an afternoon: an index over seven parts in `docs/using/` | why anything is designed the way it is, or what a field means | prose linted, so a flag it forgets or invents fails the build |
-| [Architecture](ARCHITECTURE.md) | 2 | what each module is, the contracts between them, the matching rules: an index over six parts in `docs/architecture/` | the rationale and the trade-offs | marked blocks re-run on every gate run |
-| [Main Line](MAINLINE.md) | 2 | the order to read the source in, the measured result each step produced, the verdict on what to keep, freeze or delete | how to run anything, or the mechanism behind a result | prose linted |
-| [Learning Path](LEARNING.md) | 2 | the mechanisms the instrument has to model, and the field reference for each output line | engineering decisions, or how to run anything | prose linted |
-| [Performance](PERFORMANCE.md) | 2 | workloads, how to measure on this host, the current stage breakdown, and every optimisation attempted | the mechanism of a change, or the whole history | its ledger is paired measurements from `tools/study/measure_l2_baseline.py` |
-| [Roadmap](ROADMAP.md) | 2 | the maintained plan: coverage, backlog, gaps, stop line, what is deliberately not planned | what exists today, or the record of finished studies | prose linted |
-| [Data Files](DATA.md) | 2 | the tick CSV format, the runtime outputs, the workflow that produces them | anything about the strategy or the design | the data directory it describes is the one the gate reads |
-| [Tools](TOOLS.md) | 2 | which script answers which question, and which of them the gate runs | the results themselves | the documents that cite a tool are prose linted, so a moved script fails the build |
+The system has formally falsified strategies that sound like they work: market making against a fee that is a multiple of
+the spread, options straddles whose premium is smaller than the fee floor, a twelve-month funding carry across two venues,
+and a low-turnover reversion rule that wins small and loses big.
 
-## What the project covers, and what it deliberately does not
+[**Retrospective**](RETROSPECTIVE.md) is the closing document -- every dead end, what it cost in dollars, and the number
+that closed it. [**The low-latency retrospective**](LOW_LATENCY.md) is the same treatment for the engine line: what was
+tried, what it returned, the condition that stopped it, and the five things it never measured.
+[**Decisions**](adr/index.md) is one file per technical decision, so a reader who asks "why is the event a variant?" has a
+link to send rather than a paragraph to find.
 
-The loop is feed adapters, an order book, a strategy, a matching engine with an explicit queue model, execution reports,
-a portfolio, and a session that can be written down and taken over, in C++20 with CMake and a Python 3 toolchain for the
-measurement tools.
+## Where to read what
 
-It is not a production exchange stack, a connectivity layer, or a live-trading system. There is no exchange connectivity
-or authentication, no market impact, no queue-position feedback from the strategy's own resting size, no calendar or
-contract lifecycle, and no portfolio risk model beyond signed notional. The pre-trade risk pipeline is in-process (kill
-switch, fat finger, rate, exposure, position), not a broker or exchange risk gateway. Each of those is a limitation in
-the [Design Review](DESIGN_REVIEW.md) and a boundary with a reason in the
-[Roadmap](ROADMAP.md#deliberately-not-planned), rather than a gap that nobody wrote down.
+| I want | Read |
+|---|---|
+| to run something | [Getting started](using/01-getting-started.md), then [the L2 replay](using/03-l2-replay.md) |
+| what the project found | [Retrospective](RETROSPECTIVE.md) |
+| what the engine work returned | [Low-latency retrospective](LOW_LATENCY.md) |
+| how the engine is built | [Main line](MAINLINE.md), then the [module reference](ARCHITECTURE.md) |
+| a field, a flag or a format | [Learning path](LEARNING.md), [Data files](DATA.md), [Tools](TOOLS.md) |
+| the evidence behind one number | [Performance history](PERFORMANCE_HISTORY.md), [the studies](archive/studies.md), [Decisions](adr/index.md) |
+| what comes next | [Roadmap](ROADMAP.md) |
 
-What keeps this table true is mechanical, which is the only reason to trust it: `tools/gate/lint_prose.py` re-counts every
-flag, queue model, tool path and size figure a document states, `tools/gate/check_docs.py` re-runs the command behind
-every quoted number, and `tools/gate/check_links.py` follows every link and anchor in the three tiers.
-
-| [Performance History](PERFORMANCE_HISTORY.md) | 3 | the measurements in the order they were taken, superseded ones included: one index and three parts | the current conclusions | every marked block re-run on every gate run |
-| [Low-Latency Design](performance/design.md) | 3 | why each low-latency change is faster: the problem, the mechanism, the designs that were rejected | the numbers themselves | prose linted |
-| [The studies](archive/studies.md) | 3 | the research record: the phases, the venues, the carry gates, the options line, the plan from a positive window to a running system | what is still open | prose linted |
-| [Research Notes](archive/research-notes.md) | 3 | external cases of individual quantitative trading, and what a personal account can do about the fee | any measurement of this repository, or a plan | every external claim carries a `[read]`, `[reported]` or `[not verified]` mark |
-| [Decisions](adr/index.md) | 3 | one file per technical decision that closed a question: the context, the decision, what it costs, and the two or three links that measure it | the numbers themselves, or the research behind a market | a record quotes no figure it does not own, so every number in it is a link to a block the gate re-runs and the record cannot drift |
-
+The three tiers, the path for a question, and which document owns which claim are in [the documentation map](MAP.md).
