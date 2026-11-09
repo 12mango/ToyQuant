@@ -194,6 +194,12 @@ than disappears. The request was an execution scheduler: `execution_l2` works on
 on direction, so it is a new strategy name without being a new claim about the market. Everything else stays
 frozen, and a next item needs the same kind of request and a row here.
 
+**The owner's freeze, recorded 2026-11-10.** Code and data are frozen for now: no new strategy, no new measurement, no
+purchase, and no performance experiment. What is accepted during it is the documentation work the review asked for — the
+decision records, the front door, the low-latency retrospective at tier 1 and the checks that keep them from drifting —
+because that is the part a reader is owed and it does not depend on a market. Lifting it takes a new request like any
+other row.
+
 **The owner's stop, recorded 2026-11-02.** Four items were candidates and are not being built: a per-fill PnL column
 in the trade report (the remaining half of the interval work), a latency budget asserted in the gate, a client order
 id that survives a process restart, and a randomized fuzz tier for the readers. Each has its verdict in the gaps
