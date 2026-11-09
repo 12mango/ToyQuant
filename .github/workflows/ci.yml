@@ -36,3 +36,9 @@ jobs:
 
       - name: Every link and anchor resolves
         run: python3 tools/gate/check_links.py
+
+      # The decision records keep one fact in two places, the record's status line and the index table. It needs no
+      # market data, so it runs here as well as in the local gate: a superseded decision that never said so is a
+      # documentation drift, which is the class this workflow exists to catch.
+      - name: Every decision record agrees with the index
+        run: python3 tools/gate/check_adr.py

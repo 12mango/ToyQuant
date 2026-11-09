@@ -12,7 +12,8 @@ can send — "why is the event a variant?" — and a row in a three-hundred-row 
 1. **One decision per file**, named `NNNN-slug.md` in the order they were accepted. A number is never reused.
 2. **Append-only.** The status line is the only part that changes: `accepted`, `superseded by 0007`, or `rejected`. A
    decision is superseded by writing a new record, never by editing the old one — the old one is the reason the new one
-   exists.
+   exists. `tools/gate/check_adr.py` holds the status line and this page's table to the same words, and refuses a
+   supersede that only one end states, so the agreement is checked rather than promised.
 3. **An ADR quotes no number it does not own.** Every figure it needs is a link to the marked block that re-derives it.
    That is what keeps this layer cheap: an ADR cannot drift, so a re-recorded measurement never sends anyone back here.
 4. **It says what it costs.** A decision record that lists only benefits is an argument; the `Consequences` section names
@@ -25,6 +26,21 @@ can send — "why is the event a variant?" — and a row in a three-hundred-row 
 | [0001](0001-the-event-stays-a-variant.md) | 2026-11-07 | the market event stays a variant; it is not restructured to be trivially copyable | accepted |
 | [0002](0002-retire-the-orderbook-map-by-counting.md) | 2026-11-07 | the order book's `std::map` is retired by counting the orders, not by replacing the container | accepted |
 | [0003](0003-split-the-gate-by-what-a-change-pays-for.md) | 2026-11-10 | the gate is split into `smoke`, `code`, `docs` and `fast` by what a change pays for | accepted |
+| [0004](0004-the-document-tree-keeps-its-names.md) | 2026-11-10 | the document tree keeps its names; the layer it gains is addressability, not vocabulary | accepted |
+
+## Where the research lives
+
+This page is the door into the vault. A record answers "why is it like this?"; the material it points at answers "what
+made that the right answer", and it is filed by what was measured rather than by when:
+
+| the question | the file |
+|---|---|
+| why is the engine shaped this way, and what did each change win? | [Low-Latency Design](../performance/design.md#7-designs-that-were-measured-and-rejected) |
+| what did each optimisation attempt cost, including the ones that paid nothing? | [Performance: the ledger](../PERFORMANCE.md#5-optimization-ledger) |
+| how was a particular number obtained? | [Performance History](../PERFORMANCE_HISTORY.md) |
+| why was a market closed, and what did it cost in dollars? | [The studies](../archive/studies.md) |
+| what is the standing case for a personal account, with outside evidence? | [Research Notes](../archive/research-notes.md) |
+| what is still open, and what is deliberately not planned? | [Roadmap](../ROADMAP.md) |
 
 ## What this layer is not
 

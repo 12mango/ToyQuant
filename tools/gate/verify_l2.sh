@@ -197,6 +197,10 @@ tier1() {
   # wants a well-formed one, so it would silently drop out of this check instead of failing it.
   python3 tools/gate/check_links.py >> "$PROSE_CHECK_LOG" 2>&1 || prose_check=1
   python3 tools/gate/check_layering.py >> "$PROSE_CHECK_LOG" 2>&1 || prose_check=1
+  # `docs/adr/` keeps one fact in two places -- the record's status line and the index table -- so the pair is checked
+  # like every other pair in this repository. It is the cheapest check here and the only one that can catch a decision
+  # that was replaced and never said so.
+  python3 tools/gate/check_adr.py >> "$PROSE_CHECK_LOG" 2>&1 || prose_check=1
   # The site build is the one document check this gate did not run, and the gap had teeth: `mkdocs build --strict`
   # refuses a link that resolves outside `docs_dir`, so a relative link to `../CHANGELOG.md` was invisible here and
   # red in CI -- every local tier green on a site that could not be built. Skipped rather than failed when mkdocs is
