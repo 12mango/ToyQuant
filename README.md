@@ -2,27 +2,31 @@
 
 # ToyQuant
 
-**A C++20 limit-order-book replay engine, built to answer one question with arithmetic: can a personal account's
-programmatic quote pay for itself?**
+**A C++20 limit-order-book replay engine: deterministic execution, a stage-level latency budget, and a gate that re-derives
+every number this project publishes.**
 
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C?logo=cplusplus&logoColor=white)](CMakeLists.txt)
 [![CMake](https://img.shields.io/badge/CMake-3.16+-064F8C?logo=cmake&logoColor=white)](CMakePresets.json)
 [![Tests](https://img.shields.io/badge/tests-CTest-brightgreen)](tests)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-[Documentation map](docs/index.md) · [Getting started](docs/using/01-getting-started.md) ·
+[Documentation map](docs/MAP.md) · [Getting started](docs/using/01-getting-started.md) ·
 [Retrospective](docs/RETROSPECTIVE.md) · [Decisions](docs/adr/index.md)
 
 </div>
 
 ---
 
-The answer it recorded is **no, in eight markets**, and each closure is a quotient rather than an opinion: the fee
-against the tick, the position's own move against the edge, the number of actions a window contains, the print count
-against a reference. The strategies lost. What is left is the machinery that can say *why*, with a figure attached.
+ToyQuant tests trading hypotheses with arithmetic rather than assumption. It reads market data, builds an L2 ladder, runs a
+price-time matching engine with an explicit queue model, charges a broker's fee schedule, and books the result in a
+portfolio ledger -- and it holds all of that to byte-for-byte reproducibility, so a result can be re-derived instead of
+remembered.
 
-**Every number these documents quote is re-derived by the build.** A figure carries the command that produced it,
-`tools/gate/verify_l2.sh` re-runs that command on every edit, and a number that moves fails the gate.
+The question it was built to answer is whether a personal account's programmatic quote can pay for itself. Eight markets
+were measured, each was closed by a number rather than an opinion -- the fee against the tick, the position's own move
+against the edge, the actions a window contains, the print count against a reference -- and the record of each is kept,
+with the command that re-derives it, in the archive linked below. The engine is the instrument; the closures are its
+output.
 
 ## Quick start
 
@@ -34,30 +38,42 @@ cmake --build --preset linux-debug
 bash tools/gate/verify_l2.sh fast      # tier 0 and tier 1: the invariants, and every quoted number re-derived
 ```
 
-The full tour -- the four run modes, recording a session and replaying it, the two-thread path, the benchmark workflow
-and what each output line means -- is the [getting-started guide](docs/using/01-getting-started.md), with one command
-per input format on [the modes page](docs/using/02-modes.md). This page keeps a single command so that it cannot
-disagree with them.
+The full tour -- the four run modes, recording a session and replaying it, the two-thread path, the benchmark workflow and
+what each output line means -- is the [getting-started guide](docs/using/01-getting-started.md), with one command per input
+format on [the modes page](docs/using/02-modes.md). This page keeps one command so that it cannot disagree with them.
 
-## The instrument, and what it is not
+## What it is
 
-A market data reader, an L2 ladder, a matching engine with price-time priority and an explicit queue model, an order
-state machine, a fee model that charges a broker's schedule the way a broker does, and a portfolio ledger -- re-derived
-by four gate tiers on every commit.
+| piece | what it guarantees |
+|---|---|
+| a market data reader | one interface for CSV, gzip, socket and recorded streams, so a live feed is another reader and not a second pipeline |
+| an L2 book | a ladder sized from the data, with the queue ahead of a quote modelled explicitly rather than assumed |
+| a matching engine | price-time priority, self-trade prevention, partial fills, GTC/IOC/FOK |
+| a fee model | a broker's schedule charged the way a broker charges it, including a per-share commission and a minimum per order |
+| a portfolio ledger | cash, position, equity and realized PnL, reconciled against the engine's reports on every run |
+| a gate | four tiers that re-run the invariants and every number the documents quote; a figure that moves fails the build |
 
 It is **not** a production trading system: no venue connectivity, no authentication, no market impact, no contract
-lifecycle, and no claim about future profitability. The boundary is stated with a reason per item in
-[the design review](docs/DESIGN_REVIEW.md) and [the roadmap](docs/ROADMAP.md#deliberately-not-planned).
+lifecycle, and no claim about future profitability. Each boundary is stated with its reason in
+[the design review](docs/DESIGN_REVIEW.md) and [the roadmap](docs/ROADMAP.md#deliberately-not-planned), rather than left
+as a gap nobody wrote down.
 
-## The graveyard
 
-The system has formally falsified strategies that sound like they work: market making against a fee that is a multiple
-of the spread, options straddles whose premium is smaller than the fee floor, a twelve-month funding carry across two
-venues, and a low-turnover reversion rule that wins small and loses big.
+## Findings
 
-[**Retrospective**](docs/RETROSPECTIVE.md) is the closing document -- every dead end, what it cost in dollars, and the
-number that closed it. [**Decisions**](docs/adr/index.md) is one file per technical decision that closed a question, so
-a reader who asks "why is the event a variant?" has a link to send rather than a paragraph to find.
+An instrument that cannot close a hypothesis is not measuring anything, so the closures are reported as results rather
+than as defeats. Through measurement this project closed several approaches that look plausible from the outside: market
+making against a fee that is a multiple of the spread, an options straddle whose premium is smaller than the fee floor, a
+twelve-month funding carry across two venues, and a low-turnover reversion rule whose sign does not replicate.
+
+The record is kept in three places:
+
+- [**Retrospective**](docs/RETROSPECTIVE.md) -- the eight closures, the friction each one met, and the arithmetic that
+  closed it. Every number in it is re-derived by the gate.
+- [**Engine retrospective**](docs/LOW_LATENCY.md) -- what the low-latency line returned, the condition that stopped it, and
+  what it never measured.
+- [**Decisions**](docs/adr/index.md) -- one append-only file per technical decision, so "why is the event a variant?" has a
+  link to send rather than a paragraph to find.
 
 ## Where to read what
 
@@ -65,10 +81,14 @@ a reader who asks "why is the event a variant?" has a link to send rather than a
 |---|---|
 | to run something | [Getting started](docs/using/01-getting-started.md), then [the L2 replay](docs/using/03-l2-replay.md) |
 | what the project found | [Retrospective](docs/RETROSPECTIVE.md) |
-| how the engine is built | [Low-latency retrospective](docs/LOW_LATENCY.md), then [Main line](docs/MAINLINE.md) and the [module reference](docs/ARCHITECTURE.md) |
+| what the engine work returned | [Engine retrospective](docs/LOW_LATENCY.md) |
+| how the engine is built | [Main line](docs/MAINLINE.md), then the [module reference](docs/ARCHITECTURE.md) |
 | a field, a flag or a format | [Learning path](docs/LEARNING.md), [Data files](docs/DATA.md), [Tools](docs/TOOLS.md) |
 | the evidence behind one number | [Performance history](docs/PERFORMANCE_HISTORY.md), [the studies](docs/archive/studies.md), [Decisions](docs/adr/index.md) |
 | what comes next | [Roadmap](docs/ROADMAP.md) |
+
+The three tiers, the path for a question, and which document owns which claim are in
+[the documentation map](docs/MAP.md).
 
 ## Contributing
 
