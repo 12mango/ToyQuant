@@ -5,9 +5,9 @@
 
 ## How the navigation groups these
 
-The site's navigation puts the same documents on four shelves, because that is how a reader walks in: **1. The Core** --
-how to run it and what each module is; **2. Reference** -- the numbers, the data and the tools; **3. The Vault** -- the
-retrospectives, the histories and the decisions; **4. Project meta** -- the plan, the design review and this map.
+The site's navigation puts the same documents on four shelves, because that is how a reader walks in: **The Core** --
+how to run it and what each module is; **Reference** -- the numbers, the data and the tools; **The Vault** -- the
+retrospectives, the histories and the decisions; **Project meta** -- the plan, the design review and this map.
 
 That is a different cut from the three tiers below, and the difference is worth stating rather than hiding. A **tier** is
 what a document may claim -- an answer, a reference, or evidence -- while a **shelf** is where a reader will look for it.

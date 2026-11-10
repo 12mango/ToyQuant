@@ -33,55 +33,55 @@ theme:
 
 nav:
   - Home: index.md
-  - "1. The Core (what and how)":
-      - Getting started: using/01-getting-started.md
+  - The Core (what and how):
       - User Guide:
-          - Overview: USER_GUIDE.md
-          - "2. Modes": using/02-modes.md
-          - "3. The L2 replay":
-              - Overview: using/03-l2-replay.md
-              - "1. The run and its inputs": using/03-l2-replay/01-the-run-and-its-inputs.md
-              - "2. The venue side": using/03-l2-replay/02-the-venue-side.md
-              - "3. Funding and what is frozen": using/03-l2-replay/03-funding-and-what-is-frozen.md
-          - "4. A live session and the carry line": using/04-live-and-carry.md
-          - "5. Scenarios and reports": using/05-scenarios-and-reports.md
-          - "6. Reading the output": using/06-reading-the-output.md
-          - "7. Troubleshooting": using/07-troubleshooting.md
+          - Modes, flags and data contracts: USER_GUIDE.md
+          - 1. Getting started: using/01-getting-started.md
+          - 2. Modes: using/02-modes.md
+          - 3. The L2 replay:
+              - The replay path: using/03-l2-replay.md
+              - Run and inputs: using/03-l2-replay/01-the-run-and-its-inputs.md
+              - Venue side: using/03-l2-replay/02-the-venue-side.md
+              - Funding and what is frozen: using/03-l2-replay/03-funding-and-what-is-frozen.md
+          - 4. A live session and the carry line: using/04-live-and-carry.md
+          - 5. Scenarios and reports: using/05-scenarios-and-reports.md
+          - 6. Reading the output: using/06-reading-the-output.md
+          - 7. Troubleshooting: using/07-troubleshooting.md
       - Architecture:
-          - Overview: ARCHITECTURE.md
-          - "1. System map": architecture/01-system-map.md
-          - "2. Inputs and shared types": architecture/02-inputs-and-types.md
-          - "3. The coordinator and the book": architecture/03-coordinator-and-book.md
-          - "4. The matching engine": architecture/04-matching-engine.md
-          - "5. Strategy":
-              - Overview: architecture/05-strategy.md
-              - "1. The model and the baselines": architecture/05-strategy/01-the-model-and-the-baselines.md
-              - "2. The L2 mainline and the comparison": architecture/05-strategy/02-the-l2-mainline.md
-          - "6. Accounting and the summary": architecture/06-accounting-and-the-summary.md
+          - Design overview: ARCHITECTURE.md
+          - System map: architecture/01-system-map.md
+          - Inputs and shared types: architecture/02-inputs-and-types.md
+          - The coordinator and the book: architecture/03-coordinator-and-book.md
+          - The matching engine: architecture/04-matching-engine.md
+          - Strategy:
+              - The strategy layer: architecture/05-strategy.md
+              - The model and the baselines: architecture/05-strategy/01-the-model-and-the-baselines.md
+              - The L2 mainline and the comparison: architecture/05-strategy/02-the-l2-mainline.md
+          - Accounting and the summary: architecture/06-accounting-and-the-summary.md
       - Main Line: MAINLINE.md
       - Learning Path: LEARNING.md
-  - "2. Reference (data and tools)":
+  - Reference (data and tools):
       - Current performance: PERFORMANCE.md
       - Data files: DATA.md
       - Tools: TOOLS.md
-  - "3. The Vault (history and decisions)":
+  - The Vault (history and decisions):
       - Strategy retrospective: RETROSPECTIVE.md
       - Engine retrospective: LOW_LATENCY.md
       - Architecture decisions (ADR):
-          - Overview: adr/index.md
-          - "0001. The event stays a variant": adr/0001-the-event-stays-a-variant.md
-          - "0002. The order book's map, retired by counting": adr/0002-retire-the-orderbook-map-by-counting.md
-          - "0003. Split the gate by what a change pays for": adr/0003-split-the-gate-by-what-a-change-pays-for.md
-          - "0004. The document tree keeps its names": adr/0004-the-document-tree-keeps-its-names.md
+          - The rules and the index: adr/index.md
+          - 0001. The event stays a variant: adr/0001-the-event-stays-a-variant.md
+          - 0002. The order book's map, retired by counting: adr/0002-retire-the-orderbook-map-by-counting.md
+          - 0003. Split the gate by what a change pays for: adr/0003-split-the-gate-by-what-a-change-pays-for.md
+          - 0004. The document tree keeps its names: adr/0004-the-document-tree-keeps-its-names.md
       - Performance history:
-          - Overview: PERFORMANCE_HISTORY.md
-          - "1. The engine and the L1 line": performance/history-01-engine.md
-          - "2. The L2 mainline": performance/history-02-l2.md
-          - "3. The studies": performance/history-03-studies.md
+          - All measurements, in order: PERFORMANCE_HISTORY.md
+          - 1. The engine and the L1 line: performance/history-01-engine.md
+          - 2. The L2 mainline: performance/history-02-l2.md
+          - 3. The studies: performance/history-03-studies.md
           - Low-Latency Design: performance/design.md
       - Archived studies: archive/studies.md
       - Research notes: archive/research-notes.md
-  - "4. Project meta":
+  - Project meta:
       - Roadmap: ROADMAP.md
       - Design Review: DESIGN_REVIEW.md
       - Document map: MAP.md
