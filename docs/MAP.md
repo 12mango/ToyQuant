@@ -43,7 +43,8 @@ claim.**
 | know what it costs | [Performance](PERFORMANCE.md) | [Low-Latency Design](performance/design.md) for why each change is faster |
 | see how a number was obtained | [Performance History](PERFORMANCE_HISTORY.md) | the part named in whichever document quoted it |
 | send someone one decision | [Decisions](adr/index.md) | the record's evidence section |
-
+| find the meaning of a term in a table | [Glossary](GLOSSARY.md) | the field that prints it, in the [Learning Path](LEARNING.md) |
+| write your own strategy | [Writing your own strategy](using/08-writing-a-strategy.md) | [the strategy layer](architecture/05-strategy.md) for how the existing ones decide |
 
 ## Who owns what
 
@@ -95,3 +96,5 @@ closures in tier 1 possible, kept because a reason that is not written down is a
 | [The studies](archive/studies.md) | 3 | the research record: the phases, the venues, the carry gates, the options line, the plan from a positive window to a running system | what is still open | prose linted |
 | [Research Notes](archive/research-notes.md) | 3 | external cases of individual quantitative trading, and what a personal account can do about the fee | any measurement of this repository, or a plan | every external claim carries a `[read]`, `[reported]` or `[not verified]` mark |
 | [Decisions](adr/index.md) | 3 | one file per technical decision that closed a question: the context, the decision, what it costs, and the two or three links that measure it | the numbers themselves, or the research behind a market | a record quotes no figure it does not own, so every number in it is a link to a block the gate re-runs and the record cannot drift |
+| [Glossary](GLOSSARY.md) | 2 | the concepts behind the numbers: one formula per term, the sign convention, and the file that computes it | the field list, which the learning path owns, or the measurement record | prose linted; every formula names the file it comes from |
+| [Writing your own strategy](using/08-writing-a-strategy.md) | 1 | how a strategy reaches the binary: the interface, the two seams, registration, and what a strategy may not own | the strategy layer's design, which the architecture owns | prose linted, so a flag or a class it forgets or invents fails the build |

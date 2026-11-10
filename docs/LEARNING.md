@@ -22,6 +22,10 @@ Everything below uses the recorded Deribit window. Cut the slices first:
 bash tools/gate/verify_l2.sh fast        # also checks that the code still reproduces its recorded numbers
 ```
 
+The fields are listed here so a run can be read; the arithmetic behind a term — capture, markout, the fee floor, the
+breakeven rate, and the sign each one carries — is in [the glossary](GLOSSARY.md), which is the page to open when a name
+in a table is doing work you cannot see.
+
 ## 1. Fill probability is a queue, not a price
 
 An order fills when the trades at its price have consumed everything ahead of it. The strategy's own

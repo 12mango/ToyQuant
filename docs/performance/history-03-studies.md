@@ -736,8 +736,9 @@ the same factor (0.54) the F4 section recorded between SPY's half spread and wha
 capture is worth **+385.16 USD** against 210.58 of commission, so the quotes paid for themselves and 174.58 USD
 over; the window's gross is **-2,954.95**, which leaves about **3,340 USD** of adverse price on the position the run
 was carrying. TSLA is the same shape at a different size: capture +497.09 against 177.64 of commission, gross
--1,297.89, so about 1,795 USD of drift. The drift is not adverse selection -- AAPL's measured markout is *positive*
-(+0.043 ticks), so the fills were not picked off -- it is the mark on 1,096 and 1,098 shares of inventory,
+-1,297.89, so about 1,795 USD of drift. The drift is not the fills' adverse selection -- AAPL's measured markout is
+*positive* (+0.043 ticks), which by the engine's sign means the fills were slightly picked off, and at 0.043 ticks over
+60,167 shares that is about 26 USD of the 3,340 -- it is the mark on 1,096 and 1,098 shares of inventory,
 0.36 and 0.39 million USD of notional, over two hours in which the price moved against it by a few tenths of a
 percent. At that size a 0.9% move is 3,300 USD and the whole quoting edge is 385.
 

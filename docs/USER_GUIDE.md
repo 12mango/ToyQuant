@@ -10,10 +10,11 @@ for the regression invariants that pin them. It does not explain *why* the softw
 [Architecture](ARCHITECTURE.md).
 
 
-## The guide, in seven parts
+## The guide, in eight parts
 
-The guide was 1,048 lines in one page. It is now seven parts, in the order a session actually goes: get it built, pick a
-mode, replay the mainline, run it live, read what came out, and fix what went wrong.
+The guide was 1,048 lines in one page. It is now eight parts, in the order a session actually goes: get it built, pick a
+mode, replay the mainline, run it live, read what came out, fix what went wrong -- and, once you want a strategy of your
+own, write one.
 
 | part | what it covers |
 |---|---|
@@ -24,7 +25,8 @@ mode, replay the mainline, run it live, read what came out, and fix what went wr
 | [5. Scenarios and reports](using/05-scenarios-and-reports.md) | the synthetic tick files, and the static report with a plot |
 | [6. Reading the output](using/06-reading-the-output.md) | what each line reports, and how sure a number is |
 | [7. Troubleshooting](using/07-troubleshooting.md) | the failures that waste an afternoon, and what each one means |
+| [8. Writing your own strategy](using/08-writing-a-strategy.md) | the interface, the two seams, how a name reaches the binary, and what a strategy may not own |
 
-What a *field* measures is in the [Learning Path](LEARNING.md) field reference — this guide says how to produce it and
-where it appears.
+What a *field* measures is in the [Learning Path](LEARNING.md) field reference and the terms behind it are in
+[the glossary](GLOSSARY.md) -- this guide says how to produce a number and where it appears.
 

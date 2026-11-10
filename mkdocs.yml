@@ -47,6 +47,7 @@ nav:
           - 5. Scenarios and reports: using/05-scenarios-and-reports.md
           - 6. Reading the output: using/06-reading-the-output.md
           - 7. Troubleshooting: using/07-troubleshooting.md
+          - 8. Writing your own strategy: using/08-writing-a-strategy.md
       - Architecture:
           - Design overview: ARCHITECTURE.md
           - System map: architecture/01-system-map.md
@@ -64,6 +65,7 @@ nav:
       - Current performance: PERFORMANCE.md
       - Data files: DATA.md
       - Tools: TOOLS.md
+      - Glossary: GLOSSARY.md
   - The Vault (history and decisions):
       - Strategy retrospective: RETROSPECTIVE.md
       - Engine retrospective: LOW_LATENCY.md

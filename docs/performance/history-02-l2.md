@@ -424,7 +424,9 @@ because inserting into that struct silently mis-assigned every field after the i
 With those, the same run answers the question a market maker exists to answer. At
 `--order-size=10 --inventory-limit=100` under `prorata` it reports `captured_edge=1.75`,
 `adverse_selection=-0.5` and `markout_count=2` of 3 fills, so a third of the edge captured at the fill
-is given back five cycles later. Under `conservative` it reports `captured_edge=1.25` and no resolved
+is given back five cycles later. *(Sign note, added later: the engine stores `fill - later mid` for a buy, so a negative
+`adverse_selection` is drift in the position's favour rather than edge given back; the recorded numbers stand, the reading
+of the sign is corrected in [the glossary](../GLOSSARY.md#a-sign-convention-two-documents-read-differently).)* Under `conservative` it reports `captured_edge=1.25` and no resolved
 markouts, because the one fill arrives too late in the run to have one. The numbers describe the fill
 model as much as the strategy: `optimistic` reports `captured_edge=2.75`, `adverse_selection=-1.5` and
 `markout_count=6` of 7 fills, which is what the removed `heuristic` produced as well.

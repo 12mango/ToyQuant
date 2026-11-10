@@ -8,6 +8,10 @@ family the repository has — the three baselines and the `active_l2` mainline.
 This section was 663 lines and is now two parts, because the questions arrive two ways: how the strategy layer is shaped
 and what the simple families do with it, and what the mainline actually computes from a book.
 
+**To write a strategy of your own rather than read one of these**, the task-oriented version is
+[the guide's last part](../using/08-writing-a-strategy.md): the interface, the two seams, registration and what a strategy
+may not own.
+
 ## How to read this
 
 | You want to understand... | Start here |
