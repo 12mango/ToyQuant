@@ -12,9 +12,8 @@ for the regression invariants that pin them. It does not explain *why* the softw
 
 ## The guide, in eight parts
 
-The guide was 1,048 lines in one page. It is now eight parts, in the order a session actually goes: get it built, pick a
-mode, replay the mainline, run it live, read what came out, fix what went wrong -- and, once you want a strategy of your
-own, write one.
+Eight parts, in the order a session actually goes: get it built, pick a mode, replay the mainline, run it live, read
+what came out, fix what went wrong -- and, once you want a strategy of your own, write one.
 
 | part | what it covers |
 |---|---|

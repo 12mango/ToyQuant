@@ -5,9 +5,8 @@ place to read conclusions — [Design Review](DESIGN_REVIEW.md) carries those an
 which markets they closed — but it is the place to find out *how a number was obtained*, and every block marked here is
 re-derived by `tools/gate/check_docs.py` on each gate run.
 
-It was one document of 3,352 lines, which is a document nobody reads and everybody greps. It is now three, split by what
-the measurements were about rather than by date, because that is how a reader arrives: with a question about the engine,
-about the mainline strategy, or about one of the studies.
+It is three parts, split by what the measurements were about rather than by date, because that is how a reader arrives:
+with a question about the engine, about the mainline strategy, or about one of the studies.
 
 | part | what it holds |
 |---|---|
@@ -24,5 +23,5 @@ Two things about reading it:
   [Low-Latency Design](performance/design.md) document holds the *why* of each optimisation; this one holds the
   measurement, and the two are meant to be read together.
 
-The lead sections of the old document that described the workload and the host are at the top of part 1, and the
-machinery that keeps all of this honest is described in [Design Review](DESIGN_REVIEW.md) section 4.
+The workload and the host are described at the top of part 1, and the machinery that keeps all of this honest is described
+in [Design Review](DESIGN_REVIEW.md) section 4.

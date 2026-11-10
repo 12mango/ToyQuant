@@ -4,8 +4,8 @@
 
 The mainline: trades plus incremental depth, every flag that changes it, and what each one does to the run.
 
-This part of the guide was 618 lines and is now three, along the lines a run is actually debugged: what went in, what the
-venue did with the orders that came out, and the inputs and names that are still standing.
+Three parts, along the lines a run is actually debugged: what went in, what the venue did with the orders that came
+out, and the inputs and names that are still standing.
 
 ## How to read this
 

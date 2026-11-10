@@ -40,18 +40,17 @@ The four things this document is worth reading for, in the order an engineer wou
 
 ## The module reference, in six parts
 
-This document was 1,574 lines — a single page that nobody read and everybody searched. It is now six parts, because the
-questions arrive six ways: how does an event get in, who owns the state, how is a fill decided, what does a strategy
-decide, and what does the run report.
+Six parts, because the questions arrive six ways: how does an event get in, who owns the state, how is a fill
+decided, what does a strategy decide, and what does the run report.
 
-| part | what it covers | sections of the old document |
-|---|---|---|
-| [1. System map](architecture/01-system-map.md) | the whole flow in one picture, and the ownership rule behind it | 1 |
-| [2. Inputs and shared types](architecture/02-inputs-and-types.md) | every reader, the event types they produce, and the validation boundary between them | 2 |
-| [3. Coordinator and the book](architecture/03-coordinator-and-book.md) | how the application wires the pieces together, then the external book view the strategies read | 3, 4 |
-| [4. Matching engine](architecture/04-matching-engine.md) | price–time priority, the queue model, partial fills, self-trade prevention, and the reports | 5 |
-| [5. Strategy](architecture/05-strategy.md), in two parts | the decision layer, its lifecycle, the order state machine, and every strategy family including the mainline | 6 |
-| [6. Accounting and the summary](architecture/06-accounting-and-the-summary.md) | what a fill does to cash and inventory, and what every field of every report line means | 7 |
+| part | what it covers |
+|---|---|
+| [1. System map](architecture/01-system-map.md) | the whole flow in one picture, and the ownership rule behind it |
+| [2. Inputs and shared types](architecture/02-inputs-and-types.md) | every reader, the event types they produce, and the validation boundary between them |
+| [3. Coordinator and the book](architecture/03-coordinator-and-book.md) | how the application wires the pieces together, then the external book view the strategies read |
+| [4. Matching engine](architecture/04-matching-engine.md) | price–time priority, the queue model, partial fills, self-trade prevention, and the reports |
+| [5. Strategy](architecture/05-strategy.md), in two parts | the decision layer, its lifecycle, the order state machine, and every strategy family including the mainline |
+| [6. Accounting and the summary](architecture/06-accounting-and-the-summary.md) | what a fill does to cash and inventory, and what every field of every report line means |
 
 Read 1 and 3 first if you want the shape; read 5 if you are working on a strategy; read 6 when you are reading a report
 line and need to know where a number comes from. The rationale behind any of it is in the

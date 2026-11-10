@@ -289,11 +289,11 @@ permanent. Do not propose production features unless they buy a concrete project
 
 ## The studies behind the answers
 
-This document used to be 1,971 lines, most of it the record of studies that have already been run: the CME calendar, the
-large aggressive prints, the stale quote, the options lines, lead-lag, the funding extreme, the venues that fit a
-personal user, the carry line's gates, and the plan from a positive window to a running system, stage by stage.
+The record of studies that have already been run -- the CME calendar, the large aggressive prints, the stale quote, the
+options lines, lead-lag, the funding extreme, the venues that fit a personal user, the carry line's gates, and the plan
+from a positive window to a running system -- is [The studies](archive/studies.md) under `docs/archive/`.
 
-All of it is now [The studies](archive/studies.md) under `docs/archive/`. Nothing was deleted: a study that closed a line
+Nothing was deleted: a study that closed a line
 is the evidence for the closure, and the ones that did not close anything are the reason nobody has to run them again. It
 is out of this document because the plan is short by design and a record of finished research is not a plan.
 

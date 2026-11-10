@@ -86,8 +86,7 @@ behind every quoted number, `tools/gate/check_links.py` follows every link and a
 ## How the tree is laid out
 
 `docs/` holds tiers 1 and 2 at the top level. `using/` and `architecture/` hold the parts of the two longest references --
-the guide and the module reference -- and each of those two has its own part split into smaller pages where a section grew
-past six hundred lines. `performance/` and `archive/` hold tier 3: the measurement of the engine, and the research record.
+the guide and the module reference -- and a part is split into smaller pages where it grew long. `performance/` and `archive/` hold tier 3: the measurement of the engine, and the research record.
 `adr/` holds one file per decision. Nothing in tier 3 is unfinished or disowned -- it is the material that made the
 closures in tier 1 possible, kept because a reason that is not written down is a reason nobody can check.
 
