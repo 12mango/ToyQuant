@@ -3,6 +3,19 @@
 *The three tiers, the path to take for a question, and which document owns which claim. The front door is
 [`index.md`](index.md); this page is the map behind it.*
 
+## How the navigation groups these
+
+The site's navigation puts the same documents on four shelves, because that is how a reader walks in: **1. The Core** --
+how to run it and what each module is; **2. Reference** -- the numbers, the data and the tools; **3. The Vault** -- the
+retrospectives, the histories and the decisions; **4. Project meta** -- the plan, the design review and this map.
+
+That is a different cut from the three tiers below, and the difference is worth stating rather than hiding. A **tier** is
+what a document may claim -- an answer, a reference, or evidence -- while a **shelf** is where a reader will look for it.
+So [Architecture](ARCHITECTURE.md) and [Roadmap](ROADMAP.md) are tier 2 and sit on different shelves, and
+[Design Review](DESIGN_REVIEW.md) is tier 1 but sits under Project meta, because it is where a reader who asks "what does
+this project deliberately not do?" arrives. The tier table is the authority on what a document owns; the navigation is
+the route to it.
+
 ## Three tiers
 
 Twelve documents at one level was too many to read in any order, so they are in three tiers. The tier is the whole of the

@@ -33,13 +33,10 @@ theme:
 
 nav:
   - Home: index.md
-  - "1. The answer and the argument":
-      - Retrospective: RETROSPECTIVE.md
-      - Low-Latency Retrospective: LOW_LATENCY.md
-      - Design Review: DESIGN_REVIEW.md
+  - "1. The Core (what and how)":
+      - Getting started: using/01-getting-started.md
       - User Guide:
           - Overview: USER_GUIDE.md
-          - "1. Getting started": using/01-getting-started.md
           - "2. Modes": using/02-modes.md
           - "3. The L2 replay":
               - Overview: using/03-l2-replay.md
@@ -50,7 +47,6 @@ nav:
           - "5. Scenarios and reports": using/05-scenarios-and-reports.md
           - "6. Reading the output": using/06-reading-the-output.md
           - "7. Troubleshooting": using/07-troubleshooting.md
-  - "2. The reference":
       - Architecture:
           - Overview: ARCHITECTURE.md
           - "1. System map": architecture/01-system-map.md
@@ -64,26 +60,31 @@ nav:
           - "6. Accounting and the summary": architecture/06-accounting-and-the-summary.md
       - Main Line: MAINLINE.md
       - Learning Path: LEARNING.md
-      - Performance: PERFORMANCE.md
-      - Roadmap: ROADMAP.md
-      - Data Files: DATA.md
+  - "2. Reference (data and tools)":
+      - Current performance: PERFORMANCE.md
+      - Data files: DATA.md
       - Tools: TOOLS.md
-  - "3. The evidence":
-      - Performance History:
-          - Overview: PERFORMANCE_HISTORY.md
-          - "1. The engine and the L1 line": performance/history-01-engine.md
-          - "2. The L2 mainline": performance/history-02-l2.md
-          - "3. The studies": performance/history-03-studies.md
-      - Low-Latency Design: performance/design.md
-      - The studies: archive/studies.md
-      - Research Notes: archive/research-notes.md
-      - Decisions (ADR):
+  - "3. The Vault (history and decisions)":
+      - Strategy retrospective: RETROSPECTIVE.md
+      - Engine retrospective: LOW_LATENCY.md
+      - Architecture decisions (ADR):
           - Overview: adr/index.md
           - "0001. The event stays a variant": adr/0001-the-event-stays-a-variant.md
           - "0002. The order book's map, retired by counting": adr/0002-retire-the-orderbook-map-by-counting.md
           - "0003. Split the gate by what a change pays for": adr/0003-split-the-gate-by-what-a-change-pays-for.md
           - "0004. The document tree keeps its names": adr/0004-the-document-tree-keeps-its-names.md
-  - The map: MAP.md
+      - Performance history:
+          - Overview: PERFORMANCE_HISTORY.md
+          - "1. The engine and the L1 line": performance/history-01-engine.md
+          - "2. The L2 mainline": performance/history-02-l2.md
+          - "3. The studies": performance/history-03-studies.md
+          - Low-Latency Design: performance/design.md
+      - Archived studies: archive/studies.md
+      - Research notes: archive/research-notes.md
+  - "4. Project meta":
+      - Roadmap: ROADMAP.md
+      - Design Review: DESIGN_REVIEW.md
+      - Document map: MAP.md
 
 markdown_extensions:
   - toc:
