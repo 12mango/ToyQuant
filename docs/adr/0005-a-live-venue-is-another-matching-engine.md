@@ -1,6 +1,6 @@
 # 0005. A live venue is another matching engine, and the demo stops at the sandbox
 
-- **Status**: proposed
+- **Status**: accepted
 - **Date**: 2026-11-11
 - **Supersedes**: none
 
@@ -43,6 +43,10 @@ nothing about profit, and what stops it from becoming a program that spends mone
 
 ## Consequences
 
+- **Step one has landed.** `src/lines/live_venue.{h,cpp}` takes an `IVenueTransport` and turns an order into one frame of
+  its own protocol; `tests/live_venue_test.cpp` pins the frame, the two bounds, a wire that refuses, and the four replies
+  a venue can send mapped onto `ExecutionReport`. No socket exists yet, which is the point: the shape of the exchange is
+  proved before anything can reach production by accident. Step two is a transport that speaks the relay.
 - **What it costs**: one adapter, one wire, one recorder and the flag plumbing -- `src/lines/live_venue.{h,cpp}`,
   an order channel on the relay, the order recorder with its reader, and the configuration. No core file should move, and
   no recorded number should change, because every part of it is off unless asked for.

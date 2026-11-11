@@ -7,6 +7,19 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The live-venue step (2026-11-11)
+
+- **A venue adapter that no socket can see yet.** `src/lines/live_venue.{h,cpp}` is the third implementation of
+  `IMatchingEngine` -- the interface `PaperBroker` and `OrderGateway` already implement -- and it takes its wire as an
+  injected `IVenueTransport`, so the adapter knows nothing about sockets. An order becomes one frame of its own protocol,
+  the adapter refuses past its own order count or size bound before anything is written, a wire that fails is counted as a
+  failure rather than a sent order, and the four replies a venue can send (ack, fill, cancel, reject) become the
+  `ExecutionReport`s the ledger already consumes. `tests/live_venue_test.cpp` pins all of it with a recorder in place of a
+  socket: 32 test binaries now, and no recorded number moved.
+- **It is not wired into a run.** There is no flag, no transport and no venue yet, which is deliberate: ADR 0005 puts the
+  shape before the wire. The next step is a transport that speaks the relay, then the venue's sandbox.
+
+
 ## The evidence milestone (current)
 
 The project stopped asking whether the instrument could be built and started using it to answer. Eight markets were

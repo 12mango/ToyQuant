@@ -27,7 +27,7 @@ can send — "why is the event a variant?" — and a row in a three-hundred-row 
 | [0002](0002-retire-the-orderbook-map-by-counting.md) | 2026-11-07 | the order book's `std::map` is retired by counting the orders, not by replacing the container | accepted |
 | [0003](0003-split-the-gate-by-what-a-change-pays-for.md) | 2026-11-10 | the gate is split into `smoke`, `code`, `docs` and `fast` by what a change pays for | accepted |
 | [0004](0004-the-document-tree-keeps-its-names.md) | 2026-11-10 | the document tree keeps its names; the layer it gains is addressability, not vocabulary | accepted |
-| [0005](0005-a-live-venue-is-another-matching-engine.md) | 2026-11-11 | a live venue is a third `IMatchingEngine`; the demonstration stops at the venue's sandbox | proposed |
+| [0005](0005-a-live-venue-is-another-matching-engine.md) | 2026-11-11 | a live venue is a third `IMatchingEngine`; the demonstration stops at the venue's sandbox | accepted |
 
 ## Where the research lives
 
