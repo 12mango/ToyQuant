@@ -52,7 +52,8 @@ watch a position build names both: `--order-size=10 --inventory-limit=100`.
 | latency | `--order-latency-us`, `--cancel-latency-us` | holds the order or the cancel for N microseconds of the market's own clock |
 | fees | `--maker-fee-rate`, `--fee-schedule` | a schedule names `min`, `regulatory`, `clearing`, `audit`, `rebate`, `commission`; every term is zero unless named |
 | gates | `--markout-cover`, `--flatten-band`, `--markout-horizon` | `--markout-cover` needs `active_l2`; `--markout-horizon` moves the cycle count behind the markout itself |
-| output | `--metrics`, `--trace-order`, `--record`, `--close-out` | each adds a line or a file and changes no number |
+| output | `--metrics`, `--trace-order`, `--record` | each adds a line or a file and changes no number |
+| the one that does change a number | `--close-out` | flattens the carried position at the touch and prints `[WIND-DOWN]`, so `[PNL]` becomes realisable instead of a mark -- see [what a run's numbers do not include](using/06-reading-the-output.md#two-things-a-runs-numbers-do-not-include) |
 | session | `--snapshot-out`, `--snapshot-in` | see below: the account comes back, the strategy's own state does not |
 | signals | `--trend-params` | the non-market-making line's EWMA cross and its exits; `--inventory-limit` doubles as the size of a full signal |
 | threads and pacing | `--feed-thread`, `--ring-capacity`, `--profile-stages`, `--live-pacing` | see below: the first three report the hand-off; pacing replays against the wall clock and reports `[LIVE]` |

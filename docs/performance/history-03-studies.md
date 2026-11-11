@@ -742,6 +742,22 @@ was carrying. TSLA is the same shape at a different size: capture +497.09 agains
 0.36 and 0.39 million USD of notional, over two hours in which the price moved against it by a few tenths of a
 percent. At that size a 0.9% move is 3,300 USD and the whole quoting edge is 385.
 
+**The SPY row's +262.51 is a mark, and `--close-out` prices the difference.** The position that window carries is 438
+shares short at the end; closing it at the touch takes 400 of them at a cost of 4.00 of spread and 1.40 of taker fee, and
+the other 38 find no size and stay marked. So the honest figure for that window is **257.11 net**, not 262.51 -- and the
+exit costs **0.18 bps**, which is a tenth of the same operation on a perpetual: there the exit is 5.39 bps because a taker
+order crosses a 5 bps fee and half of a tick that is worth real basis points, while on a US share the half spread and the
+commission are both fractions of a tick.
+
+<!-- toyquant:check
+run: l2_replay data/v2/equities/xnas_SPY_trades_2026-09-29_1330_1530.csv.gz data/v2/equities/xnas_SPY_depth_2026-09-29_1330_1530.csv.gz SPY 0 active_l2 1 conservative --order-size=100 --inventory-limit=1000 --base-spread-ticks=1 --close-out
+then: trade_reports=800 net_pnl_usd=257.108 closed_pnl_usd=263.008 unrealized_pnl=-5.90047 fees_paid=118.132 taker_trade_count=1 position=-438 closed=400 residual=-38 spread_bps=0.131074 fees_bps=0.0458758 total_bps=0.176949
+-->
+
+One block, because both lines come from the same run: the account after the exit and the exit itself. A reader who wants
+to know what a "net" column means on a run that ends holding something now has the number rather than the adjective.
+
+
 **The exposure is what moves the answer, and the run controls it.** Tightening the inventory limit lowers the loss
 monotonically on both symbols, because the drift term is proportional to the exposure while the capture is
 proportional to the traded volume:

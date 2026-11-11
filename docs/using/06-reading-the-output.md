@@ -98,3 +98,32 @@ appears only when a flag asks for it:
 The same question for a whole line -- what `[EXECUTION]` prints and what each name means -- is in the
 [field reference in the learning path](../LEARNING.md#field-reference) and, for the arithmetic, in
 [the glossary](../GLOSSARY.md).
+
+## Two things a run's numbers do not include
+
+**The warm-up.** The mainline does not quote until it has seen 16 trades and 2 valid views (`warmup_trades` and
+`warmup_views` in `src/strategy/active_l2_market_maker.h`), and `trend_l2` waits for its slow average before it will act.
+The *book* has no cold period to match: the incremental reader's first batch is the day's snapshot, so the first decision
+is taken on a two-sided book. On the recorded BTC window the warm-up is shorter than a second -- 16 trades at that
+window's own density of about 4,100 a minute is 0.23 s, against a 0.49 h window -- and on the two-hour SPY window about
+five seconds. Those are arithmetic on the windows' trade counts, not measurements of the warm-up.
+
+What it costs is not a biased mean but **a shorter opportunity set**: a strategy that warms up misses the fills at the
+start, so two strategies with different warm-ups are compared over slightly different windows, and nothing in
+`[EXECUTION]` reports how much of a window was warmed up. The baselines do not warm up at all, which is correct for them:
+they need no history to quote. The one place the effect can bite is a window with so few trades that 16 of them take
+minutes -- and the thin months of the interval series are exactly those windows.
+
+**The exit.** A run that ends holding a position marks it at the last midpoint, and `[PNL]`'s `gross` and `net` count that
+mark as if it were money. `--close-out` closes the position at the touch instead and `[WIND-DOWN]` prices the difference.
+How large that difference is depends on the venue, not on the strategy:
+
+| venue | exit cost | why |
+|---|---|---|
+| a US share | 0.18 bps | the half spread crossed and the commission are both fractions of a one-cent tick |
+| a perpetual | 5.39 bps | a taker order crosses a 5 bps fee plus half a tick that is worth real basis points |
+
+The pinned example is [the SPY window](../performance/history-03-studies.md#what-the-two-symbols-do-in-the-engine): the mark
+reads 262.51 and the account after the exit 257.11, with 38 of the 438 shares left unclosed because the touch showed no
+size. Every `net USD` column in these documents that carries a position is a mark until someone runs it with `--close-out`.
+
