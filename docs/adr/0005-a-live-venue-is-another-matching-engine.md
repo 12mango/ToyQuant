@@ -45,8 +45,14 @@ nothing about profit, and what stops it from becoming a program that spends mone
 
 - **Step one has landed.** `src/lines/live_venue.{h,cpp}` takes an `IVenueTransport` and turns an order into one frame of
   its own protocol; `tests/live_venue_test.cpp` pins the frame, the two bounds, a wire that refuses, and the four replies
-  a venue can send mapped onto `ExecutionReport`. No socket exists yet, which is the point: the shape of the exchange is
-  proved before anything can reach production by accident. Step two is a transport that speaks the relay.
+  a venue can send mapped onto `ExecutionReport`. No socket existed at that point, which was the point: the shape of the
+  exchange is proved before anything can reach production by accident.
+- **Step two has landed, and it is loopback.** `src/lines/tcp_venue_transport.{h,cpp}` is the first `IVenueTransport` with
+  a socket behind it: frames out one per line, replies in split on newlines, a closed connection reported instead of
+  written into. `tests/tcp_venue_transport_test.cpp` runs the adapter against a listener the test opens on an ephemeral
+  loopback port, so the round trip is proved with no endpoint, no credential and no market -- what it cannot prove is that
+  a venue's own encoding is understood, because the relay speaks WebSocket and this transport speaks lines. The order
+  channel on the relay is the half of the step that remains.
 - **What it costs**: one adapter, one wire, one recorder and the flag plumbing -- `src/lines/live_venue.{h,cpp}`,
   an order channel on the relay, the order recorder with its reader, and the configuration. No core file should move, and
   no recorded number should change, because every part of it is off unless asked for.

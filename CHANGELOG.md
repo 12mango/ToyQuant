@@ -15,9 +15,15 @@ site now points at `ToyQuant`.
   the adapter refuses past its own order count or size bound before anything is written, a wire that fails is counted as a
   failure rather than a sent order, and the four replies a venue can send (ack, fill, cancel, reject) become the
   `ExecutionReport`s the ledger already consumes. `tests/live_venue_test.cpp` pins all of it with a recorder in place of a
-  socket: 32 test binaries now, and no recorded number moved.
-- **It is not wired into a run.** There is no flag, no transport and no venue yet, which is deliberate: ADR 0005 puts the
-  shape before the wire. The next step is a transport that speaks the relay, then the venue's sandbox.
+  socket: 33 test binaries now, and no recorded number moved.
+- **The wire is real now, and still local.** `src/lines/tcp_venue_transport.{h,cpp}` is an `IVenueTransport` over TCP: one
+  frame per line out, the venue's replies split on newlines on a receive thread, and a connection that has gone away
+  reported rather than written into. `tests/tcp_venue_transport_test.cpp` puts the adapter on loopback against a listener
+  the test opens on an ephemeral port -- no endpoint, no credential, no market -- and pins the frame that crosses, the ack
+  and the fill that come back, the counters at both ends, and a refused write after the venue hangs up.
+- **It is still not wired into a run.** There is no flag and no venue endpoint yet, which is deliberate: ADR 0005 puts the
+  shape before the wire. What remains inside the step is the relay's order channel -- the relay speaks WebSocket and this
+  transport speaks lines -- then the venue's sandbox.
 
 
 ## The evidence milestone (current)

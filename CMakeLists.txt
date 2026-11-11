@@ -71,6 +71,7 @@ set(LINE_SOURCES
     src/lines/paper_broker.cpp
     src/lines/order_gateway.cpp
     src/lines/live_venue.cpp
+    src/lines/tcp_venue_transport.cpp
     src/lines/legacy/tick_csv_parser.cpp
     src/lines/legacy/order_book.cpp
     src/lines/legacy/csv_feed.cpp
@@ -219,6 +220,7 @@ add_toy_test(order_state_test)
 add_toy_test(paper_broker_test)
 add_toy_test(order_gateway_test)
 add_toy_test(live_venue_test)
+add_toy_test(tcp_venue_transport_test)
 add_toy_test(matching_engine_test)
 add_toy_test(tick_csv_parser_test)
 add_toy_test(line_reader_test)
