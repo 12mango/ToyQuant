@@ -68,3 +68,33 @@ Two habits are worth taking from the tool rather than reading past:
 The floor numbers need none of this, and the contrast is the point: 5.39 bps a crossing costs is fee plus half a
 tick, so running it twice gives the same digits and its interval has zero width. Intervals belong to estimates.
 
+## Which fields appear, and when
+
+Five fields decide whether a run of this mode was any good, and all five are `[EXECUTION]`/`[PNL]` fields whose
+definition is in the [Learning Path field reference](../LEARNING.md#field-reference): `fill_rate`, `cancel_rate`,
+`queue_ahead_consumed`, `net_pnl_usd`, and `breakeven_maker_rate`. The last is the one to read first — it is the maker fee
+that would have made the window flat, so a negative value says no fee schedule can save it.
+
+The rest of the summary is conditional, and this is the part worth knowing when running *this* mode, because each group
+appears only when a flag asks for it:
+
+- `min_commission_orders`, `min_commission_paid` — orders charged a schedule's floor under one order's commission and
+  what it added, both zero unless `--fee-schedule=min=...` names a floor;
+- `max_exposure_limit_usd`, `hard_limit_rejections` — the exposure cap and the orders it refused, both zero unless
+  `--max-exposure-usd=...` names one;
+- `kill_switch_loss_usd`, `kill_switch_triggered`, `kill_switch_ts`, `kill_switch_rejected_orders`, plus
+  `kill_switch_closed_quantity` and `kill_switch_close_bps` when the switch actually closed something — all zero or
+  false unless `--kill-switch-loss-usd=...` names a loss;
+- `fat_finger_rejections`, `rate_limited_orders` — printed in a `[RISK]` line that appears only when `--fat-finger-bps`
+  or `--max-orders-per-second` is named;
+- `audited_rejected_orders`, `invalid_order_transitions`, `orphan_order_reports`,
+  `cancelled_after_fill_orders`/`cancelled_before_fill_orders`, `orders_that_filled`, `filled_orders_by_size` — the order
+  lifecycle and state-machine health counters, appended to `[EXECUTION]` only when non-zero. `filled_orders_by_size` is a
+  histogram as `count/quantity` per bucket with the buckets `<=50, 51-99, 100-199, 200-499, 500-999, 1000+`: the bounds at
+  100 and 200 are where the two share schedules this repository has read stop charging a minimum per order, so a
+  commission under either convention is computable from it exactly;
+- `total_order_lifetime_cycles` — quote-cycle lifetime sum, not elapsed microseconds.
+
+The same question for a whole line -- what `[EXECUTION]` prints and what each name means -- is in the
+[field reference in the learning path](../LEARNING.md#field-reference) and, for the arithmetic, in
+[the glossary](../GLOSSARY.md).

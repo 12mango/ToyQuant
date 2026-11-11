@@ -54,12 +54,13 @@ watch a position build names both: `--order-size=10 --inventory-limit=100`.
 | gates | `--markout-cover`, `--flatten-band`, `--markout-horizon` | `--markout-cover` needs `active_l2`; `--markout-horizon` moves the cycle count behind the markout itself |
 | output | `--metrics`, `--trace-order`, `--record`, `--close-out` | each adds a line or a file and changes no number |
 | session | `--snapshot-out`, `--snapshot-in` | see below: the account comes back, the strategy's own state does not |
-| threads | `--feed-thread`, `--ring-capacity`, `--profile-stages` | see below: what it reports is the hand-off, not the strategy |
+| signals | `--trend-params` | the non-market-making line's EWMA cross and its exits; `--inventory-limit` doubles as the size of a full signal |
+| threads and pacing | `--feed-thread`, `--ring-capacity`, `--profile-stages`, `--live-pacing` | see below: the first three report the hand-off; pacing replays against the wall clock and reports `[LIVE]` |
 | paper trading | `--paper-broker` and its five fault flags, `--order-gateway` and its two | see below: they put a component between the strategy and the venue |
 | execution | `--parent`, `--algo`, `--algo-entry` | needs the `execution_l2` strategy |
 | two books | `--symbol-b`, `--trades-b`, `--depth-b` | see below: one account, two venues, three extra lines |
 
-## The four flags that need more than a line
+## The six flags that need more than a line
 
 **Two books.** Each symbol gets its own book, decision layer, venue and pipeline, and they share one account. The four
 readers are merged by timestamp with ties going to the stream listed first. Three things change in what is printed: one
@@ -92,3 +93,30 @@ backpressure rather than the hand-off -- `ring_depth_max` one above the capacity
 that measures the hand-off. A full ring is backpressure, never a lost event. `--profile-stages` works on this path with
 one block per thread; it is refused with `--feed-thread` on a two-book run, where one profiler would be written by two
 pipelines as well as the feed.
+
+**The paper broker and its faults.** `--paper-broker` puts a broker between the strategy and the engine -- a layer a live
+path has and a replay does not -- and with no fault configured it forwards every call and every report, which the gate
+asserts by comparing a brokered run with the same run without it. The faults are counts of orders or fills rather than drawn probabilities, so a faulted run is reproducible
+from its command line alone. `--broker-reject-every=N` refuses every Nth order and counts each refusal,
+because a refusal emits no report — the same reason the engine carries a reject count for the pipeline to
+watch across a submission. `--broker-partial-every=N` delivers every Nth of the strategy's fills as two
+prints with the fee split the same way, so the position and the fee are what one print would have been and
+only the report count changes: on the 200k slice with `--order-size=10` it split three fills, the run
+reported six trade reports for the same three executions, and the reconciliation stayed `status=ok` with a
+fee difference in the last bits only. `--broker-drop-every=N` withholds every Nth fill from the strategy
+while the venue's statement still records it executed. And `--broker-outage-after=N` with
+`--broker-outage-holds=M` takes the venue away once N orders have been accepted, holds the next M, and
+delivers them in submission order when the order after them arrives; a hold of zero is a venue that never
+comes back. A fault flag without `--paper-broker` is refused rather than ignored, because a fault
+the run cannot show would leave a faulted session looking exactly like a clean one.
+
+**The order gateway.** `--order-gateway` puts the client's side of the order path outside the broker: it keeps a table of
+orders from submission to answer and reports `[GATEWAY]`. `--gateway-ack-timeout-us=N` counts an order the venue has not said anything about within
+N microseconds of market time, and `--gateway-retry-timeouts` sends it again under the same id. The venue
+already refuses a duplicate id, so the second copy is a refusal rather than a fill: on the 200k slice with
+each order held for 100 ms and a timeout of 50 ms, the gateway timed out and re-sent all six orders, the
+engine refused six duplicates on stderr, and the run's trades, P&L, fees and inventory were exactly those
+of the same run with the latency and no retry. A cancel for an order that has already finished is counted
+in `cancels_after_fill` instead of being sent to a venue with nothing to cancel. With every knob at zero
+the gateway forwards every call and every report, and a run with it reports the numbers of the same run
+without it.
