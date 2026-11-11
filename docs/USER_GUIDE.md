@@ -10,6 +10,20 @@ for the regression invariants that pin them. It does not explain *why* the softw
 [Architecture](ARCHITECTURE.md).
 
 
+## Which page do I need?
+
+| I want to... | Read this | Skip |
+|---|---|---|
+| see it work once | [1. Getting started](using/01-getting-started.md) | everything else, until you want more |
+| understand what a run prints | [6. Reading the output](using/06-reading-the-output.md) + [the glossary](GLOSSARY.md) | -- |
+| look up a flag | [the L2 replay flags](L2_FLAGS.md) | the guide's prose |
+| pick a mode (CSV, UDP, Binance, L2, ws, carry) | [2. Modes](using/02-modes.md) | -- |
+| replay the mainline properly | [3. The L2 replay](using/03-l2-replay.md), part 1 | parts 2 and 3 unless the venue or funding is your question |
+| connect to a live feed | [4. A live session and the carry line](using/04-live-and-carry.md) | -- |
+| explain a number that surprised me | [6. Reading the output](using/06-reading-the-output.md), then [the glossary](GLOSSARY.md) | -- |
+| fix a failure | [7. Troubleshooting](using/07-troubleshooting.md) | -- |
+| write a strategy | [8. Writing your own strategy](using/08-writing-a-strategy.md) | the rest of the guide |
+
 ## The guide, in eight parts
 
 Eight parts, in the order a session actually goes: get it built, pick a mode, replay the mainline, run it live, read what
@@ -24,7 +38,7 @@ strategy of your own.
 |---|---|
 | [1. Getting started](using/01-getting-started.md) | requirements, the build, the tests, and the three-command demo path |
 | [2. Modes](using/02-modes.md) | the four input modes, what each is for, and the legacy CSV and UDP commands |
-| [3. The L2 replay](using/03-l2-replay.md), in three parts | the mainline: trades plus incremental depth, every flag that changes it, and what each one does to the run |
+| [3. The L2 replay](using/03-l2-replay.md), in three parts | the mainline: the two inputs, one run, the venue side, funding and the benchmark -- with every flag in [the flag reference](L2_FLAGS.md) |
 | [4. A live session and the carry line](using/04-live-and-carry.md) | the WebSocket session over a local sender, and the two-legged funding carry |
 | [5. Scenarios and reports](using/05-scenarios-and-reports.md) | the synthetic tick files, and the static report with a plot |
 | [6. Reading the output](using/06-reading-the-output.md) | what each line reports, and how sure a number is |

@@ -22,6 +22,27 @@ the pinned regression invariants, and their fill counts answer a different quest
 line instead and is described at the end of this guide. The detail is in the L1
 note in `docs/ARCHITECTURE.md`.
 
+## Run the Binance Trade+BBO replay
+
+```bash
+./out/build/linux-debug/toy_quant replay \
+  data/v2/fixtures/test_aggTrades_5k.csv \
+  data/v2/fixtures/test_bookTicker_5k.csv \
+  BTCUSDT 0 optimized 1000000
+```
+
+The format is `replay <trades_csv> <bbo_csv> <symbol> [delay_ms] [strategy] [quantity_scale]`. The feed merges both files
+by transaction timestamp: BBO events replace the external best bid and ask and trigger decisions, aggregate trades drive
+fills, and `is_buyer_maker=true` means the seller was the aggressor. `quantity_scale` converts decimal exchange quantities
+into the engine's integer units -- the default `1000000` makes `0.001 BTC` a thousand units -- and a registered symbol
+supplies its own tick, lot step and fee schedule.
+
+Use `l1` instead of `optimized` when you want the BBO-aware strategy. A print without a usable BBO, or one more than five
+basis points from the latest BBO midpoint, is **counted as filtered and not sent to matching**: a data-alignment problem
+must not create synthetic fills, and the count is the warning rather than a repair. The L2 path applies the same
+threshold as a *count* instead of a filter, because a book is a better reference than a BBO; both fields are defined in
+[the glossary](../GLOSSARY.md).
+
 ## Run with Legacy CSV
 
 ```bash

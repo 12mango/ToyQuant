@@ -65,6 +65,7 @@ nav:
       - Current performance: PERFORMANCE.md
       - Data files: DATA.md
       - Tools: TOOLS.md
+      - L2 replay flags: L2_FLAGS.md
       - Glossary: GLOSSARY.md
   - The Vault (history and decisions):
       - Strategy retrospective: RETROSPECTIVE.md

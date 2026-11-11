@@ -65,18 +65,10 @@ example, because the earliest orders are the ones that die in the same milliseco
 Of these, the requote threshold moves the fill count the most of anything measured so far, and the
 arrival share the least; `docs/PERFORMANCE_HISTORY.md` records the measured ordering.
 
-## Replay strategy choices
+## Comparing strategies: the benchmark
 
-The replay command continues to accept these frozen L1 strategy names for compatibility and
-historical result reproduction. They are not an active development target; the current strategy
-mainline is `active_l2`.
-
-| Name | Use when you want to demonstrate |
-|---|---|
-| `passive_l1` | A simple passive two-sided L1 baseline |
-| `inventory_aware_l1` | Inventory-sensitive prices and quantities |
-| `flow_aware_l1` | Recent trade-flow and BBO imbalance response |
-| `l1` | The complete replay-oriented strategy and default mainline comparison |
+Every strategy name, with what each one is and whether it is frozen, is in
+[the strategy table](../../L2_FLAGS.md#strategy-names); this section is about running them side by side.
 
 For a side-by-side replay comparison, use the benchmark target. It takes named options, and
 `--help` lists them with the defaults they carry:
@@ -101,37 +93,7 @@ position, gross/net PnL, fees, filtered trades, markout, and inventory metrics. 
 window tool resets state per window and remains useful for comparing market phases; it is not a
 replacement for this continuous timeline.
 
-## Current demo status
-
-The replay demo retains historical L1 and current L2 roles:
-
-- `l1`: frozen L1 replay reference with inventory, flow, volatility, and fee-aware spread controls;
-- `active_l1`: separate higher-activity experiment focused on inventory rotation;
-- `flow_aware_l1`: bounded order-flow experiment and comparison baseline;
-- `passive_l1` and `inventory_aware_l1`: simple reference baselines;
-- `active_l2`: current L2 mainline for depth-aware replay;
-- `passive_l2`, `inventory_aware_l2`, and `flow_aware_l2`: L2 comparison baselines;
-- `trend_l2`: the non-market-making line, where the signal sets a target position instead of a quote.
-
-Replay trades without a usable BBO, or with a price more than 5 bps from the latest BBO midpoint,
-are counted as `filtered` and are not sent to matching. This keeps data-alignment problems from
-creating synthetic fills. A high filtered count is still a data-quality warning: it does not mean
-the source file has been repaired.
-
-For final comparisons, read `gross_pnl`, `fees`, and `net_pnl` together with `markout`, inventory,
-and filtered-trade counts. The result is an educational replay measurement, not a claim of live
-profitability.
-
-The benchmark reports submitted orders, filled quantity, final position, gross PnL, fees, net
-PnL, and fee ratio. It also records unified execution-quality diagnostics for every replay strategy:
-captured edge, adverse selection, inventory, markouts, and quote lifetime. `net_pnl` is the primary
-result for cost-aware comparisons;
-`gross_pnl` and `fees` explain why it changed.
-
-Every row carries `fills_are_conclusive`: a strategy with fewer than `MINIMUM_FILLS` fills has too
-little data for a PnL or per-fill edge statement, and the benchmark prints that warning rather than
-leaving the reader to notice the count. On the recorded Deribit window no strategy clears it, which is
-the honest reason the project reports a range across queue models instead of one number.
+## What the demo claims, and what it does not
 
 The replay strategies are intentionally different teaching baselines, not production algorithms.
 L1 implementations are frozen; `flow_aware_l1` is an experimental transition strategy
