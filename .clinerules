@@ -23,8 +23,11 @@ compatibility path. Everything below assumes that page.
 - **There are two front doors, and they are the same shape.** The repository page is `README.md`; the published site's
   home is `docs/index.md`, because `mkdocs.yml` maps `Home` to it. A reader arrives at one or the other, so both are the
   same three parts -- the pitch, one command, the hook into the vault -- and both point at `docs/MAP.md` for the tiers,
-  the path for a question and who owns what. Changing one and calling the documentation front door done is the mistake
-  this rule exists to prevent: the review that found it had to visit the published site to see it.
+  the path for a question and who owns what. They are **not** kept byte-identical, because their media differ: the site
+  home has a navigation tree beside it, so it points at the map instead of repeating the routing table; the repository
+  page has no navigation, so it carries that table itself. Duplicating what the medium already provides is the redundancy
+  this rule is about. Changing one and calling the documentation front door done is the mistake the rule exists to
+  prevent: the review that found it had to visit the published site to see it.
 - **The low-latency line keeps a standing retrospective, and it is not an ADR.** `docs/LOW_LATENCY.md` describes the
   engine line as a whole — what it was for, the order the attempts came in, the condition that stopped it, and what it
   never measured — while the records in `docs/adr/` are one decision each. Neither replaces the other: a new candidate

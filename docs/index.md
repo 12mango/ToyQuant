@@ -60,17 +60,9 @@ The record is kept in three places:
 - [**Decisions**](adr/index.md) -- one append-only file per technical decision, so "why is the event a variant?" has a link
   to send rather than a paragraph to find.
 
-## Where to read what
-
-| I want | Read |
-|---|---|
-| to run something | [Getting started](using/01-getting-started.md), then [the L2 replay](using/03-l2-replay.md) |
-| what the project found | [Retrospective](RETROSPECTIVE.md) |
-| what the engine work returned | [Engine retrospective](LOW_LATENCY.md) |
-| how the engine is built | [Main line](MAINLINE.md), then the [module reference](ARCHITECTURE.md) |
-| a field, a flag or a format | [Learning path](LEARNING.md), [Data files](DATA.md), [Tools](TOOLS.md) |
-| the evidence behind one number | [Performance history](PERFORMANCE_HISTORY.md), [the studies](archive/studies.md), [Decisions](adr/index.md) |
-| what comes next | [Roadmap](ROADMAP.md) |
+## Where to go next
 
 The three tiers, the path for a question, and which document owns which claim are in
-[the documentation map](MAP.md).
+[the documentation map](MAP.md); the navigation on the left is the short version of the same thing. If you only read one
+more page, read [the retrospective](RETROSPECTIVE.md) -- it is why any of this exists.
+
