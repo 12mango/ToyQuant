@@ -76,6 +76,7 @@ nav:
           - 0002. The order book's map, retired by counting: adr/0002-retire-the-orderbook-map-by-counting.md
           - 0003. Split the gate by what a change pays for: adr/0003-split-the-gate-by-what-a-change-pays-for.md
           - 0004. The document tree keeps its names: adr/0004-the-document-tree-keeps-its-names.md
+          - 0005. A live venue is another matching engine: adr/0005-a-live-venue-is-another-matching-engine.md
       - Performance history:
           - All measurements, in order: PERFORMANCE_HISTORY.md
           - 1. The engine and the L1 line: performance/history-01-engine.md

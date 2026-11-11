@@ -10,10 +10,10 @@ can send — "why is the event a variant?" — and a row in a three-hundred-row 
 ## The four rules
 
 1. **One decision per file**, named `NNNN-slug.md` in the order they were accepted. A number is never reused.
-2. **Append-only.** The status line is the only part that changes: `accepted`, `superseded by 0007`, or `rejected`. A
-   decision is superseded by writing a new record, never by editing the old one — the old one is the reason the new one
-   exists. `tools/gate/check_adr.py` holds the status line and this page's table to the same words, and refuses a
-   supersede that only one end states, so the agreement is checked rather than promised.
+2. **Append-only.** The status line is the only part that changes: `proposed` (written down, not started), `accepted`,
+   `superseded by 0007`, or `rejected`. A decision is superseded by writing a new record, never by editing the old one —
+   the old one is the reason the new one exists. `tools/gate/check_adr.py` holds the status line and this page's table to
+   the same words, and refuses a supersede that only one end states, so the agreement is checked rather than promised.
 3. **An ADR quotes no number it does not own.** Every figure it needs is a link to the marked block that re-derives it.
    That is what keeps this layer cheap: an ADR cannot drift, so a re-recorded measurement never sends anyone back here.
 4. **It says what it costs.** A decision record that lists only benefits is an argument; the `Consequences` section names
@@ -27,6 +27,7 @@ can send — "why is the event a variant?" — and a row in a three-hundred-row 
 | [0002](0002-retire-the-orderbook-map-by-counting.md) | 2026-11-07 | the order book's `std::map` is retired by counting the orders, not by replacing the container | accepted |
 | [0003](0003-split-the-gate-by-what-a-change-pays-for.md) | 2026-11-10 | the gate is split into `smoke`, `code`, `docs` and `fast` by what a change pays for | accepted |
 | [0004](0004-the-document-tree-keeps-its-names.md) | 2026-11-10 | the document tree keeps its names; the layer it gains is addressability, not vocabulary | accepted |
+| [0005](0005-a-live-venue-is-another-matching-engine.md) | 2026-11-11 | a live venue is a third `IMatchingEngine`; the demonstration stops at the venue's sandbox | proposed |
 
 ## Where the research lives
 
