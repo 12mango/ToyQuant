@@ -12,8 +12,13 @@ for the regression invariants that pin them. It does not explain *why* the softw
 
 ## The guide, in eight parts
 
-Eight parts, in the order a session actually goes: get it built, pick a mode, replay the mainline, run it live, read
-what came out, fix what went wrong -- and, once you want a strategy of your own, write one.
+Eight parts, in the order a session actually goes: get it built, pick a mode, replay the mainline, run it live, read what
+came out, fix what went wrong -- and, once you want a strategy of your own, write one.
+
+**Only part 1 is needed to see the project work.** It ends with a replay of the mainline, which is the thing every number
+in this repository came from. Parts 2 and 3 are the reference for that path -- flags, inputs, and what each one does to a
+run -- and parts 4, 5, 7 and 8 are for when you need them: a live session, the synthetic scenarios, a failure, or a
+strategy of your own.
 
 | part | what it covers |
 |---|---|

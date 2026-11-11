@@ -32,6 +32,27 @@ ctest --preset linux-asan
 The main programs are `out/build/linux-debug/toy_quant` for simulation/replay and
 `out/build/linux-debug/backtest_main` for legacy metrics from recorded Tick data.
 
+## Your first replay
+
+The mainline is the L2 replay: venue trades against incremental depth. The archived day is 1.5 GB, so a run wants a slice;
+`smoke` cuts the 200k-row slice the gate uses and asserts the recorded invariants in about a second, so it is the honest
+first command.
+
+```bash
+bash tools/gate/verify_l2.sh smoke      # cuts /tmp/depth_200k_base.csv, then asserts the invariants
+./out/build/linux-debug/toy_quant l2_replay \
+    data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
+    /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation
+```
+
+It prints four lines, and they answer four different questions: `[L2 DATA]` is what arrived, `[EXECUTION]` is what the
+strategy did with it -- orders rested, orders cancelled, fills -- `[PNL]` is what those fills were worth after fees, and
+`[PORTFOLIO]` is the account. [Reading the output](06-reading-the-output.md) walks one run through them and
+[the glossary](../GLOSSARY.md) gives the arithmetic behind each name.
+
+If that run is enough for now, you are done: everything after this page is reference or the other lines of work.
+
+
 ## A short demo path
 
 After the build above, these three commands are the shortest ordered tour of the project. The first is the
