@@ -34,6 +34,10 @@ Usage:
     python3 tools/live/venue_relay.py --instrument BTC-USDT-SWAP --listen 127.0.0.1:8765 \
         --capture /tmp/okx.jsonl --max-seconds 7200 --ping-seconds 20 --drop-after-seconds 1500
 
+    # the order channel: the engine's order leg, answered by a simulated sandbox venue -- no key, no money.
+    # `tests/relay_order_channel_test` drives it with the real adapter and the real transport.
+    python3 tools/live/venue_relay.py --simulate-orders --order-listen 127.0.0.1:8766
+
     python3 tools/live/venue_relay.py --self-test
 """
 
@@ -503,7 +507,222 @@ def stream(conn, rows, stop):
 
 
 
+# ---------------------------------------------------------------- the order channel
+
+# The adapter's protocol -- `src/lines/live_venue.h` -- on the engine's side, the venue's JSON on the other.
+# The adapter is deliberately ignorant of the venue: it knows an order, a cancel and four replies. This is
+# the only place that knows both what the engine sent and what the venue calls it, which is why the
+# translation lives here rather than in the engine (ADR 0005, decision 1).
+
+
+class OrderError(ValueError):
+    """A line the channel refuses, with the reason the engine is told."""
+
+
+def _positive(text, what):
+    try:
+        value = float(text)
+    except ValueError as error:
+        raise OrderError(f"{what} '{text}' is not a number") from error
+    if not value > 0:
+        raise OrderError(f"{what} '{text}' is not positive")
+    return value
+
+
+class OrderTranslator:
+    """The engine's lines in, the venue's messages out, and the venue's answers back.
+
+    One translation each way, used by both routes. The simulated venue answers in the venue's own shapes and
+    its answers go back through `decode`, so the round trip is exercised with no key, no endpoint and no
+    money; a real session replaces only where the messages come from -- the venue's private channel instead
+    of the simulator -- and these two translations stay as they are.
+    """
+
+    def __init__(self, instrument):
+        self.instrument = instrument
+        # What the channel has been told, keyed by the client order id: a cancel needs the instrument it was
+        # placed on, and the venue's messages carry the id the engine chose.
+        self.orders = {}
+
+    def encode(self, line):
+        fields = line.split()
+        if not fields:
+            raise OrderError("the line is empty")
+        if fields[0] == "ORDER":
+            if len(fields) != 7:
+                raise OrderError(f"an order line has seven fields and this one has {len(fields)}")
+            _, cl_ord_id, symbol, side, price, quantity, tif = fields
+            if not cl_ord_id.isdigit():
+                raise OrderError(f"the order id '{cl_ord_id}' is not a number")
+            if side not in ("B", "S"):
+                raise OrderError(f"side '{side}' is not B or S")
+            _positive(price, "price")
+            if not quantity.isdigit() or int(quantity) == 0:
+                raise OrderError(f"quantity '{quantity}' is not a positive integer")
+            if tif not in ("Gtc", "Ioc", "Fok"):
+                raise OrderError(f"time in force '{tif}' is not Gtc, Ioc or Fok")
+            self.orders[cl_ord_id] = {"symbol": symbol, "quantity": int(quantity)}
+            # OKX's shape for a limit order. `px` is passed through as the engine wrote it -- the shortest
+            # decimal that parses back to the same double -- rather than reformatted, so the venue sees the
+            # price the strategy decided.
+            return {"op": "order", "args": [{"instId": symbol, "tdMode": "cross",
+                                             "side": "buy" if side == "B" else "sell",
+                                             "ordType": "limit", "px": price, "sz": quantity,
+                                             "clOrdId": cl_ord_id}]}
+        if fields[0] == "CANCEL":
+            if len(fields) != 2:
+                raise OrderError(f"a cancel line has two fields and this one has {len(fields)}")
+            cl_ord_id = fields[1]
+            if not cl_ord_id.isdigit():
+                raise OrderError(f"the order id '{cl_ord_id}' is not a number")
+            known = self.orders.get(cl_ord_id, {})
+            return {"op": "cancel-order", "args": [{"instId": known.get("symbol", self.instrument),
+                                                    "clOrdId": cl_ord_id}]}
+        raise OrderError(f"'{fields[0]}' is not an order or a cancel")
+
+    def decode(self, message):
+        """The venue's message as the adapter's lines: ACK, FILL, CANCELED or REJECT."""
+        if not isinstance(message, dict):
+            raise OrderError("a venue message is not an object")
+        operation = message.get("op")
+        argument = message.get("arg") if isinstance(message.get("arg"), dict) else {}
+        channel = argument.get("channel")
+        lines = []
+        for entry in message.get("data", []):
+            cl_ord_id = str(entry.get("clOrdId", ""))
+            if not cl_ord_id.isdigit():
+                raise OrderError(f"the venue's message carries no order id the engine knows: {entry}")
+            if operation == "order":
+                if str(entry.get("sCode", "0")) != "0":
+                    lines.append(f"REJECT {cl_ord_id} venue")
+                    continue
+                known = self.orders.setdefault(cl_ord_id, {"quantity": 0})
+                placed = int(entry.get("sz", known["quantity"]))
+                remaining = placed - int(entry.get("accFillSz", 0) or 0)
+                lines.append(f"ACK {cl_ord_id} {max(remaining, 0)}")
+            elif operation == "cancel-order":
+                # The acknowledgement of a cancel is the venue saying it will act; the state message that
+                # follows is the order actually ending, and that is the one that becomes CANCELED.
+                if str(entry.get("sCode", "0")) != "0":
+                    lines.append(f"REJECT {cl_ord_id} venue")
+            elif channel == "orders":
+                fill = int(entry.get("fillSz") or 0)
+                if fill > 0 and entry.get("fillPx"):
+                    lines.append(f"FILL {cl_ord_id} {entry['fillPx']} {fill}")
+                if entry.get("state") == "canceled":
+                    lines.append(f"CANCELED {cl_ord_id} user")
+                elif entry.get("state") == "rejected":
+                    lines.append(f"REJECT {cl_ord_id} venue")
+            else:
+                raise OrderError(f"the venue's message is not one this channel knows: {sorted(message)}")
+        return lines
+
+
+class SimulatedVenue:
+    """The venue's side of the order channel with no key, no endpoint and no money.
+
+    It answers in the venue's own message shapes and the channel decodes those through
+    `OrderTranslator.decode`, so what the engine receives is a translation of a venue message rather than a
+    branch of the channel that prints frames. The behaviour is deterministic -- half the order fills at its
+    own price on arrival, anything above the cap is refused -- because a demonstration whose replies were
+    drawn from a distribution could not be reproduced from its command line.
+    """
+
+    def __init__(self, max_quantity=100):
+        self.max_quantity = max_quantity
+
+    def messages(self, request):
+        args = request.get("args") or [{}]
+        argument = args[0]
+        cl_ord_id = str(argument.get("clOrdId", ""))
+        if request.get("op") == "order":
+            quantity = int(argument.get("sz", "0"))
+            if quantity > self.max_quantity:
+                return [{"op": "order", "data": [{"clOrdId": cl_ord_id, "sCode": "51008",
+                                                  "sMsg": "order size above the sandbox cap"}]}]
+            acknowledgement = {"op": "order",
+                               "data": [{"clOrdId": cl_ord_id, "ordId": cl_ord_id, "sCode": "0", "sMsg": "",
+                                         "sz": str(quantity), "accFillSz": "0"}]}
+            filled = quantity // 2 if quantity >= 2 else quantity
+            state = "partially_filled" if filled < quantity else "filled"
+            fill = {"arg": {"channel": "orders"},
+                    "data": [{"clOrdId": cl_ord_id, "state": state, "fillPx": argument.get("px"),
+                              "fillSz": str(filled), "accFillSz": str(filled), "sz": str(quantity)}]}
+            return [acknowledgement, fill]
+        if request.get("op") == "cancel-order":
+            return [{"op": "cancel-order", "data": [{"clOrdId": cl_ord_id, "sCode": "0"}]},
+                    {"arg": {"channel": "orders"},
+                     "data": [{"clOrdId": cl_ord_id, "state": "canceled"}]}]
+        return [{"op": "order", "data": [{"clOrdId": cl_ord_id, "sCode": "50011",
+                                          "sMsg": "operation not supported"}]}]
+
+
+def serve_orders(listen, instrument, max_quantity=100, capture=None):
+    """Serves the engine's order leg on a line socket, one frame a line, until the engine goes away.
+
+    The same shape as `accept_client` and `stream`, minus the websocket: `LiveVenue`'s transport speaks lines,
+    which is what `TcpVenueTransport` is (ADR 0005, step two). What the venue does with a message is the one
+    thing that changes between the simulation and an endpoint; the translation above does not.
+    """
+    host, _, port = listen.partition(":")
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    listener.bind((host, int(port)))
+    listener.listen(1)
+    # Printed rather than assumed: a caller can ask for port 0 and read the port back, so it never has to
+    # guess which numbers are free on the host.
+    print(f"order channel listening on {host}:{listener.getsockname()[1]}", flush=True)
+    conn, peer = listener.accept()
+    print(f"engine connected from {peer[0]}:{peer[1]}", flush=True)
+    translator = OrderTranslator(instrument)
+    venue = SimulatedVenue(max_quantity)
+    sink = open(capture, "a", encoding="utf-8") if capture else None
+    orders = cancels = replies = refused = 0
+    pending = b""
+    try:
+        while True:
+            chunk = conn.recv(4096)
+            if not chunk:
+                break
+            pending += chunk
+            while b"\n" in pending:
+                line, _, pending = pending.partition(b"\n")
+                text = line.decode(errors="replace").strip()
+                if not text:
+                    continue
+                try:
+                    request = translator.encode(text)
+                except OrderError as error:
+                    # A line the channel cannot translate is answered, not dropped: the adapter counts an
+                    # unreadable frame, and silence would look exactly like a venue that ignored the order.
+                    token = text.split()[1] if len(text.split()) > 1 and text.split()[1].isdigit() else "0"
+                    conn.sendall(f"REJECT {token} venue\n".encode())
+                    print(f"refused '{text}': {error}", flush=True)
+                    refused += 1
+                    continue
+                if text.startswith("ORDER"):
+                    orders += 1
+                else:
+                    cancels += 1
+                if sink is not None:
+                    sink.write(json.dumps(request) + "\n")
+                    sink.flush()
+                for message in venue.messages(request):
+                    for reply in translator.decode(message):
+                        conn.sendall(reply.encode() + b"\n")
+                        replies += 1
+    finally:
+        if sink is not None:
+            sink.close()
+        conn.close()
+        listener.close()
+    print(f"order channel done: orders={orders} cancels={cancels} replies={replies} refused={refused}",
+          flush=True)
+    return 0
+
+
 # ---------------------------------------------------------------- self-test and main
+
 
 def decode_file(path, decoder):
     """Rows for a captured file: an offline run with no network at all."""
@@ -551,6 +770,43 @@ def self_test():
     assert decoder.decode('{"event":"subscribe","arg":{"channel":"books"},"connId":"x"}') == []
     assert decoder.decode("pong") == []
 
+    # The order channel: the adapter's lines in, the venue's shapes out, and the venue's answers back. The two
+    # processes it joins are tested separately -- `tcp_venue_transport_test` on the engine side, this file on
+    # the translation -- so what is pinned here is the shape in the middle, field by field.
+    translator = OrderTranslator("BTC-USDT-SWAP")
+    request = translator.encode("ORDER 7 BTC-USDT-SWAP B 6421.5 10 Gtc")
+    assert request["op"] == "order", request
+    argument = request["args"][0]
+    assert (argument["instId"], argument["side"], argument["ordType"], argument["px"], argument["sz"],
+            argument["clOrdId"]) == ("BTC-USDT-SWAP", "buy", "limit", "6421.5", "10", "7"), argument
+
+    venue = SimulatedVenue(max_quantity=100)
+    replies = [line for message in venue.messages(request) for line in translator.decode(message)]
+    assert replies == ["ACK 7 10", "FILL 7 6421.5 5"], replies
+
+    # Above the sandbox cap the venue refuses, and the refusal reaches the engine as a REJECT rather than as an
+    # acknowledgement of an order that was never placed.
+    over = translator.encode("ORDER 8 BTC-USDT-SWAP S 6421.5 9 Gtc")
+    small = SimulatedVenue(max_quantity=8)
+    replies = [line for message in small.messages(over) for line in translator.decode(message)]
+    assert replies == ["REJECT 8 venue"], replies
+
+    # A cancel is answered by the venue's acknowledgement and then by the state message, and only the second
+    # one is the order ending.
+    cancel = translator.encode("CANCEL 7")
+    assert cancel["op"] == "cancel-order" and cancel["args"][0]["instId"] == "BTC-USDT-SWAP", cancel
+    replies = [line for message in venue.messages(cancel) for line in translator.decode(message)]
+    assert replies == ["CANCELED 7 user"], replies
+
+    # A line the channel does not understand is refused with a reason rather than guessed at.
+    for bad in ("FILL 7 1 1", "ORDER 7 BTC-USDT-SWAP X 1 1 Gtc", "CANCEL", "ORDER 7 BTC-USDT-SWAP B 0 1 Gtc",
+                "ORDER 7 BTC-USDT-SWAP B 1 0 Gtc", "ORDER 7 BTC-USDT-SWAP B 1 1 Gtc Now"):
+        try:
+            translator.encode(bad)
+        except OrderError:
+            continue
+        raise AssertionError(f"{bad!r} was accepted")
+
     print("self-test OK")
     return 0
 
@@ -568,6 +824,15 @@ def main():
     parser.add_argument("--listen", default="127.0.0.1:8765",
                         help="where to serve the engine; empty to only capture")
     parser.add_argument("--capture", help="write the venue's raw messages here, for a later --replay")
+    # The order channel: the other half of the relay, and the one an engine sends to rather than reads from.
+    parser.add_argument("--order-listen",
+                        help="serve the engine's order leg on this host:port; empty disables it")
+    parser.add_argument("--simulate-orders", action="store_true",
+                        help="answer the order channel as a sandbox venue would: no key, no endpoint, no money")
+    parser.add_argument("--order-cap", type=int, default=100,
+                        help="the largest order the simulated venue accepts, in instrument quantity")
+    parser.add_argument("--order-capture",
+                        help="write the translated venue requests here, one JSON object a line")
     parser.add_argument("--record", help="write the decoded rows straight to PREFIX_trades.csv and "
                                          "PREFIX_depth.csv: the direct route, with no engine")
     parser.add_argument("--replay", help="serve this capture instead of connecting; no network")
@@ -581,6 +846,17 @@ def main():
 
     if args.self_test:
         return self_test()
+
+    # The order channel has one route today, and it says so rather than accepting a flag and doing nothing:
+    # a real venue's private channel needs an API key and its login handshake, which is the half of ADR 0005's
+    # step two that a sandbox run does not need and that nothing here claims to have written.
+    if args.order_listen and not args.simulate_orders:
+        parser.error("--order-listen serves the order leg only with --simulate-orders: the route to a venue's "
+                     "private channel needs a key and is not written")
+    if args.simulate_orders and not args.order_listen:
+        parser.error("--simulate-orders needs --order-listen: there is nothing to answer on")
+    if args.order_listen:
+        return serve_orders(args.order_listen, args.instrument, args.order_cap, args.order_capture)
 
     decoder = Decoder(args.instrument, args.contract_size, args.quantity_scale, args.levels)
     stop = threading.Event()

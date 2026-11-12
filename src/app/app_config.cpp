@@ -98,6 +98,8 @@ constexpr std::string_view kDepthBPrefix = "--depth-b=";
 // reads one to resume from.
 constexpr std::string_view kSnapshotOutPrefix = "--snapshot-out=";
 constexpr std::string_view kSnapshotInPrefix = "--snapshot-in=";
+// Where a run writes the order leg -- what went out and what came back -- as <prefix>_orders.csv.
+constexpr std::string_view kRecordOrdersPrefix = "--record-orders=";
 constexpr std::string_view kNotionalPrefix = "--notional-usd=";
 constexpr std::string_view kLongPrefix = "--long=";
 constexpr std::string_view kMakerFeePrefix = "--maker-fee-rate=";
@@ -192,6 +194,9 @@ void print_usage(const char* executable)
                      "at the touch, and prints [WIND-DOWN] with the half spread and the taker fee the exit cost in "
                      "basis points. Without it a run that stops with a position has marked it at the last midpoint "
                      "rather than closed it, and its [PNL] is that mark\n";
+        std::cerr << "   order leg: --record-orders=PREFIX writes <prefix>_orders.csv -- every submission, cancel and "
+                     "execution report of the session, in order -- which `RecordedVenue` replays as the venue; "
+                     "without it nothing is written and no number moves\n";
         std::cerr << "   optional flags: --no-output | --fast-validation (l2_replay only) | "
                      "--profile-stages[=N] prints sampled per-stage timings (l2_replay only, default interval 64) | "
                      "--order-size=N, --inventory-limit=N, and --max-position=N override the "
@@ -461,6 +466,8 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                 cfg.snapshot_out_path = flag.substr(kSnapshotOutPrefix.size());
             else if (flag.compare(0, kSnapshotInPrefix.size(), kSnapshotInPrefix) == 0)
                 cfg.snapshot_in_path = flag.substr(kSnapshotInPrefix.size());
+            else if (flag.compare(0, kRecordOrdersPrefix.size(), kRecordOrdersPrefix) == 0)
+                cfg.order_log_path = flag.substr(kRecordOrdersPrefix.size());
             else if (flag == kMarkoutCoverFlag)
                 cfg.markout_cover = true;
             else if (flag == kMetricsFlag)
@@ -1257,6 +1264,22 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                 !std::filesystem::is_regular_file(to_abs_path(cfg.snapshot_in_path)))
             {
                 error = "session snapshot does not exist: " + to_abs_path(cfg.snapshot_in_path);
+                return false;
+            }
+        }
+        // The order leg is one file per venue, so it belongs to a run that has exactly one: a two-book run has two
+        // engines and would need two recordings, which is a shape the flag does not have yet. Every other mode has
+        // no venue to record at all.
+        if (!cfg.order_log_path.empty())
+        {
+            if (!is_l2_family)
+            {
+                error = "--record-orders is l2_replay and ws only: it writes the order leg of a session";
+                return false;
+            }
+            if (!cfg.trades_b_path.empty() || !cfg.depth_b_path.empty())
+            {
+                error = "--record-orders names one prefix for one venue, and a two-book run has two engines";
                 return false;
             }
         }

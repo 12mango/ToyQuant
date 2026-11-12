@@ -55,6 +55,7 @@ watch a position build names both: `--order-size=10 --inventory-limit=100`.
 | output | `--metrics`, `--trace-order`, `--record` | each adds a line or a file and changes no number |
 | the one that does change a number | `--close-out` | flattens the carried position at the touch and prints `[WIND-DOWN]`, so `[PNL]` becomes realisable instead of a mark -- see [what a run's numbers do not include](using/06-reading-the-output.md#two-things-a-runs-numbers-do-not-include) |
 | session | `--snapshot-out`, `--snapshot-in` | see below: the account comes back, the strategy's own state does not |
+| order leg | `--record-orders` | see below: one file per venue, and the reader that replays it |
 | signals | `--trend-params` | the non-market-making line's EWMA cross and its exits; `--inventory-limit` doubles as the size of a full signal |
 | threads and pacing | `--feed-thread`, `--ring-capacity`, `--profile-stages`, `--live-pacing` | see below: the first three report the hand-off; pacing replays against the wall clock and reports `[LIVE]` |
 | paper trading | `--paper-broker` and its five fault flags, `--order-gateway` and its two | see below: they put a component between the strategy and the venue |
@@ -85,6 +86,16 @@ replays its file from the first line while holding its own orders until the snap
 restored**: the new process starts with the account and no memory of its own quotes, which the first fill after a resume
 reports as `strategy_position_mismatches` instead of hiding. `--snapshot-in` refuses `--order-gateway`, whose table is
 client state a resumed process does not have.
+
+**The order leg.** `--record-orders=PREFIX` writes `<prefix>_orders.csv`: one row per submission, per cancel and per
+execution report, in the order they happened, with every field a report carries and a price written as the shortest
+decimal that parses back to the same double. It is off unless named, which is what every recorded run is, and it changes
+no number when it is on: the file is a record of the session, not an input to it, and `[ORDER-LOG]` prints its path and
+its three counts so a reader can check the row count against them. A field the format cannot carry -- a symbol holding a
+comma -- is refused rather than escaped. The file is read back by `RecordedVenue`, which answers from it as an engine
+instead of from a venue; the reader is tested and the app has no mode that uses it yet, because a replayed order leg
+needs a recorded session to compare against and the first one comes from the sandbox. Two runs are refused it rather
+than served: a mode with no venue, and a two-book run, which has two engines and so needs two files.
 
 **The feed thread.** `--feed-thread` reads on its own thread and hands each event to the strategy thread over a bounded
 ring, reporting the hand-off as `[LATENCY]`: the ring wait, the processing, and the total, each as mean, p50, p99 and max,

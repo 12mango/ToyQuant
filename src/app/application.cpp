@@ -21,6 +21,7 @@
 #include "exchange/matching_engine.h"
 #include "lines/order_gateway.h"
 #include "lines/paper_broker.h"
+#include "lines/recorded_venue.h"
 #include "common/tick.h"
 #include "lines/legacy/tick_pipeline.h"
 #include "lines/legacy/csv_feed.h"
@@ -564,6 +565,16 @@ void Application::run_l2_session_mode() const
     }
     IMatchingEngine* venue =
         broker ? static_cast<IMatchingEngine*>(broker.get()) : static_cast<IMatchingEngine*>(&engine);
+    // The order leg's recording, innermost of the decorators on purpose: it records what the venue itself was
+    // asked and what the venue itself answered. Outside the gateway it would record a retry as an order the venue
+    // never received, and outside the broker it would miss the refusals the broker invents. Off unless asked for,
+    // which is what every recorded run in the documents is.
+    std::unique_ptr<RecordingEngine> order_log;
+    if (!cfg_.order_log_path.empty())
+    {
+        order_log = std::make_unique<RecordingEngine>(*venue, to_abs_path(cfg_.order_log_path));
+        venue = order_log.get();
+    }
     // The gateway is the client's side of the order path, so it sits outside the broker: what it absorbs,
     // times out or re-sends is decided before the broker or the venue sees anything. With every knob at
     // zero it forwards every call and every report, and the run is the run without it.
@@ -840,6 +851,15 @@ void Application::run_l2_session_mode() const
         // strategy never heard about appears here as a disagreement between them.
         logger.log("[BROKER] ", broker->summary().to_log_string());
         logger.log("[RECON] ", reconcile_positions(broker->statement(), portfolio).to_log_string());
+    }
+    if (order_log)
+    {
+        // The order leg written down, flushed first because the line's claim is about the file on disk. Read
+        // next to `[REC]`, and read differently: that one is the market the run saw, this one is what the run
+        // did in it, and it is the only record that can turn a live session into a replay.
+        order_log->recorder().flush();
+        logger.log("[ORDER-LOG] path=", order_log->recorder().path(), " ",
+                   order_log->recorder().summary().to_log_string());
     }
     if (profiler != nullptr)
     {

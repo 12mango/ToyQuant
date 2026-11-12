@@ -150,8 +150,12 @@ def main():
                         # engine's. `--window` chooses the series and is the same tool's.
                         "--window-field", "--window-scale", "--window",
                         # Flags of the venue relay rather than of the engine's parser. They are named in
-                        # its own --help and in the roadmap, and the relay is the tool that owns them.
-                        "--ping-seconds", "--drop-after-seconds"}:
+                        # its own --help and in the roadmap, and the relay is the tool that owns them:
+                        # `--ping-seconds` and `--drop-after-seconds` are the keepalive test hooks, and the
+                        # order channel's four are its listener, its simulated venue and what that venue
+                        # writes and caps.
+                        "--ping-seconds", "--drop-after-seconds",
+                        "--order-listen", "--simulate-orders", "--order-cap", "--order-capture"}:
             problems.append(f"{flag} is mentioned in a document and is not a flag the binary accepts")
     for model in sorted(models):
         if model not in text.lower():

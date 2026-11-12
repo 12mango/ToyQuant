@@ -50,12 +50,30 @@ nothing about profit, and what stops it from becoming a program that spends mone
 - **Step two has landed, and it is loopback.** `src/lines/tcp_venue_transport.{h,cpp}` is the first `IVenueTransport` with
   a socket behind it: frames out one per line, replies in split on newlines, a closed connection reported instead of
   written into. `tests/tcp_venue_transport_test.cpp` runs the adapter against a listener the test opens on an ephemeral
-  loopback port, so the round trip is proved with no endpoint, no credential and no market -- what it cannot prove is that
-  a venue's own encoding is understood, because the relay speaks WebSocket and this transport speaks lines. The order
-  channel on the relay is the half of the step that remains.
-- **What it costs**: one adapter, one wire, one recorder and the flag plumbing -- `src/lines/live_venue.{h,cpp}`,
-  an order channel on the relay, the order recorder with its reader, and the configuration. No core file should move, and
-  no recorded number should change, because every part of it is off unless asked for.
+  loopback port, so the round trip is proved with no endpoint, no credential and no market. **The order channel on the
+  relay has landed with it.** `tools/live/venue_relay.py` accepts the adapter's lines, translates them into the venue's
+  order messages, and translates the venue's answers back into the four replies the adapter decodes; `--simulate-orders`
+  answers as a sandbox venue, deterministically, with no key, no endpoint and no money. What `tests/relay_order_channel_test`
+  adds is the half neither of the other two could prove: the adapter, the transport and that relay process, running
+  together on loopback, so the protocol is shown to cross two processes and one translation rather than being pinned
+  twice in isolation. What it is not is a route to a real venue: a private channel needs a key and a login handshake, and
+  `--order-listen` without `--simulate-orders` is refused rather than accepted and ignored.
+- **Step three has landed as the recorder and its reader, not yet as a run.** `src/lines/order_recorder.{h,cpp}` writes
+  `<prefix>_orders.csv` -- one row per submission, per cancel and per execution report, every field a report carries and
+  the shortest decimal for a price -- and `src/lines/recorded_venue.{h,cpp}` is the reader: `RecordingEngine` decorates a
+  venue and records what it was asked and what it answered, and `RecordedVenue` is an `IMatchingEngine` that answers from
+  the file instead, emitting the recorded reports in order. `tests/order_recorder_test.cpp` pins the header and two rows
+  literally, the round trip (the replayed reports are the recorded ones field for field, a rebate's sign included), the
+  `rows_left` count that says a replay stopped short, and the refusals that make a recording a record rather than a
+  summary. `--record-orders=PREFIX` is the flag; it is refused outside `l2_replay` and `ws` and refused on a two-book run,
+  because a recording is one file per venue. What is not wired is a run that takes the recorded reports back: the reader
+  exists and is tested, and pointing an app mode at it needs a flag and a claim about what a replayed order leg is
+  measured against, which is the step after the sandbox.
+- **What it costs**: one adapter, one wire, one relay order channel, one recorder with its reader, and the flag
+  plumbing -- `src/lines/live_venue.{h,cpp}`, `src/lines/tcp_venue_transport.{h,cpp}`, the order channel in
+  `tools/live/venue_relay.py`, `src/lines/order_recorder.{h,cpp}`, `src/lines/recorded_venue.{h,cpp}` and a
+  `--record-orders` flag. No core file moved and no recorded number changed, because every part of it is off unless
+  asked for.
 - **What it forbids**: claiming anything about edge from a live run. A run that fills an order proves the wiring; the
   profit question was closed by eight measurements and a sandbox order does not reopen it.
 - **The smell to watch**: `process_bbo` and `process_market_trade` are no-ops for a live venue, because the venue matches

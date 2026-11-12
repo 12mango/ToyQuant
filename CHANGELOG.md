@@ -7,6 +7,35 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The live-venue step, the second half (2026-11-12)
+
+- **The relay's order channel, and the first proof that the two halves talk.** `tools/live/venue_relay.py` now serves the
+  order leg as well as the market data: it accepts the adapter's lines, translates them into the venue's order messages,
+  and translates the venue's answers back into the four replies the adapter decodes -- ack, fill, cancel and reject.
+  `--simulate-orders` answers as a sandbox venue, deterministically: half the order fills at its own price, anything above
+  `--order-cap` is refused, a cancel ends the order. `tests/relay_order_channel_test.cpp` starts that relay as a child
+  process, connects the real `TcpVenueTransport` and the real `LiveVenue` to it, and pins the round trip across two
+  processes and one translation: the acknowledgement, the fill, the refusal of an oversized order, the user cancel, and
+  the counters on the engine's side against what crossed. The relay's own `--self-test` pins the translation's shape
+  field by field, including six lines it has to refuse. What is deliberately absent is the route to a venue's private
+  channel: it needs a key and a login handshake, so `--order-listen` without `--simulate-orders` is refused rather than
+  accepted and ignored.
+- **The order leg written down and read back.** `src/lines/order_recorder.{h,cpp}` writes `<prefix>_orders.csv` -- `seq,
+  kind, order_id, symbol, side, price, qty, ts, exec_type, cancel_reason, reject_reason, liquidity_role, fee, owner, tif`
+  -- one row per submission, per cancel and per execution report, a price as the shortest decimal that parses back to the
+  same double, and a field holding the comma the format splits on refused rather than escaped.
+  `src/lines/recorded_venue.{h,cpp}` is the pair: `RecordingEngine` decorates a venue and records what it was asked and
+  what it answered, `RecordedVenue` is an `IMatchingEngine` that answers from the file instead. `tests/order_recorder_test`
+  pins the header and two rows literally, the round trip -- the replayed reports are the recorded ones field for field, a
+  rebate's negative fee included -- the `rows_left` count that says a replay stopped short, and four refusals, each of
+  which names the file and the line. `--record-orders=PREFIX` is the flag; it writes `[ORDER-LOG]` with its path and its
+  three counts, and it is refused on a mode with no venue and on a two-book run, because a recording is one file per
+  venue.
+- **What did not move.** No core file changed, no recorded run re-derived differently, and no number in the documents
+  moved except the counts they state -- 35 test binaries, and the source lines this step added. The reader is tested and
+  the app has no mode that replays an order leg yet: that is the next step, and it needs a recorded session from the
+  sandbox to replay against.
+
 ## The live-venue step (2026-11-11)
 
 - **A venue adapter that no socket can see yet.** `src/lines/live_venue.{h,cpp}` is the third implementation of

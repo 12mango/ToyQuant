@@ -60,11 +60,19 @@ says nothing fails the run instead of hanging it. `--ws-target=/path` sets the H
 for; it defaults to `/`. Pacing has no meaning on this mode -- the venue sets the speed, not a file's clock --
 so `--live-pacing` is refused there, and every other `l2_replay` flag (`--record`, `--feed-thread`,
 `--ring-capacity`, `--ws-ring-capacity`, `--idle-wait-us`, `--fast-validation`, `--profile-stages`,
-`--paper-broker` and its faults, and the strategy and risk flags) is accepted unchanged.
+`--paper-broker` and its faults, `--record-orders`, and the strategy and risk flags) is accepted unchanged.
 
 `bash tools/live/soak_push.sh` is the acceptance run for this mode: it streams for `DURATION` seconds with a ping
 every `PING` seconds and a forced reconnect every `DROP` seconds, then replays the engine's own recording and
 fails if a sequence gap, a parse error, a ring wait, a reconciliation break or a moved field appears.
+
+`--record-orders=PREFIX` writes the order leg of a session to `<prefix>_orders.csv` -- every submission, cancel and
+execution report, in order -- and prints `[ORDER-LOG]` with its path and its three counts. The file is what
+`RecordedVenue` replays as an engine; no app mode does that yet, because a replayed order leg needs a recorded session
+to compare against and the first one comes from a venue sandbox. The order channel that would produce one is in the
+relay, answering as a simulated venue: `python3 tools/live/venue_relay.py --simulate-orders --order-listen
+127.0.0.1:8766`, which `tests/relay_order_channel_test` drives with the real adapter and the real transport.
+
 
 ## Carry: Two Legs Over Two Funding Histories
 

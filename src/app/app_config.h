@@ -242,6 +242,10 @@ struct AppConfig
     // which is what every recorded run has.
     std::string snapshot_out_path;
     std::string snapshot_in_path;
+    // Where a run writes its order leg -- every submission, cancel and execution report, in order -- as
+    // <prefix>_orders.csv. Empty, the default, turns it off, which is what every recorded run has. A file written
+    // this way is what `RecordedVenue` replays as the venue, which is how a session is checked rather than trusted.
+    std::string order_log_path;
     // The carry mode's second leg, and the second book of an `l2_replay` run that was given one: two modes, one
     // field, because both are asking the same question -- which instrument is the other side of this run. In
     // carry mode `path_or_port` holds the first leg's funding file, because the first path of any mode is the one
