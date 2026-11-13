@@ -1,27 +1,27 @@
 ```mermaid
-%% The end-to-end path. README.md carries a copy of this diagram, because GitHub renders mermaid but cannot
-%% include a file; every other page includes this one. Keep the two in step.
-flowchart LR
-    A["market data<br/>CSV / gzip / WebSocket / recorded"] --> B["one reader interface<br/>a live feed is another reader"]
-    B --> C["L2 book<br/>the queue ahead of a quote, modelled"]
-    C --> D["strategy<br/>a target: a quote or a position"]
-    D --> E{"pre-trade gate<br/>exposure / rate / fat-finger / loss"}
-    E -- refused --> X["counted, never sent"]
-    E -- allowed --> F["matching interface<br/>IMatchingEngine"]
-    F --> G["in-process matcher"]
-    F --> H["PaperBroker<br/>statement and reconciliation"]
-    F --> I["LiveVenue<br/>sandbox, off by default"]
-    G --> J["ExecutionReport<br/>the single accounting entry"]
-    H --> J
-    I --> J
-    J --> K["ledger: cash, position<br/>[PNL] and [RECON]"]
-
-    subgraph loop["the loop every number comes from"]
-        R1["record the market<br/>--record"] -.-> R3["offline replay<br/>l2_replay"]
-        R2["record the order leg<br/>--record-orders"] -.-> R3
-        R3 -.-> R4["[PNL] and [EXECUTION]<br/>compared, not remembered"]
+%% The end-to-end path in two layers, not one row: the pipeline a market event takes, and the loop that makes a number
+%% re-derivable. Eleven boxes in a single row is a diagram nobody can read at page width.
+%% Every node carries its own fill and text colour on purpose: Mermaid's default theme draws dark text on a transparent
+%% background, which disappears in Material's dark mode, so the figure has to be self-contained rather than themed.
+flowchart TB
+    subgraph pipeline["the path a market event takes"]
+        direction LR
+        F["market feed"] --> B["L2 book<br/>queue explicit"] --> S["strategy"] --> G{"risk gate"} --> V["venue<br/>three engines"] --> L["one ledger"]
     end
-    K -.-> R1
-    J -.-> R2
-    style loop stroke-dasharray: 6 5
+
+    subgraph loop["what makes the number re-derivable"]
+        direction LR
+        R["record both legs"] --> P["offline replay"] --> C["[RECON] parity"]
+    end
+
+    L -.-> R
+
+    classDef box fill:#eef4fb,stroke:#2b6ca3,stroke-width:1.5px,color:#0f2438
+    classDef gate fill:#fdf3e3,stroke:#b07d1c,stroke-width:1.5px,color:#3b2a06
+    classDef good fill:#eaf6ef,stroke:#2c7d54,stroke-width:1.5px,color:#0d2f21
+    classDef note fill:#f2f2f2,stroke:#7d7d7d,stroke-width:1.2px,color:#333333
+    class F,B,S,V box
+    class G gate
+    class L,C good
+    class R,P note
 ```

@@ -7,16 +7,18 @@ is folded away.*
 
 --8<-- "docs/_figures/path.mmd"
 
-Four things the picture fixes: one reader interface for every input, a book with an **explicit** queue, three
-implementations of one matching interface (the sandbox included), and **one** accounting entry -- so a live venue and a
-replay are the same program with a different plug.
+Two layers, and each is a claim. The top one is the path a market event takes -- a feed, a book with an **explicit**
+queue, a strategy, a pre-trade gate, one venue interface with three engines behind it (the matcher, the paper broker, the
+live venue), and **one** ledger. The bottom one is what makes the numbers re-derivable: a run records both legs, replays
+offline, and has to reconcile -- so a live venue and a replay are the same program with a different plug.
 
 ## What eight markets said
 
---8<-- "docs/_figures/charge.mmd"
+--8<-- "docs/_figures/charge.svg"
 
-The bars are the capture; the line is the fee. Where the line is above the bars, no quote width pays -- which is the
-finding, not a tuning problem.
+Two bars a market: what a fill captured, and what it cost. Where the fee bar is taller, no quote width pays -- which is
+the finding, not a tuning problem. The labels round to fit (0.088, 0.0131 and 0.268 ticks captured; 2.57, 0.5 and 0.35
+ticks of fee); the table below carries the exact figures.
 
 | line | what a fill captured | what it cost | why it ended |
 |---|---|---|---|

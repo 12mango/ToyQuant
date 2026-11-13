@@ -1,11 +1,15 @@
 ```mermaid
-%% The front door's version of the path: the same chain, six boxes, no side branches. The full one, with the
-%% three engines and the recording loop, is `path.mmd` on the quickstart. README.md carries a copy, because GitHub
-%% renders mermaid but cannot include a file.
+%% The front door's version of the path: the same six boxes, no side branches. The two-layer one is `path.mmd` on the
+%% quickstart; README.md carries a copy of this file, because GitHub renders mermaid but cannot include one.
+%% The explicit fills and colours are the dark-mode fix: Mermaid's default theme is dark text on a transparent
+%% background, which vanishes on Material's dark page, so every node carries its own background.
 flowchart LR
-    D["market data<br/>CSV / WebSocket / recorded"] --> B["L2 book<br/>queue modelled"]
-    B --> S["strategy"]
-    S --> G{"risk gate"}
-    G --> M["matching engine<br/>in-process / broker / live"]
-    M --> L["ledger<br/>[PNL] and [RECON]"]
+    D["market data"] --> B["L2 book<br/>queue explicit"] --> S["strategy"] --> G{"risk gate"} --> M["venue<br/>three engines"] --> L["ledger<br/>[PNL] · [RECON]"]
+
+    classDef box fill:#eef4fb,stroke:#2b6ca3,stroke-width:1.5px,color:#0f2438
+    classDef gate fill:#fdf3e3,stroke:#b07d1c,stroke-width:1.5px,color:#3b2a06
+    classDef good fill:#eaf6ef,stroke:#2c7d54,stroke-width:1.5px,color:#0d2f21
+    class D,B,S,M box
+    class G gate
+    class L good
 ```

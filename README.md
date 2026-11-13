@@ -18,14 +18,18 @@ latency of a real venue -- and every number it publishes is re-derived by its ow
 ---
 
 ```mermaid
-%% The front door's version of the path: the same chain, six boxes, no side branches. The full one, with the
-%% three engines and the recording loop, is docs/_figures/path.mmd on the quickstart.
+%% The front door's version of the path: the same six boxes, no side branches, and a copy of docs/_figures/path-front.mmd
+%% because GitHub renders mermaid but cannot include a file. Keep the two in step. Every node carries its own fill and
+%% text colour: Mermaid's default theme is dark text on a transparent background, which disappears on a dark page.
 flowchart LR
-    D["market data<br/>CSV / WebSocket / recorded"] --> B["L2 book<br/>queue modelled"]
-    B --> S["strategy"]
-    S --> G{"risk gate"}
-    G --> M["matching engine<br/>in-process / broker / live"]
-    M --> L["ledger<br/>[PNL] and [RECON]"]
+    D["market data"] --> B["L2 book<br/>queue explicit"] --> S["strategy"] --> G{"risk gate"} --> M["venue<br/>three engines"] --> L["ledger<br/>[PNL] · [RECON]"]
+
+    classDef box fill:#eef4fb,stroke:#2b6ca3,stroke-width:1.5px,color:#0f2438
+    classDef gate fill:#fdf3e3,stroke:#b07d1c,stroke-width:1.5px,color:#3b2a06
+    classDef good fill:#eaf6ef,stroke:#2c7d54,stroke-width:1.5px,color:#0d2f21
+    class D,B,S,M box
+    class G gate
+    class L good
 ```
 
 A backtest that fills your quote because the price touched it answers a question the venue never asks. ToyQuant replays
