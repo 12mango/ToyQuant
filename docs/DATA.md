@@ -7,6 +7,14 @@ This directory has two purposes:
 - `scenarios/`: Tick scenarios used as market-data inputs.
 - `runtime/`: Generated order and trade outputs.
 
+Two things a reader comes here for, and where they are:
+
+| you want | open |
+|---|---|
+| what is on disk now, and what was removed | [the inventory](#what-is-in-datav2-now-and-what-was-removed) |
+| how to get or cut a file | [the fetch sections](#legacy-tick-input-format) below |
+| why a venue was dropped | fold, "the venues that were tried" |
+
 ## Legacy Tick Input Format
 
 Scenario files use CSV with a header row. Generated scenario files contain the header directly:
@@ -158,6 +166,8 @@ The column summary is the anatomy half of accepting a source, and the implied to
 is what a reader's output gets compared against. It reads the first rows by default, so it is safe on a
 multi-gigabyte file, and it reads the gzip stream once to say whether a download is complete rather than
 interpreting a partial file as a short day.
+
+/// details | The venues that were tried, and where each stopped
 
 ## IEX HIST: US Equity Depth, and Where It Stops
 
@@ -444,6 +454,8 @@ a run:
 A run consumes the file with `--funding-rates=FILE` and reports a `[FUNDING]` line. `docs/PERFORMANCE_HISTORY.md`
 records two runs over these files with the command that re-derives each number, and `docs/USER_GUIDE.md` explains
 the line's fields.
+
+///
 
 ## Runtime Output
 

@@ -88,6 +88,14 @@ could and could not answer, and why the queue model moved to the L2 path — is 
 
 ## 3. How to measure on this host
 
+Nine subsections of method: the noise floor, paired alternation, wall clock against user time, the invariant list a
+change must not move, stage timing, why isolation benchmarks mislead, the fast loop, how a document's numbers are
+checked, counting what a profiler cannot see, and the hand-off between two threads. They are the answer to "how do you
+know"; a reader who wants only "how fast" needs [section 4](#4-current-stage-breakdown) and
+[the ledger](#5-optimization-ledger).
+
+/// details | The method, one subsection per rule
+
 ### 3.1 The noise floor
 
 Repeated runs of an unchanged binary on W1 spread over roughly +-22%. On the 1.5 GB workload the
@@ -445,6 +453,8 @@ That is a 200,000-message run: it has to report the message count it was given, 
 measuring, and the checksum every one of those values produced while crossing. A ring that dropped a value,
 reordered two, or handed over a slot that was still being written would change the checksum and fail the
 gate, whatever it did to the clock.
+
+///
 
 ## 4. Current stage breakdown
 
