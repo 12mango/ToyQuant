@@ -2,43 +2,48 @@
 
 *Part of the [User Guide](../USER_GUIDE.md).*
 
-The failures that waste an afternoon, and what each one means.
+One table, ordered by how often it is the answer. Each row names the fix rather than the theory.
 
-## Troubleshooting
+| symptom | likely cause | fix |
+|---|---|---|
+| `fills=0` behind a live book | sizing defaults to one contract, or the queue model is the bound | `--order-size` and `--inventory-limit`, then rerun with `conservative` as the seventh positional |
+| `[VENUE] dropped>0`, or `orders>0` with no reports | the relay misread a frame, or the venue refused it | rerun with `--order-dump=FILE` and read the venue's own words ([live page](04-live-and-carry.md)) |
+| `[RISK]` rejections climb | the fat-finger band or the rate bucket is tighter than the quote | widen `--fat-finger-bps` or `--max-orders-per-second`, and check the quote is inside the band |
+| OKX `50026` on an order | the demo account is not in margin mode | switch it to single-currency margin (`acctLv=2`) |
+| OKX `60012` | an `op: order` sent to the business route | place over REST (`--order-rest`); the private route is for the `orders` channel |
+| a sandbox fill is 100x the size meant | the replay's contract count is not the venue's contract | `ctVal` is 0.01 BTC for `BTC-USDT-SWAP`; size with `--order-size` in venue units |
+| `check_docs` red | a recorded number moved | reproduce the command, paste the new output, prove the diff -- never edit the number |
+| a run refuses a file | a bad row or a missing column | the reader names the row: `sed -n '<row>p'` on the input |
 
-- Run commands from the repository root so relative paths resolve correctly.
-- Check that the input CSV exists and uses the expected tick format.
-- Use a non-negative integer for the delay and a UDP port between `1` and `65535`.
-- If there are no trades, try `shock_ticks.csv` or `random_ticks.csv`; a quiet scenario may not cross the strategy's orders.
+Runtime hints that are not failures: run from the repository root so relative paths resolve; the delay is a
+non-negative integer and a UDP port is between 1 and 65535; a quiet scenario may simply never cross the strategy's orders.
 
-### When a file is refused
+## When a file is refused
 
-Every reader names the row it refused and what is wrong with it, so a bad row in a large file is one `sed -n
-'<row>p'` away rather than a search: `Error: row 4000123: price must be finite and positive: nan`. The rules are the
-same in every family -- a price has to be finite and positive (so `nan`, `inf`, `0` and `-1` are refused where they
-are read, not where they are used), a quantity has to be finite and non-negative, a timestamp and an id have to be
-unsigned integers, and a side has to be one of the two spellings the venue publishes. A file whose header is missing
-is refused at open time, naming the column that is absent; a header-only file is empty rather than broken.
+Every reader names the row it refused and what is wrong with it, so a bad row in a large file is one `sed -n '<row>p'`
+away rather than a search: `Error: row 4000123: price must be finite and positive: nan`. The rules are the same in every
+family: a price is finite and positive (so `nan`, `inf`, `0` and `-1` are refused where they are read), a quantity is
+finite and non-negative, a timestamp and an id are unsigned integers, and a side is one of the two spellings the venue
+publishes. A missing header is refused at open time naming the absent column; a header-only file is empty rather than
+broken.
 
-Two things a *well formed* file can still do are worth knowing about, because both used to be silent:
+/// details | What a well-formed file can still do, and the venue's error codes
 
 - **A depth input that delivers no depth events is an error.** An empty or header-only depth file used to produce a
-  formatted run of zeros and an exit code of zero -- a measurement of nothing that read like a result. In a run that
-  trades several instruments, a book that was given no market events is refused the same way, because that means its
-  file named the wrong symbol.
-- **A crossed book is counted.** A snapshot whose best bid is at or above its best ask is refused (`L2 snapshot is
-  crossed`), because it is not a market anyone can trade. An incremental batch that leaves the book crossed is
-  applied and skipped at the top instead, and counted on the `[L2 DATA]` line as `crossed_book_batches=`. The field is
-  printed only when the count is non-zero, so a run whose depth had none keeps the line it always had -- the 200k
-  window this repository quotes every L2 number from has none.
-- **The prints are scored against the book, and the line says how it went.** `stale_trades=` counts prints that
-  arrived with no midpoint to compare them to -- before the book was two-sided, or more than a second after its last
-  update -- and `dislocated_trades=` counts the prints more than five basis points from a *current* midpoint. Both are
-  printed only when non-zero, and neither drops the print: on a depth book a print far from the midpoint is a sweep,
-  not a bad tick, and filtering it would move the fills instead of describing them. On the 200k window the two
-  numbers read `stale_trades=117889 dislocated_trades=9`: the depth slice covers quarter of an hour while the trade
-  file covers the day, so almost every print is scored as stale, and the nine that were scored were all inside six
-  basis points of the midpoint. That is what the fields are for -- telling a window whose inputs cover the same span
-  apart from one whose depth stopped early.
+  formatted run of zeros and an exit code of zero. A two-book run refuses a book that was given no market events the same
+  way, because that means its file named the wrong symbol.
+- **A crossed book is counted.** A snapshot whose best bid is at or above its best ask is refused; an incremental batch
+  that leaves the book crossed is applied and skipped at the top, counted as `crossed_book_batches=` and printed only when
+  non-zero.
+- **The prints are scored against the book.** `stale_trades=` counts prints with no midpoint to compare them to and
+  `dislocated_trades=` counts prints more than five basis points from a current midpoint; both print only when non-zero,
+  and neither drops the print -- on a depth book a print far from the mid is a sweep.
+- **The venue's codes are in one place.**
+  [The live page](04-live-and-carry.md#the-error-codes-this-line-has-actually-produced) carries all eight this line has
+  produced, with what each meant here; the two timestamp formats (`60004` epoch seconds, `50112` ISO milliseconds) are
+  the one worth memorising, because a client sharing one timestamp function across both surfaces is one code away from
+  looking like it has the wrong key.
+
+///
 
 For implementation details, see [Architecture](../ARCHITECTURE.md). Data file details are documented

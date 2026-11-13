@@ -31,31 +31,38 @@ The positionals are: trades file, depth file, symbol, a delay in milliseconds, t
 the queue model. `--fast-validation` skips the per-event checks that files already known to be good do not need, and is
 what every recorded run uses.
 
-The run prints four summary lines. `[L2 DATA]` is what arrived -- events, trades, batches, and the two data-quality counts
-described in [the glossary](../../GLOSSARY.md); `[EXECUTION]` is what the strategy did with it, orders rested and
-cancelled and filled, with the queue it stood behind; `[PNL]` is what those fills were worth after fees;
-`[PORTFOLIO]` is the account. [Reading the output](../06-reading-the-output.md) goes through them one field at a time.
+The run prints four summary lines, and each answers one question:
+
+| line | what it counts | read it with |
+|---|---|---|
+| `[L2 DATA]` | events, trades, batches, two data-quality counts | [the glossary](../../GLOSSARY.md) |
+| `[EXECUTION]` | orders rested, cancelled, filled, and the queue stood behind | [reading the output](../06-reading-the-output.md) |
+| `[PNL]` | what the fills were worth after fees | the same page, `breakeven_maker_rate` first |
+| `[PORTFOLIO]` | the account | the same page |
 
 ## What the reader does with the rows
 
 The incremental reader groups rows by `local_timestamp` and emits **one decision per batch**, not one per row: a
 snapshot's burst of updates arrives as one book state, and a strategy that decided on each line would be deciding on a
-book that never existed. Snapshot files remain supported through the original full-snapshot reader, which replaces the
-book per line instead.
+book that never existed. Snapshot files keep the original reader, which replaces the book per line instead.
 
-Two defaults are worth knowing before the numbers surprise you, and both are the instrument's, not the flags':
+Three rules decide what a run *looks* like before any flag is passed:
 
-- **sizing is derived from the quantity scale**, which assumes fractional quantities. A perpetual's quantity is a
-  contract count, so the derivation gives one contract -- see [sizing](../../L2_FLAGS.md#sizing-and-the-trap-under-it)
-  and pass `--order-size` and `--inventory-limit` explicitly.
-- **the queue model is a positional argument** (`conservative`, `prorata`, `lumpy`, `optimistic`), and it is the largest
-  single choice in a run: `conservative` is a lower bound on fills, `prorata` the calibrated one. What each model decides
-  is in [the queue section](../../performance/history-03-studies.md#what-the-queue-model-decides-and-what-the-per-order-floor-does).
+| rule | what the default is | what a run should do |
+|---|---|---|
+| batching | one decision per `local_timestamp` batch | nothing; it is the book's own shape |
+| sizing | quantity scale/1000, which assumes fractional quantities | pass `--order-size` and `--inventory-limit` |
+| queue | `prorata`, the calibrated model | pick the seventh positional for a bound |
+
+> A perpetual's quantity is a contract count, so the derivation gives **one contract** and every PnL is a few cents --
+> [sizing](../../L2_FLAGS.md#sizing-and-the-trap-under-it) is the arithmetic. The queue model is the largest single
+> choice in a run: `conservative` and `optimistic` are the bounds, `prorata` the calibrated one, `lumpy` the same mean
+> with real variance, and what each decides is in
+> [the queue section](../../performance/history-03-studies.md#what-the-queue-model-decides-and-what-the-per-order-floor-does).
 
 ## Where the rest of that path lives
 
-The replay's optional behaviour is a reference page rather than a narrative, because it is longer than the instructions
-and nobody reads it in order: [the flag reference](../../L2_FLAGS.md) covers quoting and risk flags, the two-book run,
-the recorder, the session snapshot, `--feed-thread`, the paper broker and the order gateway, and the gates. The venue's
-own behaviour -- a broker that keeps a statement, a gateway that keeps client state -- is [part 2](02-the-venue-side.md);
-funding as an input and one order's life traced are [part 3](03-funding-and-what-is-frozen.md).
+Optional replay flags -- quoting, risk, recording, the venue gateways and the gates -- are listed in
+[the flag reference](../../L2_FLAGS.md). The venue's own behaviour, a broker that keeps a statement and a gateway that
+keeps client state, is [part 2](02-the-venue-side.md); funding as an input and one order's life traced are
+[part 3](03-funding-and-what-is-frozen.md).

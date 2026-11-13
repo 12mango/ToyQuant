@@ -2,33 +2,21 @@
 
 *Part of the [User Guide](../USER_GUIDE.md).*
 
-What each line reports, and how sure a number is.
+A run prints one line per question. Five of them are worth watching on every run, and each has a red flag that is
+mechanical rather than a matter of taste:
 
-## Inspect Results
+| line | field to read first | red flag |
+|---|---|---|
+| `[PNL]` | `breakeven_maker_rate` | negative: no fee schedule makes the window flat |
+| `[EXECUTION]` | `fill_rate`, `queue_ahead_consumed` | `fills=0` with a live book, or `strategy_position_mismatches>0` |
+| `[RISK]` | `fat_finger_rejections`, `rate_limited_orders` | any, unless the run was meant to trip that control |
+| `[RECON]` | `status` | `break`: the statement and the account disagree |
+| `[VENUE]` | `reports`, `dropped` | `dropped>0`, or `orders>0` with `reports=0` |
 
-Each run updates:
-
-```text
-data/runtime/orders.csv
-data/runtime/trades.csv
-```
-
-Legacy CSV/UDP runtime files begin with `# source_ticks=...`; reuse that same Tick file for
-`backtest_main`. Replay runtime files begin with `# source_market_data=...` and are not currently
-the input format for the legacy backtest analyzer.
-
-The terminal shows tick and summary information. Backtest reports are written under `logs/`:
-
-```bash
-./out/build/linux-debug/backtest_main \
-  data/scenarios/sample_ticks.csv \
-  data/runtime/orders.csv \
-  data/runtime/trades.csv \
-  0 0 backtest logs/backtest.log
-```
-
-`backtest_main` currently expects the legacy Tick file for mark prices. Replay mode records
-`source_market_data` metadata, but full BBO-based portfolio marking is a separate future step.
+> `[RISK]` prints only when `--fat-finger-bps` or `--max-orders-per-second` is named, and `[VENUE]` only on a run with a
+> venue leg. `[LATENCY]`, `[LIVE]` and `[PERFORMANCE]` answer the same question about timing and equity and are read the
+> same way: one number, one red flag. The field-by-field reference is in
+> [the learning path](../LEARNING.md#field-reference).
 
 ## How Sure a Number Is
 
@@ -76,7 +64,9 @@ definition is in the [Learning Path field reference](../LEARNING.md#field-refere
 that would have made the window flat, so a negative value says no fee schedule can save it.
 
 The rest of the summary is conditional, and this is the part worth knowing when running *this* mode, because each group
-appears only when a flag asks for it:
+appears only when a flag asks for it. It is folded because a run that did not ask for a group prints nothing about it.
+
+/// details | The conditional groups, field by field
 
 - `min_commission_orders`, `min_commission_paid` — orders charged a schedule's floor under one order's commission and
   what it added, both zero unless `--fee-schedule=min=...` names a floor;
@@ -85,7 +75,7 @@ appears only when a flag asks for it:
 - `kill_switch_loss_usd`, `kill_switch_triggered`, `kill_switch_ts`, `kill_switch_rejected_orders`, plus
   `kill_switch_closed_quantity` and `kill_switch_close_bps` when the switch actually closed something — all zero or
   false unless `--kill-switch-loss-usd=...` names a loss;
-- `fat_finger_rejections`, `rate_limited_orders` — printed in a `[RISK]` line that appears only when `--fat-finger-bps`
+- `fat_finger_rejections`, `rate_limited_orders` — printed in the `[RISK]` line that appears only when `--fat-finger-bps`
   or `--max-orders-per-second` is named;
 - `audited_rejected_orders`, `invalid_order_transitions`, `orphan_order_reports`,
   `cancelled_after_fill_orders`/`cancelled_before_fill_orders`, `orders_that_filled`, `filled_orders_by_size` — the order
@@ -98,6 +88,22 @@ appears only when a flag asks for it:
 The same question for a whole line -- what `[EXECUTION]` prints and what each name means -- is in the
 [field reference in the learning path](../LEARNING.md#field-reference) and, for the arithmetic, in
 [the glossary](../GLOSSARY.md).
+
+///
+
+/// details | Where a run writes, and the legacy analyser
+
+Each run updates `data/runtime/orders.csv` and `data/runtime/trades.csv`. Legacy CSV/UDP runtime files begin with
+`# source_ticks=...` and can be re-analysed by `backtest_main`; replay runtime files begin with
+`# source_market_data=...` and are not its input format, because BBO-based portfolio marking is a separate step.
+
+```bash
+./out/build/linux-debug/backtest_main \
+  data/scenarios/sample_ticks.csv data/runtime/orders.csv data/runtime/trades.csv \
+  0 0 backtest logs/backtest.log
+```
+
+///
 
 ## Two things a run's numbers do not include
 

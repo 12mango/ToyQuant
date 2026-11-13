@@ -1,13 +1,23 @@
 *Part of the [User Guide](../../USER_GUIDE.md), part 2 of 3. The index is [`../03-l2-replay.md`](../03-l2-replay.md).*
 
+Three layers sit between a strategy and a matching engine, and each one answers a different question:
+
+| layer | what it keeps | the question it answers |
+|---|---|---|
+| `--paper-broker` | its own statement of every fill | did the venue execute what the strategy heard about? |
+| `--order-gateway` | client state: sent, answered, in flight | was this order sent once, and did anybody answer? |
+| `--live-orders` | nothing; it translates | what did the venue itself say? |
+
+The first two decorate the engine, so the strategy, the book and the accounting do not know they are there; with no
+faults configured they forward every call and every report, and `bash tools/gate/verify_l2.sh fast` asserts that a
+brokered run reports exactly the numbers of the same run without it.
+
 ## The broker and the reconciliation
 
 `--paper-broker` puts a broker between the strategy and the engine, which is a layer a live path has and a
 replay does not: it refuses orders for reasons a strategy cannot see in the price, fills in pieces, loses an
-execution report, and goes away for a while. It decorates the engine rather than replacing it, so the
-strategy, the book and the accounting do not know it is there, and with no faults configured it forwards
-every call and every report — `bash tools/gate/verify_l2.sh fast` asserts that a brokered run reports exactly the
-numbers of the same run without it — and then prints two lines of its own:
+execution report, and goes away for a while. With no faults configured it forwards every call and every report and then
+prints two lines of its own:
 
 ```bash
 ./out/build/linux-debug/toy_quant l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
@@ -48,9 +58,28 @@ is split only when it is more than one unit, since two prints of zero are not a 
 
 ## The order gateway
 
-`--order-gateway` puts the client's side of the order path outside the broker. It is the layer that knows
-the difference between an order that was sent and an order the venue answered, and it keeps its own table
-of every order in between, printed as `[GATEWAY]`:
+`--order-gateway` puts the client's side of the order path outside the broker. It is the layer that knows the difference
+between an order that was sent and an order the venue answered, and it keeps its own table of every order in between,
+printed as `[GATEWAY]`:
+
+```mermaid
+stateDiagram-v2
+    state "Pending (no answer yet)" as Pending
+    state "Working (venue holds it)" as Working
+    state "Not held (venue says no)" as NotHeld
+    state "Rejected (pre-trade control)" as Rejected
+    [*] --> Pending : submit, id already in the table
+    Pending --> Pending : retry under the same client id is absorbed
+    Pending --> Working : ack
+    Pending --> NotHeld : ack timeout, then the query
+    Pending --> Rejected : refused before the venue is called
+    Working --> [*] : fill or cancel
+    NotHeld --> [*]
+    Rejected --> [*]
+```
+
+The pre-trade edge is the one that never reaches a venue: a limit refuses the order while it is still ours, and the
+refusal is booked as a `Rejected` report rather than as a cancel the strategy asked for.
 
 ```bash
 ./out/build/linux-debug/toy_quant l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
@@ -84,6 +113,11 @@ worth 1.25 USD rather than 0.25, so a commission of about sixty cents a contract
 
 The collateral fields stay a cash-only figure, which is the documented model and not a description of a margined
 future: such a run reports exposure over collateral and should be read for its capture, fee and markout columns.
+
+That is the whole main view: two layers, one comparison, and the state an order is in between them. What follows is the
+boundary detail -- pacing, the benchmark's columns, the cash-only ceiling and the terminal rules for immediate orders.
+
+/// details | Pacing, the benchmark, and the cash-only ceiling
 
 `--live-pacing[=SPEED]` delivers the replay against the wall clock instead of as fast as the file reads, which is
 what turns a measurement into a rehearsal: a strategy that watches its own quote age, or cancels on a timer, only
@@ -148,13 +182,13 @@ cancellation delay; it is not a millisecond latency model. Queue model defaults 
 `tools/study/calibrate_queue_model.py` measures 99.96% of the size removed from a book level as cancellation
 rather than trade. Pass `--queue-model` to `analyze_l2_windows.py` when comparing these assumptions.
 
-The replay also reports `max_abs_exposure_usd` next to `starting_cash_usd`, the cash the run began with.
-The model is cash only and no margin, so exposure above that ceiling is a modelling violation, and
-`exposure_over_collateral_fills` counts how often a fill pushed the marked position past it. Pass
-`--max-position=N` to enforce the ceiling as a pre-trade gate in quantity units; it counts the quantity
-already resting on the side an order adds to, so two quotes that arrive in the same cycle cannot jump
-it. `strategy_position_mismatches` compares the strategy's own position against the pipeline's on every
-report, which is how a dropped callback would show up instead of as an unexplained PnL difference.
+The replay also reports `max_abs_exposure_usd` next to `starting_cash_usd`, the cash the run began with. The model is
+cash only and no margin -- there is no margin freeze to release, which is why the ceiling is this arithmetic and not a
+ratio: exposure above it is a modelling violation, and `exposure_over_collateral_fills` counts how often a fill pushed the
+marked position past it. `--max-position=N` enforces the ceiling as a pre-trade gate in quantity units, counting the
+quantity already resting on the side an order adds to, so two quotes arriving in one cycle cannot jump it;
+`strategy_position_mismatches` compares the strategy's own position against the pipeline's on every report, which is how a
+dropped callback shows up instead of as an unexplained PnL difference.
 
 The replay has policy levers and model levers, and every one of them is additive to the recorded
 defaults, so a run without them reproduces the recorded numbers byte for byte:
@@ -169,4 +203,6 @@ cap leaves too little displayed capacity even when the raw BBO size would have b
 overrides every strategy order, which is useful with the taker line (`trend_l2`) and deliberately hostile to a
 passive market maker: an IOC quote that does not cross is cancelled in the same event, so use the default `gtc`
 for the quoting strategies.
+
+///
 

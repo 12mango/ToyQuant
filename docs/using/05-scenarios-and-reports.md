@@ -2,57 +2,43 @@
 
 *Part of the [User Guide](../USER_GUIDE.md).*
 
-The synthetic tick files, and the static report with a plot.
+Two kinds of input, and one picture at the end of either. The first is for a fast, repeatable check and the second is for a
+measurement; neither is a market.
 
 ## Scenarios
 
-Scenarios are CSV files containing synthetic market ticks. They make it easy to run the same
-strategy against different market conditions. Built-in files live in `data/scenarios/`:
+| class | what it is | who uses it |
+|---|---|---|
+| a deterministic script | 1,000 synthetic ticks, one price a row | a format check and a regression run |
+| a real archive | a venue-day of trades and depth | every number this repository quotes |
 
-| File | Market behavior |
+A scenario has one price a row rather than a book, so a queue model over it is a story about the script and not about a
+venue; a real archive is what makes the queue the thing being measured.
+
+## The report, in four views
+
+| view | what it shows |
 |---|---|
-| `sample_ticks.csv` | Small input for a quick run |
-| `synthetic_ticks.csv` | General-purpose mixed sample |
-| `flat_ticks.csv` | Mostly stable prices |
-| `uptrend_ticks.csv` | Rising prices |
-| `downtrend_ticks.csv` | Falling prices |
-| `shock_ticks.csv` | Sudden price movement |
-| `random_ticks.csv` | Noisy price movement |
+| Quotes & Executions | the reference price, the quote bands and the execution markers |
+| Quote Distance to Reference Mid | how far the quote sits, in ticks |
+| Net Inventory Profile | signed inventory against the configured bound |
+| Equity (PnL) Path | the account marked every tick; its worst drop is the report's drawdown |
 
-The generated scenarios contain 1,000 ticks each; `sample_ticks.csv` is intentionally small for
-quick format checks. Keep the scenario file fixed when comparing `naive` and `optimized`, and
-remember that runtime CSV files are overwritten by the next simulation.
+The summary panel beside them carries order count, executions, traded quantity, fill rate, initial capital, current
+equity, max drawdown, inventory peak and unexecuted orders.
 
-Generate reproducible scenarios with a fixed seed:
+> `Reference Mid` uses the tick price as its visible reference, because a scenario row has no bid and ask. The report is a
+> visual diagnostic rather than a full PnL report, and `data/runtime/*.csv` is overwritten by the next run.
+
+/// details | Running a scenario and drawing the report
+
+The scenarios are deterministic: the same seed recreates the same ticks, which is what makes them a regression input
+rather than a sample. `sample_ticks.csv` is deliberately small for a format check.
 
 ```bash
 python3 tools/legacy/gen_ticks.py all --count 1000 --seed 42 --output-dir data/scenarios
-```
-
-Using the same seed recreates the same ticks. For a controlled experiment, keep the scenario and
-seed fixed, change only the strategy or one parameter, and compare the orders and trades. These
-scenarios are for learning and regression experiments; they do not represent real market data or
-production trading performance.
-
-## Generate a Visual Report
-
-After running a scenario, create a static report with the four main views:
-
-- `Quotes & Executions`: reference tick price, buy/sell quote bands, and execution markers.
-- `Quote Distance to Reference Mid`: quote displacement from the reference price in ticks.
-- `Net Inventory Profile`: signed inventory and the configured `+/-1000` inventory boundary.
-- `Equity (PnL) Path`: the portfolio marked to market at every tick, with the starting capital as the
-  reference line. It is the path whose end is the summary's `Current Equity` and whose worst drop is
-  its `Max Drawdown`.
-
-The report also includes a right-side summary panel with order count, executions, traded quantity,
-fill rate, initial capital, current equity, max drawdown, inventory peak, and unexecuted orders.
-
-Set up the optional plotting environment and generate the report with:
-
-```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
+./out/build/linux-debug/toy_quant csv data/scenarios/sample_ticks.csv 0 optimized
+python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt
 .venv/bin/python tools/study/plot_report.py \
   --ticks data/scenarios/sample_ticks.csv \
   --orders data/runtime/orders.csv \
@@ -60,5 +46,9 @@ python3 -m venv .venv
   --output reports/sample_ticks_optimized.png
 ```
 
-The report is a visual diagnostic, not a full PnL report. The input files contain one price per tick rather than complete bid/ask snapshots, so `Reference Mid` uses the tick price as its visible reference. Runtime CSV files are overwritten by the next simulation.
+The shipped files are `sample_ticks.csv` (small), `synthetic_ticks.csv` (mixed), `flat_ticks.csv`, `uptrend_ticks.csv`,
+`downtrend_ticks.csv`, `shock_ticks.csv` and `random_ticks.csv`. Keep the file and the seed fixed when comparing two
+strategies, and change one thing at a time.
+
+///
 

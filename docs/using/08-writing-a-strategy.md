@@ -3,11 +3,44 @@
 *Part of the guide. The overview is [`USER_GUIDE.md`](../USER_GUIDE.md); the strategy layer's design is
 [the architecture](../architecture/05-strategy.md).*
 
-This page is the injection point: which class to implement, how a name reaches the binary, and what the gate will
-insist on before your strategy counts as part of the project. There are two seams, and picking the wrong one is the usual
-first mistake.
+One class is the injection point. A quoter supplies a fair price and gets two resting orders from the base; a position
+strategy overrides the book hook and returns its own orders. Everything below is the smallest version that compiles.
 
-## The interface
+```cpp
+class MyMaker final : public L2MarketMakerBase
+{
+  public:
+    explicit MyMaker(const L2MarketMakerConfig& config) : L2MarketMakerBase(config) {}
+
+  private:
+    // The book update: the only method a quoter has to answer.
+    double fair_price(const L2MarketView& view) const override
+    {
+        return view.mid + edge_ticks(view);          // your idea, in ticks
+    }
+
+    // The report: the only place a fill reaches a strategy.
+    void on_order_update(const ExecutionReport& report) override
+    {
+        L2MarketMakerBase::on_order_update(report);  // base keeps inventory and open orders
+        // your own signal state goes here; net_position() is the base's, not a copy
+    }
+};
+```
+
+## Three red lines
+
+The strategy runs inside the event loop, once per book update, and the loop's budget is what makes a latency number mean
+anything:
+
+- **no allocation of its own** -- the order vector a decision returns is the interface's one allocation, and a strategy
+  that adds another per event is measuring the allocator;
+- **no blocking I/O and no lock** -- the consumer is single-threaded by construction, so a mutex or a syscall in a
+  callback stops the clock the run is measuring;
+- **no wall clock** -- time is the event clock (`L2MarketView`'s timestamp), and `steady_clock` in a strategy makes the
+  run non-reproducible, which is the one thing the gate cannot catch for you.
+
+/// details | The full interface, the seams, and the four steps a new strategy takes
 
 Everything a strategy can be is in `src/strategy/strategy.h`, one abstract class:
 
@@ -34,77 +67,39 @@ class Strategy
 ```
 
 `StrategyOrder` carries side, symbol, price, quantity, an id, a time in force and a `post_only` flag; the pipeline assigns
-the real id and submits. The header carries the reason for each default, and the reasons are worth reading: they are
-where a design decision about *who owns a number* is written down.
-
-## Which seam
+the real id and submits. The header carries the reason for each default, and those reasons are where a design decision
+about *who owns a number* is written down.
 
 | you are writing | derive from | override |
 |---|---|---|
-| a **quoter** -- it rests orders and earns the spread | `L2MarketMakerBase` (`src/strategy/l2_market_maker_base.h`) | `fair_price()`, or `quote()` if the quoting rule itself changes |
-| a **position** strategy -- a signal sets a target instead of a quote | `Strategy` directly, as `trend_l2` and `execution_l2` do | `on_l2_market_view()` (or the trade hook) and the six required methods |
-| a **comparison** of existing signals | nothing: the active line is one class under several `L2SignalMode` configs, so a new signal is a `case` in `fair_price()`, not a class | -- |
+| a **quoter** -- it rests orders and earns the spread | `L2MarketMakerBase` | `fair_price()`, or `quote()` if the rule itself changes |
+| a **position** strategy -- a signal sets a target | `Strategy` directly, as `trend_l2` and `execution_l2` do | `on_l2_market_view()` and the six required methods |
+| a **comparison** of existing signals | nothing: a new signal is a `case` in `fair_price()` | -- |
 
-The third row is the one the repository already uses eight times: `passive_l2`, `l2_depth`, `l2_micro`, `l2_flow`,
+1. **Implement it.** A quoter only needs the fair price; the base keeps the inventory limit, the gates, the requote rule
+   and the flatten band.
+2. **Register the name.** A branch in `make_strategy()` (`src/app/strategy_factory.cpp`) and the name in `kStrategyNames`
+   (`src/app/app_config.cpp`), whose `std::array` count has to be edited with it; the usage text prints the array, so a
+   name cannot be accepted and undocumented at once.
+3. **Run it.** The strategy name is the sixth positional of `l2_replay`; `/tmp/depth_200k_base.csv` is cut by
+   `bash tools/gate/verify_l2.sh smoke`.
+4. **Prove nothing else moved.** `bash tools/gate/verify_l2.sh code` runs the invariants and the factory test, and `fast`
+   adds every quoted number. Adding a class must not move a single recorded figure; if it does, the change was in the
+   shared base, and the diff should say so.
 
-## The four steps a new strategy takes
-
-1. **Implement it.** A quoter only needs the fair price; the base class keeps the inventory limit, the gates, the requote
-   rule and the flatten band.
-
-   ```cpp
-   class MyMaker final : public L2MarketMakerBase
-   {
-     public:
-       explicit MyMaker(const L2MarketMakerConfig& config) : L2MarketMakerBase(config) {}
-
-     private:
-       double fair_price(const L2MarketView& view) const override
-       {
-           // Your idea, in ticks off the mid. Everything downstream is the repository's.
-           return view.mid + clock_edge_ticks(view);
-       }
-   };
-   ```
-
-2. **Register the name.** Two places, and the second has a trap: `make_strategy()` in `src/app/strategy_factory.cpp` gets a
-   branch, and the name goes into `kStrategyNames` in `src/app/app_config.cpp`. That array is declared
-   `std::array<std::string_view, 19>`, so **adding a name means editing the count as well**; the usage text prints the
-   array, which is why a name cannot be accepted and undocumented at the same time.
-
-3. **Run it.** The strategy name is the sixth positional argument of `l2_replay`:
-
-   ```bash
-   ./out/build/linux-debug/toy_quant l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
-       /tmp/depth_200k_base.csv BTC-PERPETUAL 0 my_maker 1 prorata --fast-validation
-   ```
-
-   `/tmp/depth_200k_base.csv` is cut by `bash tools/gate/verify_l2.sh smoke` if it is not already there.
-
-4. **Prove nothing else moved.** `bash tools/gate/verify_l2.sh code` runs the invariants and the factory test; `fast` adds
-   every number the documents quote. Adding a class must not move a single recorded figure -- if it does, the change was
-   in the shared base rather than in your strategy, and the diff should say so.
+///
 
 ## What a strategy is not allowed to do
 
-The header argues each of these, and they are what keeps a new strategy from becoming a second source of truth:
+The header argues each of these, and they are what keeps a new strategy from becoming a second source of truth: it cannot
+measure its own execution (capture, markout, lifetime and inventory are computed once by the pipeline, from the reports
+and the events), it cannot see the midpoint after a fill except through `on_markout_estimate`, it cannot keep its own
+position (`net_position()` reports; the pipeline reconciles), it cannot own the clock or the fee model, and it cannot
+bypass a pre-trade control -- a refusal arrives as `on_order_rejected` and the counter stays with the pipeline.
 
-- **It cannot measure its own execution.** Capture, markout, quote lifetime and inventory are computed once by the
-  pipeline, from the reports and the events, because a strategy's own copy can only disagree with it -- and did, printing
-  `captured_edge=0` beside an `[EXECUTION]` line that said 1.25 in the same run.
-- **It cannot see the midpoint after a fill.** The markout is pushed to it through `on_markout_estimate`, which is the
-  only way a strategy can learn what its own passive fills cost.
-- **It cannot keep its own position.** The ledger owns it; `net_position()` reports, and the pipeline reconciles.
-- **It cannot own the clock or the fee model.** The pipeline advances the event clock and the engine charges the schedule.
-- **It cannot bypass a pre-trade control.** A refusal arrives as `on_order_rejected` with the reason, and the counter stays
-  with the pipeline.
-
-## What the gate will ask of the result
-
-A new strategy is a new line, and the project's own sentence about lines applies: **a window selected for being positive
-is not an edge.** The gate asks the cheap questions -- invariants, the factory test, and that no recorded number moved --
-and the documents ask the expensive one: is this out of sample, over how many windows, and does it survive its own
-decomposition (capture less markout less fees). The tools for that are in [the tools](../TOOLS.md), and the terms are
-defined in [the glossary](../GLOSSARY.md).
+A new strategy is a new line, and the project's own sentence applies: **a window selected for being positive is not an
+edge.** The gate asks the cheap questions -- invariants, the factory test, and that no recorded number moved -- and the
+documents ask the expensive one: is it out of sample, over how many windows, and does it survive its own decomposition
+(capture less markout less fees). The tools are in [the tools](../TOOLS.md) and the terms in [the glossary](../GLOSSARY.md).
 
 `inventory_aware_l2` and `active_l2` are three classes over one signal enum, which is why the names outnumber the classes.

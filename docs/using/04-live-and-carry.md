@@ -2,15 +2,48 @@
 
 *Part of the [User Guide](../USER_GUIDE.md).*
 
-The WebSocket session over a local sender, and the two-legged
-funding carry.
+One pipeline, two legs, and one branch that is closed: the market leg arrives over a socket, the order leg can leave for a
+venue, and the carry branch measures funding instead of quoting.
+
+```mermaid
+flowchart LR
+    V["venue or sender<br/>a row a message"] --> W["ws reader<br/>one ring"]
+    W --> E["book, strategy, ledger<br/>the replay's own code"]
+    E --> L["[PNL] and [RECON]"]
+    E --> O["order leg<br/>--record-orders"] --> R["relay"] --> X["venue sandbox"]
+```
+
+## Three commands
+
+```bash
+# 1 the shadow session: a local sender, the same engine, both legs recorded
+python3 tools/live/websocket_sender.py --port 8765 --trades out/lat/live_trades.csv --depth out/lat/live_depth.csv &
+./out/build/linux-debug/toy_quant ws 127.0.0.1:8765 BTC-PERPETUAL active_l2 1 prorata \
+  --fast-validation --record=out/lat/live
+
+# 2 the sandbox order leg: the relay places over REST, the engine books the venue's own answer
+python3 tools/live/venue_relay.py --order-listen 127.0.0.1:8766 \
+  --order-rest https://www.okx.com --order-inst-code=10459 &
+./out/build/linux-debug/toy_quant l2_replay <trades> <depth> BTC-PERPETUAL 0 active_l2 1 prorata \
+  --fast-validation --paper-broker \
+  --live-orders --venue-endpoint=127.0.0.1:8766 --venue-max-orders=20
+
+# 3 the carry branch: two funding histories, one line -- and it did not pay
+./out/build/linux-debug/toy_quant carry \
+  data/v2/funding/BTCUSDT-fundingRate-2024-03.csv \
+  data/v2/funding/okx_funding_2024-03-01_2024-03-31_BTC-USDT-SWAP.csv \
+  --symbol-a=BTCUSDT --symbol-b=BTC-USDT-SWAP --notional-usd=10000
+```
+
+**The carry is closed.** The position needed 745 hours of funding to pay its fees and the window held it for 728:
+`carry_to_fees=11.76`, `carry_net_usd=-0.415`. The mode stays in the tree because it is the number that closed the line,
+not a lever -- its detail is the last section of this page.
 
 ## Run a Live Session Over a WebSocket
 
-`ws` is `l2_replay` with its two readers moved from files onto a socket, and nothing else: the same book, the
-same matching engine, the same recorder, the same paper broker and the same strategy, because none of them can
-tell a live feed from a replayed one. That is the point of the seam the reader is written against, and it is what
-lets one strategy drive a session and a session become replayable.
+`ws` is `l2_replay` with its two readers moved onto a socket and nothing else: the same book, the same engine, the same
+recorder, the same broker, the same strategy, because none of them can tell a live feed from a replayed one. A session is
+therefore replayable, and a replay is a rehearsal.
 
 ```text
 ws <host:port> <symbol> [strategy] [quantity_scale] [queue_model] [flags]
@@ -20,6 +53,10 @@ ws <host:port> <symbol> [strategy] [quantity_scale] [queue_model] [flags]
 ./out/build/linux-debug/toy_quant ws 127.0.0.1:8765 BTC-PERPETUAL active_l2 1 prorata \
   --fast-validation --record=out/lat/live
 ```
+
+The wire, the ring and the flags it accepts are the detail; what a session prints is `[WS]` plus the run's usual lines.
+
+/// details | The session's wire, its ring, and the flags it accepts
 
 The client speaks the WebSocket protocol directly -- the RFC 6455 handshake and text frames -- with no external
 dependency, and reads the two replay CSV shapes as its wire format, one row per text message:
@@ -69,11 +106,17 @@ fails if a sequence gap, a parse error, a ring wait, a reconciliation break or a
 `--record-orders=PREFIX` writes the order leg of a session to `<prefix>_orders.csv` -- every submission, cancel and
 execution report, in order -- and prints `[ORDER-LOG]` with its path and its three counts. The file is what
 `RecordedVenue` replays as an engine; no app mode does that yet, because a replayed order leg needs a recorded session
-to compare against and the first one comes from a venue sandbox. The order channel that would produce one is in the
-relay, answering as a simulated venue: `python3 tools/live/venue_relay.py --simulate-orders --order-listen
-127.0.0.1:8766`, which `tests/relay_order_channel_test` drives with the real adapter and the real transport.
+to compare against and the first one comes from a venue sandbox.
 
-That channel has two backends. `--simulate-orders` answers as a sandbox venue, deterministically and with no key;
+That channel has two backends and two placement routes; the next fold is the whole of it.
+
+///
+
+/// details | The relay's routes, the sandbox chain, and the venue's error codes
+
+The order channel that produces a recording is in the relay, answering as a simulated venue: `python3
+tools/live/venue_relay.py --simulate-orders --order-listen 127.0.0.1:8766`, which `tests/relay_order_channel_test` drives
+with the real adapter and the real transport.
 without it the relay logs in to the venue's own private stream, subscribes the `orders` channel and translates in both
 directions, and reconnects -- logging in and subscribing again -- after a drop, with `logins`, `subscribes` and
 `reconnects` in the line it prints when the engine hangs up. The three credentials are read from
@@ -161,7 +204,7 @@ REST route, so a *fill* would not be seen (that is the next piece, and it needs 
 changes it would also deliver); and `sz` is in the replay instrument's units, not the venue's -- one contract of
 `BTC-USDT-SWAP` is 0.01 BTC, and the replay's prices are from 2020, so a fill here would be a number about nothing.
 
-/// details | The venue's error codes this line has actually produced
+### The error codes this line has actually produced
 
 | code | surface | what it meant here |
 |---|---|---|
