@@ -43,8 +43,11 @@ file, and the directory names say which kind a tool is:
   exactly that command.
 - To add a measurement: put the script in `sweep/` if it prints a table for a document, in `study/` if it answers one
   question once, and in `fetch/` if it is about getting or cutting data.
-- To hand the repository to a reader that cannot clone it: `python3 tools/export/bundle.py --emit --out /tmp/tq-export`
-  writes two bundles and a manifest that carries the commit and a sha256 per file, and
-  `python3 tools/export/bundle.py --check --out /tmp/tq-export` compares it with the tree. A dump without the check is
-  a copy with no age, which is what a ten-day-old snapshot is: the one this tool was written for described a README
-  three times the length of the real one, and nothing in it could say so.
+- To hand the repository to a reader that cannot clone it:
+  `TOYQUANT_DRIVE_DIR=<the folder your client syncs> python3 tools/export/bundle.py --sync` writes two bundles, a
+  manifest that carries the commit and a sha256 per file, and `diff.patch` since the commit the previous manifest
+  carried -- then checks the lot. That diff is what a read-only reviewer is given: a review needs the change, not the
+  tree, and the manifest is how it says "this is stale" (whole tree 3.35 MB, manifest plus the three front doors
+  47.6 KB, a typical diff a few KB). A dump without the check is a copy with no age, which is what a ten-day-old
+  snapshot is: the one this tool was written for described a README three times the length of the real one, and nothing
+  in it could say so.

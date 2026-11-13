@@ -7,7 +7,24 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
-## A snapshot that can say how old it is (2026-11-14)
+## The handoff to a read-only reviewer, with a diff instead of a dump (2026-11-14)
+
+- **A review needs the change, not the tree.** `--sync` writes the two bundles and the manifest into the folder named by
+  `TOYQUANT_DRIVE_DIR` -- the folder a Drive client uploads from -- and adds `diff.patch`: the commit the previous
+  manifest carried to `HEAD`, over the bundled paths only. A reviewer that has the manifest and the diff can say what
+  changed and whether the bundle is current, without reading 3.35 MB of source.
+- **A sync that cannot find its folder fails, naming it.** The command exits 1 and prints the variable and the
+  directory; a reply that reports a task finished while the sync did not run is wrong, which is now rule 6 of
+  `.clinerules` rather than a habit.
+- **`--since`** overrides the base the diff starts at, and the self-test exercises it: an emit from `HEAD~1` must produce
+  a diff containing `diff --git`, a manifest with a `since` line must still check, and a second sync must pick the base
+  up from the manifest it just wrote (`previous_commit`), so the loop is incremental by construction.
+- **The order the reviewer gets things in** is written down: manifest + diff; the three front doors on a first read;
+  a full bundle only when a diff cannot answer. The reviewer does not write -- its output is proposals, and the edit
+  happens in the tree under the gate.
+- **Also fixed**: the `## Definition of done` heading that the previous documentation edit had swallowed, so the
+  numbered list that follows it had no title.
+
 
 - **The problem was a copy with no age.** A codebase dump sitting in a Drive folder was ten days behind -- it described
   a README three times the length of the real one -- and nothing in it carried the commit or a hash, so its staleness

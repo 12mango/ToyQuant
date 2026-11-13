@@ -12,6 +12,11 @@ Two bundles rather than one, because the two halves answer different questions: 
 
     python3 tools/export/bundle.py --emit --out /tmp/tq-export      # code.txt, docs.txt, manifest.txt
     python3 tools/export/bundle.py --check --out /tmp/tq-export     # 0 when the bundle is this tree
+    TOYQUANT_DRIVE_DIR=... python3 tools/export/bundle.py --sync    # the same, plus diff.patch since the last sync
+
+The sync is the workflow step: it writes the bundle into the folder a Drive (or any) client uploads from, adds
+`diff.patch` -- the change since the commit the previous bundle carried, over the bundled paths only -- and then checks
+what it wrote. That diff is what a read-only reviewer is given: a review needs the change, not the tree.
 
 The file list is `git ls-files`, so it is the tree's own answer to "what is in this repository": ignored paths
 (`data/v2`, `secrets/`, `out/`) are absent, and the commit in the manifest is the one those bytes came from.
@@ -19,6 +24,7 @@ The file list is `git ls-files`, so it is the tree's own answer to "what is in t
 import argparse
 import hashlib
 import io
+import os
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -29,6 +35,9 @@ DOC_PREFIXES = ("docs/", "mkdocs.yml", "README.md", "CHANGELOG.md", ".clinerules
 # A bundle is text a reader reads: a file over this size is data or a generated table, and belongs to neither half.
 MAX_BYTES = 2_000_000
 BANNER = "===== {} ({} lines) sha256={} ====="
+# The folder a Drive (or any) client syncs. A sync that cannot find it is an error that names it, never a quiet skip:
+# a snapshot nobody refreshed is exactly the failure this tool exists for.
+DRIVE_ENV = "TOYQUANT_DRIVE_DIR"
 
 
 def tracked_files():
@@ -60,13 +69,15 @@ def commit_id():
                           text=True).stdout.strip()
 
 
-def emit(out_dir):
+def emit(out_dir, since=None):
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     halves = {"code": io.StringIO(), "docs": io.StringIO()}
-    manifest = [f"commit {commit_id()}",
-                f"generated {datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}",
-                "sha256\tlines\tpath"]
+    manifest = [f"commit {commit_id()}"]
+    if since:
+        manifest.append(f"since {since}")
+    manifest += [f"generated {datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}",
+                 "sha256\tlines\tpath"]
     counts = {"code": [0, 0], "docs": [0, 0]}
     for path in tracked_files():
         half = classify(path)
@@ -87,9 +98,51 @@ def emit(out_dir):
     manifest.append(f"# code: {counts['code'][0]} files, {counts['code'][1]} lines")
     manifest.append(f"# docs: {counts['docs'][0]} files, {counts['docs'][1]} lines")
     (out / "manifest.txt").write_text("\n".join(manifest) + "\n", encoding="utf-8")
-    print(f"wrote {out}/code.txt, {out}/docs.txt, {out}/manifest.txt "
-          f"({counts['code'][0]} code files, {counts['docs'][0]} docs files)")
+    if since:
+        (out / "diff.patch").write_text(diff_since(since), encoding="utf-8")
+    print(f"wrote {out}/code.txt, {out}/docs.txt, {out}/manifest.txt"
+          + (f", {out}/diff.patch" if since else "")
+          + f" ({counts['code'][0]} code files, {counts['docs'][0]} docs files)")
     return 0
+
+
+def diff_since(ref):
+    """The change since the last sync, over the bundled paths only: what a reviewer has to read, and nothing else."""
+    paths = [path for path in tracked_files() if classify(path) is not None]
+    if not paths:
+        return ""
+    result = subprocess.run(["git", "diff", "--no-color", "--no-ext-diff", ref, "HEAD", "--", *paths],
+                            check=True, capture_output=True, text=True)
+    return result.stdout
+
+
+def previous_commit(out_dir):
+    """The commit the last bundle in this directory was made from, if there is one."""
+    manifest = Path(out_dir) / "manifest.txt"
+    if not manifest.is_file():
+        return None
+    for line in manifest.read_text(encoding="utf-8").splitlines():
+        if line.startswith("commit "):
+            return line.split(" ", 1)[1].strip()
+    return None
+
+
+def sync(out_dir, since=None):
+    """Emit, then check what was emitted, then say which commit it is and how much the reviewer has to read."""
+    base = since or previous_commit(out_dir)
+    status = emit(out_dir, since=base)
+    if status != 0:
+        return status
+    patch = Path(out_dir) / "diff.patch"
+    changed = 0
+    if base and patch.is_file():
+        changed = sum(1 for line in patch.read_text(encoding="utf-8").splitlines()
+                      if line.startswith("diff --git "))
+    status = check(out_dir)
+    print(f"synced {commit_id()[:7]}"
+          + (f" (from {base[:7]}: {changed} file(s) in diff.patch)" if base else "")
+          + f" -> {out_dir}")
+    return status
 
 
 def check(out_dir):
@@ -103,7 +156,7 @@ def check(out_dir):
     for line in manifest.read_text(encoding="utf-8").splitlines():
         if line.startswith("commit "):
             snapshot_commit = line.split(" ", 1)[1]
-        elif line.startswith(("#", "sha256", "generated ")) or not line.strip():
+        elif line.startswith(("#", "sha256", "generated ", "since ")) or not line.strip():
             continue
         else:
             digest, _lines, path = line.split("\t", 2)
@@ -162,6 +215,14 @@ def self_test():
                 if not (line and not line.startswith(("commit ", "generated ", "sha256 ", "#")))]
         manifest.write_text("\n".join(kept[:-2]) + "\n", encoding="utf-8")
         assert check(out) == 1, "a missing file was accepted"
+        # A sync from a known base: the diff is the artifact a reviewer reads instead of the tree.
+        assert emit(out, since="HEAD~1") == 0
+        patch = out / "diff.patch"
+        assert patch.is_file() and "diff --git " in patch.read_text(encoding="utf-8"), "no diff for a known base"
+        assert check(out) == 0, "a manifest with a `since` line does not check"
+        # The next sync finds the base in the manifest it just wrote, so a second sync is a no-op diff.
+        assert sync(out) == 0
+        assert previous_commit(out) == commit_id(), "sync did not record the commit it was made from"
         shutil.rmtree(out)
     print("self-test OK")
     return 0
@@ -172,14 +233,28 @@ def main():
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--emit", action="store_true", help="write code.txt, docs.txt and manifest.txt")
     parser.add_argument("--check", action="store_true", help="compare a bundle with this tree")
-    parser.add_argument("--out", default="out/export", help="where the bundle lives (default out/export)")
+    parser.add_argument("--sync", action="store_true",
+                        help=f"emit into the folder a client syncs (${DRIVE_ENV}), with a diff since the last sync, "
+                             "then check it")
+    parser.add_argument("--since", help="the commit the diff starts at (default: the last bundle's commit)")
+    parser.add_argument("--out", help="where the bundle lives (default out/export, and the sync folder for --sync)")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     if args.self_test:
         return self_test()
-    if args.emit == args.check:
-        parser.error("choose one of --emit or --check")
-    return emit(args.out) if args.emit else check(args.out)
+    if sum((args.emit, args.check, args.sync)) != 1:
+        parser.error("choose one of --emit, --check or --sync")
+    if args.sync:
+        target = args.out or os.environ.get(DRIVE_ENV, "")
+        if not target:
+            parser.error(f"--sync needs a folder: pass --out, or set {DRIVE_ENV} to the directory your client syncs")
+        if not Path(target).is_dir() and not Path(target).parent.is_dir():
+            parser.error(f"{target} does not exist and neither does its parent: create the synced folder first")
+        return sync(target, since=args.since)
+    out = args.out or "out/export"
+    if args.emit:
+        return emit(out, since=args.since)
+    return check(out)
 
 
 if __name__ == "__main__":

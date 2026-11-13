@@ -191,9 +191,9 @@ def main():
                         # its websocket trade operation answers 50026 and its REST endpoint places the order.
                         "--order-rest",
                         # `tools/export/bundle.py` owns these: it writes the two bundles a reader who cannot clone the
-                        # tree is given, and checks a bundle's manifest against the tree. The tool is manual; its
-                        # `--self-test` is what proves the check fires.
-                        "--emit", "--check", "--out"}:
+                        # tree is given, checks a bundle's manifest against the tree, and syncs into the folder a
+                        # client uploads from. The tool is manual; its `--self-test` is what proves the check fires.
+                        "--emit", "--check", "--out", "--sync", "--since"}:
             problems.append(f"{flag} is mentioned in a document and is not a flag the binary accepts")
     for model in sorted(models):
         if model not in text.lower():

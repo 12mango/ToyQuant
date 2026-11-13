@@ -164,6 +164,30 @@ A page is read in three minutes or it is not read. Three rules follow, and the m
   What stays outside every fold is the same three things: one figure, one conclusion table of four columns or fewer,
   and the commands a reader copies.
 
+## 6. Handing the tree to another reader
+
+Two readers touch this repository: the one that edits (this agent, in the tree) and the one that only reviews (a second
+model, read-only, which proposes and never writes). The handoff is one command and one artifact, because a dump is the
+wrong size: the whole tree is 3.35 MB (~837k tokens), a manifest plus the three front doors is 47.6 KB (~12k), and a
+review of one change needs the change.
+
+- **Sync on every change, before the reply.** `python3 tools/export/bundle.py --sync` writes `code.txt`, `docs.txt`,
+  `manifest.txt` and `diff.patch` into the folder named by `TOYQUANT_DRIVE_DIR` -- the folder a Drive client uploads
+  from -- then checks what it wrote. `diff.patch` is the commit the previous manifest carried to `HEAD`, over the
+  bundled paths only, so a reviewer reads the change and not the tree.
+- **A sync that cannot find its folder is a failure, not a skip.** The command names the directory and exits 1, and a
+  reply that reports a task finished while the sync was not run is wrong.
+- **What the reviewer is given, in this order:** `manifest.txt` + `diff.patch`; the three front doors (`README.md`,
+  `docs/index.md`, `docs/MAP.md`) on its first read; `code.txt` or `docs.txt` only when a diff cannot answer -- a file
+  the change did not touch, or a first look at the repository. The manifest's commit and its sha256 per file are how the
+  reviewer says "this is stale" without being told.
+- **The reviewer does not write.** Its output is a list of proposals; the edit happens in the tree, under the gate, by
+  the agent that owns the change. A suggestion that arrives as a patch is still a suggestion -- it is applied here or it
+  is not applied.
+- **A copy is never evidence.** CI and `verify_l2.sh` read the repository; the bundle is for a reader, and the gate does
+  not read it (`docs/TOOLS.md`, convention 4).
+
+## Definition of done
 
 1. The change is in the part of the tree that owns it, and nothing under `data/` moved.
 2. Any new number is a marked block, and `check_docs` re-derives it.
