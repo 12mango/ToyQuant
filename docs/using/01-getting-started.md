@@ -7,9 +7,9 @@ is folded away.*
 
 --8<-- "docs/_figures/path.mmd"
 
-Two layers, and each is a claim. The top one is the path a market event takes -- a feed, a book with an **explicit**
-queue, a strategy, a pre-trade gate, one venue interface with three engines behind it (the matcher, the paper broker, the
-live venue), and **one** ledger. The bottom one is what makes the numbers re-derivable: a run records both legs, replays
+Two rows, and each is a claim. The top row is the path a market event takes -- a feed, a book with an **explicit** queue,
+a strategy, a pre-trade gate, one venue interface with three engines behind it (the matcher, the paper broker, the live
+venue), and **one** ledger. The bottom row is what makes the numbers re-derivable: a run records both legs, replays
 offline, and has to reconcile -- so a live venue and a replay are the same program with a different plug.
 
 ## What eight markets said

@@ -18,13 +18,12 @@ latency of a real venue -- and every number it publishes is re-derived by its ow
 ---
 
 ```mermaid
-%% The front door's version of the path: the same six boxes, no side branches, and a copy of docs/_figures/path-front.mmd
-%% because GitHub renders mermaid but cannot include a file. Keep the two in step. Every node carries its own fill and
-%% text colour: Mermaid's default theme is dark text on a transparent background, which disappears on a dark page.
+%%{init: {"theme":"base","themeVariables":{"fontSize":"15px","primaryColor":"#e8f1f8","primaryTextColor":"#10233a","primaryBorderColor":"#2f6fa8","lineColor":"#6b7b8c","textColor":"#10233a","nodeTextColor":"#10233a","titleColor":"#10233a"}}}%%
+%% A copy of docs/_figures/path-front.mmd, because GitHub renders mermaid but cannot include a file. Keep the two in step.
 flowchart LR
-    D["market data"] --> B["L2 book<br/>queue explicit"] --> S["strategy"] --> G{"risk gate"} --> M["venue<br/>three engines"] --> L["ledger<br/>[PNL] · [RECON]"]
+    D["feed"] --> B["L2 book"] --> S["strategy"] --> G{"risk gate"} --> M["venue"] --> L["ledger"]
 
-    classDef box fill:#eef4fb,stroke:#2b6ca3,stroke-width:1.5px,color:#0f2438
+    classDef box fill:#e8f1f8,stroke:#2f6fa8,stroke-width:1.5px,color:#10233a
     classDef gate fill:#fdf3e3,stroke:#b07d1c,stroke-width:1.5px,color:#3b2a06
     classDef good fill:#eaf6ef,stroke:#2c7d54,stroke-width:1.5px,color:#0d2f21
     class D,B,S,M box

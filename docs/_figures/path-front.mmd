@@ -1,12 +1,11 @@
 ```mermaid
-%% The front door's version of the path: the same six boxes, no side branches. The two-layer one is `path.mmd` on the
-%% quickstart; README.md carries a copy of this file, because GitHub renders mermaid but cannot include one.
-%% The explicit fills and colours are the dark-mode fix: Mermaid's default theme is dark text on a transparent
-%% background, which vanishes on Material's dark page, so every node carries its own background.
+%%{init: {"theme":"base","themeVariables":{"fontSize":"15px","primaryColor":"#e8f1f8","primaryTextColor":"#10233a","primaryBorderColor":"#2f6fa8","lineColor":"#6b7b8c","textColor":"#10233a","nodeTextColor":"#10233a","titleColor":"#10233a"}}}%%
+%% The front door's six boxes, one row. Labels are one or two short words so the row still reads on a phone; the
+%% palette is pinned because a classDef `color` alone was overridden by the theme and left grey text on a pale fill.
 flowchart LR
-    D["market data"] --> B["L2 book<br/>queue explicit"] --> S["strategy"] --> G{"risk gate"} --> M["venue<br/>three engines"] --> L["ledger<br/>[PNL] · [RECON]"]
+    D["feed"] --> B["L2 book"] --> S["strategy"] --> G{"risk gate"} --> M["venue"] --> L["ledger"]
 
-    classDef box fill:#eef4fb,stroke:#2b6ca3,stroke-width:1.5px,color:#0f2438
+    classDef box fill:#e8f1f8,stroke:#2f6fa8,stroke-width:1.5px,color:#10233a
     classDef gate fill:#fdf3e3,stroke:#b07d1c,stroke-width:1.5px,color:#3b2a06
     classDef good fill:#eaf6ef,stroke:#2c7d54,stroke-width:1.5px,color:#0d2f21
     class D,B,S,M box

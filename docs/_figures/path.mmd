@@ -1,27 +1,25 @@
 ```mermaid
-%% The end-to-end path in two layers, not one row: the pipeline a market event takes, and the loop that makes a number
-%% re-derivable. Eleven boxes in a single row is a diagram nobody can read at page width.
-%% Every node carries its own fill and text colour on purpose: Mermaid's default theme draws dark text on a transparent
-%% background, which disappears in Material's dark mode, so the figure has to be self-contained rather than themed.
+%%{init: {"theme":"base","themeVariables":{"fontSize":"15px","primaryColor":"#e8f1f8","primaryTextColor":"#10233a","primaryBorderColor":"#2f6fa8","lineColor":"#6b7b8c","textColor":"#10233a","nodeTextColor":"#10233a","titleColor":"#10233a","tertiaryColor":"#eef4fb"}}}%%
+%% Two stacked rows, not one wide row: eleven boxes in a line is unreadable at page width.
+%% No edge joins the two subgraphs, and that is the fix for the vertical column this figure used to be: Mermaid
+%% ignores `direction` inside a subgraph that has an edge to another one, so the row collapsed into a kebab.
+%% The palette is pinned with `theme: base` and explicit text colours, because a classDef `color` alone was overridden
+%% by the theme and left grey text on a pale fill.
 flowchart TB
-    subgraph pipeline["the path a market event takes"]
+    subgraph path["the path"]
         direction LR
-        F["market feed"] --> B["L2 book<br/>queue explicit"] --> S["strategy"] --> G{"risk gate"} --> V["venue<br/>three engines"] --> L["one ledger"]
+        F["feed"] --> B["L2 book"] --> S["strategy"] --> G{"risk gate"} --> V["venue"] --> L["ledger"]
     end
 
-    subgraph loop["what makes the number re-derivable"]
+    subgraph loop["the loop"]
         direction LR
-        R["record both legs"] --> P["offline replay"] --> C["[RECON] parity"]
+        R["record"] --> P["replay"] --> C["[RECON] parity"]
     end
 
-    L -.-> R
-
-    classDef box fill:#eef4fb,stroke:#2b6ca3,stroke-width:1.5px,color:#0f2438
+    classDef box fill:#e8f1f8,stroke:#2f6fa8,stroke-width:1.5px,color:#10233a
     classDef gate fill:#fdf3e3,stroke:#b07d1c,stroke-width:1.5px,color:#3b2a06
     classDef good fill:#eaf6ef,stroke:#2c7d54,stroke-width:1.5px,color:#0d2f21
-    classDef note fill:#f2f2f2,stroke:#7d7d7d,stroke-width:1.2px,color:#333333
-    class F,B,S,V box
+    class F,B,S,V,R,P box
     class G gate
     class L,C good
-    class R,P note
 ```
