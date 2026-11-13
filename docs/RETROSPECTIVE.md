@@ -11,6 +11,28 @@ the gates and the pre-registration discipline in `docs/ROADMAP.md` exist to answ
 opinions, and the answer now has a shape: **the quoting earns money, and the inventory it must carry decides the
 outcome by an order of magnitude.**
 
+## The order the gates fire in
+
+A quote is closed at the first gate it fails, and the gates are asked in this order because the next one is only worth
+asking if the one before it passed. `tools/study/viability.py` encodes the same order and fails the gate if a recorded
+line names a different one as binding.
+
+```mermaid
+flowchart LR
+    Q["a quoting line"] --> F{"one fill's capture<br/>covers the fee?"}
+    F -- no --> X1["closed on the fee:<br/>crypto perpetuals,<br/>micro E-mini, SPY"]
+    F -- yes --> P{"a window's capture<br/>covers its position sigma?"}
+    P -- no --> X2["closed on the position:<br/>US large caps"]
+    P -- yes --> A{"are there enough<br/>prints a window?"}
+    A -- no --> X3["closed on the actions:<br/>options, 15 days and out"]
+    A -- yes --> C["carry: does a month<br/>pay back the round trip?"]
+    C --> X4["closed on payback:<br/>0 of 12 months"]
+```
+
+Two closures sit outside that chain because they are not quotes: the options line at one day to expiry is set aside by
+a **restriction** written before it was measured, and the low-turnover reversion rule is closed on the **sign** of its
+own payoff rather than on a cost.
+
 ## The dead ends, what each cost, and why
 
 | attempt | what it cost | why it ended |
