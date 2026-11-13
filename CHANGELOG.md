@@ -10,11 +10,11 @@ site now points at `ToyQuant`.
 ## The sync that was running and failing for ten days (2026-11-14)
 
 - **The workflow was persisted, and it was broken in a way nobody could see.** `.git/hooks/post-commit` already called a
-  sync -- `/home/mango12/tq_snapshot.py`, a script outside the repository. Its default repo was
-  `/home/mango12/work/ToyQuant-v1`, so from the moment that directory stopped existing every commit wrote
-  `ERROR: /home/mango12/work/ToyQuant-v1 is not a git repository` into `/tmp/tq_gdrive_sync.log` and nothing else. The
-  Drive folder stayed at `7035823` (2026-11-03) while the tree moved through two hundred commits. The log is the whole
-  explanation, and nobody had a reason to open it.
+  sync -- `/home/mango12/tq_snapshot.py`, a script outside the repository. Its default repo was the pre-rename checkout
+  directory, so from the moment that directory stopped existing every commit wrote
+  `ERROR: <that directory> is not a git repository` into `/tmp/tq_gdrive_sync.log` and nothing else. The Drive folder
+  stayed at `7035823` (2026-11-03) while the tree moved through two hundred commits. The log is the whole explanation,
+  and nobody had a reason to open it.
 - **The replacement is in the tree and checked after the copy.** `tools/export/push_windows.sh` runs
   `bundle.py --sync` into `out/export`, copies the four files to the Windows folder named by `.drive-target` (ignored:
   a machine path is not a repository fact), and then compares each file's **remote size and sha256** with the local

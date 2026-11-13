@@ -179,9 +179,9 @@ review of one change needs the change.
 - **The hook is installed, and its log is read.** `bash tools/export/install_post_commit.sh` puts the sync into
   `.git/hooks/post-commit` *before* the final `exit 0` (a block appended after it never runs), and the log is
   `/tmp/toyquant-sync.log`. This rule exists because of how the previous arrangement failed: it called
-  `/home/mango12/tq_snapshot.py`, a script outside the repository whose default repo was
-  `/home/mango12/work/ToyQuant-v1`, so every commit for ten days wrote `ERROR: ... is not a git repository` into a log
-  nobody opened and the Drive copy stayed at `7035823`. A sync is a copy that was checked, not a command that ran.
+  `/home/mango12/tq_snapshot.py`, a script outside the repository whose default repo was the pre-rename checkout
+  directory, so every commit for ten days wrote `ERROR: <that directory> is not a git repository` into a log nobody
+  opened and the Drive copy stayed at `7035823`. A sync is a copy that was checked, not a command that ran.
 - **A sync that cannot find its folder is a failure, not a skip.** The command names the directory and exits 1, and a
   reply that reports a task finished while the sync was not run is wrong.
 - **What the reviewer is given, in this order:** `manifest.txt` + `diff.patch`; the three front doors (`README.md`,
