@@ -14,12 +14,6 @@ offline, and has to reconcile -- so a live venue and a replay are the same progr
 
 ## What eight markets said
 
---8<-- "docs/_figures/charge.svg"
-
-Two bars a market: what a fill captured, and what it cost. Where the fee bar is taller, no quote width pays -- which is
-the finding, not a tuning problem. The labels round to fit (0.088, 0.0131 and 0.268 ticks captured; 2.57, 0.5 and 0.35
-ticks of fee); the table below carries the exact figures.
-
 | line | what a fill captured | what it cost | why it ended |
 |---|---|---|---|
 | crypto perpetuals (Deribit, Binance, OKX) | 0.088 ticks | a 2.57-tick fee | the fee is 29x the edge, and no lever moves a ratio like that |
@@ -31,47 +25,71 @@ ticks of fee); the table below carries the exact figures.
 | funding carry, BTC, two venues, twelve months | 0 of 12 months clear | a 36 USD round trip | no month's differential earns the round trip |
 | a low-turnover reversion rule | +149.76 cents a share, best window | -980.38 cents, worst window | it wins small and loses big: the sign does not replicate |
 
-Two lines measured after the eight, and not counted among them:
+Every figure in this table is the [Retrospective](../RETROSPECTIVE.md)'s, and the quotients behind it are the fixture
+`tests/fixtures/verdicts.json`, which `tools/study/viability.py` re-derives in tier 1 of the gate.
+
+/// details | The same numbers as a picture, and the two lines measured after the eight
+
+--8<-- "docs/_figures/charge.svg"
+
+Two bars a market: what a fill captured, and what it cost. Where the fee bar is taller, no quote width pays. The labels
+round to fit (0.088, 0.0131 and 0.268 ticks captured; 2.57, 0.5 and 0.35 ticks of fee); the table above carries the
+exact figures.
 
 | line | what the measurement said | why it stopped there |
 |---|---|---|
 | an EWMA trend rule (`trend_l2`) | +1.54 USD on 1 April over 90 fills, and negative on 1 June | closed by non-replication: the edge existed on one day and not the other |
 | a volatility floor (standby when the market is quiet) | the quiet half loses 0.00410 USD a fill, the busy half 0.00515 | both halves lose, the quiet half loses less: a floor would keep the expensive minutes |
 
-Every figure in these two tables is the [Retrospective](../RETROSPECTIVE.md)'s, and the quotients behind the first
-table are the fixture `tests/fixtures/verdicts.json`, which `tools/study/viability.py` re-derives in tier 1 of the gate.
+///
 
-## A short demo path
+## Three commands
 
-After `cmake --preset linux-debug && cmake --build --preset linux-debug` (CMake 3.16+, a C++20 compiler, Python 3).
-The first command cuts the 200k-row slice the other two read.
+Build once, then the three paths this repository has: the replay, the same session over a socket, and the carry.
 
 ```bash
-# 1. one replay: the gate's invariant tier, then the run itself
+cmake --preset linux-debug && cmake --build --preset linux-debug
+
+# 1 one replay, and the market leg recorded for command 2
 bash tools/gate/verify_l2.sh smoke
 ./out/build/linux-debug/toy_quant l2_replay \
     data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
-    /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation
+    /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --record /tmp/one
 
-# 2. the same replay, recording both legs: the market rows and the order leg
+# 2 the same engine over a socket: a local sender streams what 1 wrote
+python3 tools/live/websocket_sender.py --port 8765 --trades /tmp/one_trades.csv --depth /tmp/one_depth.csv &
+./out/build/linux-debug/toy_quant ws 127.0.0.1:8765 BTC-PERPETUAL active_l2 1 prorata --fast-validation
+
+# 3 the carry branch, closed by its own number
+./out/build/linux-debug/toy_quant carry \
+    data/v2/funding/BTCUSDT-fundingRate-2024-03.csv \
+    data/v2/funding/okx_funding_2024-03-01_2024-03-31_BTC-USDT-SWAP.csv \
+    --symbol-a=BTCUSDT --symbol-b=BTC-USDT-SWAP --notional-usd=10000
+```
+
+1 prints `[PNL]` and writes the market leg; 2 feeds the same engine from a socket, so a replay and a live session are the
+same program with a different reader; 3 prints `[CARRY]`, and the carry did not pay. The order leg to a venue, the
+relay's flags and the recorded order leg are [the live page](04-live-and-carry.md)'s.
+
+/// details | The recording loop, and the equality the gate checks
+
+Command 1's recording replays as a file, and the `[PNL]` line has to be the one the recording run printed: that equality
+is the loop in the diagram, and `fast` asserts it on this slice every run.
+
+```bash
 ./out/build/linux-debug/toy_quant l2_replay \
     data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
     /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation \
     --record /tmp/session --record-orders /tmp/session
-
-# 3. the market recording replayed: the same [PNL], read back from the files
 ./out/build/linux-debug/toy_quant l2_replay \
     /tmp/session_trades.csv /tmp/session_depth.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation
 ```
 
-1 prints `[PNL]`. 2 adds the two recorders and prints `[ORDER-LOG]` with its path and its counts. 3 reads what 2 wrote,
-and the `[PNL]` line must be the one 2 printed -- that equality is the loop in the diagram, and `fast` asserts it on
-this slice every run.
+The order leg is `<prefix>_orders.csv`: the recording `RecordedVenue` replays as an engine, and what `[ORDER-LOG]`
+reports. No app mode replays one yet -- that needs the first recorded session from a venue sandbox
+([the live page](04-live-and-carry.md)).
 
-The order leg can leave the process instead of resting in it: `--live-orders --venue-endpoint=HOST:PORT
---venue-max-orders=N` makes the venue a socket, and the relay's simulated venue answers it without a key. The real demo
-venue answers its own errors rather than fills today; [the live page](04-live-and-carry.md) carries both, with the
-commands.
+///
 
 ## Every flag, folded
 
@@ -81,9 +99,9 @@ commands.
 
 ///
 
-Six of them need a paragraph each rather than a line -- the recorder, the session snapshot, the order leg, the feed
-thread, the paper broker and the order gateway -- and the live order leg a seventh. Those are on
-[the flag reference](../L2_FLAGS.md), one screen down.
+Seven flags need a paragraph each rather than a line -- the recorder, the session snapshot, the order leg, the feed
+thread, the paper broker, the order gateway and the live order leg. Those are on
+[the flag reference](../L2_FLAGS.md).
 
 /// details | Build, tests and the sanitizer tier
 

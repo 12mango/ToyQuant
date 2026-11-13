@@ -75,7 +75,7 @@ existing design, architecture and user documents are the whole plan.
    `--time-in-force=gtc|ioc|fok` applies one setting to every strategy order. Cancel/replace stays deferred:
    it needs old/new id mapping, queue-priority reset, and a replace race.
 8. **Demo path — done.** The ordered command list and expected lines are in the
-   [User Guide](using/01-getting-started.md#a-short-demo-path) `verify_l2.sh fast`, `risk_check.sh`, then a one-cell
+   [User Guide](using/01-getting-started.md#three-commands) `verify_l2.sh fast`, `risk_check.sh`, then a one-cell
    `trend_sweep.sh`. It uses the existing scripts, adds no strategy, and states that the negative trend PnL
    is the measured result rather than a demo failure.
 

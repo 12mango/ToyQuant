@@ -2,16 +2,30 @@
 
 *Part of the [User Guide](../USER_GUIDE.md).*
 
-One pipeline, two legs, and one branch that is closed: the market leg arrives over a socket, the order leg can leave for a
-venue, and the carry branch measures funding instead of quoting.
+One pipeline, two legs, and one branch that is closed: the market leg arrives over a socket, the order leg leaves for a
+venue over two channels that are not interchangeable, and the carry branch measures funding instead of quoting.
+
+| channel | carries | direction |
+|---|---|---|
+| REST `POST /api/v5/trade/order` | every place and every cancel | engine to venue, one call an order |
+| private websocket, `orders` channel | state: live, part-filled, filled, cancelled, rejected | venue to engine, a push per change |
 
 ```mermaid
 flowchart LR
     V["venue or sender<br/>a row a message"] --> W["ws reader<br/>one ring"]
     W --> E["book, strategy, ledger<br/>the replay's own code"]
     E --> L["[PNL] and [RECON]"]
-    E --> O["order leg<br/>--record-orders"] --> R["relay"] --> X["venue sandbox"]
+    E --> O["order leg<br/>the recorded one"]
+    O -->|"REST: place, cancel"| R["relay"]
+    R --> X["venue sandbox"]
+    X -.->|"ws orders channel: state"| R
 ```
+
+> The order never travels the market channel and its state never comes back on the call: an `op: order` sent to the
+> private route is `60012`, and the demo account answers `50026` until it is in single-currency margin (`acctLv=2`). A
+> `BTC-USDT-SWAP` contract is 0.01 BTC (`ctVal`), so a venue-unit size is a hundredth of the coin amount put in
+> `--order-size` -- the two ways a first sandbox run looks wrong by a factor of a hundred are in
+> [Troubleshooting](07-troubleshooting.md).
 
 ## Three commands
 
@@ -116,8 +130,8 @@ That channel has two backends and two placement routes; the next fold is the who
 
 The order channel that produces a recording is in the relay, answering as a simulated venue: `python3
 tools/live/venue_relay.py --simulate-orders --order-listen 127.0.0.1:8766`, which `tests/relay_order_channel_test` drives
-with the real adapter and the real transport.
-without it the relay logs in to the venue's own private stream, subscribes the `orders` channel and translates in both
+with the real adapter and the real transport. Without that flag the relay logs in to the venue's own private stream,
+subscribes the `orders` channel and translates in both
 directions, and reconnects -- logging in and subscribing again -- after a drop, with `logins`, `subscribes` and
 `reconnects` in the line it prints when the engine hangs up. The three credentials are read from
 `TOYQUANT_API_KEY`, `TOYQUANT_API_SECRET` and `TOYQUANT_PASSPHRASE`, never from the command line, and a listener with

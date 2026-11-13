@@ -70,7 +70,7 @@ watch a position build names both: `--order-size=10 --inventory-limit=100`.
 <!-- --8<-- [end:flags] -->
 
 `--close-out` is the one flag that changes a number rather than a line: it is in the table above, and what it does to
-`[PNL]` is in [what a run's numbers do not include](using/06-reading-the-output.md#two-things-a-runs-numbers-do-not-include).
+`[PNL]` is in [what a run's numbers leave out](using/06-reading-the-output.md#what-a-number-in-that-line-leaves-out).
 
 ## The six flags that need more than a line
 

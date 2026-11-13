@@ -2,8 +2,8 @@
 
 *Part of the [User Guide](../USER_GUIDE.md).*
 
-Two kinds of input, and one picture at the end of either. The first is for a fast, repeatable check and the second is for a
-measurement; neither is a market.
+Two kinds of input, one set of files at the end of either, and one picture for the legacy path. The deterministic script is
+for a fast, repeatable check and the real archive is for a measurement; neither is a market.
 
 ## Scenarios
 
@@ -15,7 +15,39 @@ measurement; neither is a market.
 A scenario has one price a row rather than a book, so a queue model over it is a story about the script and not about a
 venue; a real archive is what makes the queue the thing being measured.
 
+## What a run leaves on disk
+
+| file | written by | what it is |
+|---|---|---|
+| `<prefix>_trades.csv`, `<prefix>_depth.csv` | `--record=PREFIX` | the market leg, in the two wire shapes `ws` reads back |
+| `<prefix>_orders.csv` | `--record-orders=PREFIX` | the order leg: every submission, cancel and report, in order |
+| the path `--snapshot-out` names | `--snapshot-out=PATH` | the account, the positions, the held orders, the clock and the next id |
+| `data/runtime/orders.csv`, `trades.csv` | every run | the last run's orders and fills, overwritten by the next |
+| `reports/<name>.png` | `tools/study/plot_report.py` | the four views below, for a legacy scenario run |
+
+The two `--record` families are what make a session replayable rather than remembered: the market leg streams back over
+`ws`, and the order leg is the file `RecordedVenue` replays as the venue, so a session's own answers can be checked
+instead of trusted.
+
+/// details | The runtime files, and the legacy analyser
+
+Legacy CSV/UDP runtime files begin with `# source_ticks=...` and can be re-analysed by `backtest_main`; replay runtime
+files begin with `# source_market_data=...` and are not its input format, because BBO-based portfolio marking is a
+separate step.
+
+```bash
+./out/build/linux-debug/backtest_main \
+  data/scenarios/sample_ticks.csv data/runtime/orders.csv data/runtime/trades.csv \
+  0 0 backtest logs/backtest.log
+```
+
+///
+
 ## The report, in four views
+
+A legacy scenario run draws one PNG with four views, and a summary panel beside them.
+
+/// details | The four views, the summary panel, and the commands that draw them
 
 | view | what it shows |
 |---|---|
@@ -29,8 +61,6 @@ equity, max drawdown, inventory peak and unexecuted orders.
 
 > `Reference Mid` uses the tick price as its visible reference, because a scenario row has no bid and ask. The report is a
 > visual diagnostic rather than a full PnL report, and `data/runtime/*.csv` is overwritten by the next run.
-
-/// details | Running a scenario and drawing the report
 
 The scenarios are deterministic: the same seed recreates the same ticks, which is what makes them a regression input
 rather than a sample. `sample_ticks.csv` is deliberately small for a format check.
@@ -51,4 +81,3 @@ The shipped files are `sample_ticks.csv` (small), `synthetic_ticks.csv` (mixed),
 strategies, and change one thing at a time.
 
 ///
-

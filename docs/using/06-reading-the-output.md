@@ -18,10 +18,16 @@ mechanical rather than a matter of taste:
 > same way: one number, one red flag. The field-by-field reference is in
 > [the learning path](../LEARNING.md#field-reference).
 
-## How Sure a Number Is
+## How sure a number is
 
-Every number this project quotes that is not arithmetic is a mean over a few events, and a mean without its
-interval is a habit. `tools/study/pnl_interval.py` prints the interval instead:
+Every number this project quotes that is not arithmetic is a mean over a few events, and a mean without its interval is a
+habit. `tools/study/pnl_interval.py` prints the interval instead:
+
+```bash
+python3 tools/study/pnl_interval.py --window btc-months
+```
+
+/// details | The tool's other series, the line it prints, and the two habits worth taking
 
 ```bash
 # a series on the command line, in whatever unit you name
@@ -33,10 +39,9 @@ python3 tools/study/pnl_interval.py --field breakeven_maker_rate data/logs/*.log
 # one column of a CSV, which is how a per-fill series would be read if the run wrote one
 python3 tools/study/pnl_interval.py --column gross_closed_per_fill_usd data/runtime/trades.csv
 
-# the windows on disk, replayed under one configuration rather than read from a log
-python3 tools/study/pnl_interval.py --window btc-months
-python3 tools/study/pnl_interval.py --window btc-months-span   # the same days cut by the clock, not by the row count
-python3 tools/study/pnl_interval.py --window btc-eth      # the same-day pairs, differenced
+# the same days cut by the clock rather than by the row count, and the same-day pairs differenced
+python3 tools/study/pnl_interval.py --window btc-months-span
+python3 tools/study/pnl_interval.py --window btc-eth
 ```
 
 The line it prints is `[INTERVAL] n=… mean=… median=… sd=… se=… ci95_lo=… ci95_hi=… spread=… includes_zero=…
@@ -55,6 +60,8 @@ Two habits are worth taking from the tool rather than reading past:
 
 The floor numbers need none of this, and the contrast is the point: 5.39 bps a crossing costs is fee plus half a
 tick, so running it twice gives the same digits and its interval has zero width. Intervals belong to estimates.
+
+///
 
 ## Which fields appear, and when
 
@@ -91,21 +98,15 @@ The same question for a whole line -- what `[EXECUTION]` prints and what each na
 
 ///
 
-/// details | Where a run writes, and the legacy analyser
+Where a run writes -- `data/runtime/orders.csv`, the two recorded legs, `<prefix>_orders.csv` and the report's PNG -- is
+[Scenarios and reports](05-scenarios-and-reports.md)'s, with the legacy analyser that reads the runtime files.
 
-Each run updates `data/runtime/orders.csv` and `data/runtime/trades.csv`. Legacy CSV/UDP runtime files begin with
-`# source_ticks=...` and can be re-analysed by `backtest_main`; replay runtime files begin with
-`# source_market_data=...` and are not its input format, because BBO-based portfolio marking is a separate step.
+## What a number in that line leaves out
 
-```bash
-./out/build/linux-debug/backtest_main \
-  data/scenarios/sample_ticks.csv data/runtime/orders.csv data/runtime/trades.csv \
-  0 0 backtest logs/backtest.log
-```
+`[PNL]` marks an open position and a strategy spends its first seconds warming up; both are honest and both are
+incomplete, so the line is read with them in mind.
 
-///
-
-## Two things a run's numbers do not include
+/// details | The warm-up, and the exit a mark is not money
 
 **The warm-up.** The mainline does not quote until it has seen 16 trades and 2 valid views (`warmup_trades` and
 `warmup_views` in `src/strategy/active_l2_market_maker.h`), and `trend_l2` waits for its slow average before it will act.
@@ -132,4 +133,6 @@ How large that difference is depends on the venue, not on the strategy:
 The pinned example is [the SPY window](../performance/history-03-studies.md#what-the-two-symbols-do-in-the-engine): the mark
 reads 262.51 and the account after the exit 257.11, with 38 of the 438 shares left unclosed because the touch showed no
 size. Every `net USD` column in these documents that carries a position is a mark until someone runs it with `--close-out`.
+
+///
 

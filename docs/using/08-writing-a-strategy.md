@@ -103,3 +103,27 @@ documents ask the expensive one: is it out of sample, over how many windows, and
 (capture less markout less fees). The tools are in [the tools](../TOOLS.md) and the terms in [the glossary](../GLOSSARY.md).
 
 `inventory_aware_l2` and `active_l2` are three classes over one signal enum, which is why the names outnumber the classes.
+## The loop after the code
+
+A strategy is finished when a run of it reconciles, not when it compiles:
+
+1. **Run it on the micro-scenario and read `[RECON]`.** `status=ok` is the acceptance; a `break` means the ledger and the
+   venue disagree, and nothing below it is worth reading until that is fixed.
+2. **Read the two lines that fail first.** `fills=0` behind a live book is sizing or the queue model, and a climbing
+   `[RISK]` count is a band or a bucket tighter than the quote. Both are rows in
+   [Troubleshooting](07-troubleshooting.md), and the red flags themselves are
+   [Reading the output](06-reading-the-output.md)'s table.
+3. **Then prove nothing else moved.** `code` runs the invariants and the factory test, and `fast` every quoted number
+   before the commit.
+
+```bash
+bash tools/gate/verify_l2.sh smoke
+./out/build/linux-debug/toy_quant l2_replay \
+    data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
+    /tmp/depth_200k_base.csv BTC-PERPETUAL 0 my_maker 1 prorata --fast-validation
+bash tools/gate/verify_l2.sh code
+```
+
+> A green `[RECON]` says the ledger agrees with the venue; it does not say the line makes money. That second question is
+> out-of-sample windows and the capture/fee decomposition, which is [the design review](../DESIGN_REVIEW.md)'s.
+

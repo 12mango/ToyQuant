@@ -7,6 +7,30 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The guide's pages: one figure, one table, three commands (2026-11-14)
+
+- **The quickstart now shows the three paths the rest of the guide is about.** Its demo path was three invocations of one
+  recording loop; it is one replay, the same engine over a socket (`ws`), and the carry -- and the recording loop with the
+  `[PNL]` equality `fast` asserts is a fold under those commands. The relay's flags (`--order-rest`, `--record-orders`,
+  `venue_relay.py`) are named nowhere in the quickstart's main view and live only on the live page.
+- **The eight-line scoreboard is the quickstart's only table outside a fold.** The charge chart and the two lines measured
+  after the eight moved into one fold beside it, so the page is one diagram, one table and three commands, which is what
+  its own subtitle claims.
+- **The live page states the two channels before the commands.** REST places and cancels; the private `orders` channel
+  pushes state; the diagram draws the second as a dotted return edge, and the note under it carries the two ways a first
+  sandbox run looks wrong by a factor of a hundred -- `acctLv=2` for `50026`, `ctVal=0.01` against a venue-unit
+  `--order-size`. The troubleshooting table already had both rows on its first screen.
+- **The page that owns the files now owns them.** `Scenarios and reports` gained the table of what a run leaves on disk
+  (`--record`, `--record-orders`, `--snapshot-out`, `data/runtime`, the report's PNG), and the legacy analyser fold moved
+  there from `Reading the output`; that page keeps the five terminal lines and two folds (the interval tool, and what a
+  `[PNL]` mark leaves out).
+- **`Writing your own strategy` ends with the loop** instead of a static link out: run the micro-scenario, read `[RECON]`,
+  take the two lines that fail first to `Troubleshooting`, then `code` and `fast`.
+- Three anchors moved with their headings, and the two documents that pointed at them were updated in the same commit
+  (`docs/L2_FLAGS.md`, `docs/ROADMAP.md`) rather than left to `check_links`. Gate: `docs OK` on the seven pages,
+  `lint_prose` 0 problems, `check_links` 416 links in 51 documents / 0 problems, `mkdocs build --strict` green,
+  `fast` green.
+
 ## The sync that was running and failing for ten days (2026-11-14)
 
 - **The workflow was persisted, and it was broken in a way nobody could see.** `.git/hooks/post-commit` already called a
