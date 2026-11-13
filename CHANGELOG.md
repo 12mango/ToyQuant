@@ -7,6 +7,30 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The tools for a parameter that has to travel (2026-11-13)
+
+- **A walk-forward over the sweeps that already exist.** `tools/study/walk_forward.py` fits a swept parameter on
+  every window up to a fold and scores the chosen cell on the fold's own window, so the number a document quotes has
+  not seen its own answer. It reads the CSVs `tools/sweep/*.sh` already write -- one per window, in the order they
+  happened -- states its selection rule (highest mean over the training windows, ties to the first tuple in the
+  file), reports `replicated=yes` only when every fold's out-of-sample number is positive, counts an unreadable cell
+  as `missing` rather than as zero, and refuses a single window because one window has nothing to be out of sample.
+- **A windowed true range, for the volatility gate that could not be one.** `tools/study/volatility_window.py` cuts
+  a trade file into fixed windows and prints each window's high minus low in ticks: the "tick range over a fixed time
+  window" that `src/strategy/active_l2_market_maker.h` names as the thing its per-second volatility halt cannot be.
+  Both averages are printed -- over every window and over the windows with at least two prints, since a window with
+  one print has a range of zero -- with `singles=` saying how many those were. Its `--bucket` mode joins that series
+  to a per-window results table and prints the two sides of the median, their counts and their means, and no verdict:
+  the split is printed so a reader can see where it fell, and whether a difference is a result is the document's
+  question.
+- **Both run in the gate.** `verify_l2.sh`'s tool check runs their `--self-test`s, which pin the fold chosen on the
+  past, the choice that travelled, the missing cell, the tie rule of the median split and each tool's refusals. A
+  first walk-forward over the two Deribit windows (2020-04-01 chosen on, 2020-06-01 scored on) prints
+  `replicated=no` with the chosen cell negative out of sample, which is the grid's own result arriving by the route
+  that can be repeated rather than by a re-reading.
+- **What did not change**: no C++ file, no test binary, no recorded number, and the same 120 source files and 26,024
+  source lines. The tools read `data/` and write under `/tmp`; a missing input is an error naming the file.
+
 ## The relay's private route (2026-11-13)
 
 - **The order channel gets the backend the live leg needs.** `tools/live/venue_relay.py` serves `--order-listen` from

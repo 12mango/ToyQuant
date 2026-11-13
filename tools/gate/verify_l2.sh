@@ -460,6 +460,14 @@ tier1() {
   # touches look more settled than it is. Its replay mode is exercised by the marked block in
   # docs/PERFORMANCE_HISTORY.md, which the doc check above runs, so this tier does not replay the windows twice.
   python3 tools/study/pnl_interval.py --self-test >> "$TOOL_CHECK_LOG" 2>&1 || tool_check=1
+  # The walk-forward is the tool that decides whether a swept parameter was a finding or the window it was found
+  # on, and its selection rule, its tie rule, its handling of a missing cell and its two refusals are arithmetic a
+  # document quotes: they run here so a change to any of them fails a gate rather than a re-read.
+  python3 tools/study/walk_forward.py --self-test >> "$TOOL_CHECK_LOG" 2>&1 || tool_check=1
+  # The volatility window is the tick range over a fixed window that `src/strategy/active_l2_market_maker.h`
+  # records as the thing its per-second speed cannot be. A range, the two averages and the median split are what a
+  # document would quote, and the split's tie rule is the kind of detail that drifts silently, so it is checked.
+  python3 tools/study/volatility_window.py --self-test >> "$TOOL_CHECK_LOG" 2>&1 || tool_check=1
   # The relay owns the venue's message shapes and the order channel's translation, which nothing else in the tree
   # can check: its hand-built login signature against a pinned vector, a peer that verifies the login that crossed
   # a socket, the refusals, and the reconnect that re-logs-in and re-subscribes are what keep the live leg honest,
