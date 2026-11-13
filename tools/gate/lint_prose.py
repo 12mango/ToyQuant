@@ -48,6 +48,7 @@ TEST_TARGET = re.compile(r"^\s*add_toy_test\((\w+)\)", re.MULTILINE)
 # the block is read: that is where the type lives, and it is the part a hand edit gets wrong. `%%` lines are
 # Mermaid's own comments and carry no type.
 MERMAID_BLOCK = re.compile(r"```mermaid[ \t]*\n(.*?)```", re.DOTALL)
+RAW_DETAILS = re.compile(r"^\s*<details\b", re.MULTILINE)
 MERMAID_TYPES = {
     "flowchart", "graph", "sequencediagram", "classdiagram", "statediagram", "statediagram-v2", "erdiagram",
     "journey", "gantt", "pie", "quadrantchart", "xychart-beta", "requirementdiagram", "gitgraph", "mindmap",
@@ -236,13 +237,20 @@ def main():
     # check exists for would be exactly the ones it never read.
     figures = sorted(Path("docs/_figures").glob("*.mmd")) if Path("docs/_figures").is_dir() else []
     for path in list(args.documents) + figures:
-        for index, block in enumerate(MERMAID_BLOCK.findall(path.read_text()), start=1):
+        document_text = path.read_text()
+        for index, block in enumerate(MERMAID_BLOCK.findall(document_text), start=1):
             lines = [line.strip() for line in block.splitlines()
                      if line.strip() and not line.strip().startswith("%%")]
             kind = lines[0].split()[0].lower() if lines else ""
             if kind not in MERMAID_TYPES:
                 problems.append(f"{path}: mermaid block {index} starts with '{kind or 'nothing'}', which is "
                                 f"not a diagram type Mermaid draws")
+        # A raw `<details>` block renders as text, not as a fold: Python-Markdown passes block-level HTML through
+        # as HTML, so a table inside one reaches the browser as a paragraph of pipes. The build is green either
+        # way -- that is why this is a lint and not a note in the document -- and `/// details | title` is the form
+        # that is parsed. The owner found this one by looking at the published page.
+        if RAW_DETAILS.search(document_text):
+            problems.append(f"{path}: uses a raw <details> block, which renders as text; use `/// details | title`")
 
     for problem in problems:
         print(f"FAIL {problem}")
