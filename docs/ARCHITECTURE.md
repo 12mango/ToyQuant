@@ -1,58 +1,41 @@
 # Architecture
 
-This page is the module reference for the instrument: a small event-driven market-making simulator. It connects market-data input, a simplified order book, strategy decisions, order matching, execution reports, and CSV output. What the instrument was pointed at, and what each measurement concluded, is in the [Retrospective](RETROSPECTIVE.md); how to run it is in the [User Guide](USER_GUIDE.md).
+*The module reference for a small event-driven simulator: input, book, strategy, matching, reports, accounting. What
+the instrument was pointed at is [the retrospective](RETROSPECTIVE.md); how to run it is the [User
+Guide](USER_GUIDE.md).*
 
-## How to read this document
+## The path, and the page that owns each stage
 
-| You want to understand... | Start here |
+```mermaid
+flowchart LR
+    IN["reader<br/>files, socket,<br/>recording"] --> EV["an event<br/>a variant, so a<br/>new input is a case"]
+    EV --> CO["coordinator<br/>+ the book"]
+    CO --> ST["strategy<br/>a target: quote<br/>or position"]
+    ST --> ME["matching engine<br/>+ the queue model"]
+    ME --> RP["ExecutionReport"] --> AC["accounting<br/>and the summary"]
+```
+
+The six parts are the six stages above, one page each. The tables there show ownership; the prose explains only the
+decisions that are not visible from the code.
+
+| part | what it covers | start here if |
+|---|---|---|
+| [1. System map](architecture/01-system-map.md) | the whole flow in one picture, and the ownership rule behind it | you want the end-to-end event flow |
+| [2. Inputs and shared types](architecture/02-inputs-and-types.md) | every reader, the event types they produce, and the validation boundary | you are adding an input or debugging a parse |
+| [3. Coordinator and the book](architecture/03-coordinator-and-book.md) | how the application wires the pieces, then the book view a strategy reads | you need object ownership or the callback order |
+| [4. Matching engine](architecture/04-matching-engine.md) | price–time priority, the queue model, partial fills, self-trade prevention, the reports | you need to know how a fill is decided |
+| [5. Strategy](architecture/05-strategy.md), in two parts | the decision layer, its lifecycle, the order state machine, every family including the mainline | you are working on a strategy |
+| [6. Accounting and the summary](architecture/06-accounting-and-the-summary.md) | what a fill does to cash and inventory, and every field of every report line | you are reading a report line |
+
+## Four things worth reading for
+
+| what | why it is the part most simulators get wrong |
 |---|---|
-| End-to-end event flow | [System Map](architecture/01-system-map.md#1-system-map) |
-| Input formats and validation | [Shared Types and Input Boundary](architecture/02-inputs-and-types.md#2-shared-types-and-input-boundary) |
-| Object ownership and callbacks | [Application Coordinator](architecture/03-coordinator-and-book.md#3-application-coordinator) |
-| External book versus strategy orders | [OrderBook](architecture/03-coordinator-and-book.md#4-orderbook-the-frozen-lines-external-view) and [MatchingEngine](architecture/04-matching-engine.md#5-matchingengine-orders-queues-and-reports) |
-| How strategies make decisions | [Strategy](architecture/05-strategy/01-the-model-and-the-baselines.md#6-strategy-the-main-decision-module) |
-| PnL and reusable metrics | [Backtest and Performance Metrics](architecture/06-accounting-and-the-summary.md#7-backtest-and-performance-metrics) |
-| What the engine costs and how that is measured | [Performance](PERFORMANCE.md) |
-| Why a latency-critical design is built the way it is | [Low-Latency Design](performance/design.md) |
+| **the queue** | a quote's fills are decided by what is ahead of it; the model carries four settings from a conservative lower bound to an optimistic upper bound, and the bound sweep recorded in [Performance History](performance/history-03-studies.md) shows the conclusions do not move between them |
+| **the fee** | it is charged the way a broker charges it -- a per-unit commission, maker and taker rates, a floor per order instance, a fee on a sale's proceeds, a credit for displayed liquidity -- which is what made a one-cent tick visible as a cost rather than an assumption |
+| **the state machine** | the order audit keeps what a strategy *did*: filled instances with their size histogram, cancels before and after a fill, the queue consumed, and the markout of the fills that arrived |
+| **the honesty of the measurement** | every number in [Performance](PERFORMANCE.md) is re-derived by `tools/gate/verify_l2.sh` rather than copied, and designs that were measured and rejected are kept rather than deleted -- [Low-Latency Design](performance/design.md) is that record |
 
-The diagrams show control flow. The tables show ownership and responsibilities. The code blocks
-show the smallest representative implementation surface; detailed prose explains only the design
-decisions that are not obvious from those views.
-
-## For a reviewer in a hurry
-
-The four things this document is worth reading for, in the order an engineer would ask about them:
-
-* **the queue**, because it is the part most simulators fudge: a quote's fills are decided by what is ahead of it, the
-  model carries four settings from a conservative lower bound to an optimistic upper bound, and the recorded bound sweep
-  shows the conclusions of this repository do not move between them;
-* **the fee**, because it is charged the way a broker charges it: a per-unit commission, a maker and taker rate, a floor
-  per order instance, the fees that follow a sale's proceeds, and a credit for displayed liquidity — with the equity
-  schedule that made a one cent tick visible as a cost rather than as an assumption;
-* **the state machine**, because the order audit keeps what a strategy did rather than what it intended: filled order
-  instances with their size histogram, cancels before and after a fill, the queue consumed, and the markout of the fills
-  that arrived;
-* **the honesty of the measurement**, because the numbers quoted in [Performance](PERFORMANCE.md) and
-  [Performance History](PERFORMANCE_HISTORY.md) are re-derived by `tools/gate/verify_l2.sh` rather than copied, and the
-  designs that were measured and then rejected are kept rather than deleted — [Low-Latency Design](performance/design.md) is
-  that record.
-
-
-## The module reference, in six parts
-
-Six parts, because the questions arrive six ways: how does an event get in, who owns the state, how is a fill
-decided, what does a strategy decide, and what does the run report.
-
-| part | what it covers |
-|---|---|
-| [1. System map](architecture/01-system-map.md) | the whole flow in one picture, and the ownership rule behind it |
-| [2. Inputs and shared types](architecture/02-inputs-and-types.md) | every reader, the event types they produce, and the validation boundary between them |
-| [3. Coordinator and the book](architecture/03-coordinator-and-book.md) | how the application wires the pieces together, then the external book view the strategies read |
-| [4. Matching engine](architecture/04-matching-engine.md) | price–time priority, the queue model, partial fills, self-trade prevention, and the reports |
-| [5. Strategy](architecture/05-strategy.md), in two parts | the decision layer, its lifecycle, the order state machine, and every strategy family including the mainline |
-| [6. Accounting and the summary](architecture/06-accounting-and-the-summary.md) | what a fill does to cash and inventory, and what every field of every report line means |
-
-Read 1 and 3 first if you want the shape; read 5 if you are working on a strategy; read 6 when you are reading a report
-line and need to know where a number comes from. The rationale behind any of it is in the
-[Design Review](DESIGN_REVIEW.md), and the order to read the *source* in is [Main Line](MAINLINE.md).
+The rationale behind any of it is in [Design Review](DESIGN_REVIEW.md), and the order to read the *source* in is [Main
+Line](MAINLINE.md).
 
