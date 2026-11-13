@@ -12,7 +12,7 @@ with a question about the engine, about the mainline strategy, or about one of t
 |---|---|
 | [1. The engine and the L1 line](performance/history-01-engine.md) | the workload and host, the pre-queue-model L1 line, quote width against the fee, the levers and the invariant they do not move, and the five-day out-of-sample check |
 | [2. The L2 mainline](performance/history-02-l2.md) | the L2 replay path itself: the workload, the gprof preparation, the paired baseline, the 27-cell strategy regression matrix, the long-window profile, the buffered line reader and the stage timings that decided the container |
-| [3. The studies](performance/history-03-studies.md) | everything the instrument was pointed at after the mainline worked: the queue distribution, funding as an input, the acceptance number, the maker fee each window needed, the decision layer, the market where the fee is not the wall, the instruments that passed the screen, the queue model and the fee floor, the non-market-making signal, the execution line, the pair trade and the pre-trade controls |
+| [3. The studies](performance/history-03-studies.md) | everything the instrument was pointed at after the mainline worked: the queue distribution, funding as an input, the acceptance number, the maker fee each window needed, the decision layer, the market where the fee is not the wall, the instruments that passed the screen, the queue model and the fee floor, the volatility floor and why it is not built, the non-market-making signal, the execution line, the pair trade and the pre-trade controls |
 
 Two things about reading it:
 
