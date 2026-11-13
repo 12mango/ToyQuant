@@ -3,7 +3,7 @@
   "cases": [
     {
       "line": "crypto perpetuals",
-      "source": "docs/PERFORMANCE_HISTORY.md:1004",
+      "source": "docs/performance/history-03-studies.md:160",
       "structure": "quote",
       "binding": "fee",
       "bound": "optimistic",
@@ -13,13 +13,13 @@
         "fee_ticks": 2.57
       },
       "also": [
-        "docs/RETROSPECTIVE.md:90 -- the line is recorded as a fee that is a multiple of the spread the venue offers, so a quote cannot pay for itself at any width",
-        "docs/DESIGN_REVIEW.md:411 -- pairs the same 2.57 against 0.095 on the mainline window, and the kill does not depend on which of the two windows is quoted"
+        "docs/RETROSPECTIVE.md:104 -- the line is recorded as a fee that is a multiple of the spread the venue offers, so a quote cannot pay for itself at any width",
+        "docs/DESIGN_REVIEW.md:517 -- pairs the same 2.57 against 0.095 on the mainline window, and the kill does not depend on which of the two windows is quoted"
       ]
     },
     {
       "line": "micro E-mini",
-      "source": "docs/PERFORMANCE_HISTORY.md:2012",
+      "source": "docs/performance/history-03-studies.md:546",
       "structure": "quote",
       "binding": "fee",
       "bound": "optimistic",
@@ -29,8 +29,8 @@
         "fee_ticks": 0.5
       },
       "also": [
-        "docs/PERFORMANCE_HISTORY.md:1979 -- a contract pays about 0.62 USD of commission against a tick worth 1.25, which is the half tick this divides by",
-        "docs/PERFORMANCE_HISTORY.md:2012 -- a fee a tick can cover is not the same thing as a capture a fee can pay for, and this is where the two came apart"
+        "docs/performance/history-03-studies.md:530 -- a contract pays about 0.62 USD of commission against a tick worth 1.25, which is the half tick this divides by",
+        "docs/performance/history-03-studies.md:567 -- a fee a tick can cover is not the same thing as a capture a fee can pay for, and this is where the two came apart"
       ]
     },
     {
@@ -45,13 +45,13 @@
         "fee_ticks": 0.35
       },
       "also": [
-        "docs/PERFORMANCE_HISTORY.md:1988 -- the same 0.267855 ticks and the same 799 fills, from the run rather than from the summary",
+        "docs/performance/history-03-studies.md:549 -- the same 0.267855 ticks and the same 799 fills, from the run rather than from the summary",
         "docs/RETROSPECTIVE.md:20 -- a second kill, recorded and not turned into a quotient: 1 ms of order latency took +262 USD to +1.89, and 5 ms took it to -1143"
       ]
     },
     {
       "line": "US large cap equities, MU",
-      "source": "docs/RETROSPECTIVE.md:91",
+      "source": "docs/RETROSPECTIVE.md:105",
       "structure": "quote",
       "binding": "position",
       "bound": "optimistic",
@@ -63,14 +63,14 @@
       "separation": {"sigma": "sigma_usd", "capture": "capture_usd", "windows": 506},
       "also": [
         "docs/MAINLINE.md:38 -- the fee floor binds on 79 percent of order instances, a second kill that is recorded here and not a quotient",
-        "docs/RETROSPECTIVE.md:48 -- the capture is 940.59 USD a window averaged over the sixteen rows, and :50 gives the position term's standard deviation as 10,588 USD",
+        "docs/RETROSPECTIVE.md:53 -- the capture is 940.59 USD a window averaged over the sixteen rows, and :55 gives the position term's standard deviation as 10,588 USD",
         "this tool, not a document -- the 506 is (2 x 10,588 / 941)^2 at the two standard deviations the row names, so it is read off the same two inputs the gate uses and not carried as a number of its own",
         "owner, not a document -- a strict test would have wanted tens of thousands of windows and measuring past five hundred was already unnecessary, so the verdict was taken from the ratio rather than from the sample"
       ]
     },
     {
       "line": "options one day to expiry",
-      "source": "docs/ROADMAP.md:846",
+      "source": "docs/archive/studies.md:1226",
       "structure": "restricted",
       "binding": "restriction",
       "bound": "optimistic",
@@ -80,14 +80,14 @@
         "excluded_dte_max": 15
       },
       "also": [
-        "docs/ROADMAP.md:846 -- the pre-registered restriction is a DTE above fifteen days, which was written before these series were measured rather than after",
-        "docs/ROADMAP.md:880 -- the one and three day series are the ones whose R_max clears 71, at 254, 203, 113, 111 and 104 prints a fill, so this line passes the gate that closed the fifteen day one and is set aside by the restriction instead",
-        "docs/ROADMAP.md:847 -- the spread here is the price of standing in front of expiry flow, so the capture is compensation for tail risk rather than a quoting edge"
+        "docs/archive/studies.md:1226 -- the pre-registered restriction is a DTE above fifteen days, which was written before these series were measured rather than after",
+        "docs/archive/studies.md:1257 -- the one and three day series are the ones whose R_max clears 71, at 254, 203, 113, 111 and 104 prints a fill, so this line passes the gate that closed the fifteen day one and is set aside by the restriction instead",
+        "docs/archive/studies.md:1224 -- the spread here is the price of standing in front of expiry flow, so the capture is compensation for tail risk rather than a quoting edge"
       ]
     },
     {
       "line": "options from fifteen days out",
-      "source": "docs/RETROSPECTIVE.md:93",
+      "source": "docs/RETROSPECTIVE.md:107",
       "structure": "quote",
       "binding": "actions",
       "bound": "optimistic",
@@ -99,13 +99,13 @@
       },
       "derive": {"source": "venue_ratio_options", "input": "r_max"},
       "also": [
-        "docs/ROADMAP.md:936 -- across twenty to forty five days the best R_max in any of them is 56 against the reference of 71",
+        "docs/archive/studies.md:1314 -- across twenty to forty five days the best R_max in any of them is 56 against the reference of 71",
         "this tool, not a document -- the fee gate holds here on a recorded claim: the two ticks behind 'the fee axis passed' are not recorded, so the run prints it as recorded rather than as derived"
       ]
     },
     {
       "line": "funding rate carry, BTC, two venues, twelve months",
-      "source": "docs/RETROSPECTIVE.md:94",
+      "source": "docs/RETROSPECTIVE.md:108",
       "structure": "carry",
       "binding": "payback",
       "bound": "optimistic",
@@ -116,12 +116,12 @@
         "round_trip_usd": 36
       },
       "also": [
-        "docs/RETROSPECTIVE.md:94 -- no run of a positive differential in any month earns the 36 USD round trip, so the best month is the one that matters and it is still short"
+        "docs/RETROSPECTIVE.md:108 -- no run of a positive differential in any month earns the 36 USD round trip, so the best month is the one that matters and it is still short"
       ]
     },
     {
       "line": "a low turnover reversion rule",
-      "source": "docs/RETROSPECTIVE.md:95",
+      "source": "docs/RETROSPECTIVE.md:109",
       "structure": "hold",
       "binding": "sign",
       "bound": "optimistic",
@@ -136,8 +136,8 @@
       },
       "derive": {"source": "lowturnover", "input": "median_net_cents"},
       "also": [
-        "docs/ROADMAP.md:982 -- the median gross is -20.38 against a median net of -23.34, so the schedule added 2.96 cents and the sign was already wrong before it was charged",
-        "docs/ROADMAP.md:986 -- the line is closed by payoff asymmetry rather than by a cost",
+        "docs/archive/studies.md:1366 -- the median gross is -20.38 against a median net of -23.34, so the schedule added 2.96 cents and the sign was already wrong before it was charged",
+        "docs/archive/studies.md:1371 -- the line is closed by payoff asymmetry rather than by a cost",
         "this tool, not a document -- the asymmetry is recorded as the two extremes 149.76 and -980.38 and is not turned into a threshold, because a threshold chosen after reading them would be a knob"
       ]
     }
