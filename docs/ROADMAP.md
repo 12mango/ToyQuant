@@ -209,6 +209,17 @@ cannot be a threshold, with a two-bucket join; and the driver that gives that jo
 result beside the per-slice range on the same clock. All three are tooling: no strategy, no purchase, no change to a
 recorded number. Everything else stays frozen.
 
+**The owner's stop, recorded 2026-11-13.** Three items came out of the volatility work and none is being taken. The
+walk-forward run does **not** go into the document gate: the self-test does, because it costs nothing, but the two
+sweeps a real run needs are about forty-three seconds, and `fast` is the check every edit pays for. A measurement
+that answers a question when a paper is being written is a command, not a gate; `tools/study/walk_forward.py` stays
+one. The two measurements that came out of the floor -- a wider quote than one tick, and a rolling-window range
+against the fixed slice -- **stay frozen with everything else**, because the fee wall has now been measured from
+enough directions that tuning a quote width is the expensive end of marginal work and it would pull attention off the
+sandbox acceptance line. And `tools/fetch/slice.py`'s snapshot mode keeps scanning past its end timestamp: a tool with
+no self-test that no run path depends on is not worth the risk of a change, and `slice_pnl.py` cuts in one pass and
+does not use it. Each of the three is a decision with its reason, so lifting one takes a new request like any other.
+
 **The owner's stop, recorded 2026-11-02.** Four items were candidates and are not being built: a per-fill PnL column
 in the trade report (the remaining half of the interval work), a latency budget asserted in the gate, a client order
 id that survives a process restart, and a randomized fuzz tier for the readers. Each has its verdict in the gaps

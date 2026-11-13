@@ -1411,7 +1411,9 @@ from a different direction. The two means are close enough that the finding is "
 
 The table is a command rather than a marked block on purpose: the five-day run is nine minutes and the ten-minute
 one is four, which together are more than this page's whole gate budget. Its limits are the ones every window here
-carries -- one instrument, one configuration, five days, and a maker measured at one quote width.
+carries -- one instrument, one configuration, five days, and a maker measured at one quote width. The two follow-ups
+those limits invite, a wider quote and a rolling-window range against the fixed slice, are frozen by the owner's stop
+recorded in the roadmap; this section is where the line ends rather than a list of next steps.
 
 
 

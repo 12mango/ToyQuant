@@ -31,6 +31,10 @@ Usage:
 
     python3 tools/study/walk_forward.py --self-test
 
+The self-test is in the gate; a real run is not, by the owner's decision of 2026-11-13. The two sweeps it needs cost
+about forty-three seconds together, and the gate `fast` is the check every edit pays for -- a measurement that answers
+a question while a document is being written is a command, not a gate. Run it when a number is about to be quoted.
+
 A cell whose metric is missing or unreadable (`?` is what the sweeps print when a run did not report a field) is
 left out of the fit and counted as `missing`; it never scores zero, because zero is a result and a missing number
 is not. Exit status is 0 when the folds ran, 1 when an input could not be read or a self-test case failed.
