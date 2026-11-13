@@ -5,31 +5,7 @@ is folded away.*
 
 ## The system, end to end
 
-```mermaid
-flowchart LR
-    A["market data<br/>CSV / gzip / WebSocket / recorded"] --> B["one reader interface<br/>a live feed is another reader"]
-    B --> C["L2 book<br/>the queue ahead of a quote, modelled"]
-    C --> D["strategy<br/>a target: a quote or a position"]
-    D --> E{"pre-trade gate<br/>exposure / rate / fat-finger / loss"}
-    E -- refused --> X["counted, never sent"]
-    E -- allowed --> F["matching interface<br/>IMatchingEngine"]
-    F --> G["in-process matcher"]
-    F --> H["PaperBroker<br/>statement and reconciliation"]
-    F --> I["LiveVenue<br/>sandbox, off by default"]
-    G --> J["ExecutionReport<br/>the single accounting entry"]
-    H --> J
-    I --> J
-    J --> K["ledger: cash, position<br/>[PNL] and [RECON]"]
-
-    subgraph loop["the loop every number comes from"]
-        R1["record the market<br/>--record"] -.-> R3["offline replay<br/>l2_replay"]
-        R2["record the order leg<br/>--record-orders"] -.-> R3
-        R3 -.-> R4["[PNL] and [EXECUTION]<br/>compared, not remembered"]
-    end
-    K -.-> R1
-    J -.-> R2
-    style loop stroke-dasharray: 6 5
-```
+--8<-- "docs/_figures/path.mmd"
 
 Four things the picture fixes: one reader interface for every input, a book with an **explicit** queue, three
 implementations of one matching interface (the sandbox included), and **one** accounting entry -- so a live venue and a
@@ -37,14 +13,7 @@ replay are the same program with a different plug.
 
 ## What eight markets said
 
-```mermaid
-xychart-beta
-    title "One fill captured, against one fill cost (ticks)"
-    x-axis ["crypto perpetual", "micro E-mini", "SPY"]
-    y-axis "ticks" 0 --> 3
-    bar [0.088, 0.0131, 0.268]
-    line [2.57, 0.5, 0.35]
-```
+--8<-- "docs/_figures/charge.mmd"
 
 The bars are the capture; the line is the fee. Where the line is above the bars, no quote width pays -- which is the
 finding, not a tuning problem.

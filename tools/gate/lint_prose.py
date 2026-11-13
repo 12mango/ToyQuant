@@ -43,6 +43,16 @@ BREAKDOWN_ENTRY = re.compile(r"`([\w/]+)` ([\d,]+)")
 SOURCE_LINE_CLAIM = re.compile(r"is ([\d,]+) lines of source")
 TEST_BINARY_CLAIM = re.compile(r"(\d+) (?:unit-)?test binaries")
 TEST_TARGET = re.compile(r"^\s*add_toy_test\((\w+)\)", re.MULTILINE)
+# A Mermaid block renders in the browser and nowhere the gate can look, so a typo in the diagram type is a blank
+# box on the published site and a green build. These are the types Mermaid 11 draws, and only the first word of
+# the block is read: that is where the type lives, and it is the part a hand edit gets wrong. `%%` lines are
+# Mermaid's own comments and carry no type.
+MERMAID_BLOCK = re.compile(r"```mermaid[ \t]*\n(.*?)```", re.DOTALL)
+MERMAID_TYPES = {
+    "flowchart", "graph", "sequencediagram", "classdiagram", "statediagram", "statediagram-v2", "erdiagram",
+    "journey", "gantt", "pie", "quadrantchart", "xychart-beta", "requirementdiagram", "gitgraph", "mindmap",
+    "timeline", "sankey-beta", "block-beta", "packet-beta", "architecture-beta", "c4context",
+}
 
 
 def usage_text(source):
@@ -220,6 +230,19 @@ def main():
         if int(stated) != len(test_targets):
             problems.append(f"a document states {stated} test binaries and the build registers "
                             f"{len(test_targets)}")
+
+    # The figures. A figure that several pages show lives in `docs/_figures/*.mmd` as a whole fenced block, so
+    # the block a reader sees is often not in a `.md` file at all: both sets are checked, or the diagrams this
+    # check exists for would be exactly the ones it never read.
+    figures = sorted(Path("docs/_figures").glob("*.mmd")) if Path("docs/_figures").is_dir() else []
+    for path in list(args.documents) + figures:
+        for index, block in enumerate(MERMAID_BLOCK.findall(path.read_text()), start=1):
+            lines = [line.strip() for line in block.splitlines()
+                     if line.strip() and not line.strip().startswith("%%")]
+            kind = lines[0].split()[0].lower() if lines else ""
+            if kind not in MERMAID_TYPES:
+                problems.append(f"{path}: mermaid block {index} starts with '{kind or 'nothing'}', which is "
+                                f"not a diagram type Mermaid draws")
 
     for problem in problems:
         print(f"FAIL {problem}")
