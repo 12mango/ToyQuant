@@ -4,8 +4,8 @@
 [the retrospective](RETROSPECTIVE.md); why it is built this way is the [design review](DESIGN_REVIEW.md).*
 
 The mainline is `l2_replay` on venue trades and incremental depth -- the only path that models the queue a quote waits
-behind. The Binance Trade+BBO replay, the legacy CSV and UDP inputs, `ws` and `carry` are a compatibility path or a
-different line, and each has its own page.
+behind. `ws` is that path with a socket where the file was, and `carry` is a closed line of its own; the Binance
+Trade+BBO replay and the legacy CSV and UDP inputs are a compatibility path, folded away on the modes page.
 
 **One page is enough to start.** [The quickstart](using/01-getting-started.md) is one diagram, the eight closures and
 three commands; run it and stop. The seven pages below answer specific questions rather than forming a course, and each
@@ -14,7 +14,7 @@ opens with the question it answers.
 | # | page | what it covers | open it when |
 |---|---|---|---|
 | 1 | [Quickstart](using/01-getting-started.md) | the whole system on one page: the path, the eight closures, three commands, the flag dictionary folded away | you have not built it yet |
-| 2 | [Modes](using/02-modes.md) | the six input modes and one command each, including the legacy CSV and UDP pair | your data is not the Deribit L2 pair |
+| 2 | [Modes](using/02-modes.md) | the two L2 paths and the closing carry line, with the legacy modes folded away | your data is not the Deribit L2 pair |
 | 3 | [The L2 replay](using/03-l2-replay.md), in three parts | the two inputs, one run, the venue side, funding and the benchmark | you are running the mainline properly |
 | 4 | [A live session and the carry line](using/04-live-and-carry.md) | the WebSocket session over a local sender, and the two-legged funding carry | your input is a socket, or your question is funding |
 | 5 | [Scenarios and reports](using/05-scenarios-and-reports.md) | the synthetic tick files and the static report with a plot | you want a file you can check against a known shape |

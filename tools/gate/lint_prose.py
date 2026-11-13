@@ -49,6 +49,12 @@ TEST_TARGET = re.compile(r"^\s*add_toy_test\((\w+)\)", re.MULTILINE)
 # Mermaid's own comments and carry no type.
 MERMAID_BLOCK = re.compile(r"```mermaid[ \t]*\n(.*?)```", re.DOTALL)
 RAW_DETAILS = re.compile(r"^\s*<details\b", re.MULTILINE)
+# The three pages a reader arrives at: the site's home, the guide's index, and the quickstart. Legacy L1 commands on
+# these pages have to be folded -- the rule and its reason are in the check below.
+FRONT_DOOR_PAGES = {"index.md", "USER_GUIDE.md", "01-getting-started.md"}
+FOLD_OPEN = re.compile(r"^\s*/// details\b")
+FOLD_CLOSE = re.compile(r"^\s*///\s*$")
+LEGACY_COMMAND = re.compile(r"\btoy_quant (?:csv|udp|replay)\b")
 MERMAID_TYPES = {
     "flowchart", "graph", "sequencediagram", "classdiagram", "statediagram", "statediagram-v2", "erdiagram",
     "journey", "gantt", "pie", "quadrantchart", "xychart-beta", "requirementdiagram", "gitgraph", "mindmap",
@@ -262,6 +268,21 @@ def main():
         # that is parsed. The owner found this one by looking at the published page.
         if RAW_DETAILS.search(document_text):
             problems.append(f"{path}: uses a raw <details> block, which renders as text; use `/// details | title`")
+        # The front doors carry the main line only. The legacy L1 modes still run -- the tier 1 invariants are pinned
+        # on them -- but a front door that runs them beside `l2_replay` asks a reader to choose between the
+        # queue-modelled path and the one this project exists to argue against (MAINLINE.md, "What to drop, and
+        # why"). Inside a fold they are one click away; outside it, a page meant to read in three minutes has a fork.
+        if path.name in FRONT_DOOR_PAGES:
+            folded = False
+            for number, line in enumerate(document_text.splitlines(), start=1):
+                if FOLD_OPEN.match(line):
+                    folded = True
+                elif FOLD_CLOSE.match(line):
+                    folded = False
+                elif not folded and LEGACY_COMMAND.search(line):
+                    problems.append(
+                        f"{path}:{number}: runs a legacy L1 mode outside a fold; a front door carries the L2 paths, "
+                        f"and a compatibility command belongs inside `/// details`")
 
     for problem in problems:
         print(f"FAIL {problem}")

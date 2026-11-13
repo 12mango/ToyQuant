@@ -66,10 +66,10 @@ bash tools/gate/verify_l2.sh smoke
 and the `[PNL]` line must be the one 2 printed -- that equality is the loop in the diagram, and `fast` asserts it on
 this slice every run.
 
-The sandbox leg is the one command that is not here yet, and the reason is recorded rather than hidden: the relay
-serves the order channel (`--simulate-orders`), `tests/relay_order_channel_test` drives it with the real adapter, and
-turning the adapter on inside the app is the next step in
-[ADR 0005](../adr/0005-a-live-venue-is-another-matching-engine.md#amendment-2026-11-13).
+The order leg can leave the process instead of resting in it: `--live-orders --venue-endpoint=HOST:PORT
+--venue-max-orders=N` makes the venue a socket, and the relay's simulated venue answers it without a key. The real demo
+venue answers its own errors rather than fills today; [the live page](04-live-and-carry.md) carries both, with the
+commands.
 
 ## Every flag, folded
 
@@ -80,7 +80,8 @@ turning the adapter on inside the app is the next step in
 ///
 
 Six of them need a paragraph each rather than a line -- the recorder, the session snapshot, the order leg, the feed
-thread, the paper broker and the order gateway. Those are on [the flag reference](../L2_FLAGS.md), one screen down.
+thread, the paper broker and the order gateway -- and the live order leg a seventh. Those are on
+[the flag reference](../L2_FLAGS.md), one screen down.
 
 /// details | Build, tests and the sanitizer tier
 

@@ -135,7 +135,35 @@ compatibility path. Everything below assumes that page.
 - **Close with the ledger**: what was done, what the evidence now says, what is still open and who owns it. A task
   without that list is not finished.
 
-## Definition of done
+## 5. Documentation shape
+
+A page is read in three minutes or it is not read. Three rules follow, and the middle one is enforced.
+
+- **A table before a sentence.** Three or more parameters with the same attributes are a table, never a paragraph a
+  reader has to tokenise. Cap a parameter table at three columns -- name, default or unit, one-line job -- keep each
+  cell short, and put anything longer (a condition, a reason, an edge case) in a blockquote under the table, where it
+  cannot stretch a row. One or two parameters stay inline: a border around two facts is noise, and a cell holding two
+  sentences is a paragraph in disguise.
+- **The front doors carry the main line only.** The site home (`docs/index.md`), the guide index (`docs/USER_GUIDE.md`)
+  and the quickstart (`docs/using/01-getting-started.md`) show `l2_replay`, `ws` and the closing `carry` line -- one
+  figure, one short table, three copy-paste commands -- and nothing that asks the reader to choose a different engine.
+  `csv`, `udp` and `replay` are the L1 compatibility path (`docs/MAINLINE.md`, "What to drop, and why"): they keep
+  running and they keep the invariants pinned on them, and on a front door they live **inside** a `/// details` fold
+  with one line saying what they are. `tools/gate/lint_prose.py` fails a front-door page that runs one outside a fold.
+- **Fold what a reader can skip.** The test is one question: *without opening this, can a first-time reader still
+  understand the conclusion?* If yes, it belongs in a fold. The five that always qualify:
+
+  | # | folded content | why it is not in the way |
+  |---|---|---|
+  | 1 | the full flag and field dictionaries | the lint reads them, the reader does not have to |
+  | 2 | the legacy L1 modes and their input formats | a compatibility path is not a fork in the road |
+  | 3 | boundary arithmetic and defensive rules | law for the code's author, not context for a run |
+  | 4 | the slices behind a falsification | the conclusion is the quotient; the receipts are on demand |
+  | 5 | full terminal output and a venue's error codes | read once, in the afternoon a run breaks |
+
+  What stays outside every fold is the same three things: one figure, one conclusion table of four columns or fewer,
+  and the commands a reader copies.
+
 
 1. The change is in the part of the tree that owns it, and nothing under `data/` moved.
 2. Any new number is a marked block, and `check_docs` re-derives it.

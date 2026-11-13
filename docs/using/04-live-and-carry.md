@@ -97,10 +97,19 @@ python3 tools/live/venue_relay.py --simulate-orders --order-listen 127.0.0.1:876
 ```
 
 It prints `[VENUE]` beside `[BROKER]` and `[RECON]`: the frames sent and received, the reports decoded, and the broker's
-statement reconciled against the account. The three flags are required together -- an endpoint without the opt-in
-reaches nothing, and a live leg with no cap of its own is what ADR 0005 decision 4 forbids -- and they are refused
-outside `l2_replay` and `ws`. Pointing the same three at the real private channel is the sandbox run: the relay needs
-the credentials in the environment and the engine needs nothing new.
+statement reconciled against the account. The three flags are one decision:
+
+| flag | takes | what it does |
+|---|---|---|
+| `--live-orders` | nothing | makes the venue the relay's order channel, not the matcher |
+| `--venue-endpoint` | `HOST:PORT` | names the relay's listener; there is no default |
+| `--venue-max-orders` | integer | the adapter's own cap, below the pipeline's limits |
+
+> They are required together: an endpoint without the opt-in reaches nothing, and a live leg with no cap of its own is
+> what ADR 0005 decision 4 forbids. They are refused outside `l2_replay` and `ws`, and on a two-book run.
+
+Pointing the same three at the real private channel is the sandbox run: the relay needs the credentials in the
+environment and the engine needs nothing new.
 
 The first attempt at that run says what the next one needs, and its first lesson was that a silence was not a silence.
 The private route logged in and subscribed (`logins=1 subscribes=1`) and translated the order and the cancel -- and the
