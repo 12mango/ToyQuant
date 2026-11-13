@@ -106,6 +106,21 @@ nothing about profit, and what stops it from becoming a program that spends mone
   rejections booked); a fill is blocked on a venue-side account setting, and the fix is to switch the demo account to
   single-currency margin (`acctLv` 2 or up) rather than a change here. The size stays the other open item: `sz` is in the
   replay instrument's units, not the venue's.
+- **The sandbox run happened, and it decided where placement lives.** The account was `acctLv=1` (spot-only), which is why
+  the websocket trade operation answered `50026` and REST answered `51010 "You can't complete this request under your
+  current account mode"`. With the account switched to margin (`acctLv=2`) REST places the order -- `code 0, sCode 0,
+  "Order placed"`, an order id, and a cancel that answers `code 0` -- while the websocket trade operation still answers
+  `50026`. So the demo venue's placement surface is REST and its websocket is the `orders` channel, and this record's
+  decision 1 is why that costs one class: `RestPlacer` sends the translator's own `args[0]` as the REST body, the same
+  object the websocket op would have carried. The acceptance run against the demo venue measures
+  `[VENUE] frames_sent=2 frames_received=2 orders=1 cancels=1 reports=2 dropped=0`, `[ORDER-LOG] submissions=1
+  cancels=1 reports=2`, `[RECON] status=ok`, and on the relay's side `placed=1 venue_refusals=0 transport_failures=0`,
+  with the venue naming the order it made (`ordId 4096362816047378433`).
+- **What a fill would and would not prove.** The `orders` channel is not subscribed on the REST route, so a fill is not
+  seen there -- that is the next piece and it needs a de-duplication rule, because the channel also repeats state this
+  side already produced. And `sz` is in the replay instrument's units: one OKX contract is 0.01 BTC where the replay's
+  quantity is a contract count of a Deribit perpetual, and the replay's prices are from 2020, so a fill here would be a
+  number about nothing. Both are the reasons this is an acceptance of the wire rather than of a strategy.
 - **What it costs**: one adapter, one wire, one relay order channel, one recorder with its reader, and the flag
   plumbing -- `src/lines/live_venue.{h,cpp}`, `src/lines/tcp_venue_transport.{h,cpp}`, the order channel in
   `tools/live/venue_relay.py`, `src/lines/order_recorder.{h,cpp}`, `src/lines/recorded_venue.{h,cpp}` and a

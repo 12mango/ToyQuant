@@ -7,6 +7,29 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The first sandbox order that was placed, and the surface it chose (2026-11-13)
+
+- **The account was the blocker, and the fix exposed the surface.** `50026` was not a transient: three attempts with
+  backoff, integer and string instrument code, identical, with the clock within 120 ms. REST answered the real refusal --
+  `51010 "You can't complete this request under your current account mode"` -- and the account was `acctLv=1`, spot-only.
+  Switched to margin, REST places an order (`code 0, sCode 0, "Order placed"`, an order id, then a cancel that answers
+  `code 0`), while the websocket trade operation still answers `50026`. Placement over REST, state changes over the
+  private channel: that is the venue's shape, not a preference.
+- **The relay grew the second route without a second translation.** `--order-rest URL` sends the translator's own
+  `args[0]` as the REST body, so `OrderTranslator` is unchanged and the two transports share it. `--order-inst-code`
+  passes the venue's `instIdCode` rather than deriving it, and `rest_timestamp_now()` exists beside `timestamp_now()`
+  because the two surfaces want opposite formats (`50112` against `60004`).
+- **Measured, on the engine's side**: `[VENUE] frames_sent=2 frames_received=2 orders=1 cancels=1 reports=2 dropped=0`,
+  `[ORDER-LOG] submissions=1 cancels=1 reports=2`, `[RECON] status=ok`; the relay printed
+  `placed=1 venue_refusals=0 transport_failures=0`; the venue answered
+  `{"code":"0","data":[{"clOrdId":"1","ordId":"4096362816047378433","sCode":"0","sMsg":"Order placed"}]}` and its cancel.
+  The frame dump holds all four lines, so the run is re-read rather than remembered.
+- **What it did not measure**: a fill. The `orders` channel is not subscribed on the REST route, and the size is in the
+  replay instrument's units against a venue contract of 0.01 BTC at 2026 prices, so a fill would be a number about
+  nothing. Both are named on the live page as the next pieces.
+- No C++ changed, no recorded number moved, and the tool's self-test carries the new pins (the three answer shapes, the
+  translator's body being the REST body, the two timestamp formats).
+
 ## The sandbox order that was answered twice and heard neither time (2026-11-13)
 
 - **The order left under the replay's name.** It carried `instId: "BTC-PERPETUAL"` -- the Deribit instrument the replay

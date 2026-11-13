@@ -127,24 +127,39 @@ conversation:
 - the business route, which is where an order is normally placed, refuses the `orders` subscription outright (`60018`,
   with `ANY` and with `SWAP`), so the subscription and the order placement live on different surfaces.
 
-So the round trip is proven and a fill is not yet, and the reason is now an account setting rather than a request. The
-chain, in the order it was measured:
+So the round trip is proven and a fill is not yet. The chain, in the order it was measured:
 
 - the private route's order operation wants `instIdCode`, the venue's internal code for the contract (10459 for
   `BTC-USDT-SWAP`, read from its public instruments endpoint). `--order-inst-code` passes it through and is deliberately
   required rather than derived: a guessed code is an order on the wrong contract;
-- with the code the parameter complaints stop and the venue answers `50026 "System error. Try again later."` -- three
-  times, a second apart, with the code as a number and as a string, which rules out a type error and a transient blip.
-  The host's clock is within 120 ms of the venue's, which rules out drift (`50112` is what a wrong timestamp looks like);
-- the same order over REST, which is the venue's canonical order surface, gets past signing and answers
-  `sCode 51010, "You can't complete this request under your current account mode."` -- so `50026` was that refusal,
-  collapsed into a system error by the websocket handler;
-- and the account says why: `acctLv=1`, `posMode=net_mode`. Level 1 is spot-only, and a perpetual swap is not a spot
-  instrument.
+- with the code the venue answers `50026 "System error. Try again later."` -- three times, a second apart, with the code
+  as a number and as a string, which rules out a type error and a transient blip. The host's clock is within 120 ms of
+  the venue's, which rules out drift;
+- the same order over REST gets past signing (which needs ISO-8601 milliseconds, where the websocket login needs epoch
+  seconds) and answers `sCode 51010, "You can't complete this request under your current account mode."`: the demo
+  account was `acctLv=1`, spot-only;
+- with the account switched to margin (`acctLv=2`) REST places the order -- `code 0, sCode 0, "Order placed"` and an
+  order id -- while the websocket trade operation still answers `50026`, so the demo venue's placement surface is REST
+  and its websocket is the `orders` channel.
 
-The one action is a venue-side setting -- switch the demo account to single-currency margin (`acctLv` 2 or up) -- and
-then the same command is the acceptance run: nothing in the engine, the adapter or the relay changes. Until then the
-relay's simulated venue is what a run is measured against, and it reconciles.
+That is why the relay has a second placement route: `--order-rest https://www.okx.com` sends the translator's own
+`args[0]` as the REST body, which is the same object the websocket op would have carried, so there is one translation and
+two transports. The acceptance run is the same command as above with the relay on that route:
+
+```bash
+python3 tools/live/venue_relay.py --order-listen 127.0.0.1:8774 \
+    --order-rest https://www.okx.com --order-inst-code=10459 --order-dump /tmp/frames.json
+```
+
+and it says, on the engine's side, `[VENUE] frames_sent=2 frames_received=2 orders=1 cancels=1 reports=2 dropped=0`,
+`[ORDER-LOG] submissions=1 cancels=1 reports=2`, `[RECON] status=ok`; on the relay's,
+`placed=1 venue_refusals=0 transport_failures=0`. The venue's two answers name the order it made:
+`{"code":"0","data":[{"clOrdId":"1","ordId":"4096362816047378433","sCode":"0","sMsg":"Order placed"}]}` and its cancel.
+
+Two things are still open, and they are why this is not a profitable run: the `orders` channel is not subscribed on the
+REST route, so a *fill* would not be seen (that is the next piece, and it needs a de-duplication rule for the state
+changes it would also deliver); and `sz` is in the replay instrument's units, not the venue's -- one contract of
+`BTC-USDT-SWAP` is 0.01 BTC, and the replay's prices are from 2020, so a fill here would be a number about nothing.
 
 /// details | The venue's error codes this line has actually produced
 

@@ -186,7 +186,10 @@ def main():
                         "--order-dump", "--order-inst-type",
                         # The placement route's two switches: a login with no subscription (what the business
                         # endpoint can have) and the venue's internal contract code its order operation demands.
-                        "--order-no-subscribe", "--order-inst-code"}:
+                        "--order-no-subscribe", "--order-inst-code",
+                        # The placement surface the demo venue actually accepts, and the base url it lives at:
+                        # its websocket trade operation answers 50026 and its REST endpoint places the order.
+                        "--order-rest"}:
             problems.append(f"{flag} is mentioned in a document and is not a flag the binary accepts")
     for model in sorted(models):
         if model not in text.lower():

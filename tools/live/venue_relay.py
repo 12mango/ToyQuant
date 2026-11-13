@@ -60,6 +60,9 @@ import struct
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
+from datetime import datetime, timezone
 
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 DEFAULT_VENUE = "wss://ws.okx.com:8443/ws/v5/public"
@@ -78,6 +81,33 @@ PING_POLL_SECONDS = 0.25
 
 
 # ---------------------------------------------------------------- WebSocket framing
+
+class FrameDump:
+    """Every frame both ways, one JSON object a line, written from whichever thread moved it.
+
+    A run that heard nothing cannot say whether the venue was silent or this client was looking somewhere else, and the
+    first sandbox order proved it: the venue had answered twice and the client had dropped both. The file is appended
+    rather than truncated because a reconnect writes several sessions into it, and the order they crossed in is what a
+    reader follows. Credentials never reach it: the login is written with its key, passphrase and signature redacted.
+    """
+
+    def __init__(self, handle=None):
+        self.handle = handle
+        self.lock = threading.Lock()
+        self.frames = 0
+
+    def record(self, direction, frame):
+        if self.handle is None:
+            return
+        with self.lock:
+            self.handle.write(json.dumps({"dir": direction, "frame": frame}) + "\n")
+            self.handle.flush()
+            self.frames += 1
+
+    def close(self):
+        if self.handle is not None:
+            self.handle.close()
+
 
 def encode_frame(payload, opcode=0x1):
     """One unmasked server-to-client frame; a server never masks."""
@@ -764,13 +794,18 @@ def serve_orders(listen, instrument, max_quantity=100, capture=None):
 # ---------------------------------------------------------------- credentials and the private route
 
 def serve_venue_orders(listen, url, credentials, instrument, capture=None, dump=None, inst_type="ANY",
-                       subscribe_orders=True, inst_code=None):
-    """Answers the engine's order leg from the venue's private channel.
+                       subscribe_orders=True, inst_code=None, rest_url=None):
+    """Answers the engine's order leg from the venue: placement over REST, state changes over the private channel.
 
     The engine's side is exactly what the simulation serves -- a line socket, one frame a line -- so the adapter
     and its transport are unchanged and the only thing that moved is where the venue's messages come from. The
     summary at the end carries the session counts, because "it worked" in a live run means the login happened
     again after every drop and the subscription was remade, not that the first one succeeded.
+
+    With `rest_url` the requests are placed by `RestPlacer` and no websocket session is opened at all: the demo
+    venue's websocket trade operation answers `50026` while its REST order endpoint places the same order and
+    returns an id. The `orders` channel -- fills, state changes -- is therefore not subscribed on this route, which
+    is the next piece rather than a hidden one.
     """
     host, _, port = listen.partition(":")
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -781,12 +816,12 @@ def serve_venue_orders(listen, url, credentials, instrument, capture=None, dump=
     # reads the port back instead of guessing which numbers are free on the host.
     print(f"order channel listening on {host}:{listener.getsockname()[1]}", flush=True)
     conn, peer = listener.accept()
-    print(f"engine connected from {peer[0]}:{peer[1]}", flush=True)
+    print(f"engine connected from {peer[0]}:{peer[1]}")
     translator = OrderTranslator(instrument, inst_code)
     sink = open(capture, "a", encoding="utf-8") if capture else None
     # The raw frames, appended rather than truncated: a run that reconnects writes several sessions into one
     # file, and the order they crossed in is the thing being read.
-    dump_sink = open(dump, "a", encoding="utf-8") if dump else None
+    dump_sink = FrameDump(open(dump, "a", encoding="utf-8") if dump else None)
     stop = threading.Event()
     orders = cancels = replies = refused = 0
 
@@ -802,9 +837,15 @@ def serve_venue_orders(listen, url, credentials, instrument, capture=None, dump=
                 return
             replies += 1
 
-    client = OrderVenueClient(url, credentials, translator, deliver, stop=stop, dump=dump_sink,
-                              inst_type=inst_type, subscribe_orders=subscribe_orders)
-    client.start()
+    # Two routes, one loop: a REST placement answers immediately on this thread, and the websocket route hands each
+    # request to the client thread and its answers arrive on the receive thread. With `rest_url` no websocket is
+    # opened, so there is no `orders` channel here to receive a fill on -- the next piece, and written down as such.
+    placer = RestPlacer(rest_url, credentials, dump=dump_sink) if rest_url else None
+    client = None
+    if placer is None:
+        client = OrderVenueClient(url, credentials, translator, deliver, stop=stop, dump=dump_sink,
+                                  inst_type=inst_type, subscribe_orders=subscribe_orders)
+        client.start()
     pending = b""
     try:
         while not stop.is_set():
@@ -837,17 +878,26 @@ def serve_venue_orders(listen, url, credentials, instrument, capture=None, dump=
                 if sink is not None:
                     sink.write(json.dumps(request) + "\n")
                     sink.flush()
-                client.submit(request)
+                if placer is not None:
+                    deliver(placer.send(request))
+                else:
+                    client.submit(request)
     finally:
         stop.set()
-        client.close()
-        client.join(timeout=2.0)
+        if client is not None:
+            client.close()
+            client.join(timeout=2.0)
         if sink is not None:
             sink.close()
         if dump_sink is not None:
             dump_sink.close()
         conn.close()
         listener.close()
+    if placer is not None:
+        print(f"order channel done (REST placement): orders={orders} cancels={cancels} replies={replies} "
+              f"refused={refused} placed={placer.placed} venue_refusals={placer.refused} "
+              f"transport_failures={placer.failures} dumped={dump_sink.frames}", flush=True)
+        return 0
     print(f"order channel done: orders={orders} cancels={cancels} replies={replies} refused={refused} "
           f"logins={client.logins} subscribes={client.subscribes} reconnects={client.reconnects} "
           f"messages={client.messages} other_instruments={client.other_instruments} "
@@ -954,6 +1004,108 @@ def subscribe_orders_message(inst_type="ANY"):
     return {"op": "subscribe", "args": [{"channel": "orders", "instType": inst_type}]}
 
 
+def rest_timestamp_now():
+    """The venue's timestamp for a REST call: ISO 8601 **milliseconds**.
+
+    The websocket login takes epoch seconds and this takes the ISO form -- measured, not read off one page: a login
+    signed this way is refused with `60004`, and a REST call signed the other way with `50112`. Two formats, one venue,
+    and a client that shares one timestamp function across both is one error code away from looking like a bad key.
+    """
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+
+def rest_signature(timestamp, secret, method, path, body):
+    """base64(HMAC-SHA256(secret, timestamp + method + path + body)); the body is the exact bytes sent."""
+    return base64.b64encode(
+        hmac.new(secret.encode(), f"{timestamp}{method}{path}{body}".encode(), hashlib.sha256).digest()).decode()
+
+
+class RestPlacer:
+    """Places an order over REST, because the demo venue's websocket trade operation answers `50026`.
+
+    Measured on 2026-11-13, in this order: the websocket `op: order` answered `50026 "System error. Try again later."`
+    three times with backoff, a second apart, with the instrument code as a number and as a string; the same order over
+    REST, with the account in margin mode, answered `code 0, sCode 0, "Order placed"` and an order id, and the cancel
+    that followed answered `code 0` with nothing left pending. So placement lives here and the private websocket stays
+    what it is good at: the `orders` channel's state changes.
+
+    The body is the translator's own `args[0]` -- the same shape the websocket op would carry -- so there is one
+    translation and two transports, which is the property that makes this a relay rather than a second client.
+    """
+
+    PATHS = {"order": ("POST", "/api/v5/trade/order"),
+             "cancel-order": ("POST", "/api/v5/trade/cancel-order")}
+
+    def __init__(self, base_url, credentials, dump=None, simulated=True):
+        self.base_url = base_url.rstrip("/")
+        self.credentials = credentials
+        self.dump = dump if dump is not None else FrameDump()
+        # The demo host takes the header and the live one does not; a live placement with it is refused, so it is a
+        # constructor argument rather than a constant.
+        self.simulated = simulated
+        self.placed = 0
+        self.refused = 0
+        self.failures = 0
+
+    def send(self, request):
+        """One translated request out, one adapter line back."""
+        op = request.get("op")
+        if op not in self.PATHS:
+            raise OrderError(f"'{op}' is not a request REST places")
+        method, path = self.PATHS[op]
+        body = json.dumps(request["args"][0], separators=(",", ":"))
+        self.dump.record("request", body)
+        answer = self._post(method, path, body)
+        if answer is None:
+            self.failures += 1
+            return [f"REJECT {request['id']} venue"]
+        return self.lines_for(op, request["id"], answer)
+
+    def lines_for(self, op, order_id, answer):
+        """The venue's answer as the adapter's lines, with a refusal's own words printed rather than swallowed."""
+        data = (answer.get("data") or [{}])[0]
+        code = str(answer.get("code", ""))
+        sub = str(data.get("sCode", ""))
+        if code == "0" and sub == "0":
+            if op == "order":
+                self.placed += 1
+                return [f"ACK {order_id} {data.get('sz', '0')}"]
+            return [f"CANCELED {order_id} user"]
+        self.refused += 1
+        reason = data.get("sMsg") or answer.get("msg", "")
+        print(f"the venue refused request {order_id}: code={code} sCode={sub} {reason}".strip(), flush=True)
+        return [f"REJECT {order_id} venue"]
+
+    def _post(self, method, path, body):
+        timestamp = rest_timestamp_now()
+        headers = {"Content-Type": "application/json",
+                   # The proxy in front of the venue answers urllib's own user agent with a 403 and `error code: 1010`,
+                   # which reads like a venue refusal and is not one.
+                   "User-Agent": "curl/8.5.0",
+                   "OK-ACCESS-KEY": self.credentials.api_key,
+                   "OK-ACCESS-SIGN": rest_signature(timestamp, self.credentials.secret, method, path, body),
+                   "OK-ACCESS-TIMESTAMP": timestamp,
+                   "OK-ACCESS-PASSPHRASE": self.credentials.passphrase}
+        if self.simulated:
+            headers["x-simulated-trading"] = "1"
+        request = urllib.request.Request(self.base_url + path, data=body.encode(), method=method,
+                                         headers=headers)
+        try:
+            with urllib.request.urlopen(request, timeout=10) as response:
+                text = response.read().decode()
+        except urllib.error.HTTPError as error:
+            text = error.read().decode(errors="replace")
+        except OSError as error:
+            print(f"the REST placement could not reach the venue ({error})", flush=True)
+            return None
+        self.dump.record("venue", text)
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            print(f"the venue answered a placement with something that is not JSON: {text[:160]!r}", flush=True)
+            return None
+
+
 class OrderVenueClient(threading.Thread):
     """The private route: login, subscribe `orders`, translate both ways, and reconnect when the venue drops.
 
@@ -982,8 +1134,6 @@ class OrderVenueClient(threading.Thread):
         # the venue was silent or this client was looking somewhere else -- which is the question the first
         # sandbox order left open.
         self.dump = dump
-        self.dump_lock = threading.Lock()
-        self.dump_frames = 0
         # The instrument type the `orders` subscription asks for. `ANY` for the private route, a concrete type for
         # the business route, which refuses `ANY` with `60018`.
         self.inst_type = inst_type
@@ -1008,12 +1158,12 @@ class OrderVenueClient(threading.Thread):
 
     def record(self, direction, frame):
         """One frame, either way, in the order it crossed. Called from the reader and the writer."""
-        if self.dump is None:
-            return
-        with self.dump_lock:
-            self.dump.write(json.dumps({"dir": direction, "frame": frame}) + "\n")
-            self.dump.flush()
-            self.dump_frames += 1
+        if self.dump is not None:
+            self.dump.record(direction, frame)
+
+    @property
+    def dump_frames(self):
+        return self.dump.frames if self.dump is not None else 0
 
     def submit(self, request):
         """Hands one translated request to the venue. It is sent by the next write, or not at all."""
@@ -1514,7 +1664,7 @@ def self_test():
     private_translator = OrderTranslator("BTC-USDT-SWAP")
     delivered = []
     # The dump is what a run that heard nothing is read against, so the self-test keeps one and checks it.
-    dump = io.StringIO()
+    dump = FrameDump(io.StringIO())
     client = OrderVenueClient(venue.url, credentials, private_translator, delivered.extend, backoff_seconds=0.02,
                               dump=dump)
     client.start()
@@ -1545,16 +1695,35 @@ def self_test():
 
     # The dump: both directions, one line a frame, and the login's key and signature redacted. A file that exists
     # to explain a silence must not be the copy of the key that leaked.
-    entries = [json.loads(line) for line in dump.getvalue().splitlines()]
+    entries = [json.loads(line) for line in dump.handle.getvalue().splitlines()]
     assert any(entry["dir"] == "request" for entry in entries), entries
     assert any(entry["dir"] == "venue" for entry in entries), entries
     logins = [entry for entry in entries
               if entry["dir"] == "request" and json.loads(entry["frame"]).get("op") == "login"]
     assert logins, entries
-    assert GOLDEN_SECRET not in dump.getvalue(), "the dump wrote the secret"
+    assert GOLDEN_SECRET not in dump.handle.getvalue(), "the dump wrote the secret"
     assert json.loads(logins[0]["frame"])["args"][0]["apiKey"] == "***", logins[0]
     # The order and the cancel the engine sent are in it, which is what says the frame left.
     assert any("6421.5" in entry["frame"] for entry in entries if entry["dir"] == "request"), entries
+
+    # The REST placement: the demo venue's websocket trade operation answers 50026 and its REST order endpoint places
+    # the same order, so this is the route the relay uses for placement. The three answer shapes are pinned, and the
+    # two timestamp formats are pinned against each other because mixing them is exactly the failure they caused.
+    placer = RestPlacer("https://www.okx.com", credentials, simulated=True)
+    request = private_translator.encode("ORDER 7 BTC-PERPETUAL B 6421.5 10 Gtc")
+    assert set(RestPlacer.PATHS) == {"order", "cancel-order"}, RestPlacer.PATHS
+    assert request["args"][0]["clOrdId"] == "7" and request["id"] == "7", request
+    assert placer.lines_for("order", "7", {"code": "0", "msg": "", "data": [{"sCode": "0", "ordId": "1",
+                                                                           "sz": "10"}]}) == ["ACK 7 10"]
+    assert placer.lines_for("cancel-order", "7", {"code": "0", "data": [{"sCode": "0",
+                                                                        "ordId": "1"}]}) == ["CANCELED 7 user"]
+    assert placer.lines_for("order", "7", {"code": "1", "msg": "All operations failed",
+                                           "data": [{"sCode": "51010",
+                                                     "sMsg": "You can't complete this request under your current "
+                                                             "account mode."}]}) == ["REJECT 7 venue"]
+    assert (placer.placed, placer.refused) == (1, 1), (placer.placed, placer.refused)
+    assert rest_timestamp_now().endswith("Z") and len(rest_timestamp_now()) == 24, rest_timestamp_now()
+    assert timestamp_now().isdigit() and len(timestamp_now()) == 10, timestamp_now()
 
     print("self-test OK")
     return 0
@@ -1598,6 +1767,10 @@ def main():
     parser.add_argument("--order-inst-code", type=int,
                         help="the venue's internal code for the instrument (instIdCode), which its newer order "
                              "operation requires; read it from the venue's public instruments endpoint")
+    parser.add_argument("--order-rest",
+                        help="place the order leg over REST at this base url (https://www.okx.com) instead of the "
+                             "websocket trade operation, which the demo venue answers with 50026; the orders channel "
+                             "is not subscribed on this route, so a fill would not be seen")
     parser.add_argument("--record", help="write the decoded rows straight to PREFIX_trades.csv and "
                                          "PREFIX_depth.csv: the direct route, with no engine")
     parser.add_argument("--replay", help="serve this capture instead of connecting; no network")
@@ -1625,6 +1798,10 @@ def main():
     if args.order_dump and args.simulate_orders:
         parser.error("--order-dump is the private route's: the simulated venue's frames are this file's own, so "
                      "there is nothing a dump would add")
+    if args.order_rest and args.simulate_orders:
+        parser.error("--order-rest is the venue's own order endpoint; the simulated venue is what runs without it")
+    if args.order_rest and not args.order_listen:
+        parser.error("--order-rest needs --order-listen: there is no engine to serve")
     if args.order_listen:
         if args.simulate_orders:
             return serve_orders(args.order_listen, args.instrument, args.order_cap, args.order_capture)
@@ -1635,7 +1812,7 @@ def main():
                          f"{error}")
         return serve_venue_orders(args.order_listen, args.order_venue, credentials, args.instrument,
                                   args.order_capture, args.order_dump, args.order_inst_type,
-                                  not args.order_no_subscribe, args.order_inst_code)
+                                  not args.order_no_subscribe, args.order_inst_code, args.order_rest)
 
     decoder = Decoder(args.instrument, args.contract_size, args.quantity_scale, args.levels)
     stop = threading.Event()
