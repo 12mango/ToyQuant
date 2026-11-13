@@ -38,12 +38,19 @@ Usage:
     # `tests/relay_order_channel_test` drives it with the real adapter and the real transport.
     python3 tools/live/venue_relay.py --simulate-orders --order-listen 127.0.0.1:8766
 
+    # the same channel answered by the venue's own private stream: the three credentials are read from
+    # TOYQUANT_API_KEY, TOYQUANT_API_SECRET and TOYQUANT_PASSPHRASE, never from the command line, because a
+    # command line reaches a run's `[Mode]` line and every recording it writes.
+    python3 tools/live/venue_relay.py --order-listen 127.0.0.1:8766
+
     python3 tools/live/venue_relay.py --self-test
 """
 
 import argparse
 import base64
+import datetime
 import hashlib
+import hmac
 import json
 import os
 import queue
@@ -455,18 +462,18 @@ class VenueClient(threading.Thread):
             sock.close()
 
 
-def accept_client(listen):
-    """Blocks until the engine connects, completes the handshake, and returns the socket."""
-    host, _, port = listen.partition(":")
-    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    listener.bind((host, int(port)))
-    listener.listen(1)
-    print(f"relay listening on ws://{listen}, waiting for the engine ...", flush=True)
-    conn, peer = listener.accept()
+def server_handshake(conn):
+    """Answer one opening handshake; False if the peer hung up before sending one.
+
+    The other side of `websocket_client`, and the same three lines whether the peer is the engine or the
+    self-test's stand-in venue: read the request, hash its key with the RFC 6455 GUID, answer 101.
+    """
     request = b""
     while b"\r\n\r\n" not in request:
-        request += conn.recv(4096)
+        chunk = conn.recv(4096)
+        if not chunk:
+            return False
+        request += chunk
     key = ""
     for line in request.decode("latin-1").split("\r\n"):
         if line.lower().startswith("sec-websocket-key:"):
@@ -476,6 +483,20 @@ def accept_client(listen):
         "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n"
         f"Connection: Upgrade\r\nSec-WebSocket-Accept: {accept}\r\n\r\n"
     ).encode("latin-1"))
+    return True
+
+
+def accept_client(listen):
+    """Blocks until the engine connects, completes the handshake, and returns the socket."""
+    host, _, port = listen.partition(":")
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    listener.bind((host, int(port)))
+    listener.listen(1)
+    print(f"relay listening on ws://{listen}, waiting for the engine ...", flush=True)
+    conn, peer = listener.accept()
+    if not server_handshake(conn):
+        raise RuntimeError("the engine closed before the opening handshake")
     print(f"engine connected from {peer[0]}:{peer[1]}", flush=True)
     return listener, conn
 
@@ -721,6 +742,413 @@ def serve_orders(listen, instrument, max_quantity=100, capture=None):
     return 0
 
 
+# ---------------------------------------------------------------- credentials and the private route
+
+def serve_venue_orders(listen, url, credentials, instrument, capture=None):
+    """Answers the engine's order leg from the venue's private channel.
+
+    The engine's side is exactly what the simulation serves -- a line socket, one frame a line -- so the adapter
+    and its transport are unchanged and the only thing that moved is where the venue's messages come from. The
+    summary at the end carries the session counts, because "it worked" in a live run means the login happened
+    again after every drop and the subscription was remade, not that the first one succeeded.
+    """
+    host, _, port = listen.partition(":")
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    listener.bind((host, int(port)))
+    listener.listen(1)
+    # Printed rather than assumed, for the same reason the simulation prints it: a caller that asked for port 0
+    # reads the port back instead of guessing which numbers are free on the host.
+    print(f"order channel listening on {host}:{listener.getsockname()[1]}", flush=True)
+    conn, peer = listener.accept()
+    print(f"engine connected from {peer[0]}:{peer[1]}", flush=True)
+    translator = OrderTranslator(instrument)
+    sink = open(capture, "a", encoding="utf-8") if capture else None
+    stop = threading.Event()
+    orders = cancels = replies = refused = 0
+
+    def deliver(lines):
+        nonlocal replies
+        for line in lines:
+            try:
+                conn.sendall(line.encode() + b"\n")
+            except OSError:
+                # The engine went away mid-report. There is nobody left to answer, so the route stops rather
+                # than counting lines nobody received.
+                stop.set()
+                return
+            replies += 1
+
+    client = OrderVenueClient(url, credentials, translator, deliver, stop=stop)
+    client.start()
+    pending = b""
+    try:
+        while not stop.is_set():
+            try:
+                chunk = conn.recv(4096)
+            except OSError:
+                break
+            if not chunk:
+                break
+            pending += chunk
+            while b"\n" in pending:
+                line, _, pending = pending.partition(b"\n")
+                text = line.decode(errors="replace").strip()
+                if not text:
+                    continue
+                try:
+                    request = translator.encode(text)
+                except OrderError as error:
+                    # Answered, not dropped, for the reason the simulation answers: silence would look exactly
+                    # like a venue that ignored the order.
+                    token = text.split()[1] if len(text.split()) > 1 and text.split()[1].isdigit() else "0"
+                    deliver([f"REJECT {token} venue"])
+                    print(f"refused '{text}': {error}", flush=True)
+                    refused += 1
+                    continue
+                if text.startswith("ORDER"):
+                    orders += 1
+                else:
+                    cancels += 1
+                if sink is not None:
+                    sink.write(json.dumps(request) + "\n")
+                    sink.flush()
+                client.submit(request)
+    finally:
+        stop.set()
+        client.close()
+        client.join(timeout=2.0)
+        if sink is not None:
+            sink.close()
+        conn.close()
+        listener.close()
+    print(f"order channel done: orders={orders} cancels={cancels} replies={replies} refused={refused} "
+          f"logins={client.logins} subscribes={client.subscribes} reconnects={client.reconnects} "
+          f"messages={client.messages} other_instruments={client.other_instruments} "
+          f"unreadable={client.unreadable} write_failures={client.write_failures}", flush=True)
+    return 0
+
+
+# The private channel's login signs `timestamp + "GET" + path`: the signature authenticates the request line of
+# the handshake it travels in, and no GET is ever made to that path -- the signature *is* the request. Both
+# halves of the preimage are the venue's, which is why they are named here instead of inlined at the call.
+VERIFY_PATH = "/users/self/verify"
+# The venue's demo endpoint: the same calls and the same order lifecycle as production, with no money (ADR 0005,
+# decision 2). Nothing in this repository has connected to it yet -- the self-test stands a local venue in its
+# place -- so the host, the port and the `brokerId` query are what a first sandbox run confirms rather than what
+# this comment proves. `--order-venue` overrides it, which is how a different endpoint is reached without a code
+# change and how a first run checks the guess before anything is written into a document.
+DEFAULT_PRIVATE_VENUE = "wss://wspap.okx.com:8443/ws/v5/private?brokerId=9999"
+
+
+class VenueCredentials:
+    """The three environment variables a private channel needs, and a repr that keeps the secret out.
+
+    A credential that reaches a traceback, a log line or a printed command has to be revoked, and this process
+    prints its own summary into a run's log. So the values are read once, from the environment, are never part of
+    a message this file sends anywhere but the login, and the repr -- which is what an accidental print gets -- is
+    masked. The names are the tool's own: the engine's parser has no credential flag, and ADR 0005 decision 3 is
+    the reason a command line cannot carry one.
+    """
+
+    VARIABLES = ("TOYQUANT_API_KEY", "TOYQUANT_API_SECRET", "TOYQUANT_PASSPHRASE")
+
+    def __init__(self, api_key, secret, passphrase):
+        if not api_key or not secret or not passphrase:
+            raise OrderError("a venue credential needs a key, a secret and a passphrase, and one is empty")
+        self.api_key = api_key
+        self.secret = secret
+        self.passphrase = passphrase
+
+    @classmethod
+    def from_environment(cls, environ=None):
+        """Read the three variables, or refuse with the ones that are missing named.
+
+        Naming the missing variable is the whole point: `--order-listen` without `--simulate-orders` now has a
+        backend, and a run that has not been given the variables has to be told which one to set rather than
+        told that the route does not exist.
+        """
+        values = os.environ if environ is None else environ
+        missing = [name for name in cls.VARIABLES if not values.get(name)]
+        if missing:
+            raise OrderError("the private channel needs " + ", ".join(missing) + " in the environment")
+        return cls(values[cls.VARIABLES[0]], values[cls.VARIABLES[1]], values[cls.VARIABLES[2]])
+
+    @staticmethod
+    def _masked(value):
+        # Two characters of a key are enough to tell two credentials apart in a log and useless to anyone else.
+        return "***" if len(value) <= 4 else value[:2] + "***"
+
+    def __repr__(self):
+        return (f"VenueCredentials(api_key={self._masked(self.api_key)}, "
+                f"passphrase={self._masked(self.passphrase)}, secret=***)")
+
+
+def timestamp_now():
+    """The venue's timestamp: UTC, milliseconds, a literal `Z` -- the string the signature is computed over."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    return now.strftime("%Y-%m-%dT%H:%M:%S.") + f"{now.microsecond // 1000:03d}Z"
+
+
+def signature(timestamp, secret):
+    """base64(HMAC-SHA256(secret, timestamp + "GET" + /users/self/verify)).
+
+    One function, because the signature is the one part of this file that a peer can check and nothing here can:
+    the self-test pins one vector of it, and `LocalPrivateVenue` verifies the login that actually crossed a
+    socket, so a wrong preimage or a wrong encoding fails a run rather than a sandbox session.
+    """
+    message = timestamp + "GET" + VERIFY_PATH
+    return base64.b64encode(hmac.new(secret.encode(), message.encode(), hashlib.sha256).digest()).decode()
+
+
+def login_message(credentials, timestamp=None):
+    """The `op: login` frame: the four fields the venue checks, and nothing else."""
+    timestamp = timestamp_now() if timestamp is None else timestamp
+    return {"op": "login", "args": [{"apiKey": credentials.api_key, "passphrase": credentials.passphrase,
+                                     "timestamp": timestamp,
+                                     "sign": signature(timestamp, credentials.secret)}]}
+
+
+def subscribe_orders_message():
+    """The `orders` subscription.
+
+    The venue takes an instrument *type* on this channel rather than a symbol, so one subscription covers the
+    account and the filter is on this side: `OrderVenueClient.handle` keeps the entries whose `instId` is the
+    relay's instrument and counts the rest, because an account with two instruments must not have the second
+    one's fills answered to an engine that never traded it.
+    """
+    return {"op": "subscribe", "args": [{"channel": "orders", "instType": "ANY"}]}
+
+
+class OrderVenueClient(threading.Thread):
+    """The private route: login, subscribe `orders`, translate both ways, and reconnect when the venue drops.
+
+    It is a client to the venue the way `VenueClient` is a client to its public stream, and it owns the same one
+    thing: the venue's protocol. What crosses to the engine is the adapter's lines, unchanged, so `LiveVenue` and
+    `TcpVenueTransport` cannot tell this route from the simulation -- which is the property ADR 0005 decision 1
+    asked for and the reason the translation stayed in `OrderTranslator`.
+
+    A reconnect is a *new session*: the venue forgets the old connection, so a client that merely retried the
+    socket would subscribe nothing and hear nothing. `session` therefore logs in and subscribes again every time,
+    and the three counters say how often each happened. A request whose write failed is not re-queued -- an order
+    sent twice is worse than an order nobody answered, and the gateway's own timeout is what notices.
+    """
+
+    def __init__(self, url, credentials, translator, deliver, stop=None, backoff_seconds=1.0):
+        super().__init__(daemon=True)
+        self.url = url
+        self.credentials = credentials
+        self.translator = translator
+        # Where the decoded lines go: the engine's socket in a run, a list in the self-test.
+        self.deliver = deliver
+        self.stop = stop if stop is not None else threading.Event()
+        self.backoff_seconds = backoff_seconds
+        # Outbound requests wait here so the reader never blocks on a write; `write_loop` owns the socket's
+        # send side for the length of one session.
+        self.outbox = queue.Queue()
+        self.lock = threading.Lock()
+        self.sock = None
+        self.pending = []
+        self.logins = 0
+        self.subscribes = 0
+        self.reconnects = 0
+        self.messages = 0
+        self.other_instruments = 0
+        self.unreadable = 0
+        self.write_failures = 0
+        self.error = None
+
+    def submit(self, request):
+        """Hands one translated request to the venue. It is sent by the next write, or not at all."""
+        self.outbox.put(request)
+
+    def close(self):
+        """Ends the thread, including a read it is blocked on: a stop event is not enough with a socket open."""
+        self.stop.set()
+        with self.lock:
+            sock = self.sock
+        if sock is not None:
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+
+    def run(self):
+        backoff = self.backoff_seconds
+        while not self.stop.is_set():
+            try:
+                self.session()
+                backoff = self.backoff_seconds
+            # `OrderError` is a `ValueError`, and so is a venue message that is not JSON: both end a session and
+            # both are worth reconnecting for.
+            except (OSError, RuntimeError, ValueError) as error:
+                if self.stop.is_set():
+                    break
+                self.reconnects += 1
+                self.error = str(error)
+                print(f"private channel lost ({error}); reconnecting in {backoff:.2f}s", flush=True)
+            if self.stop.is_set():
+                break
+            # The wait is interruptible so a stop during the backoff ends the thread now rather than up to eight
+            # seconds later, which is what a test that drops a connection deliberately needs.
+            if self.stop.wait(backoff):
+                break
+            backoff = min(backoff * 2.0, 8.0)
+
+    def session(self):
+        """One connection to the venue, login to drop."""
+        sock = websocket_client(self.url)
+        with self.lock:
+            self.sock = sock
+        writer_stop = threading.Event()
+        writer = None
+        try:
+            # The venue closes an idle private connection, so silence is answered with the text ping rather than
+            # waited out; this timeout is what "idle" is measured against.
+            sock.settimeout(PING_AFTER_SECONDS)
+            self.pending = []
+            self.login(sock)
+            self.subscribe(sock)
+            writer = threading.Thread(target=self.write_loop, args=(sock, writer_stop), daemon=True)
+            writer.start()
+            for message in self.pending:
+                self.handle(message)
+            self.pending = []
+            while not self.stop.is_set():
+                try:
+                    frame = read_frame(sock)
+                except socket.timeout:
+                    send_masked(sock, "ping")
+                    continue
+                if frame is None:
+                    raise RuntimeError("the venue closed the private connection")
+                _, opcode, payload = frame
+                if opcode == 0x8:
+                    raise RuntimeError("the venue closed the private connection")
+                if opcode == 0x9:
+                    send_masked(sock, payload, opcode=0xA)
+                    continue
+                if opcode not in (0x1, 0x0):
+                    continue
+                text = payload.decode(errors="replace").strip()
+                # The venue's heartbeat is a text frame rather than a control frame, and neither form is an
+                # order message.
+                if text == "ping":
+                    send_masked(sock, "pong")
+                    continue
+                if text == "pong":
+                    continue
+                self.handle(json.loads(text))
+        finally:
+            writer_stop.set()
+            if writer is not None:
+                writer.join(timeout=1.0)
+            with self.lock:
+                self.sock = None
+            sock.close()
+
+    def read_message(self, sock):
+        """One venue message, with the heartbeats and the close answered rather than returned."""
+        while True:
+            frame = read_frame(sock)
+            if frame is None:
+                raise RuntimeError("the venue closed the private connection")
+            _, opcode, payload = frame
+            if opcode == 0x8:
+                raise RuntimeError("the venue closed the private connection")
+            if opcode == 0x9:
+                send_masked(sock, payload, opcode=0xA)
+                continue
+            if opcode == 0xA:
+                continue
+            text = payload.decode(errors="replace").strip()
+            if text == "ping":
+                send_masked(sock, "pong")
+                continue
+            if text == "pong":
+                continue
+            return json.loads(text)
+
+    def login(self, sock):
+        """Send the login and wait for its acknowledgement.
+
+        A message that arrives while the acknowledgement is owed is kept, not dropped: the venue can send a state
+        change for an order the previous session placed before it answers a login, and that change still has to
+        reach the engine.
+        """
+        send_masked(sock, json.dumps(login_message(self.credentials)))
+        self.logins += 1
+        while True:
+            message = self.read_message(sock)
+            event = message.get("event")
+            if event == "login":
+                if str(message.get("code", "0")) != "0":
+                    raise OrderError(f"the venue refused the login: code {message.get('code')} "
+                                     f"{message.get('msg', '')}".strip())
+                return
+            if event == "error":
+                raise OrderError(f"the venue refused the private channel: {message}")
+            self.pending.append(message)
+
+    def subscribe(self, sock):
+        """Subscribe `orders` and wait for the acknowledgement, keeping anything else that arrives."""
+        send_masked(sock, json.dumps(subscribe_orders_message()))
+        self.subscribes += 1
+        while True:
+            message = self.read_message(sock)
+            event = message.get("event")
+            if event == "subscribe":
+                return
+            if event == "error":
+                raise OrderError(f"the venue refused the orders subscription: {message}")
+            self.pending.append(message)
+
+    def handle(self, message):
+        """One venue message: filtered to this instrument, translated, and handed to the engine."""
+        if not isinstance(message, dict):
+            self.unreadable += 1
+            return
+        event = message.get("event")
+        if event == "error":
+            raise RuntimeError(f"the venue reported an error on the private channel: {message}")
+        if event:
+            return  # a late acknowledgement: protocol, not an order
+        entries = message.get("data")
+        if isinstance(entries, list):
+            kept = [entry for entry in entries
+                    if not entry.get("instId") or entry.get("instId") == self.translator.instrument]
+            self.other_instruments += len(entries) - len(kept)
+            if not kept:
+                return
+            message = dict(message, data=kept)
+        self.messages += 1
+        try:
+            lines = self.translator.decode(message)
+        except OrderError as error:
+            # Counted and printed rather than fatal: one message this translation does not know is a bug to see,
+            # not a reason to drop a working private channel.
+            self.unreadable += 1
+            print(f"private channel could not translate a venue message: {error}", flush=True)
+            return
+        if lines:
+            self.deliver(lines)
+
+    def write_loop(self, sock, session_stop):
+        """Sends what the engine submitted, for the length of one session."""
+        while not self.stop.is_set() and not session_stop.is_set():
+            try:
+                request = self.outbox.get(timeout=0.05)
+            except queue.Empty:
+                continue
+            try:
+                with self.lock:
+                    send_masked(sock, json.dumps(request))
+            except OSError as error:
+                self.write_failures += 1
+                print(f"the private channel could not send a request ({error})", flush=True)
+                return
+
+
 # ---------------------------------------------------------------- self-test and main
 
 
@@ -731,6 +1159,150 @@ def decode_file(path, decoder):
             line = line.strip()
             if line:
                 yield from decoder.decode(line)
+
+
+# The pinned vector: the secret and the timestamp are fixed here and the signature was computed once, outside this
+# file, and pasted in. A check that called `signature` for its expectation would be the implementation agreeing
+# with itself, and would pass on any wrong preimage; this constant cannot.
+GOLDEN_SECRET = "toyquant-relay-self-test-secret"
+GOLDEN_TIMESTAMP = "2026-11-13T00:00:00.000Z"
+GOLDEN_SIGN = "Pz15x1MaE0LrrWzqApLE86lB0yAVRLdT6fYD7VdNaIo="
+
+
+class LocalPrivateVenue(threading.Thread):
+    """A stand-in for the venue's private channel: a real socket, a real handshake, and the login checked.
+
+    It is a peer rather than a mock on purpose. The signature is hand-built in this file, so the only thing that
+    can catch a wrong preimage or a wrong encoding is a peer that verifies what actually crossed the wire; a test
+    that compared the implementation with a second call of itself would agree with any mistake. It answers in the
+    venue's own shapes, drops the first connection once -- so the client has to log in and subscribe again -- and
+    answers an order the way the simulated venue does, deterministically.
+    """
+
+    def __init__(self, secret):
+        super().__init__(daemon=True)
+        self.listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.listener.bind(("127.0.0.1", 0))
+        self.listener.listen(4)
+        self.url = f"ws://127.0.0.1:{self.listener.getsockname()[1]}/ws/v5/private?brokerId=9999"
+        self.secret = secret
+        self.stop = threading.Event()
+        self.connection = None
+        self.connections = 0
+        self.logins = 0
+        self.subscribes = 0
+        self.orders = 0
+        self.cancels = 0
+        self.problems = []
+
+    def halt(self):
+        """Ends the stand-in, including a connection it is blocked on."""
+        self.stop.set()
+        connection = self.connection
+        if connection is not None:
+            try:
+                connection.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+        self.listener.close()
+
+    def run(self):
+        while not self.stop.is_set():
+            try:
+                connection, _ = self.listener.accept()
+            except OSError:
+                return
+            self.connection = connection
+            try:
+                self.serve(connection)
+            finally:
+                self.connection = None
+                connection.close()
+
+    def send(self, connection, message):
+        send_masked(connection, json.dumps(message))
+
+    def serve(self, connection):
+        if not server_handshake(connection):
+            return
+        self.connections += 1
+        # The drop is made after the first subscription rather than on a timeout, so the test never waits for it.
+        drop_after_subscribe = self.connections == 1
+        connection.settimeout(5.0)
+        while not self.stop.is_set():
+            try:
+                frame = read_frame(connection)
+            except socket.timeout:
+                continue
+            except OSError:
+                return
+            if frame is None:
+                return
+            _, opcode, payload = frame
+            if opcode == 0x8:
+                return
+            if opcode == 0x9:
+                send_masked(connection, payload, opcode=0xA)
+                continue
+            if opcode != 0x1:
+                continue
+            message = json.loads(payload.decode())
+            operation = message.get("op")
+            if operation == "login":
+                self.check_login(message)
+                self.send(connection, {"event": "login", "code": "0", "connId": "self-test"})
+            elif operation == "subscribe":
+                self.subscribes += 1
+                self.send(connection, {"event": "subscribe", "arg": (message.get("args") or [{}])[0]})
+                if drop_after_subscribe:
+                    return
+            elif operation == "order":
+                self.orders += 1
+                for reply in self.order_replies(message):
+                    self.send(connection, reply)
+            elif operation == "cancel-order":
+                self.cancels += 1
+                for reply in self.cancel_replies(message):
+                    self.send(connection, reply)
+            else:
+                self.problems.append(f"the client sent an operation the venue does not know: {message}")
+
+    def check_login(self, message):
+        """Every field the venue checks, checked from the message that arrived rather than from the code that
+        built it."""
+        argument = (message.get("args") or [{}])[0]
+        if set(argument) != {"apiKey", "passphrase", "timestamp", "sign"}:
+            self.problems.append(f"the login has the wrong fields: {sorted(argument)}")
+            return
+        timestamp = str(argument.get("timestamp", ""))
+        if len(timestamp) != 24 or timestamp[10] != "T" or not timestamp.endswith("Z"):
+            self.problems.append(f"the login timestamp is not ISO milliseconds in UTC: {timestamp!r}")
+        if argument.get("sign") != signature(timestamp, self.secret):
+            self.problems.append("the login signature does not verify: the preimage or the encoding is wrong")
+        self.logins += 1
+
+    def order_replies(self, message):
+        argument = (message.get("args") or [{}])[0]
+        cl_ord_id = str(argument.get("clOrdId", ""))
+        instrument = argument.get("instId")
+        quantity = int(argument.get("sz", "0"))
+        filled = quantity // 2 if quantity >= 2 else quantity
+        return [
+            {"op": "order", "data": [{"clOrdId": cl_ord_id, "ordId": cl_ord_id, "sCode": "0",
+                                      "sz": str(quantity), "accFillSz": "0"}]},
+            {"arg": {"channel": "orders", "instId": instrument},
+             "data": [{"clOrdId": cl_ord_id, "instId": instrument, "state": "partially_filled",
+                       "fillPx": argument.get("px"), "fillSz": str(filled), "accFillSz": str(filled),
+                       "sz": str(quantity)}]},
+        ]
+
+    def cancel_replies(self, message):
+        cl_ord_id = str(((message.get("args") or [{}])[0]).get("clOrdId", ""))
+        return [
+            {"op": "cancel-order", "data": [{"clOrdId": cl_ord_id, "sCode": "0"}]},
+            {"arg": {"channel": "orders"}, "data": [{"clOrdId": cl_ord_id, "state": "canceled"}]},
+        ]
 
 
 def self_test():
@@ -807,6 +1379,68 @@ def self_test():
             continue
         raise AssertionError(f"{bad!r} was accepted")
 
+    # The private route. The signature is hand-built in this file and nothing else in the tree can check it, so
+    # there are two checks and they are the two halves of one claim: a pinned vector, which the implementation
+    # cannot agree with by accident, and a peer that verifies the login that actually crossed a socket.
+    credentials = VenueCredentials("self-test-key", GOLDEN_SECRET, "self-test-passphrase")
+    assert "self-test-key" not in repr(credentials), repr(credentials)
+    assert GOLDEN_SECRET not in repr(credentials), repr(credentials)
+    assert "self-test-passphrase" not in repr(credentials), repr(credentials)
+    assert signature(GOLDEN_TIMESTAMP, GOLDEN_SECRET) == GOLDEN_SIGN, signature(GOLDEN_TIMESTAMP, GOLDEN_SECRET)
+    login = login_message(credentials, GOLDEN_TIMESTAMP)
+    assert login["op"] == "login" and len(login["args"]) == 1, login
+    argument = login["args"][0]
+    assert set(argument) == {"apiKey", "passphrase", "timestamp", "sign"}, argument
+    assert (argument["apiKey"], argument["passphrase"], argument["timestamp"]) == \
+        ("self-test-key", "self-test-passphrase", GOLDEN_TIMESTAMP), argument
+    assert argument["sign"] == GOLDEN_SIGN, argument["sign"]
+    timestamp = timestamp_now()
+    assert len(timestamp) == 24 and timestamp[10] == "T" and timestamp.endswith("Z"), timestamp
+    # A credential that is missing is refused with the variable named, which is what a run that has not been given
+    # one has to be told -- and it names only what is missing.
+    try:
+        VenueCredentials.from_environment({"TOYQUANT_API_KEY": "k", "TOYQUANT_API_SECRET": "s"})
+    except OrderError as error:
+        assert "TOYQUANT_PASSPHRASE" in str(error) and "TOYQUANT_API_KEY" not in str(error), str(error)
+    else:
+        raise AssertionError("a credential missing its passphrase was accepted")
+    assert VenueCredentials.from_environment(
+        {"TOYQUANT_API_KEY": "k", "TOYQUANT_API_SECRET": "s", "TOYQUANT_PASSPHRASE": "p"}).api_key == "k"
+
+    # The private route end to end, against a peer: login, the deliberate drop, login and subscribe again, and
+    # then an order answered the way the venue answers one. The client prints one "private channel lost" line
+    # here, and that line is this test's own drop being reconnected to rather than a failure.
+    venue = LocalPrivateVenue(GOLDEN_SECRET)
+    venue.start()
+    private_translator = OrderTranslator("BTC-USDT-SWAP")
+    delivered = []
+    client = OrderVenueClient(venue.url, credentials, private_translator, delivered.extend, backoff_seconds=0.02)
+    client.start()
+    try:
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline and (venue.logins < 2 or venue.subscribes < 2):
+            time.sleep(0.01)
+        assert venue.problems == [], venue.problems
+        assert (venue.logins, venue.subscribes) == (2, 2), (venue.logins, venue.subscribes, client.error)
+        assert client.reconnects == 1, (client.reconnects, client.error)
+        client.submit(private_translator.encode("ORDER 7 BTC-USDT-SWAP B 6421.5 10 Gtc"))
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline and "FILL 7 6421.5 5" not in delivered:
+            time.sleep(0.01)
+        assert delivered == ["ACK 7 10", "FILL 7 6421.5 5"], delivered
+        client.submit(private_translator.encode("CANCEL 7"))
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline and "CANCELED 7 user" not in delivered:
+            time.sleep(0.01)
+        assert delivered[-1] == "CANCELED 7 user" and venue.cancels == 1, (delivered, venue.cancels)
+        assert (client.unreadable, client.write_failures) == (0, 0), (client.unreadable, client.write_failures)
+    finally:
+        client.close()
+        venue.halt()
+        client.join(timeout=5.0)
+        venue.join(timeout=5.0)
+    assert not client.is_alive(), "the private-channel client did not stop"
+
     print("self-test OK")
     return 0
 
@@ -833,6 +1467,9 @@ def main():
                         help="the largest order the simulated venue accepts, in instrument quantity")
     parser.add_argument("--order-capture",
                         help="write the translated venue requests here, one JSON object a line")
+    parser.add_argument("--order-venue", default=DEFAULT_PRIVATE_VENUE,
+                        help="the venue's private websocket url for the order leg; the default is its demo "
+                             "endpoint, which nothing in this repository has reached yet")
     parser.add_argument("--record", help="write the decoded rows straight to PREFIX_trades.csv and "
                                          "PREFIX_depth.csv: the direct route, with no engine")
     parser.add_argument("--replay", help="serve this capture instead of connecting; no network")
@@ -847,16 +1484,22 @@ def main():
     if args.self_test:
         return self_test()
 
-    # The order channel has one route today, and it says so rather than accepting a flag and doing nothing:
-    # a real venue's private channel needs an API key and its login handshake, which is the half of ADR 0005's
-    # step two that a sandbox run does not need and that nothing here claims to have written.
-    if args.order_listen and not args.simulate_orders:
-        parser.error("--order-listen serves the order leg only with --simulate-orders: the route to a venue's "
-                     "private channel needs a key and is not written")
+    # The order channel has two backends, and a listener with neither says which one is missing rather than
+    # accepting a flag and doing nothing: `--simulate-orders` answers as the sandbox venue, and without it the
+    # route is the venue's own private channel, which needs the three variables and refuses naming whichever one
+    # is absent. ADR 0005 decision 3 is why they come from the environment rather than the command line.
     if args.simulate_orders and not args.order_listen:
         parser.error("--simulate-orders needs --order-listen: there is nothing to answer on")
     if args.order_listen:
-        return serve_orders(args.order_listen, args.instrument, args.order_cap, args.order_capture)
+        if args.simulate_orders:
+            return serve_orders(args.order_listen, args.instrument, args.order_cap, args.order_capture)
+        try:
+            credentials = VenueCredentials.from_environment()
+        except OrderError as error:
+            parser.error("--order-listen without --simulate-orders serves the venue's private channel, and "
+                         f"{error}")
+        return serve_venue_orders(args.order_listen, args.order_venue, credentials, args.instrument,
+                                  args.order_capture)
 
     decoder = Decoder(args.instrument, args.contract_size, args.quantity_scale, args.levels)
     stop = threading.Event()

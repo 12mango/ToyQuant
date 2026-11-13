@@ -56,8 +56,11 @@ nothing about profit, and what stops it from becoming a program that spends mone
   answers as a sandbox venue, deterministically, with no key, no endpoint and no money. What `tests/relay_order_channel_test`
   adds is the half neither of the other two could prove: the adapter, the transport and that relay process, running
   together on loopback, so the protocol is shown to cross two processes and one translation rather than being pinned
-  twice in isolation. What it is not is a route to a real venue: a private channel needs a key and a login handshake, and
-  `--order-listen` without `--simulate-orders` is refused rather than accepted and ignored.
+  twice in isolation. What it was not, at that point, is a route to a real venue: a private channel needs a key and a
+  login handshake. That route has since landed in the same tool -- login, the `orders` subscription, and a reconnect
+  that logs in and subscribes again -- so `--order-listen` now serves either backend and is refused only when it has
+  neither a simulation nor the three credentials, naming the variable that is missing. The amendment below says why the
+  acceptance criterion moved with it.
 - **Step three has landed as the recorder and its reader, not yet as a run.** `src/lines/order_recorder.{h,cpp}` writes
   `<prefix>_orders.csv` -- one row per submission, per cancel and per execution report, every field a report carries and
   the shortest decimal for a price -- and `src/lines/recorded_venue.{h,cpp}` is the reader: `RecordingEngine` decorates a
@@ -83,6 +86,53 @@ nothing about profit, and what stops it from becoming a program that spends mone
   would only prove the simulator is self-consistent), and any placement logic beyond what the strategies already do.
 - **To revisit**: a real order on a production endpoint, which is a decision about capital and compliance rather than
   about code, and belongs to the owner.
+
+## Amendment (2026-11-13)
+
+Decision 6 was written before the order leg existed. The recorder and its reader have landed since, and read against
+them one half of that decision is not reachable as written: "the session's recording replays to the same `[PNL]` and
+`[EXECUTION]`". This amendment records why, and what the criterion is instead, so that the acceptance run is measured
+against something a run can meet.
+
+**Why the literal criterion fails.** `RecordedVenue::send_order` is a pull: it emits the recorded reports for that
+order at the moment the strategy submits it. In the session that produced the recording the fill arrived when the
+venue sent it, after the strategy had already taken its next decision. A pull replay therefore hands the strategy its
+fill *earlier* than the session did; the next quote is computed from a position the session did not have yet, the
+order sequence diverges, and `RecordedVenue` refuses the recording by design, naming the file and the line it could not
+answer. The refusal is the reader behaving correctly. The criterion was the part written against an implementation
+that did not exist yet.
+
+**The two readings considered.**
+
+- **(A) Replay on the recorded clock -- chosen.** Every row the recorder writes already carries `ts`. A replaying
+  venue holds each report until the run's clock passes that report's `ts`, and delivers it then, so the strategy sees
+  the fill where it saw it and the two runs can be compared verbatim. The cost is a scheduler in the reader and a
+  stricter requirement on the inputs: the market recording (`--record`) and the order leg (`--record-orders`) have to
+  cover the same window, because a report outside the market window has no clock to be delivered against. Both
+  recordings are things a session already writes, so the cost is in the reader and in the comparison, not in a new
+  measurement.
+- **(B) Replay the ledger only -- not chosen.** Feed the recorded reports straight to the ledger and compare cash, fees
+  and position rather than `[PNL]` and `[EXECUTION]`. That is real evidence and it is cheaper, but it takes the
+  strategy out of the comparison, and the strategy's decisions are the half of the session the recording exists to
+  reproduce. It would also be a narrowing of decision 6 rather than a reading of it, which is why it is recorded here
+  instead of being done quietly.
+
+**What follows for the acceptance run.** Decision 6 stands, read as (A): the same `[PNL]`, the same `[EXECUTION]`,
+`[RECON] status=ok`, and the pre-trade invariants still firing under `risk_check.sh` -- with two recordings taken in
+the same session and compared, not one recording replayed alone.
+
+**The endpoint is the venue's demo environment, not its production one.** The market-data half of this repository
+already speaks this venue -- the relay decodes its `books` and `trades` channels, `src/market/okx_readers.cpp` reads
+its archive, and the contract size and quantity scale of `BTC-USDT-SWAP` are in the tree -- so the order leg uses the
+same venue rather than adding a second protocol to the same demonstration. The endpoint's host, port and query
+parameters are the venue's to publish, and they are not copied into this record: nothing here has connected to it yet,
+so a first sandbox run is what confirms them. A document that printed a host no reader could re-derive would be the
+kind of number this project refuses to quote.
+
+**The venue round trip is not measured, and it does not join `[LATENCY]`.** The last sentence of decision 6 stands:
+the `[LATENCY]` fields describe modelled legs, and a real round trip belongs under its own `[VENUE]` label if it is
+measured at all. The order recording carries no request-to-report time, so a run of this line reports no venue latency
+and claims none.
 
 ## Evidence
 

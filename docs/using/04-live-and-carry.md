@@ -73,6 +73,17 @@ to compare against and the first one comes from a venue sandbox. The order chann
 relay, answering as a simulated venue: `python3 tools/live/venue_relay.py --simulate-orders --order-listen
 127.0.0.1:8766`, which `tests/relay_order_channel_test` drives with the real adapter and the real transport.
 
+That channel has two backends. `--simulate-orders` answers as a sandbox venue, deterministically and with no key;
+without it the relay logs in to the venue's own private stream, subscribes the `orders` channel and translates in both
+directions, and reconnects -- logging in and subscribing again -- after a drop, with `logins`, `subscribes` and
+`reconnects` in the line it prints when the engine hangs up. The three credentials are read from
+`TOYQUANT_API_KEY`, `TOYQUANT_API_SECRET` and `TOYQUANT_PASSPHRASE`, never from the command line, and a listener with
+neither backend exits naming the variable that is missing. `--order-venue` points the private route at another
+endpoint; its default is the venue's demo environment, which no run in this repository has reached yet, so a first
+sandbox run is what confirms it. `python3 tools/live/venue_relay.py --self-test` checks the login against a pinned
+signature vector and against a local stand-in venue that verifies what crossed the socket, including one deliberate
+drop and the re-login after it, and the gate runs that self-test on every change.
+
 
 ## Carry: Two Legs Over Two Funding Histories
 

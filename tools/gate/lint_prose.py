@@ -155,7 +155,10 @@ def main():
                         # order channel's four are its listener, its simulated venue and what that venue
                         # writes and caps.
                         "--ping-seconds", "--drop-after-seconds",
-                        "--order-listen", "--simulate-orders", "--order-cap", "--order-capture"}:
+                        "--order-listen", "--simulate-orders", "--order-cap", "--order-capture",
+                        # The private route's endpoint. A flag of the relay, not of the engine: the document
+                        # that names it is the live guide, and the relay is the tool that dials it.
+                        "--order-venue"}:
             problems.append(f"{flag} is mentioned in a document and is not a flag the binary accepts")
     for model in sorted(models):
         if model not in text.lower():

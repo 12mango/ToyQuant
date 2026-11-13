@@ -460,6 +460,12 @@ tier1() {
   # touches look more settled than it is. Its replay mode is exercised by the marked block in
   # docs/PERFORMANCE_HISTORY.md, which the doc check above runs, so this tier does not replay the windows twice.
   python3 tools/study/pnl_interval.py --self-test >> "$TOOL_CHECK_LOG" 2>&1 || tool_check=1
+  # The relay owns the venue's message shapes and the order channel's translation, which nothing else in the tree
+  # can check: its hand-built login signature against a pinned vector, a peer that verifies the login that crossed
+  # a socket, the refusals, and the reconnect that re-logs-in and re-subscribes are what keep the live leg honest,
+  # so they run here rather than being trusted. `tests/relay_order_channel_test` drives the simulated backend with
+  # the real adapter; this runs the private route's own checks with no key and no endpoint.
+  python3 tools/live/venue_relay.py --self-test >> "$TOOL_CHECK_LOG" 2>&1 || tool_check=1
   fi
   local label=tier1
   [ "$mode" = code ] && label=code

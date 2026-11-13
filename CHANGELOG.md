@@ -7,6 +7,32 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The relay's private route (2026-11-13)
+
+- **The order channel gets the backend the live leg needs.** `tools/live/venue_relay.py` serves `--order-listen` from
+  either backend now. `--simulate-orders` is unchanged; without it the relay dials the venue's private websocket, sends
+  a login its own code signs (`timestamp + "GET" + /users/self/verify`, the base64 of an HMAC-SHA256, milliseconds in
+  UTC), waits for the acknowledgement, subscribes `orders`, and then translates in both directions through the same
+  `OrderTranslator` the simulation uses -- so the adapter, its transport and the four replies are untouched. A drop is a
+  new session: the client logs in and subscribes again, and the summary printed when the engine hangs up counts
+  `logins`, `subscribes`, `reconnects`, `messages`, `other_instruments`, `unreadable` and `write_failures`. A request
+  whose write failed is counted rather than re-sent, because an order sent twice is worse than one nobody answered.
+- **The credentials are read, never printed.** `VenueCredentials` reads `TOYQUANT_API_KEY`, `TOYQUANT_API_SECRET` and
+  `TOYQUANT_PASSPHRASE` from the environment, masks all three in its `repr`, and refuses naming the variable that is
+  missing -- which is also what `--order-listen` now says when it has neither a simulation nor a credential.
+  `--order-venue` overrides the endpoint; the default is the venue's demo environment, and no run here has reached it,
+  so a first sandbox run is what confirms it.
+- **The self-test is in the gate, and it checks the signature against something outside the tool.** One pinned vector
+  (secret, timestamp and expected base64 computed once and pasted in) and one local stand-in venue -- a real socket, a
+  real handshake, the login verified from the bytes that arrived, one deliberate drop after the subscription, then an
+  order and a cancel answered in the venue's shapes. `tests/relay_order_channel_test` still covers the simulated
+  backend across two processes; this covers the private route with no key and no endpoint. Three mutations were run to
+  show the checks fire rather than pass: a wrong preimage, a wrong signature on the wire and no drop each failed it.
+- **The acceptance criterion moved, and the record says so.** ADR 0005 gained an amendment: the session's order leg
+  replays on the recorded clock, because `RecordedVenue` answers on submission and a live fill does not, so the verbatim
+  comparison of `[PNL]` and `[EXECUTION]` was never reachable as written; the ledger-only reading is recorded as the
+  option that was not chosen. Nothing in `src/` changed, so no count and no recorded number moved.
+
 ## The live-venue step, the second half (2026-11-12)
 
 - **The relay's order channel, and the first proof that the two halves talk.** `tools/live/venue_relay.py` now serves the
