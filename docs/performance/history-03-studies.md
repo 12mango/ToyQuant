@@ -1387,6 +1387,27 @@ including the three volume tiers and the tier by clip grid, and the attribution 
 `tools/study/calibrate_queue_model.py` on the same window -- the tool the perpetuals' queue model was calibrated with,
 which is what makes the two venues' numbers comparable at all.
 
+### The volatility floor, measured before it was built
+
+The maker's risk controls are all ceilings -- exposure, a kill switch, a fat-finger band, a rate cap -- and a floor
+asks the other direction: when the market is quiet, is there anything to earn after the fee?
+`src/strategy/active_l2_market_maker.h` already carries a volatility *halt*, and its own comment records why it
+cannot be a threshold at this feed rate: it is an EWMA of the midpoint's move per second, and every threshold from
+1.0 to 50.0 lands in the same place. The measurement below is the window that comment asks for.
+
+`tools/study/slice_pnl.py` cuts the two Deribit days into half-hour slices, replays the same maker on each, and
+writes the result beside the slice's own true range on the same clock;
+`tools/study/volatility_window.py --bucket` then splits that pair at the median range. **Both halves lose money a
+fill, and the quiet half loses less**, so a floor would remove the cheaper minutes and keep the expensive ones: the
+premise a floor rests on -- that the quiet minutes are the ones the fee eats -- does not hold on these two days. No
+floor is built, and the per-second halt keeps its comment rather than gaining a threshold, because a control that
+fires on the wrong half is a control that costs money.
+
+The table is a command rather than a marked block on purpose: the run is ninety-six replays and about three
+minutes, more than this page's whole gate budget. Its limits are the ones every window here carries -- one
+instrument, one configuration, two days -- and the two bucket means are close enough that the finding is "the floor
+has no case here", not "volatility does not matter".
+
 
 
 ## The non-market-making signal: what 27 parameter sets say

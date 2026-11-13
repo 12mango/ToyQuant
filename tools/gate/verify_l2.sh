@@ -468,6 +468,11 @@ tier1() {
   # records as the thing its per-second speed cannot be. A range, the two averages and the median split are what a
   # document would quote, and the split's tie rule is the kind of detail that drifts silently, so it is checked.
   python3 tools/study/volatility_window.py --self-test >> "$TOOL_CHECK_LOG" 2>&1 || tool_check=1
+  # The slice driver is what turns "are the quiet minutes the losing ones?" into two files that can be joined:
+  # its per-slice parse of a run's own fields, its rule that a slice with no trade is counted rather than replayed,
+  # and its refusal to turn a failed replay into a row of zeros are what a reader trusts, and a fake binary in its
+  # self-test is cheaper than the ninety-six replays a real run needs.
+  python3 tools/study/slice_pnl.py --self-test >> "$TOOL_CHECK_LOG" 2>&1 || tool_check=1
   # The relay owns the venue's message shapes and the order channel's translation, which nothing else in the tree
   # can check: its hand-built login signature against a pinned vector, a peer that verifies the login that crossed
   # a socket, the refusals, and the reconnect that re-logs-in and re-subscribes are what keep the live leg honest,

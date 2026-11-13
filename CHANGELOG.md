@@ -7,6 +7,27 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The volatility floor, measured before it was built (2026-11-13)
+
+- **A slice driver, because the bucket join had nothing to join.** `tools/study/slice_pnl.py` cuts a day's depth
+  and trade files into half-hour slices in one pass and writes the per-slice result beside the per-slice true range
+  on the same `window_start`. The pass is the point: a snapshot slice is about 130 MB, so the driver cuts a slice,
+  replays it, deletes it and moves on rather than scanning the file once per slice. It replays with
+  `--paper-broker` so a slice that does not reconcile is `recon=bad` instead of silently kept, counts a slice with
+  no trade rather than replaying it, and refuses to turn a failed replay into a row of zeros. Both of its sibling
+  tools' self-tests and its own run in tier 1 -- five study self-tests now.
+- **The answer is no, and it is a measurement rather than a preference.** Two Deribit days, 96 half-hour slices,
+  3,131 fills, `recon_bad=0`: the low half (49 windows at or below the 66-tick median range) loses 0.00423 USD a
+  fill and the high half (47 windows) loses 0.00517. The quiet minutes are not the ones the fee eats, so a floor
+  would remove the cheaper ones; no floor is built, and the per-second halt in `active_l2_market_maker.h` keeps its
+  comment instead of a new threshold. Measured, not gated: the run is 2m50s, which would be the largest single line
+  in the document gate, so the command lives in the tool and the two bucket means are here and in the commit.
+- **Two bugs the join caught, and why the gate has them now.** The first run reported `recon=bad` on every slice
+  because the replay tuple had no `--paper-broker`, so no `[RECON]` line existed to read. The first series keyed
+  every slice on 0 because the sibling tool takes its window in seconds and the driver carried microseconds -- the
+  join failed loudly instead of producing a table, and the self-test now asserts the series keys and that the
+  per-slice ranges equal one pass over the whole file.
+
 ## The tools for a parameter that has to travel (2026-11-13)
 
 - **A walk-forward over the sweeps that already exist.** `tools/study/walk_forward.py` fits a swept parameter on

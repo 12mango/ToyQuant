@@ -10,7 +10,7 @@ file, and the directory names say which kind a tool is:
 | `gate/` | the gate itself (`verify_l2.sh`), the six lints it calls, and `lib.sh` — the shared shell helpers | yes; this is the gate |
 | `sweep/` | the measurements that vary one thing and print a table: fee, latency, limits, the signal grid, the equity schedule, the day-by-day check, the workload matrix, the risk controls | one of them (`risk_check.sh`); the rest are run by hand and their output is pasted into a document |
 | `fetch/` | getting data in and cutting it down: the five venue fetchers, `slice.py`, and `inspect_source.py` for a file nobody has parsed before | two of them, as self-tests |
-| `study/` | the studies: capacity, the instrument screen, the venue ratio, viability, the ring table, the queue calibration, the interval, the walk-forward, the volatility window, and the benchmarks that drive a window at a time | four of them, as self-tests |
+| `study/` | the studies: capacity, the instrument screen, the venue ratio, viability, the ring table, the queue calibration, the interval, the walk-forward, the volatility window, the slice driver, and the benchmarks that drive a window at a time | five of them, as self-tests |
 | `live/` | the things that speak to a socket: the venue relay, the WebSocket sender, the push-chain soak, the order tracer | no |
 | `bench/` | two harnesses for the performance line: the paired A/B runner and the libc call counter | no |
 | `legacy/` | the CSV and UDP generators for the L1 path that the demo and `data/scenarios/` still use | no |
