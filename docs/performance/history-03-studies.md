@@ -1405,9 +1405,9 @@ gaining a threshold, because a control that fires on the wrong half is a control
 The finding was cut three ways before it was written down: five Deribit days at half an hour a slice, the same two
 of those days at ten minutes a slice, and the two at half an hour again. The quiet half's loss a fill comes out at
 0.66 to 0.82 of the busy half's in all three, with the same sign in all three, so the answer is not the length of
-the slice; and every cut is negative throughout, which is the fee question this document has asked seven times
-before. The two means are close enough that the finding is "this floor has no case", not "volatility does not
-matter".
+the slice -- and every cut is negative throughout, which is the same fee question this document keeps arriving at
+from a different direction. The two means are close enough that the finding is "this floor has no case", not
+"volatility does not matter".
 
 The table is a command rather than a marked block on purpose: the five-day run is nine minutes and the ten-minute
 one is four, which together are more than this page's whole gate budget. Its limits are the ones every window here

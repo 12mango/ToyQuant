@@ -200,6 +200,14 @@ def self_test():
         assert "chosen=5 in_sample=9 out_of_sample=-4" in printed, printed
         assert "replicated=no" in printed and "distinct_choices=1" in printed, printed
 
+        # A tie is broken by the file and not by luck: both cells score the same in training and the one the file
+        # lists first is the one carried into the fold. This is the rule the docstring states, so it is pinned.
+        first = table("d1.csv", [["cell", "net"], [5, 4], [20, 4]])
+        second = table("d2.csv", [["cell", "net"], [5, 1], [20, 9]])
+        summary, printed = silent([("2020-01", first), ("2020-02", second)], ["cell"], "net")
+        assert "chosen=5 in_sample=4 out_of_sample=1" in printed, printed
+        assert summary["oos_mean"] == 1, summary
+
         # The same cell wins every training set and is positive in both folds: the choice travelled.
         first = table("t1.csv", [["cell", "net"], [5, 9], [20, 1]])
         second = table("t2.csv", [["cell", "net"], [5, 8], [20, 2]])
@@ -231,8 +239,8 @@ def self_test():
         else:
             raise AssertionError("a single window was accepted")
 
-    print("self-test OK: the fold chosen on the past, the choice that travelled, the missing cell, "
-          "the missing column and the single window")
+    print("self-test OK: the fold chosen on the past, the tie broken by the file, the choice that travelled, "
+          "the missing cell, the missing column and the single window")
     return 0
 
 
