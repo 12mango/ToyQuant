@@ -154,6 +154,12 @@ existing design, architecture and user documents are the whole plan.
 Everything in P2 is deferred for this stage. Lifting one requires a new request; add it as a new row here
 rather than pretending the boundary was never there.
 
+**Requested later (2026-11-14, not started): the sandbox's own output in the documents.** A live run's `[VENUE]`,
+`[RECON]` and `[ORDER-LOG]` lines beside the replay numbers, labelled as what they are -- an acceptance of the wire, not
+a measurement of a strategy. It waits on the two open items on [the live page](using/04-live-and-carry.md): the `orders`
+subscription with its de-duplication rule, and the venue-side unit mapping. Recorded here so the boundary moves by a
+request rather than by someone forgetting it was there.
+
 ### Gaps that were on no list (recorded 2026-11-02)
 
 Everything above was chosen and written down. The rows below were **not**: they were absent from this plan, from

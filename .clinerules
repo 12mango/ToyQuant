@@ -55,6 +55,11 @@ compatibility path. Everything below assumes that page.
 - **A document outside `docs/` cannot be linked from inside it.** `mkdocs build --strict` refuses a relative link that
   leaves `docs_dir`, and `check_links.py` cannot follow it, so the answer for `data/` and `tools/` was to write
   `docs/DATA.md` and `docs/TOOLS.md` and leave a pointer at the old path.
+- **A machine-local fact is an ignored file at the repository root, never a tracked document.** The Drive target
+  (`.drive-target`), the reviewer's brief (`.reviewer.md`) and the credentials (`secrets/`) are in the repository so a
+  later session finds them and are ignored so no clone, no CI run and no bundle carries them: the bundle is
+  `git ls-files`, so an ignored file cannot leak into a copy. A tracked document that names a machine path is a public
+  repository telling every reader about someone's `G:\`.
 - **Do not weaken a check to make a number pass.** Not a `then:` value, not a lint whitelist entry, not a skipped tier.
   A whitelist addition is legitimate only for a flag that genuinely belongs to a tool rather than to the binary, and
   the comment above it has to say which.
@@ -163,6 +168,11 @@ A page is read in three minutes or it is not read. Three rules follow, and the m
 
   What stays outside every fold is the same three things: one figure, one conclusion table of four columns or fewer,
   and the commands a reader copies.
+
+- **Adding a page is the last resort, not the first.** A workflow, a machine path, a reviewer's brief or a policy is a
+  line in this file or an ignored file at the repository root (``.drive-target``, ``.reviewer.md``); it is not a new
+  document. A page is justified by a question that has no home -- and the count of documents is stated in the lints, so
+  a new one is a claim that the old ones are full.
 
 ## 6. Handing the tree to another reader
 

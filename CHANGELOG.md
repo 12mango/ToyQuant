@@ -28,6 +28,12 @@ site now points at `ToyQuant`.
   the exact error it wrote.
 - The two `ToyQuant_*.txt` files in the Drive folder are the old artifacts and are now older than `manifest.txt`; they
   are left in place rather than deleted, because deleting outside the repository is not this agent's call.
+- **The workflow notes are files, not pages.** The reviewer's brief is `.reviewer.md` and the Drive target is
+  `.drive-target`, both at the repository root and both ignored: in the repository so a later session finds them, out of
+  git so no clone, no CI run and no bundle carries them (`git ls-files` is the bundle's file list, so an ignored file
+  cannot leak into a copy). `.clinerules` states the rule -- a workflow, a machine path or a policy is not a new
+  document -- and the sandbox's own output in the documents is recorded on the roadmap as a later request rather than
+  started here.
 
 
 - **A review needs the change, not the tree.** `--sync` writes the two bundles and the manifest into the folder named by

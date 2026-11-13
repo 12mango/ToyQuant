@@ -87,6 +87,9 @@ secrets/
 # because the path is the machine's -- a public repository has no business carrying `G:\...` -- and because an empty or
 # absent file is what makes the sync fail loudly instead of writing somewhere plausible.
 .drive-target
+# The read-only reviewer's brief: a workflow instruction for a second model, not a repository fact. See `.clinerules`
+# section 6. Ignored for the same reason, and `git ls-files` is what the bundle reads, so it cannot leak into a copy.
+.reviewer.md
 
 # General system temporary files and editor caches
 *.log
