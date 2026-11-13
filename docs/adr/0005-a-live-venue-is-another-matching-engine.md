@@ -96,14 +96,16 @@ nothing about profit, and what stops it from becoming a program that spends mone
 - **What the sandbox run now says, and where it stops.** With the id, the venue correlates its answer and names its own
   complaint: `sCode 50014, "Parameter instIdCode can not be empty"`. That field is the venue's internal code for the
   contract -- 10459 for `BTC-USDT-SWAP`, read from its public instruments endpoint -- and `--order-inst-code` passes it
-  through rather than deriving it, because a guessed code is an order on the wrong contract. With it the parameter
-  complaints stop and the venue answers `50026 "System error. Try again later."` for the order and
-  `51400 "Order cancellation failed ... does not exist"` for its cancel: its own failures, both booked by the engine as
-  rejections (`[VENUE] frames_sent=2 frames_received=2 reports=2`). The business route, the venue's other order surface,
-  refuses the `orders` subscription (`60018`) and an `op: order` (`60012`), which is what `--order-no-subscribe` was
-  written to establish. So the round trip is proven, the request's shape is settled, and a *fill* is blocked on the demo
-  venue's own answer rather than on anything this side sends. The size is the second open item: `sz` is in the replay
-  instrument's units, not the venue's, and the same integer is a hundred times the notional.
+  through rather than deriving it. With it the complaint becomes `50026 "System error. Try again later."`, three times, a
+  second apart, as a number and as a string, which rules out type errors and transients; the host's clock is within
+  120 ms of the venue's, which rules out the timestamp. The same order over REST -- the venue's canonical order surface,
+  which needed ISO-8601 milliseconds where the websocket login needs epoch seconds (`50112` against `60004`) -- answers
+  `sCode 51010, "You can't complete this request under your current account mode."`, and the account reports
+  `acctLv=1`: spot-only. A perpetual swap is not a spot instrument, so `50026` was that refusal collapsed into a system
+  error by the websocket handler. The round trip is proven (`[VENUE] frames_sent=2 frames_received=2 reports=2`, both
+  rejections booked); a fill is blocked on a venue-side account setting, and the fix is to switch the demo account to
+  single-currency margin (`acctLv` 2 or up) rather than a change here. The size stays the other open item: `sz` is in the
+  replay instrument's units, not the venue's.
 - **What it costs**: one adapter, one wire, one relay order channel, one recorder with its reader, and the flag
   plumbing -- `src/lines/live_venue.{h,cpp}`, `src/lines/tcp_venue_transport.{h,cpp}`, the order channel in
   `tools/live/venue_relay.py`, `src/lines/order_recorder.{h,cpp}`, `src/lines/recorded_venue.{h,cpp}` and a

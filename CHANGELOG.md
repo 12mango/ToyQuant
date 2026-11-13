@@ -21,15 +21,17 @@ site now points at `ToyQuant`.
 - **Two flags make the next silence attributable.** `--order-dump=FILE` writes every frame both ways, one JSON object a
   line, with the login's key and signature redacted (the self-test asserts nothing of the secret reaches the file);
   `--order-inst-type` chooses the `orders` subscription's type.
-- **What the run says now, and where it stops.** The venue's parameter complaint names the missing field: `instIdCode`,
-  its internal code for the contract (10459 for `BTC-USDT-SWAP`, from its public instruments endpoint). `--order-inst-code`
-  passes it through and does not derive it, because a guessed code is an order on the wrong contract. With it the
-  parameter complaints stop and the venue answers `50026 "System error. Try again later."` for the order and
-  `51400 "Order cancellation failed ... does not exist"` for its cancel, both booked by the engine as rejections
-  (`[VENUE] frames_sent=2 frames_received=2 reports=2`). The business route refuses the `orders` subscription (`60018`)
-  and an `op: order` (`60012`) -- what `--order-no-subscribe` was written to establish -- so the surfaces are known, the
-  request's shape is settled, and a fill is blocked on the demo venue's own answer. The second open item is the size,
-  which is in the replay instrument's units and not the venue's.
+- **What the run says now, and why no fill follows.** With the id, the venue's complaint becomes specific -- `instIdCode` --
+  and `--order-inst-code` passes the venue's own contract code rather than deriving one. Past that the answer is
+  `50026 "System error. Try again later."` three times, a second apart, as a number and as a string, with the host clock
+  within 120 ms of the venue's: no type error, no transient, no drift. The same order over REST -- which needs ISO-8601
+  milliseconds where the websocket login needs epoch seconds, `50112` against `60004` -- answers `sCode 51010, "You can't
+  complete this request under your current account mode."`, and the account reports `acctLv=1`: spot-only, where a
+  perpetual swap is not a spot instrument. So `50026` was that refusal collapsed into a system error, and the blocker is a
+  venue-side account setting -- single-currency margin, `acctLv` 2 or up -- not a request. The round trip is proven
+  (`[VENUE] frames_sent=2 frames_received=2 reports=2`, both rejections booked); the size stays open, being in the replay
+  instrument's units and not the venue's. The error codes this line has produced are folded on the live page, one page
+  down from the command.
 - No C++, no recorded number and no size count changed; `--self-test` carries the new pins and the gate runs it.
 
 ## The live venue becomes the run's venue (2026-11-13)

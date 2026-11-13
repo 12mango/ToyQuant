@@ -127,21 +127,43 @@ conversation:
 - the business route, which is where an order is normally placed, refuses the `orders` subscription outright (`60018`,
   with `ANY` and with `SWAP`), so the subscription and the order placement live on different surfaces.
 
-So the round trip is proven and a fill is not yet. What the probes settled, in order:
+So the round trip is proven and a fill is not yet, and the reason is now an account setting rather than a request. The
+chain, in the order it was measured:
 
 - the private route's order operation wants `instIdCode`, the venue's internal code for the contract (10459 for
   `BTC-USDT-SWAP`, read from its public instruments endpoint). `--order-inst-code` passes it through and is deliberately
   required rather than derived: a guessed code is an order on the wrong contract;
-- with the code the parameter complaints stop, and the venue answers `50026 "System error. Try again later."` for the
-  order and `51400 "Order cancellation failed as the order has been filled, canceled or does not exist"` for its cancel --
-  its own failures, not this side's, and both are booked by the engine as rejections;
-- the business route, which is where an order is normally placed, refuses both the `orders` subscription (`60018`) and an
-  `op: order` (`60012 Illegal request`), which is what `--order-no-subscribe` was written to test.
+- with the code the parameter complaints stop and the venue answers `50026 "System error. Try again later."` -- three
+  times, a second apart, with the code as a number and as a string, which rules out a type error and a transient blip.
+  The host's clock is within 120 ms of the venue's, which rules out drift (`50112` is what a wrong timestamp looks like);
+- the same order over REST, which is the venue's canonical order surface, gets past signing and answers
+  `sCode 51010, "You can't complete this request under your current account mode."` -- so `50026` was that refusal,
+  collapsed into a system error by the websocket handler;
+- and the account says why: `acctLv=1`, `posMode=net_mode`. Level 1 is spot-only, and a perpetual swap is not a spot
+  instrument.
 
-So the surfaces are now known and the remaining obstacle is the demo venue's own answer, not the shape of a request. The
-second open item is the size: `sz` is in the replay instrument's units, not the venue's -- `10` is ten USD-notional
-contracts of a Deribit perpetual and ten 0.01-BTC contracts of an OKX swap, so the same integer is a hundred times the
-notional.
+The one action is a venue-side setting -- switch the demo account to single-currency margin (`acctLv` 2 or up) -- and
+then the same command is the acceptance run: nothing in the engine, the adapter or the relay changes. Until then the
+relay's simulated venue is what a run is measured against, and it reconciles.
+
+/// details | The venue's error codes this line has actually produced
+
+| code | surface | what it meant here |
+|---|---|---|
+| `60004` | websocket login | the login timestamp must be epoch **seconds** |
+| `50112` | REST | the REST timestamp must be ISO 8601 **milliseconds** -- the opposite format |
+| `50014` | `op: order` | a field was missing: first `id`, then `instIdCode` |
+| `50026` | `op: order` | a system error, which here was the `51010` below |
+| `51010` | REST order | the account cannot trade this instrument: `acctLv=1` is spot-only |
+| `60012` | business endpoint | that endpoint does not serve `op: order` |
+| `60018` | business endpoint | it does not serve the `orders` channel either; the private route does |
+| `51400` | `op: cancel-order` | the order never existed, so the cancel had nothing to cancel |
+
+The two timestamp formats are the trap worth remembering: a login signed in the wrong format is refused by one surface
+and a REST call by the other, so a client that shares one timestamp function across both is exactly one code away from
+looking like it has the wrong key.
+
+///
 
 
 ## Carry: Two Legs Over Two Funding Histories
