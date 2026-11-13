@@ -10,23 +10,31 @@ site now points at `ToyQuant`.
 ## The volatility floor, measured before it was built (2026-11-13)
 
 - **A slice driver, because the bucket join had nothing to join.** `tools/study/slice_pnl.py` cuts a day's depth
-  and trade files into half-hour slices in one pass and writes the per-slice result beside the per-slice true range
-  on the same `window_start`. The pass is the point: a snapshot slice is about 130 MB, so the driver cuts a slice,
-  replays it, deletes it and moves on rather than scanning the file once per slice. It replays with
-  `--paper-broker` so a slice that does not reconcile is `recon=bad` instead of silently kept, counts a slice with
-  no trade rather than replaying it, and refuses to turn a failed replay into a row of zeros. Both of its sibling
-  tools' self-tests and its own run in tier 1 -- five study self-tests now.
-- **The answer is no, and it is a measurement rather than a preference.** Two Deribit days, 96 half-hour slices,
-  3,131 fills, `recon_bad=0`: the low half (49 windows at or below the 66-tick median range) loses 0.00423 USD a
-  fill and the high half (47 windows) loses 0.00517. The quiet minutes are not the ones the fee eats, so a floor
-  would remove the cheaper ones; no floor is built, and the per-second halt in `active_l2_market_maker.h` keeps its
-  comment instead of a new threshold. Measured, not gated: the run is 2m50s, which would be the largest single line
-  in the document gate, so the command lives in the tool and the two bucket means are here and in the commit.
+  and trade files into slices of a fixed length in one pass and writes the per-slice result beside the per-slice
+  true range on the same `window_start`. The pass is the point: a snapshot slice is about 130 MB, so the driver cuts
+  a slice, replays it, deletes it and moves on rather than scanning five million rows once per slice, and a slice
+  with no trade is never written at all. It replays with `--paper-broker` so a slice that does not reconcile is
+  `recon=bad` instead of silently kept, counts a slice with no trade rather than replaying it, counts a trade with
+  no book row as `no_depth` rather than losing it, and refuses to turn a failed replay into a row of zeros. Its
+  self-test runs a fake binary, and the kept-slice case pins that the empty half hour has no file.
+- **The answer is no, and it is a measurement rather than a preference.** Three cuts: five Deribit days at half an
+  hour a slice (240 slices, 5,549 fills), the same two of those days at ten minutes (288 slices, 3,135 fills), and
+  the two at half an hour again (96 slices, 3,131 fills). Every slice reconciles, and every cut splits at its own
+  median range into two halves that both lose money a fill; the quiet half's loss is 0.66 to 0.82 of the busy
+  half's in all three. In the five-day cut that is 0.00410 USD a fill (121 windows) against 0.00515 (119), and at
+  ten minutes 0.00295 (144) against 0.00447 (144). The quiet minutes are not the ones the fee eats, so a floor would
+  remove the cheaper ones; no floor is built, and `active_l2_market_maker.h` now says so in the comment that used to
+  call the window a known gap. Measured, not gated: the five-day run is nine minutes and the ten-minute one four,
+  so the command lives in the tool and the numbers here and in the commit.
 - **Two bugs the join caught, and why the gate has them now.** The first run reported `recon=bad` on every slice
   because the replay tuple had no `--paper-broker`, so no `[RECON]` line existed to read. The first series keyed
   every slice on 0 because the sibling tool takes its window in seconds and the driver carried microseconds -- the
   join failed loudly instead of producing a table, and the self-test now asserts the series keys and that the
   per-slice ranges equal one pass over the whole file.
+- **Two holes a review found, and closed before the numbers were quoted.** An empty slice used to be cut to disk
+  and deleted, which cost 130 MB a half hour for nothing: the writer is opened lazily now. And a slice with trades
+  but no book rows was silently missing from the table, which would have made the sum of the slices quietly smaller
+  than the day: it is counted as `no_depth`, and both are pinned in the self-test.
 
 ## The tools for a parameter that has to travel (2026-11-13)
 
@@ -49,7 +57,7 @@ site now points at `ToyQuant`.
   first walk-forward over the two Deribit windows (2020-04-01 chosen on, 2020-06-01 scored on) prints
   `replicated=no` with the chosen cell negative out of sample, which is the grid's own result arriving by the route
   that can be repeated rather than by a re-reading.
-- **What did not change**: no C++ file, no test binary, no recorded number, and the same 120 source files and 26,024
+- **What did not change**: no C++ file, no test binary, no recorded number, and the same 120 source files and 26,026
   source lines. The tools read `data/` and write under `/tmp`; a missing input is an error naming the file.
 
 ## The relay's private route (2026-11-13)

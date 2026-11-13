@@ -131,6 +131,7 @@ def slice_day(day, width, work, binary, symbol, tick_size, keep, verbose):
 
     results = []
     entries = []
+    seen = []
     empty = 0
 
     def finish(start, depth_rows):
@@ -182,31 +183,45 @@ def slice_day(day, width, work, binary, symbol, tick_size, keep, verbose):
                 continue
             start = stamp // width * width
             if start != current:
-                if writer is not None:
-                    depth_file.close()
+                # The previous slice is closed and finished from `current`, not from the writer: a slice with no
+                # trade has no writer, and reading "is there a file open" as "is there a slice" lost it.
+                if current is not None:
+                    if writer is not None:
+                        depth_file.close()
                     finish(current, depth_rows)
                 current, depth_rows = start, 0
+                seen.append(start)
+                # Opened lazily: a slice with no trade is never written, so an empty half hour costs a count
+                # rather than a hundred and thirty megabytes of disk and a delete.
+                writer = None
+            if start in groups and writer is None:
                 depth_file = open(work / f"depth_{start}.csv", "w", newline="", encoding="utf-8")
                 writer = csv.writer(depth_file, lineterminator="\n")
                 writer.writerow(header)
-            writer.writerow(row)
+            if writer is not None:
+                writer.writerow(row)
             depth_rows += 1
-        if writer is not None:
-            depth_file.close()
+        if current is not None:
+            if writer is not None:
+                depth_file.close()
             finish(current, depth_rows)
-    return results, entries, empty
+    # A slice with trades but no book row is not an empty slice and not a result either: it is a hole in the
+    # depth file, and it is counted so that the sum of the slices cannot quietly be smaller than the day.
+    no_depth = [start for start in groups if start not in seen]
+    return results, entries, empty, no_depth
 
 
 def run(days, width, work, binary, symbol, tick_size, keep, verbose):
     """Every day in the order given, with the rows concatenated so the two CSVs cover all of them."""
-    results, entries, empty = [], [], 0
+    results, entries, empty, no_depth = [], [], 0, []
     for day in days:
-        day_results, day_entries, day_empty = slice_day(day, width, work, binary, symbol, tick_size,
-                                                        keep, verbose)
+        day_results, day_entries, day_empty, day_no_depth = slice_day(day, width, work, binary, symbol,
+                                                                     tick_size, keep, verbose)
         results.extend(day_results)
         entries.extend(day_entries)
         empty += day_empty
-    return results, entries, empty
+        no_depth.extend(day_no_depth)
+    return results, entries, empty, no_depth
 
 
 def write_values(path, results):
@@ -219,7 +234,7 @@ def write_values(path, results):
                              row["net_pnl_usd"], row["fees_paid"], row["net_per_fill_usd"], row["recon"]])
 
 
-def whole(results, entries, empty):
+def whole(results, entries, empty, no_depth):
     """The counts a run prints, computed from the rows rather than from a running total."""
     def numberish(text):
         try:
@@ -229,14 +244,15 @@ def whole(results, entries, empty):
 
     fills = sum(int(row["fills"]) for row in results if str(row["fills"]).isdigit())
     net = sum(value for value in (numberish(row["net_pnl_usd"]) for row in results) if value is not None)
-    return {"slices": len(results) + empty, "ran": len(results), "empty": empty,
+    return {"slices": len(results) + empty + len(no_depth), "ran": len(results), "empty": empty,
+            "no_depth": len(no_depth),
             "recon_bad": sum(1 for row in results if row["recon"] != "ok"),
             "fills": fills, "net_usd": net, "series_windows": len(entries)}
 
 
 def show(summary, values_path, series_path):
     print(f"[SLICES] slices={summary['slices']} ran={summary['ran']} empty={summary['empty']} "
-          f"recon_bad={summary['recon_bad']} fills={summary['fills']} "
+          f"no_depth={summary['no_depth']} recon_bad={summary['recon_bad']} fills={summary['fills']} "
           f"net_usd={summary['net_usd']:.6g} series_windows={summary['series_windows']} "
           f"values={values_path} series={series_path}")
     print("A slice is cut on the same clock the range series uses, so the two files join on window_start. "
@@ -261,7 +277,8 @@ def self_test():
         trades.write_text("exchange,symbol,timestamp,id,side,price,amount\n"
                           "deribit,BTC-PERPETUAL,0,1,buy,100.0,1\n"
                           "deribit,BTC-PERPETUAL,30000000,2,buy,101.0,1\n"
-                          "deribit,BTC-PERPETUAL,60000000,3,sell,99.0,1\n")
+                          "deribit,BTC-PERPETUAL,60000000,3,sell,99.0,1\n"
+                          "deribit,BTC-PERPETUAL,180000000,4,buy,98.0,1\n")
         depth = folder / "depth.csv"
         depth.write_text("exchange,symbol,timestamp,asks[0].price,asks[0].amount\n"
                          "deribit,BTC-PERPETUAL,0,100.5,10\n"
@@ -269,10 +286,12 @@ def self_test():
                          "deribit,BTC-PERPETUAL,60000000,99.5,10\n"
                          "deribit,BTC-PERPETUAL,120000000,99.5,10\n")
 
-        results, entries, empty = slice_day(("day", str(trades), str(depth)), 60000000, work, str(fake),
-                                            "BTC-PERPETUAL", 0.5, False, False)
-        # Two slices have trades; the third holds only book rows and is counted rather than replayed.
+        results, entries, empty, no_depth = slice_day(("day", str(trades), str(depth)), 60000000, work,
+                                                      str(fake), "BTC-PERPETUAL", 0.5, False, False)
+        # Two slices have trades; one holds only book rows and is counted rather than replayed; and the trade at
+        # 180 s has no book row at all, which is a hole in the depth file and is counted as one.
         assert len(results) == 2 and empty == 1, (results, empty)
+        assert no_depth == [180000000], no_depth
         assert [row["window_start"] for row in results] == [0, 60000000], results
         for row in results:
             assert (row["fills"], row["net_pnl_usd"], row["fees_paid"], row["net_per_fill_usd"],
@@ -282,10 +301,21 @@ def self_test():
         # failure this assertion exists for.
         assert [entry["range_ticks"] for entry in entries] == [2.0, 0.0], entries
         assert [entry["window_start"] for entry in entries] == [0, 60000000], entries
-        assert window_series(load_trades(str(trades), 60000000), 0.5, 60.0) == entries, \
-            window_series(load_trades(str(trades), 60000000), 0.5, 60.0)
+        # The per-slice ranges equal one pass over the whole file, for the slices that ran: the trade with no book
+        # row is in the file and is not a slice, which is the distinction the `no_depth` count keeps.
+        whole_series = window_series(load_trades(str(trades), 60000000), 0.5, 60.0)
+        assert [entry for entry in whole_series if entry["window_start"] in {0, 60000000}] == entries, \
+            whole_series
         # Nothing is left behind when the run is allowed to clean up.
         assert not list(work.iterdir()), list(work.iterdir())
+        # With the slices kept, the empty half hour has no depth file at all: the lazy writer is the saving, and
+        # this is the assertion that would fail if it went back to writing a slice it never runs.
+        kept = folder / "kept"
+        kept.mkdir()
+        slice_day(("day", str(trades), str(depth)), 60000000, kept, str(fake), "BTC-PERPETUAL", 0.5,
+                  True, False)
+        names = sorted(path.name for path in kept.iterdir())
+        assert names == ["depth_0.csv", "depth_60000000.csv", "trades_0.csv", "trades_60000000.csv"], names
 
         values = folder / "values.csv"
         series = folder / "series.csv"
@@ -351,13 +381,13 @@ def main():
     work = Path(args.work) if args.work else Path(tempfile.mkdtemp(prefix="toyquant_slices_"))
     work.mkdir(parents=True, exist_ok=True)
     try:
-        results, entries, empty = run(args.day, width, work, args.binary, args.symbol,
-                                      args.tick_size, args.keep, args.verbose)
+        results, entries, empty, no_depth = run(args.day, width, work, args.binary, args.symbol,
+                                               args.tick_size, args.keep, args.verbose)
         if not results:
             raise ValueError("no slice had a trade, so there is nothing to write")
         write_values(args.values, results)
         write_series(args.series, entries)
-        show(whole(results, entries, empty), args.values, args.series)
+        show(whole(results, entries, empty, no_depth), args.values, args.series)
         return 0
     except (OSError, ValueError, RuntimeError) as error:
         print(f"slice_pnl: {error}", file=sys.stderr)

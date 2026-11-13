@@ -1395,18 +1395,23 @@ asks the other direction: when the market is quiet, is there anything to earn af
 cannot be a threshold at this feed rate: it is an EWMA of the midpoint's move per second, and every threshold from
 1.0 to 50.0 lands in the same place. The measurement below is the window that comment asks for.
 
-`tools/study/slice_pnl.py` cuts the two Deribit days into half-hour slices, replays the same maker on each, and
-writes the result beside the slice's own true range on the same clock;
-`tools/study/volatility_window.py --bucket` then splits that pair at the median range. **Both halves lose money a
-fill, and the quiet half loses less**, so a floor would remove the cheaper minutes and keep the expensive ones: the
-premise a floor rests on -- that the quiet minutes are the ones the fee eats -- does not hold on these two days. No
-floor is built, and the per-second halt keeps its comment rather than gaining a threshold, because a control that
-fires on the wrong half is a control that costs money.
+`tools/study/slice_pnl.py` cuts a day into slices of a fixed length, replays the same maker on each, and writes the
+result beside the slice's own true range on the same clock; `tools/study/volatility_window.py --bucket` then splits
+that pair at the median range. **Both halves lose money a fill, and the quiet half loses less**, so a floor would
+remove the cheaper minutes and keep the expensive ones: the premise a floor rests on -- that the quiet minutes are
+the ones the fee eats -- does not hold. No floor is built, and the per-second halt keeps its comment rather than
+gaining a threshold, because a control that fires on the wrong half is a control that costs money.
 
-The table is a command rather than a marked block on purpose: the run is ninety-six replays and about three
-minutes, more than this page's whole gate budget. Its limits are the ones every window here carries -- one
-instrument, one configuration, two days -- and the two bucket means are close enough that the finding is "the floor
-has no case here", not "volatility does not matter".
+The finding was cut three ways before it was written down: five Deribit days at half an hour a slice, the same two
+of those days at ten minutes a slice, and the two at half an hour again. The quiet half's loss a fill comes out at
+0.66 to 0.82 of the busy half's in all three, with the same sign in all three, so the answer is not the length of
+the slice; and every cut is negative throughout, which is the fee question this document has asked seven times
+before. The two means are close enough that the finding is "this floor has no case", not "volatility does not
+matter".
+
+The table is a command rather than a marked block on purpose: the five-day run is nine minutes and the ten-minute
+one is four, which together are more than this page's whole gate budget. Its limits are the ones every window here
+carries -- one instrument, one configuration, five days, and a maker measured at one quote width.
 
 
 

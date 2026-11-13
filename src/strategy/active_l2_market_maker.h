@@ -17,8 +17,10 @@ struct ActiveL2MarketMakerConfig
     // `min_elapsed_seconds` below dominates the result. Measured: with the effective threshold at 9.0
     // the halt fires 46 times in the 200,000-row window, at 50.0 it fires 246 times, and every value
     // from 1.0 to 50.0 lands in the same place. The threshold that would mean something is a tick range
-    // over a fixed time window, which is a behaviour change to a risk control and is left as a known
-    // gap rather than half-changed here.
+    // over a fixed time window, which is a behaviour change to a risk control -- and it was measured before
+    // being built: over five days of half-hour slices both halves of the median lose money a fill and the
+    // quiet half loses less, so a floor would remove the cheaper minutes and none is built
+    // (`tools/study/slice_pnl.py`; the studies page has the run).
     double pause_after_ticks_per_second{9.0};
     // The floor that makes the speed above rate-dependent. See the note on the threshold.
     double min_elapsed_seconds{0.05};
