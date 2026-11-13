@@ -169,7 +169,11 @@ def main():
                         "--order-listen", "--simulate-orders", "--order-cap", "--order-capture",
                         # The private route's endpoint. A flag of the relay, not of the engine: the document
                         # that names it is the live guide, and the relay is the tool that dials it.
-                        "--order-venue"}:
+                        "--order-venue",
+                        # The venue's own name for the instrument the replay runs on. Also the relay's: it is
+                        # the layer that translates the engine's symbol into what the venue knows, and the
+                        # sandbox run cannot be described without it.
+                        "--instrument"}:
             problems.append(f"{flag} is mentioned in a document and is not a flag the binary accepts")
     for model in sorted(models):
         if model not in text.lower():

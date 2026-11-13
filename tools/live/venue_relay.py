@@ -582,10 +582,13 @@ class OrderTranslator:
             if tif not in ("Gtc", "Ioc", "Fok"):
                 raise OrderError(f"time in force '{tif}' is not Gtc, Ioc or Fok")
             self.orders[cl_ord_id] = {"symbol": symbol, "quantity": int(quantity)}
-            # OKX's shape for a limit order. `px` is passed through as the engine wrote it -- the shortest
-            # decimal that parses back to the same double -- rather than reformatted, so the venue sees the
-            # price the strategy decided.
-            return {"op": "order", "args": [{"instId": symbol, "tdMode": "cross",
+            # OKX's shape for a limit order. The instrument is the relay's, not the engine's: the replay runs on
+            # whatever instrument its book came from, and the venue only knows its own name for the thing, so the
+            # mapping lives here -- the layer ADR 0005 says knows a venue's shapes -- and the operator names it
+            # once on `--instrument`. `px` is passed through as the engine wrote it -- the shortest decimal that
+            # parses back to the same double -- rather than reformatted, so the venue sees the price the strategy
+            # decided.
+            return {"op": "order", "args": [{"instId": self.instrument, "tdMode": "cross",
                                              "side": "buy" if side == "B" else "sell",
                                              "ordType": "limit", "px": price, "sz": quantity,
                                              "clOrdId": cl_ord_id}]}
@@ -595,8 +598,7 @@ class OrderTranslator:
             cl_ord_id = fields[1]
             if not cl_ord_id.isdigit():
                 raise OrderError(f"the order id '{cl_ord_id}' is not a number")
-            known = self.orders.get(cl_ord_id, {})
-            return {"op": "cancel-order", "args": [{"instId": known.get("symbol", self.instrument),
+            return {"op": "cancel-order", "args": [{"instId": self.instrument,
                                                     "clOrdId": cl_ord_id}]}
         raise OrderError(f"'{fields[0]}' is not an order or a cancel")
 
@@ -1351,7 +1353,10 @@ def self_test():
     # processes it joins are tested separately -- `tcp_venue_transport_test` on the engine side, this file on
     # the translation -- so what is pinned here is the shape in the middle, field by field.
     translator = OrderTranslator("BTC-USDT-SWAP")
-    request = translator.encode("ORDER 7 BTC-USDT-SWAP B 6421.5 10 Gtc")
+    # The engine's symbol is the replay's instrument; the venue is told the relay's name for it. A run whose book
+    # comes from one exchange and whose orders go to another would otherwise ask for an instrument that venue has
+    # never heard of -- which is what the first sandbox order did, with `BTC-PERPETUAL`.
+    request = translator.encode("ORDER 7 BTC-PERPETUAL B 6421.5 10 Gtc")
     assert request["op"] == "order", request
     argument = request["args"][0]
     assert (argument["instId"], argument["side"], argument["ordType"], argument["px"], argument["sz"],

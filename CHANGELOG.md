@@ -7,6 +7,25 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The relay names the venue's instrument, and the first sandbox order was met with silence (2026-11-13)
+
+- **The order left with the wrong name.** The first sandbox order carried `instId: "BTC-PERPETUAL"` -- the replay's
+  Deribit instrument -- to a venue that only knows `BTC-USDT-SWAP`. `OrderTranslator.encode` now sends the relay's
+  `--instrument` and keeps the engine's symbol for its own bookkeeping, so the mapping lives in the layer ADR 0005 says
+  knows a venue's shapes; `--self-test` pins it with an order whose symbol differs from the instrument.
+- **What the run established**: the private route logs in and subscribes (`logins=1 subscribes=1`), the order and the
+  cancel are translated (captured literally: `instId BTC-USDT-SWAP`, `px 6423.5`, `sz 10`, `clOrdId 1`), and
+  `write_failures=0`.
+- **What it did not**: the venue answered nothing on the `orders` channel -- `messages=0` after a minute, so
+  `frames_received=0`, `[VENUE] reports=0`, no `REJECT` and nothing to reconcile. The round trip the acceptance needs is
+  therefore still unproven against the real venue; what is proven is the login, the subscription and the request
+  translation.
+- **Two open items, both named rather than guessed at**: the relay counts only what it decoded, so a silent venue cannot
+  be told from a request this client misreads -- it needs a flag that records the venue's raw frames; and `sz` is in the
+  replay instrument's units (10 USD-notional contracts) not the venue's (10 contracts of 0.1 BTC), so a sandbox order
+  has to be sized in venue units, which needs the venue's contract size rather than a constant.
+- No C++ changed, no recorded number moved, and the self-test is the gate's.
+
 ## The live venue becomes the run's venue (2026-11-13)
 
 - **Three flags, one decision.** `--live-orders --venue-endpoint=HOST:PORT --venue-max-orders=N` replaces the

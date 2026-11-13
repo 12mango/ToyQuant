@@ -83,6 +83,17 @@ nothing about profit, and what stops it from becoming a program that spends mone
   (`Buy`, which would turn a sell into a buy) and no liquidity role. The adapter now stamps all three from the order it
   sent, `tests/live_venue_test` pins them, and the same run reconciles: `[RECON] status=ok`,
   `report_count_difference=0`, `[VENUE] orders=4 cancels=4 reports=12` against the relay's own count.
+- **The first sandbox order left under the wrong name, and no answer came back.** The order carried `instId:
+  "BTC-PERPETUAL"` -- the replay's Deribit instrument -- to a venue whose name for the thing is `BTC-USDT-SWAP`, so
+  `OrderTranslator.encode` now sends the relay's `--instrument` and keeps the engine's symbol for its own bookkeeping;
+  the mapping belongs in the relay because that is the layer that knows a venue's shapes, and `--self-test` pins it.
+  With that fixed the run logged in, subscribed, translated both the order and the cancel, reported
+  `write_failures=0` -- and the venue said nothing on the `orders` channel for a minute: `messages=0`, so
+  `frames_received=0`, no `REJECT`, nothing to reconcile. The round trip this record's acceptance criterion asks for is
+  therefore still unproven against the real venue. Attributing the silence needs the venue's raw frames on the record,
+  which the relay does not keep yet; and the size is the second open item, because `sz` is in the replay instrument's
+  units and not the venue's (`10` is ten USD-notional contracts of a Deribit perpetual and ten 0.1-BTC contracts of an
+  OKX swap), so a sandbox order has to be sized in the venue's units from the venue's contract size.
 - **What it costs**: one adapter, one wire, one relay order channel, one recorder with its reader, and the flag
   plumbing -- `src/lines/live_venue.{h,cpp}`, `src/lines/tcp_venue_transport.{h,cpp}`, the order channel in
   `tools/live/venue_relay.py`, `src/lines/order_recorder.{h,cpp}`, `src/lines/recorded_venue.{h,cpp}` and a
