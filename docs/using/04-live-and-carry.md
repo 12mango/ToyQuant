@@ -163,6 +163,10 @@ The two timestamp formats are the trap worth remembering: a login signed in the 
 and a REST call by the other, so a client that shares one timestamp function across both is exactly one code away from
 looking like it has the wrong key.
 
+> And a `403` whose body is `error code: 1010` is not a venue code at all: it is the proxy in front of it refusing the
+> client's `User-Agent`. Python's `urllib` default hits it and a `curl` one does not, which reads as "the venue refused
+> my request" until the body is looked at.
+
 ///
 
 
