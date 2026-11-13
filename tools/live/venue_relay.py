@@ -50,6 +50,7 @@ import argparse
 import base64
 import hashlib
 import hmac
+import io
 import json
 import os
 import queue
@@ -588,18 +589,19 @@ class OrderTranslator:
             # once on `--instrument`. `px` is passed through as the engine wrote it -- the shortest decimal that
             # parses back to the same double -- rather than reformatted, so the venue sees the price the strategy
             # decided.
-            return {"op": "order", "args": [{"instId": self.instrument, "tdMode": "cross",
-                                             "side": "buy" if side == "B" else "sell",
-                                             "ordType": "limit", "px": price, "sz": quantity,
-                                             "clOrdId": cl_ord_id}]}
+            return {"id": cl_ord_id, "op": "order",
+                    "args": [{"instId": self.instrument, "tdMode": "cross",
+                              "side": "buy" if side == "B" else "sell",
+                              "ordType": "limit", "px": price, "sz": quantity,
+                              "clOrdId": cl_ord_id}]}
         if fields[0] == "CANCEL":
             if len(fields) != 2:
                 raise OrderError(f"a cancel line has two fields and this one has {len(fields)}")
             cl_ord_id = fields[1]
             if not cl_ord_id.isdigit():
                 raise OrderError(f"the order id '{cl_ord_id}' is not a number")
-            return {"op": "cancel-order", "args": [{"instId": self.instrument,
-                                                    "clOrdId": cl_ord_id}]}
+            return {"id": cl_ord_id, "op": "cancel-order", "args": [{"instId": self.instrument,
+                                                                     "clOrdId": cl_ord_id}]}
         raise OrderError(f"'{fields[0]}' is not an order or a cancel")
 
     def decode(self, message):
@@ -607,6 +609,14 @@ class OrderTranslator:
         if not isinstance(message, dict):
             raise OrderError("a venue message is not an object")
         operation = message.get("op")
+        # A request the venue refused answers here, at the top level, with an empty `data` list -- so a decoder
+        # that only read the entries would turn "parameter id can not be empty" into a silence the engine sees as a
+        # venue that ignored the order. The id it echoes back is the one the request carried.
+        if operation in ("order", "cancel-order") and str(message.get("code", "0")) != "0":
+            order_id = str(message.get("id", "")).strip()
+            if not order_id.isdigit():
+                raise OrderError(f"the venue refused a request without an id the engine knows: {message}")
+            return [f"REJECT {order_id} venue"]
         argument = message.get("arg") if isinstance(message.get("arg"), dict) else {}
         channel = argument.get("channel")
         lines = []
@@ -745,7 +755,7 @@ def serve_orders(listen, instrument, max_quantity=100, capture=None):
 
 # ---------------------------------------------------------------- credentials and the private route
 
-def serve_venue_orders(listen, url, credentials, instrument, capture=None):
+def serve_venue_orders(listen, url, credentials, instrument, capture=None, dump=None, inst_type="ANY"):
     """Answers the engine's order leg from the venue's private channel.
 
     The engine's side is exactly what the simulation serves -- a line socket, one frame a line -- so the adapter
@@ -765,6 +775,9 @@ def serve_venue_orders(listen, url, credentials, instrument, capture=None):
     print(f"engine connected from {peer[0]}:{peer[1]}", flush=True)
     translator = OrderTranslator(instrument)
     sink = open(capture, "a", encoding="utf-8") if capture else None
+    # The raw frames, appended rather than truncated: a run that reconnects writes several sessions into one
+    # file, and the order they crossed in is the thing being read.
+    dump_sink = open(dump, "a", encoding="utf-8") if dump else None
     stop = threading.Event()
     orders = cancels = replies = refused = 0
 
@@ -780,7 +793,8 @@ def serve_venue_orders(listen, url, credentials, instrument, capture=None):
                 return
             replies += 1
 
-    client = OrderVenueClient(url, credentials, translator, deliver, stop=stop)
+    client = OrderVenueClient(url, credentials, translator, deliver, stop=stop, dump=dump_sink,
+                              inst_type=inst_type)
     client.start()
     pending = b""
     try:
@@ -821,12 +835,15 @@ def serve_venue_orders(listen, url, credentials, instrument, capture=None):
         client.join(timeout=2.0)
         if sink is not None:
             sink.close()
+        if dump_sink is not None:
+            dump_sink.close()
         conn.close()
         listener.close()
     print(f"order channel done: orders={orders} cancels={cancels} replies={replies} refused={refused} "
           f"logins={client.logins} subscribes={client.subscribes} reconnects={client.reconnects} "
           f"messages={client.messages} other_instruments={client.other_instruments} "
-          f"unreadable={client.unreadable} write_failures={client.write_failures}", flush=True)
+          f"unreadable={client.unreadable} write_failures={client.write_failures} "
+          f"dumped={client.dump_frames}", flush=True)
     return 0
 
 
@@ -915,15 +932,17 @@ def login_message(credentials, timestamp=None):
                                      "sign": signature(timestamp, credentials.secret)}]}
 
 
-def subscribe_orders_message():
+def subscribe_orders_message(inst_type="ANY"):
     """The `orders` subscription.
 
     The venue takes an instrument *type* on this channel rather than a symbol, so one subscription covers the
     account and the filter is on this side: `OrderVenueClient.handle` keeps the entries whose `instId` is the
     relay's instrument and counts the rest, because an account with two instruments must not have the second
-    one's fills answered to an engine that never traded it.
+    one's fills answered to an engine that never traded it. `ANY` is what the private route accepts; the business
+    route, which is where an order is placed, refuses it with `60018` and wants a concrete type, which is why the
+    token is a parameter rather than a constant.
     """
-    return {"op": "subscribe", "args": [{"channel": "orders", "instType": "ANY"}]}
+    return {"op": "subscribe", "args": [{"channel": "orders", "instType": inst_type}]}
 
 
 class OrderVenueClient(threading.Thread):
@@ -940,7 +959,8 @@ class OrderVenueClient(threading.Thread):
     sent twice is worse than an order nobody answered, and the gateway's own timeout is what notices.
     """
 
-    def __init__(self, url, credentials, translator, deliver, stop=None, backoff_seconds=1.0):
+    def __init__(self, url, credentials, translator, deliver, stop=None, backoff_seconds=1.0, dump=None,
+                 inst_type="ANY"):
         super().__init__(daemon=True)
         self.url = url
         self.credentials = credentials
@@ -949,6 +969,15 @@ class OrderVenueClient(threading.Thread):
         self.deliver = deliver
         self.stop = stop if stop is not None else threading.Event()
         self.backoff_seconds = backoff_seconds
+        # Every frame both ways, written as it crossed. Without it a run that heard nothing cannot say whether
+        # the venue was silent or this client was looking somewhere else -- which is the question the first
+        # sandbox order left open.
+        self.dump = dump
+        self.dump_lock = threading.Lock()
+        self.dump_frames = 0
+        # The instrument type the `orders` subscription asks for. `ANY` for the private route, a concrete type for
+        # the business route, which refuses `ANY` with `60018`.
+        self.inst_type = inst_type
         # Outbound requests wait here so the reader never blocks on a write; `write_loop` owns the socket's
         # send side for the length of one session.
         self.outbox = queue.Queue()
@@ -963,6 +992,15 @@ class OrderVenueClient(threading.Thread):
         self.unreadable = 0
         self.write_failures = 0
         self.error = None
+
+    def record(self, direction, frame):
+        """One frame, either way, in the order it crossed. Called from the reader and the writer."""
+        if self.dump is None:
+            return
+        with self.dump_lock:
+            self.dump.write(json.dumps({"dir": direction, "frame": frame}) + "\n")
+            self.dump.flush()
+            self.dump_frames += 1
 
     def submit(self, request):
         """Hands one translated request to the venue. It is sent by the next write, or not at all."""
@@ -1044,6 +1082,7 @@ class OrderVenueClient(threading.Thread):
                     continue
                 if text == "pong":
                     continue
+                self.record("venue", text)
                 self.handle(json.loads(text))
         finally:
             writer_stop.set()
@@ -1073,6 +1112,7 @@ class OrderVenueClient(threading.Thread):
                 continue
             if text == "pong":
                 continue
+            self.record("venue", text)
             return json.loads(text)
 
     def login(self, sock):
@@ -1083,6 +1123,13 @@ class OrderVenueClient(threading.Thread):
         reach the engine.
         """
         send_masked(sock, json.dumps(login_message(self.credentials)))
+        # The login frame carries the api key and the signature, so the dump writes the message the venue sees
+        # except for those two fields: a file that exists to explain why nothing came back must not be the copy
+        # of the key that leaked.
+        self.record("request", json.dumps({"op": "login", "args": [{"apiKey": "***", "passphrase": "***",
+                                                                   "timestamp": login_message(self.credentials)
+                                                                   ["args"][0]["timestamp"],
+                                                                   "sign": "***"}]}))
         self.logins += 1
         while True:
             message = self.read_message(sock)
@@ -1098,7 +1145,8 @@ class OrderVenueClient(threading.Thread):
 
     def subscribe(self, sock):
         """Subscribe `orders` and wait for the acknowledgement, keeping anything else that arrives."""
-        send_masked(sock, json.dumps(subscribe_orders_message()))
+        send_masked(sock, json.dumps(subscribe_orders_message(self.inst_type)))
+        self.record("request", json.dumps(subscribe_orders_message(self.inst_type)))
         self.subscribes += 1
         while True:
             message = self.read_message(sock)
@@ -1120,7 +1168,9 @@ class OrderVenueClient(threading.Thread):
         if event:
             return  # a late acknowledgement: protocol, not an order
         entries = message.get("data")
-        if isinstance(entries, list):
+        # Only entries are filtered: a refusal answers with an empty `data` list, and returning on it here would drop
+        # the venue's reason before `decode` could turn it into a REJECT -- which is what the sandbox's 50014 was.
+        if isinstance(entries, list) and entries:
             kept = [entry for entry in entries
                     if not entry.get("instId") or entry.get("instId") == self.translator.instrument]
             self.other_instruments += len(entries) - len(kept)
@@ -1153,6 +1203,9 @@ class OrderVenueClient(threading.Thread):
                 self.write_failures += 1
                 print(f"the private channel could not send a request ({error})", flush=True)
                 return
+            # Recorded after the write succeeded: a frame that never left is not something the venue could
+            # have answered, and the dump is read to tell those two apart.
+            self.record("request", json.dumps(request))
 
 
 # ---------------------------------------------------------------- self-test and main
@@ -1366,6 +1419,22 @@ def self_test():
     replies = [line for message in venue.messages(request) for line in translator.decode(message)]
     assert replies == ["ACK 7 10", "FILL 7 6421.5 5"], replies
 
+    # A refused request answers at the top level with an empty data list, and it reaches the engine as a REJECT
+    # rather than as nothing: the venue's own words ("parameter id can not be empty") were the first sandbox
+    # order's whole reply, and a decoder that only read `data` turned it into silence.
+    assert translator.decode({"id": "7", "op": "order", "code": "50014",
+                              "msg": "Parameter id can not be empty.", "data": []}) == ["REJECT 7 venue"]
+    assert translator.decode({"id": "7", "op": "cancel-order", "code": "51000", "msg": "bad", "data": []}) == \
+        ["REJECT 7 venue"]
+    # A refusal with no id cannot be attributed to an order, so it is refused as unreadable rather than answered to
+    # whichever order happens to be first.
+    try:
+        translator.decode({"id": "", "op": "order", "code": "50014", "data": []})
+    except OrderError:
+        pass
+    else:
+        raise AssertionError("a refusal with no id was answered to nobody")
+
     # Above the sandbox cap the venue refuses, and the refusal reaches the engine as a REJECT rather than as an
     # acknowledgement of an order that was never placed.
     over = translator.encode("ORDER 8 BTC-USDT-SWAP S 6421.5 9 Gtc")
@@ -1424,7 +1493,10 @@ def self_test():
     venue.start()
     private_translator = OrderTranslator("BTC-USDT-SWAP")
     delivered = []
-    client = OrderVenueClient(venue.url, credentials, private_translator, delivered.extend, backoff_seconds=0.02)
+    # The dump is what a run that heard nothing is read against, so the self-test keeps one and checks it.
+    dump = io.StringIO()
+    client = OrderVenueClient(venue.url, credentials, private_translator, delivered.extend, backoff_seconds=0.02,
+                              dump=dump)
     client.start()
     try:
         deadline = time.monotonic() + 5.0
@@ -1450,6 +1522,19 @@ def self_test():
         client.join(timeout=5.0)
         venue.join(timeout=5.0)
     assert not client.is_alive(), "the private-channel client did not stop"
+
+    # The dump: both directions, one line a frame, and the login's key and signature redacted. A file that exists
+    # to explain a silence must not be the copy of the key that leaked.
+    entries = [json.loads(line) for line in dump.getvalue().splitlines()]
+    assert any(entry["dir"] == "request" for entry in entries), entries
+    assert any(entry["dir"] == "venue" for entry in entries), entries
+    logins = [entry for entry in entries
+              if entry["dir"] == "request" and json.loads(entry["frame"]).get("op") == "login"]
+    assert logins, entries
+    assert GOLDEN_SECRET not in dump.getvalue(), "the dump wrote the secret"
+    assert json.loads(logins[0]["frame"])["args"][0]["apiKey"] == "***", logins[0]
+    # The order and the cancel the engine sent are in it, which is what says the frame left.
+    assert any("6421.5" in entry["frame"] for entry in entries if entry["dir"] == "request"), entries
 
     print("self-test OK")
     return 0
@@ -1480,6 +1565,13 @@ def main():
     parser.add_argument("--order-venue", default=DEFAULT_PRIVATE_VENUE,
                         help="the venue's private websocket url for the order leg; the default is its demo "
                              "endpoint, which nothing in this repository has reached yet")
+    parser.add_argument("--order-dump",
+                        help="write every frame the private channel receives and sends here, one JSON object a "
+                             "line, so a run that heard nothing can say what the venue did")
+    parser.add_argument("--order-inst-type", default="ANY",
+                        choices=["ANY", "SPOT", "MARGIN", "SWAP", "FUTURES", "OPTION"],
+                        help="the instrument type the orders subscription asks for: ANY on the private route, a "
+                             "concrete type on the business route, which refuses ANY with 60018")
     parser.add_argument("--record", help="write the decoded rows straight to PREFIX_trades.csv and "
                                          "PREFIX_depth.csv: the direct route, with no engine")
     parser.add_argument("--replay", help="serve this capture instead of connecting; no network")
@@ -1500,6 +1592,13 @@ def main():
     # is absent. ADR 0005 decision 3 is why they come from the environment rather than the command line.
     if args.simulate_orders and not args.order_listen:
         parser.error("--simulate-orders needs --order-listen: there is nothing to answer on")
+    # The dump records the venue's frames, and the simulation has none: accepted there it would write an empty
+    # file and look like a venue that said nothing.
+    if args.order_dump and not args.order_listen:
+        parser.error("--order-dump needs --order-listen: there is no channel whose frames it could record")
+    if args.order_dump and args.simulate_orders:
+        parser.error("--order-dump is the private route's: the simulated venue's frames are this file's own, so "
+                     "there is nothing a dump would add")
     if args.order_listen:
         if args.simulate_orders:
             return serve_orders(args.order_listen, args.instrument, args.order_cap, args.order_capture)
@@ -1509,7 +1608,7 @@ def main():
             parser.error("--order-listen without --simulate-orders serves the venue's private channel, and "
                          f"{error}")
         return serve_venue_orders(args.order_listen, args.order_venue, credentials, args.instrument,
-                                  args.order_capture)
+                                  args.order_capture, args.order_dump, args.order_inst_type)
 
     decoder = Decoder(args.instrument, args.contract_size, args.quantity_scale, args.levels)
     stop = threading.Event()

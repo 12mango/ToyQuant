@@ -173,7 +173,11 @@ def main():
                         # The venue's own name for the instrument the replay runs on. Also the relay's: it is
                         # the layer that translates the engine's symbol into what the venue knows, and the
                         # sandbox run cannot be described without it.
-                        "--instrument"}:
+                        "--instrument",
+                        # The private route's record of what crossed and the type its subscription asks for. Both
+                        # are the relay's: the first exists because a dropped answer looked like a silent venue,
+                        # and the second because the venue's two order surfaces want different tokens.
+                        "--order-dump", "--order-inst-type"}:
             problems.append(f"{flag} is mentioned in a document and is not a flag the binary accepts")
     for model in sorted(models):
         if model not in text.lower():

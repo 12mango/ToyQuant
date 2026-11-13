@@ -102,24 +102,26 @@ reaches nothing, and a live leg with no cap of its own is what ADR 0005 decision
 outside `l2_replay` and `ws`. Pointing the same three at the real private channel is the sandbox run: the relay needs
 the credentials in the environment and the engine needs nothing new.
 
-The first attempt at that run says what the next one needs. The private route logged in and subscribed
-(`logins=1 subscribes=1`), translated the order and the cancel into `{"op": "order", "args": [{"instId":
-"BTC-USDT-SWAP", "tdMode": "cross", "side": "buy", "ordType": "limit", "px": "6423.5", "sz": "10"}]}` and its cancel,
-and reported `write_failures=0` -- and then the venue said nothing at all: `messages=0` after a minute, so
-`frames_received=0`, no `REJECT`, nothing to reconcile. Two things that attempt also made clear:
+The first attempt at that run says what the next one needs, and its first lesson was that a silence was not a silence.
+The private route logged in and subscribed (`logins=1 subscribes=1`) and translated the order and the cancel -- and the
+venue's answer was dropped twice over: the request carried no `id` for the venue to correlate, and the client returned
+early on the response's empty `data` list, so `{"op":"order","code":"50014","msg":"Parameter id can not be
+empty.","data":[]}` never became anything the engine could see.
 
-- **The instrument is the relay's to name.** The first request carried the replay's `BTC-PERPETUAL`, which is Deribit's
-  name and not a thing the venue has. `OrderTranslator` now sends the relay's `--instrument` as `instId` and keeps the
-  engine's symbol only for its own bookkeeping, and `--self-test` pins that translation with an order whose symbol
-  differs from the instrument.
-- **A replay's quantity is not the venue's quantity.** `sz=10` is ten USD-notional contracts of a Deribit perpetual and
-  ten contracts of an OKX swap (0.1 BTC each); the strategy sizes in the replay instrument's units, so a sandbox order
-  has to be sized in the venue's. This is the open design question, not a bug: it is what the relay would have to
-  translate alongside the name, and it needs the venue's contract size, not a constant in a script.
+Two flags now make that attributable rather than mysterious. `--order-dump=FILE` writes every frame both ways, one JSON
+object a line, with the login's key and signature redacted; `--order-inst-type` chooses the `orders` subscription's type,
+because the venue's two order surfaces want different ones. With the id in the request, the same run becomes a
+conversation:
 
-Attributing the silence needs the venue's own frames on the record: the relay counts what it decoded, and a route that
-counts nothing cannot say whether the venue refused the request quietly, answered somewhere this client does not read,
-or never received it. That is the next tool change, not the next claim.
+- the venue answers per order and names its own complaint: `sCode 50014, "Parameter instIdCode can not be empty"`;
+- both answers reach the engine -- `[VENUE] frames_sent=2 frames_received=2 reports=2` -- and are booked as rejections;
+- the business route, which is where an order is normally placed, refuses the `orders` subscription outright (`60018`,
+  with `ANY` and with `SWAP`), so the subscription and the order placement live on different surfaces.
+
+So the round trip is proven and a fill is not yet, for a reason that is now a question rather than a gap: which of the
+venue's order surfaces this line uses, and what that surface requires (`instIdCode`, or the REST route). The second open
+item is the size: `sz` is in the replay instrument's units, not the venue's -- `10` is ten USD-notional contracts of a
+Deribit perpetual and ten 0.1-BTC contracts of an OKX swap.
 
 
 ## Carry: Two Legs Over Two Funding Histories

@@ -83,17 +83,25 @@ nothing about profit, and what stops it from becoming a program that spends mone
   (`Buy`, which would turn a sell into a buy) and no liquidity role. The adapter now stamps all three from the order it
   sent, `tests/live_venue_test` pins them, and the same run reconciles: `[RECON] status=ok`,
   `report_count_difference=0`, `[VENUE] orders=4 cancels=4 reports=12` against the relay's own count.
-- **The first sandbox order left under the wrong name, and no answer came back.** The order carried `instId:
-  "BTC-PERPETUAL"` -- the replay's Deribit instrument -- to a venue whose name for the thing is `BTC-USDT-SWAP`, so
-  `OrderTranslator.encode` now sends the relay's `--instrument` and keeps the engine's symbol for its own bookkeeping;
-  the mapping belongs in the relay because that is the layer that knows a venue's shapes, and `--self-test` pins it.
-  With that fixed the run logged in, subscribed, translated both the order and the cancel, reported
-  `write_failures=0` -- and the venue said nothing on the `orders` channel for a minute: `messages=0`, so
-  `frames_received=0`, no `REJECT`, nothing to reconcile. The round trip this record's acceptance criterion asks for is
-  therefore still unproven against the real venue. Attributing the silence needs the venue's raw frames on the record,
-  which the relay does not keep yet; and the size is the second open item, because `sz` is in the replay instrument's
-  units and not the venue's (`10` is ten USD-notional contracts of a Deribit perpetual and ten 0.1-BTC contracts of an
-  OKX swap), so a sandbox order has to be sized in the venue's units from the venue's contract size.
+- **The first sandbox order left under the wrong name, and the venue's answer was dropped.** Two errors, both the
+  relay's. The order carried `instId: "BTC-PERPETUAL"` -- the replay's Deribit instrument -- to a venue whose name for
+  the thing is `BTC-USDT-SWAP`; `OrderTranslator.encode` now sends the relay's `--instrument` and keeps the engine's
+  symbol for its own bookkeeping, because the mapping belongs in the layer that knows a venue's shapes. And the venue
+  *did* answer -- `{"op":"order","code":"50014","msg":"Parameter id can not be empty.","data":[]}` -- but the client
+  dropped it twice over: the request carried no `id` for the venue to correlate, and `handle` returned early on an empty
+  `data` list before the decoder could see a refusal. So the engine was told nothing and the run looked like a venue that
+  ignored an order. Both are fixed (the request carries its order id, and a top-level non-zero `code` becomes a
+  `REJECT`), `--order-dump=FILE` now records every frame both ways, and `--self-test` pins the redaction (no key, no
+  signature) and the four refusal shapes.
+- **What the sandbox run now says.** With the id, the venue correlates its answer and names its own complaint:
+  `sCode 50014, "Parameter instIdCode can not be empty"`, twice, and both reach the engine as reports --
+  `[VENUE] frames_sent=2 frames_received=2 reports=2`, on the private route. The round trip is therefore proven: a frame
+  leaves, the venue's reason comes back attributed to the order, and the engine books it as a rejection. What is not
+  proven is a *fill*, and the reason is now a named question rather than a silence: the private route's order operation
+  wants `instIdCode`, and the business route -- the venue's other order surface -- does not serve the `orders` channel at
+  all (`60018`, with `ANY` and with `SWAP`), so which surface this line places orders on, and what it has to send, is a
+  decision about this record rather than a bug. The size is the second open item: `sz` is in the replay instrument's
+  units, not the venue's.
 - **What it costs**: one adapter, one wire, one relay order channel, one recorder with its reader, and the flag
   plumbing -- `src/lines/live_venue.{h,cpp}`, `src/lines/tcp_venue_transport.{h,cpp}`, the order channel in
   `tools/live/venue_relay.py`, `src/lines/order_recorder.{h,cpp}`, `src/lines/recorded_venue.{h,cpp}` and a
