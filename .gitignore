@@ -90,6 +90,9 @@ secrets/
 # The read-only reviewer's brief: a workflow instruction for a second model, not a repository fact. See `.clinerules`
 # section 6. Ignored for the same reason, and `git ls-files` is what the bundle reads, so it cannot leak into a copy.
 .reviewer.md
+# Where the work stands: the live state a fresh session reads first. Ignored because it is a commit behind by nature --
+# it names the commit it describes -- and because it would otherwise be a second, older copy of the roadmap.
+.handoff.md
 
 # General system temporary files and editor caches
 *.log

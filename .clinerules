@@ -201,6 +201,10 @@ review of one change needs the change.
 - **The reviewer does not write.** Its output is a list of proposals; the edit happens in the tree, under the gate, by
   the agent that owns the change. A suggestion that arrives as a patch is still a suggestion -- it is applied here or it
   is not applied.
+- **The handoff is a local file, and it is read first.** `.handoff.md` at the repository root holds where the work stands
+  -- the commit it describes, the requirements in force, what was done, what is next in order and what is blocked -- and
+  it is ignored for the same reason the reviewer's brief is: it names a commit, so a tracked copy would be a second,
+  older roadmap. Every reply that ends a stretch rewrites it, and the commit it names is the one after the file.
 - **A copy is never evidence.** CI and `verify_l2.sh` read the repository; the bundle is for a reader, and the gate does
   not read it (`docs/TOOLS.md`, convention 4).
 
@@ -215,4 +219,6 @@ review of one change needs the change.
 5. The documents agree with each other and with the run: a claim that moved is updated everywhere it appears, including
    the front table, the change log and the retrospective.
 6. The commit is pushed, `git status` is clean, and the reply names the commit and the remaining open items.
+7. `.handoff.md` names this commit, and the sync's log line and the remote `manifest.txt` commit agree with it -- a
+   stretch that ends without those three agreeing is not finished, however green the gate is.
 

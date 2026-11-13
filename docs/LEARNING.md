@@ -1,36 +1,27 @@
 # Learning Path
 
 This document is the market-making side of the project: the mechanisms the instrument has to model, in the order they
-matter, each with the measurement that supports it. It is short on purpose and it points at four places.
-[Design Review](DESIGN_REVIEW.md) explains why the simulator is built the way it is and lists what the evidence cannot
-yet support; [Performance History](PERFORMANCE_HISTORY.md) holds the measurements themselves; [Main Line](MAINLINE.md)
-is the order to read the source in, with the result each step produced; and [Retrospective](RETROSPECTIVE.md) is where
-these mechanisms were taken to market, one market at a time, and what closed each one.
+matter, each with the measurement that supports it. Sections 1, 6 and 7 are one thread -- a fill is a queue statement,
+here is one order's trace, and here is what changes when the queue is harder to leave than to reach.
 
-Sections 1, 6 and 7 are one thread and are best read together: section 1 claims that a fill is a queue
-statement rather than a price statement, section 6 shows that claim as a single order's trace, and section 7
-shows what changes when the queue is harder to leave than to reach.
+| you want | open |
+|---|---|
+| why the simulator is built this way, and what the evidence cannot support yet | [Design Review](DESIGN_REVIEW.md) |
+| the measurements themselves | [Performance History](PERFORMANCE_HISTORY.md) |
+| the order to read the source in, with the result each step produced | [Main Line](MAINLINE.md) |
+| the mechanisms taken to market, one market at a time | [Retrospective](RETROSPECTIVE.md) |
 
-This is a market-making simulator built to answer a question, not a profitability claim. It exists to make four
-mechanisms visible and measurable, because each of them is a reason a quote can fail, and this document walks them in
-the order they start to matter. Each section says what to run, which field answers it, and what the recorded numbers
-look like, so a reader can tell a correct result from a surprising one.
-
-Everything below uses the recorded Deribit window. Cut the slices first:
+Everything below uses the recorded Deribit window; the arithmetic behind a term -- capture, markout, the fee floor, the
+breakeven rate -- is in [the glossary](GLOSSARY.md). Every field a run prints is folded at the end of this page.
 
 ```bash
-bash tools/gate/verify_l2.sh fast        # also checks that the code still reproduces its recorded numbers
+bash tools/gate/verify_l2.sh fast        # cuts the slice and checks that the code still reproduces its numbers
 ```
-
-The fields are listed here so a run can be read; the arithmetic behind a term — capture, markout, the fee floor, the
-breakeven rate, and the sign each one carries — is in [the glossary](GLOSSARY.md), which is the page to open when a name
-in a table is doing work you cannot see.
 
 ## 1. Fill probability is a queue, not a price
 
-An order fills when the trades at its price have consumed everything ahead of it. The strategy's own
-size is almost irrelevant: a ten-contract quote is 0.05% of the median level, so what decides a fill is
-where the queue went.
+An order fills when the trades at its price have consumed everything ahead of it. The strategy's own size is almost
+irrelevant: a ten-contract quote is 0.05% of the median level, so what decides a fill is where the queue went.
 
 ```bash
 tools/sweep/workload_matrix.sh model       # fills under each queue model, same window
@@ -39,16 +30,18 @@ tools/sweep/workload_matrix.sh requote     # fills as the quote is held instead 
 tools/sweep/workload_matrix.sh arrival     # fills as the assumed arrival position changes
 ```
 
-Read `trade_reports` (fills) and `quote_at_touch_orders`. The measured ordering of the levers, largest
-first: **requote threshold 7.7x, queue model 5x, quote placement 3x, arrival share under 2x**. That
-ordering is the single most useful thing on this page: a reader who wants more fills should change the
-requote policy, and a reader who wants a better model should look at whether cancellations help clear
-the queue, not at where the order arrived.
+Read `trade_reports` (fills) and `quote_at_touch_orders`. The measured ordering of the levers, largest first:
 
-The arithmetic is in `docs/PERFORMANCE_HISTORY.md`, under "The queue model, as arithmetic". The short
-version: a level decrease of `r` has one unknown, how much of it was ahead of us, and the models are
-claims about that number's mean, with `--queue-chunks` controlling its variance and `--arrival-share`
-its starting point.
+| lever | fills multiplier | so |
+|---|---|---|
+| requote threshold | 7.7x | change the requote policy if you want more fills |
+| queue model | 5x | the model is the second-largest choice, not a detail |
+| quote placement | 3x | moving onto the touch buys fills, not queue |
+| arrival share | under 2x | the smallest of the four |
+
+The arithmetic is in `docs/PERFORMANCE_HISTORY.md`, under "The queue model, as arithmetic": a level decrease of `r` has
+one unknown -- how much of it was ahead of us -- and the models are claims about that number's mean, with
+`--queue-chunks` controlling its variance and `--arrival-share` its starting point.
 
 ## 2. Adverse selection is what happens after the fill
 
@@ -202,6 +195,8 @@ slow on the way in and fast on the way out is a different business from the reve
 now tell them apart. `docs/PERFORMANCE_HISTORY.md` records the five-point sweep of each, including the
 markout column that shows the cancel's cost is realised at the fill rather than after it.
 
+/// details | Field reference: every field a run prints, what it means and which line carries it
+
 ## Field reference
 
 The fields a reader needs, what they mean, and which line carries them. `[EXECUTION]` is authoritative
@@ -256,3 +251,5 @@ for execution quality; `[STRATEGY_METRICS]` carries only what a strategy owns.
 Every field above is written somewhere under `src/`. `tools/gate/check_written_fields.py` fails the build if
 one stops being written, because a field that is read but never written looks exactly like a field whose
 value is zero.
+
+///
