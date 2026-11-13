@@ -12,6 +12,7 @@ file, and the directory names say which kind a tool is:
 | `fetch/` | getting data in and cutting it down: the five venue fetchers, `slice.py`, and `inspect_source.py` for a file nobody has parsed before | two of them, as self-tests |
 | `study/` | the studies: capacity, the instrument screen, the venue ratio, viability, the ring table, the queue calibration, the interval, the walk-forward, the volatility window, the slice driver, and the benchmarks that drive a window at a time | five of them, as self-tests; the measurements themselves are run by hand and cost minutes |
 | `live/` | the things that speak to a socket: the venue relay, the WebSocket sender, the push-chain soak, the order tracer | no |
+| `export/` | the bundle a reader that cannot clone the tree is given: `bundle.py` writes `code.txt`, `docs.txt` and a manifest, and checks one against the tree | no; its `--self-test` is run by hand |
 | `bench/` | two harnesses for the performance line: the paired A/B runner and the libc call counter | no |
 | `legacy/` | the CSV and UDP generators for the L1 path that the demo and `data/scenarios/` still use | no |
 
@@ -42,3 +43,8 @@ file, and the directory names say which kind a tool is:
   exactly that command.
 - To add a measurement: put the script in `sweep/` if it prints a table for a document, in `study/` if it answers one
   question once, and in `fetch/` if it is about getting or cutting data.
+- To hand the repository to a reader that cannot clone it: `python3 tools/export/bundle.py --emit --out /tmp/tq-export`
+  writes two bundles and a manifest that carries the commit and a sha256 per file, and
+  `python3 tools/export/bundle.py --check --out /tmp/tq-export` compares it with the tree. A dump without the check is
+  a copy with no age, which is what a ten-day-old snapshot is: the one this tool was written for described a README
+  three times the length of the real one, and nothing in it could say so.

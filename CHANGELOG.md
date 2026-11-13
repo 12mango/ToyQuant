@@ -7,7 +7,26 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
-## The first sandbox order that was placed, and the surface it chose (2026-11-13)
+## A snapshot that can say how old it is (2026-11-14)
+
+- **The problem was a copy with no age.** A codebase dump sitting in a Drive folder was ten days behind -- it described
+  a README three times the length of the real one -- and nothing in it carried the commit or a hash, so its staleness
+  could only be found by accident. That is the rule this repository applies to numbers, applied to a document: if it
+  cannot be re-derived, it is not a result.
+- **`tools/export/bundle.py` writes two bundles and one manifest.** `code.txt` (`src/`, `tests/`, `tools/`, the two CMake
+  files) and `docs.txt` (`docs/`, `README.md`, `CHANGELOG.md`, `mkdocs.yml`, `.clinerules`, `LICENSE`), each file
+  preceded by a banner with its path, line count and sha256, plus a manifest that starts with the commit and one
+  `sha256<TAB>lines<TAB>path` row per file. The file list is `git ls-files`, so ignored paths (`data/v2`, `secrets/`,
+  `out/`) are absent by construction and the commit is the one those bytes came from.
+- **`--check` is the point.** It re-hashes the tree, names every file that changed, appeared or disappeared, and notes
+  how far the snapshot's commit is behind HEAD; exit 1 when anything differs. Its `--self-test` proves the check fires
+  by corrupting one hash and dropping two entries in a temporary bundle, so the tool is a check rather than a promise.
+- **Measured on this tree at `66f299e`**: 212 code files (2.2 MB) and 55 docs files (1.1 MB), a 28 KB manifest. That is
+  why the halves are separate and why a dump is the wrong artifact for an assistant: a manifest plus the three front
+  doors is about a thousandth of the tokens, and the files a question needs are read on request.
+- No C++, no recorded number and no size count moved. The tool is manual like the study tools, and `docs/TOOLS.md` says
+  so in the row that lists it.
+
 
 - **The account was the blocker, and the fix exposed the surface.** `50026` was not a transient: three attempts with
   backoff, integer and string instrument code, identical, with the clock within 120 ms. REST answered the real refusal --

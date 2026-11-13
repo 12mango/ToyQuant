@@ -189,7 +189,11 @@ def main():
                         "--order-no-subscribe", "--order-inst-code",
                         # The placement surface the demo venue actually accepts, and the base url it lives at:
                         # its websocket trade operation answers 50026 and its REST endpoint places the order.
-                        "--order-rest"}:
+                        "--order-rest",
+                        # `tools/export/bundle.py` owns these: it writes the two bundles a reader who cannot clone the
+                        # tree is given, and checks a bundle's manifest against the tree. The tool is manual; its
+                        # `--self-test` is what proves the check fires.
+                        "--emit", "--check", "--out"}:
             problems.append(f"{flag} is mentioned in a document and is not a flag the binary accepts")
     for model in sorted(models):
         if model not in text.lower():
