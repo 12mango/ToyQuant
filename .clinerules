@@ -171,10 +171,17 @@ model, read-only, which proposes and never writes). The handoff is one command a
 wrong size: the whole tree is 3.35 MB (~837k tokens), a manifest plus the three front doors is 47.6 KB (~12k), and a
 review of one change needs the change.
 
-- **Sync on every change, before the reply.** `python3 tools/export/bundle.py --sync` writes `code.txt`, `docs.txt`,
-  `manifest.txt` and `diff.patch` into the folder named by `TOYQUANT_DRIVE_DIR` -- the folder a Drive client uploads
-  from -- then checks what it wrote. `diff.patch` is the commit the previous manifest carried to `HEAD`, over the
-  bundled paths only, so a reviewer reads the change and not the tree.
+- **Sync on every change, before the reply.** `bash tools/export/push_windows.sh` writes `code.txt`, `docs.txt`,
+  `manifest.txt` and `diff.patch` into `out/export`, copies them to the folder named by `.drive-target` (or
+  `$TOYQUANT_DRIVE_DIR`), and then compares each file's remote size and sha256 with the local one. `diff.patch` is the
+  commit the previous manifest carried to `HEAD`, over the bundled paths only, so a reviewer reads the change and not the
+  tree. On a host that is not WSL, run `python3 tools/export/bundle.py --sync --out <the folder the client syncs>`.
+- **The hook is installed, and its log is read.** `bash tools/export/install_post_commit.sh` puts the sync into
+  `.git/hooks/post-commit` *before* the final `exit 0` (a block appended after it never runs), and the log is
+  `/tmp/toyquant-sync.log`. This rule exists because of how the previous arrangement failed: it called
+  `/home/mango12/tq_snapshot.py`, a script outside the repository whose default repo was
+  `/home/mango12/work/ToyQuant-v1`, so every commit for ten days wrote `ERROR: ... is not a git repository` into a log
+  nobody opened and the Drive copy stayed at `7035823`. A sync is a copy that was checked, not a command that ran.
 - **A sync that cannot find its folder is a failure, not a skip.** The command names the directory and exits 1, and a
   reply that reports a task finished while the sync was not run is wrong.
 - **What the reviewer is given, in this order:** `manifest.txt` + `diff.patch`; the three front doors (`README.md`,

@@ -12,7 +12,7 @@ file, and the directory names say which kind a tool is:
 | `fetch/` | getting data in and cutting it down: the five venue fetchers, `slice.py`, and `inspect_source.py` for a file nobody has parsed before | two of them, as self-tests |
 | `study/` | the studies: capacity, the instrument screen, the venue ratio, viability, the ring table, the queue calibration, the interval, the walk-forward, the volatility window, the slice driver, the benchmarks that drive a window at a time, and `figure_charge.py`, which regenerates the quickstart's cost chart as an inline SVG (`--check` compares it with the file) | five of them, as self-tests; the measurements themselves are run by hand and cost minutes |
 | `live/` | the things that speak to a socket: the venue relay, the WebSocket sender, the push-chain soak, the order tracer | no |
-| `export/` | the bundle a reader that cannot clone the tree is given: `bundle.py` writes `code.txt`, `docs.txt` and a manifest, and checks one against the tree | no; its `--self-test` is run by hand |
+| `export/` | the bundle a reader that cannot clone the tree is given: `bundle.py` writes `code.txt`, `docs.txt` and a manifest and checks one against the tree, `push_windows.sh` copies it to the Drive folder named by `.drive-target` and verifies the remote hashes, `install_post_commit.sh` puts the sync in the post-commit hook before its `exit 0` | no; its `--self-test` is run by hand |
 | `bench/` | two harnesses for the performance line: the paired A/B runner and the libc call counter | no |
 | `legacy/` | the CSV and UDP generators for the L1 path that the demo and `data/scenarios/` still use | no |
 

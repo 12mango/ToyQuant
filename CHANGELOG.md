@@ -7,7 +7,28 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
-## The handoff to a read-only reviewer, with a diff instead of a dump (2026-11-14)
+## The sync that was running and failing for ten days (2026-11-14)
+
+- **The workflow was persisted, and it was broken in a way nobody could see.** `.git/hooks/post-commit` already called a
+  sync -- `/home/mango12/tq_snapshot.py`, a script outside the repository. Its default repo was
+  `/home/mango12/work/ToyQuant-v1`, so from the moment that directory stopped existing every commit wrote
+  `ERROR: /home/mango12/work/ToyQuant-v1 is not a git repository` into `/tmp/tq_gdrive_sync.log` and nothing else. The
+  Drive folder stayed at `7035823` (2026-11-03) while the tree moved through two hundred commits. The log is the whole
+  explanation, and nobody had a reason to open it.
+- **The replacement is in the tree and checked after the copy.** `tools/export/push_windows.sh` runs
+  `bundle.py --sync` into `out/export`, copies the four files to the Windows folder named by `.drive-target` (ignored:
+  a machine path is not a repository fact), and then compares each file's **remote size and sha256** with the local
+  ones. Measured on the first run: `ok code.txt 2236301B 21fe6c715cd4`, `ok docs.txt 1117433B`, `ok manifest.txt
+  26376B`, `synced 2a06abc -> G:\我的云端硬盘\AI_Code_Sync`.
+- **`tools/export/install_post_commit.sh` installs the hook *before* its final `exit 0`.** The first version of this
+  block was appended after `exit 0` and would never have run; the installer now inserts before the last `exit 0` and is
+  idempotent, so a fresh clone is one command from the same workflow.
+- **`.clinerules` section 6 carries the rule and the post-mortem**: sync before every reply, a missing destination is a
+  failure that names it, the hook's log is read (`tail -3 /tmp/toyquant-sync.log`), and the retired script is named with
+  the exact error it wrote.
+- The two `ToyQuant_*.txt` files in the Drive folder are the old artifacts and are now older than `manifest.txt`; they
+  are left in place rather than deleted, because deleting outside the repository is not this agent's call.
+
 
 - **A review needs the change, not the tree.** `--sync` writes the two bundles and the manifest into the folder named by
   `TOYQUANT_DRIVE_DIR` -- the folder a Drive client uploads from -- and adds `diff.patch`: the commit the previous

@@ -80,6 +80,14 @@ secrets/
 .env.*
 !.env.example
 
+# --------------------------------------------------
+# Where the sync writes: a machine-local path, never a repository fact
+# --------------------------------------------------
+# `tools/export/push_windows.sh` reads this file for the Windows folder a Drive client uploads from. It is ignored
+# because the path is the machine's -- a public repository has no business carrying `G:\...` -- and because an empty or
+# absent file is what makes the sync fail loudly instead of writing somewhere plausible.
+.drive-target
+
 # General system temporary files and editor caches
 *.log
 *.tmp
