@@ -30,17 +30,21 @@ python3 tools/export/bundle.py --sync --out "$OUT" || exit 1
 
 UNC="$(wslpath -w "$(pwd)/$OUT")"
 echo "copying $OUT -> $DEST"
-powershell.exe -NoProfile -Command "Copy-Item -Force -Path '$UNC\\*' -Destination '$DEST'" >/dev/null || {
-    echo "copy to $DEST failed" >&2; exit 1; }
+# Every call into Windows is bounded. WSL interop can block indefinitely when the Windows side is busy (a virus scan of
+# a 4 MB copy, a Drive FS flush), and a hung interop call hangs whatever shell or hook started it -- which is how this
+# repository's terminal wedged once, with every later command queued behind it.
+timeout 60 powershell.exe -NoProfile -Command "Copy-Item -Force -Path '$UNC\\*' -Destination '$DEST'" >/dev/null || {
+    echo "copy to $DEST failed or timed out" >&2; exit 1; }
 
 status=0
 for name in code.txt docs.txt manifest.txt diff.patch; do
     [ -f "$OUT/$name" ] || continue
     local_size=$(stat -c %s "$OUT/$name")
     local_hash=$(sha256sum "$OUT/$name" | cut -d' ' -f1)
-    remote_size=$(powershell.exe -NoProfile -Command "(Get-Item '$DEST\\$name').Length" 2>/dev/null | tr -d '\r\n ')
-    remote_hash=$(powershell.exe -NoProfile -Command "(Get-FileHash -Algorithm SHA256 '$DEST\\$name').Hash" 2>/dev/null \
-        | tr -d '\r\n ' | tr 'A-F' 'a-f')
+    remote_size=$(timeout 30 powershell.exe -NoProfile -Command "(Get-Item '$DEST\\$name').Length" 2>/dev/null \
+        | tr -d '\r\n ')
+    remote_hash=$(timeout 30 powershell.exe -NoProfile -Command "(Get-FileHash -Algorithm SHA256 '$DEST\\$name').Hash" \
+        2>/dev/null | tr -d '\r\n ' | tr 'A-F' 'a-f')
     if [ "$local_size" != "$remote_size" ] || [ "$local_hash" != "$remote_hash" ]; then
         echo "FAIL $name: local ${local_size}B/${local_hash:0:12} remote ${remote_size:-?}B/${remote_hash:0:12}" >&2
         status=1

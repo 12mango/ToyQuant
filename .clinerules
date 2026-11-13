@@ -113,6 +113,19 @@ compatibility path. Everything below assumes that page.
   - `/tmp` slices are wiped by the system, so a number that depends on one must be re-cut by the gate, not assumed;
   - the terminal periodically swallows command output: write to a file and read the file, and prefer
     `(setsid bash ... &)` plus a poll for anything over a minute;
+  - **the shell is single-threaded, so a command that outlives its budget blocks every command after it.** This is what
+    wedged this session's terminal: foreground `sleep 240`/`sleep 300` "waits" and one `bash -lc` that called
+    `powershell.exe`, each left attached after the tool's 300 s budget ran out, and then even `echo hi > /tmp/ping.txt`
+    produced nothing. The symptom to recognise is *no output and no file*, not an error. So:
+    - never wait in the foreground -- `sleep` longer than about 30 s belongs in a backgrounded script;
+    - anything that crosses into Windows (`powershell.exe`, `wslpath` on a slow path) gets a `timeout`, because WSL
+      interop can block indefinitely and it is the call most likely to hang;
+    - poll by **reading a file**, which does not use the shell at all, rather than by `sleep; cat` chains;
+    - if a command does not report completion, stop chaining and test with `echo`: a shell that cannot echo is wedged,
+      and nothing started from inside it will run. Recovery is closing the terminal tab (or `pkill -f` the last
+      command), and the repository state is what `git` says afterwards -- not what the wedged shell said.
+  - **`verify_l2.sh fast` (~110 s) is the longest foreground call this terminal tolerates; `all` goes in a backgrounded
+    script.** The same rule for any measurement that replays the 1.5 GB depth file.
   - the `post-commit` hook pushes detached, so confirm `origin/main` moved and read `/tmp/toyquant-push.log` instead of
     assuming the push happened.
 - **Do not run destructive commands outside the repository**, and do not `git add -A` in a tree with untracked data
