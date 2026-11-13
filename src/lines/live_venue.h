@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 
 #include "exchange/execution_report.h"
 #include "exchange/matching_engine.h"
@@ -83,4 +84,16 @@ class LiveVenue : public IMatchingEngine
     LiveVenueConfig config_;
     LiveVenueCounters counters_;
     ReportCallback callback_;
+    // What the venue echoed back is only the order's id, so everything the accounting reads from a report has
+    // to come from the order that was sent: its owner (the pipeline books a fill only for its own), its side (the
+    // report's default is Buy, which would turn every sell fill into a buy), and its liquidity role (a Gtc order
+    // rests and its fills are maker, an Ioc or Fok order is a taker by definition -- a venue whose Gtc orders can
+    // cross on arrival would need the role on the wire, which is the field to add when a venue reports one).
+    struct SentOrder
+    {
+        std::string owner;
+        exchange::Side side{exchange::Side::Buy};
+        TimeInForce time_in_force{TimeInForce::Gtc};
+    };
+    std::unordered_map<uint64_t, SentOrder> sent_;
 };

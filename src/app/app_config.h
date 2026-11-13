@@ -246,6 +246,13 @@ struct AppConfig
     // <prefix>_orders.csv. Empty, the default, turns it off, which is what every recorded run has. A file written
     // this way is what `RecordedVenue` replays as the venue, which is how a session is checked rather than trusted.
     std::string order_log_path;
+    // The live order leg: ADR 0005 decision 3's second opt-in. Off, the run's venue is the in-process matcher, which
+    // is what every recorded run is; on, it is the relay's order channel over TCP, and `venue_endpoint` names it --
+    // there is no default, because a socket guessed is a wrong socket. `venue_max_orders` is the adapter's own
+    // submission cap and is required with the flag, because decision 4 puts a bound below the strategy's controls.
+    bool live_orders = false;
+    std::string venue_endpoint;
+    uint64_t venue_max_orders = 0;
     // The carry mode's second leg, and the second book of an `l2_replay` run that was given one: two modes, one
     // field, because both are asking the same question -- which instrument is the other side of this run. In
     // carry mode `path_or_port` holds the first leg's funding file, because the first path of any mode is the one

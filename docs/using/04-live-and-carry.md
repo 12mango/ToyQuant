@@ -85,6 +85,23 @@ tools/live/venue_relay.py --self-test` checks the login against a pinned
 signature vector and against a local stand-in venue that verifies what crossed the socket, including one deliberate
 drop and the re-login after it, and the gate runs that self-test on every change.
 
+The same channel can be the run's *venue* rather than a simulation. `--live-orders --venue-endpoint=HOST:PORT
+--venue-max-orders=N` puts `LiveVenue` over a TCP transport in place of the in-process matcher, so orders leave the
+process and the venue's answers come back as the same `ExecutionReport`s the ledger already books:
+
+```bash
+python3 tools/live/venue_relay.py --simulate-orders --order-listen 127.0.0.1:8766 &
+./out/build/linux-debug/toy_quant l2_replay <trades> <depth> BTC-PERPETUAL 0 active_l2 1 prorata \
+    --fast-validation --paper-broker \
+    --live-orders --venue-endpoint=127.0.0.1:8766 --venue-max-orders=200
+```
+
+It prints `[VENUE]` beside `[BROKER]` and `[RECON]`: the frames sent and received, the reports decoded, and the broker's
+statement reconciled against the account. The three flags are required together -- an endpoint without the opt-in
+reaches nothing, and a live leg with no cap of its own is what ADR 0005 decision 4 forbids -- and they are refused
+outside `l2_replay` and `ws`. Pointing the same three at the real private channel is the sandbox run: the relay needs
+the credentials in the environment and the engine needs nothing new.
+
 
 ## Carry: Two Legs Over Two Funding Histories
 

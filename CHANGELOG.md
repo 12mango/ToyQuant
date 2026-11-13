@@ -7,6 +7,31 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The live venue becomes the run's venue (2026-11-13)
+
+- **Three flags, one decision.** `--live-orders --venue-endpoint=HOST:PORT --venue-max-orders=N` replaces the
+  in-process matcher with `LiveVenue` over `TcpVenueTransport`, and the broker, the order recorder and the gateway stay
+  around it unchanged -- the same decorator stack every recorded run uses, which is what ADR 0005 decision 1 bought.
+  The three are required together and refused outside `l2_replay` and `ws` and on a two-book run. The live leg's replies
+  are applied on the consuming thread -- the transport's receive thread only queues a line -- so a fill that arrives
+  between two events is in the account before the next decision, and no accounting state is touched from two threads.
+  `[VENUE]` is the run's own label for it: frames sent, frames received, reports decoded, refusals, and no latency.
+- **The first run reported every fill and booked none of them.** `[VENUE]` showed twelve decoded reports while
+  `[BROKER]` showed `fills_seen=0` and `[PNL]` was all zeros. The venue's frames carry an order id and nothing else, so
+  the reports the adapter built had no `owner` (the pipeline books only its own), the default `side` -- which is `Buy`,
+  so a sell fill would have moved the position the wrong way -- and no liquidity role (so neither count moved and
+  `[RECON]` reported a break). All three are now stamped from the order that was sent, a `Cancelled` or `Rejected`
+  forgets the order, and a fill keeps it.
+- **A test that had never run.** `tests/live_venue_test.cpp` returned 0 two thirds of the way down, so the four-reply
+  mapping, the unreadable-frame counts and the two no-op calls were dead code: the adapter's report mapping had never
+  been exercised. The early return is gone, those blocks run, and the owner, side and role assertions are added.
+- **What a run says now**, against the relay's simulated venue: `[VENUE] orders=4 cancels=4 frames_sent=8
+  frames_received=12 reports=12`, `[BROKER] fills_seen=4`, `[RECON] status=ok report_count_difference=0`, and a
+  `[PNL]` carrying a real maker notional. Run by hand -- the app-level run is not in the gate yet, because it needs the
+  relay as a child process and the 200k slice; what the gate holds is `tests/live_venue_test`.
+- **The counts moved**, because the wiring is C++: 26,201 source lines (`app` 8978, `lines` 3872), 120 files and 35
+  test binaries unchanged.
+
 ## The sandbox's first contact, and the three things it corrected (2026-11-13)
 
 - **The credentials never touch git.** They live in `secrets/okx-demo.env`, which `.gitignore` excludes by directory,
@@ -76,7 +101,7 @@ site now points at `ToyQuant`.
   first walk-forward over the two Deribit windows (2020-04-01 chosen on, 2020-06-01 scored on) prints
   `replicated=no` with the chosen cell negative out of sample, which is the grid's own result arriving by the route
   that can be repeated rather than by a re-reading.
-- **What did not change**: no C++ file, no test binary, no recorded number, and the same 120 source files and 26,026
+- **What did not change**: no C++ file, no test binary, no recorded number, and the same 120 source files and 26,201
   source lines. The tools read `data/` and write under `/tmp`; a missing input is an error naming the file.
 
 ## The relay's private route (2026-11-13)

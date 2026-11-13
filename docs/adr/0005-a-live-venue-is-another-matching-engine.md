@@ -72,6 +72,17 @@ nothing about profit, and what stops it from becoming a program that spends mone
   because a recording is one file per venue. What is not wired is a run that takes the recorded reports back: the reader
   exists and is tested, and pointing an app mode at it needs a flag and a claim about what a replayed order leg is
   measured against, which is the step after the sandbox.
+- **Step four has landed: the adapter is the run's venue.** `--live-orders --venue-endpoint=HOST:PORT
+  --venue-max-orders=N` puts `LiveVenue` over `TcpVenueTransport` in place of the in-process matcher, and the broker,
+  the order recorder and the gateway stay around it unchanged -- the decorator stack is the one every recorded run
+  uses, which is what decision 1 bought. The three flags are required together and refused outside `l2_replay` and
+  `ws`, and the live leg's replies are applied on the consuming thread: the transport's receive thread only queues a
+  line, so a fill that arrived between two events is seen before the next decision and no accounting state is touched
+  from two threads. The first run against the relay's simulated venue reported every fill and booked none of them --
+  the venue's frames carry an order id and nothing else, so the reports had no owner, the report's default side
+  (`Buy`, which would turn a sell into a buy) and no liquidity role. The adapter now stamps all three from the order it
+  sent, `tests/live_venue_test` pins them, and the same run reconciles: `[RECON] status=ok`,
+  `report_count_difference=0`, `[VENUE] orders=4 cancels=4 reports=12` against the relay's own count.
 - **What it costs**: one adapter, one wire, one relay order channel, one recorder with its reader, and the flag
   plumbing -- `src/lines/live_venue.{h,cpp}`, `src/lines/tcp_venue_transport.{h,cpp}`, the order channel in
   `tools/live/venue_relay.py`, `src/lines/order_recorder.{h,cpp}`, `src/lines/recorded_venue.{h,cpp}` and a
@@ -129,7 +140,8 @@ is the confirmation this record asked a first sandbox run for: the private socke
 subscription on `wss://wspap.okx.com:443/ws/v5/private?brokerId=9999`; the venue's own `notice` on port 8443 says that
 port is being retired; and the login timestamp is Unix **epoch seconds**, because the ISO form is refused with `60004
 Invalid timestamp` and epoch milliseconds with `60006 Timestamp request expired`. What the probe did not do is send an
-order -- the adapter is not wired into the app yet -- so the acceptance run is still ahead of this line.
+order; the wiring that can (the three flags in the consequences above) landed the same day and was verified against
+the relay's simulated venue, so the sandbox order is the next *run* rather than the next change.
 
 **The venue round trip is not measured, and it does not join `[LATENCY]`.** The last sentence of decision 6 stands:
 the `[LATENCY]` fields describe modelled legs, and a real round trip belongs under its own `[VENUE]` label if it is

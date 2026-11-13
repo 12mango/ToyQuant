@@ -61,6 +61,7 @@ watch a position build names both: `--order-size=10 --inventory-limit=100`.
 | the one that does change a number | `--close-out` | flattens the carried position at the touch and prints `[WIND-DOWN]`, so `[PNL]` becomes realisable instead of a mark |
 | session | `--snapshot-out`, `--snapshot-in` | see below: the account comes back, the strategy's own state does not |
 | order leg | `--record-orders` | see below: one file per venue, and the reader that replays it |
+| live order leg | `--live-orders`, `--venue-endpoint`, `--venue-max-orders` | see below: the venue becomes the relay's order channel; the three are required together and only `l2_replay` and `ws` take them |
 | signals | `--trend-params` | the non-market-making line's EWMA cross and its exits; `--inventory-limit` doubles as the size of a full signal |
 | threads and pacing | `--feed-thread`, `--ring-capacity`, `--profile-stages`, `--live-pacing` | see below: the first three report the hand-off; pacing replays against the wall clock and reports `[LIVE]` |
 | paper trading | `--paper-broker` and its five fault flags, `--order-gateway` and its two | see below: they put a component between the strategy and the venue |
@@ -105,6 +106,16 @@ comma -- is refused rather than escaped. The file is read back by `RecordedVenue
 instead of from a venue; the reader is tested and the app has no mode that uses it yet, because a replayed order leg
 needs a recorded session to compare against and the first one comes from the sandbox. Two runs are refused it rather
 than served: a mode with no venue, and a two-book run, which has two engines and so needs two files.
+
+**The live order leg.** `--live-orders --venue-endpoint=HOST:PORT --venue-max-orders=N` replaces the in-process matcher
+with `LiveVenue` over `TcpVenueTransport`, so the venue is the relay's order channel rather than a simulation; the run
+prints `[VENUE]` with the frames sent, the frames received and the reports decoded. The three flags are required
+together -- an endpoint without the opt-in reaches nothing, and a live leg with no cap of its own is the case ADR 0005
+decision 4 forbids -- and both are refused outside `l2_replay` and `ws`, and on a two-book run. What the venue echoes
+back is only an order id, so the adapter stamps the owner, the side and the liquidity role from the order it sent: a
+report with no owner is a fill that was reported and never booked, and the report's default side is Buy, which would
+turn every sell fill into a buy. `tests/live_venue_test` pins those three fields, and a run against the relay's
+simulated venue reconciles (`[RECON] status=ok`, no quantity break) -- by hand, not yet in the gate.
 
 **The feed thread.** `--feed-thread` reads on its own thread and hands each event to the strategy thread over a bounded
 ring, reporting the hand-off as `[LATENCY]`: the ring wait, the processing, and the total, each as mean, p50, p99 and max,

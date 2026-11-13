@@ -5,13 +5,17 @@
 #include <immintrin.h>
 #include <iostream>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
+#include <vector>
 
 #include "lines/carry_ledger.h"
 #include "accounting/portfolio.h"
+#include "lines/live_venue.h"
+#include "lines/tcp_venue_transport.h"
 #include "lines/reconciliation.h"
 #include "app/multi_book.h"
 #include "app/pipeline.h"
@@ -550,6 +554,50 @@ void Application::run_l2_session_mode() const
     auto strategy = make_strategy(cfg_.strategy_name, strategy_config(instrument));
     MatchingEngine engine(instrument.tick_size, fee_schedule_of(instrument),
                           engine_config(instrument));
+    // The live order leg: with --live-orders the venue is the relay's order channel instead of the in-process
+    // matcher. The adapter is an `IMatchingEngine` like the other two, so the broker, the recorder and the gateway
+    // above it are unchanged -- which is the claim ADR 0005 decision 1 made, and this is the line that cashes it.
+    std::unique_ptr<TcpVenueTransport> live_transport;
+    std::unique_ptr<LiveVenue> live_venue;
+    std::mutex venue_lines_mutex;
+    std::vector<std::string> venue_lines;
+    if (cfg_.live_orders)
+    {
+        const auto colon = cfg_.venue_endpoint.rfind(':');
+        int port = 0;
+        bool shaped = colon != std::string::npos && colon + 1 < cfg_.venue_endpoint.size();
+        if (shaped)
+        {
+            try
+            {
+                port = std::stoi(cfg_.venue_endpoint.substr(colon + 1));
+            }
+            catch (const std::exception&)
+            {
+                shaped = false;
+            }
+        }
+        if (!shaped || port <= 0 || port > 65535)
+            throw std::invalid_argument("--venue-endpoint is HOST:PORT and '" + cfg_.venue_endpoint +
+                                        "' is not");
+        live_transport = std::make_unique<TcpVenueTransport>(cfg_.venue_endpoint.substr(0, colon),
+                                                             static_cast<uint16_t>(port));
+        if (!live_transport->connect())
+            throw std::runtime_error("the venue endpoint " + cfg_.venue_endpoint +
+                                     " refused the connection: start the relay's order channel first");
+        live_venue = std::make_unique<LiveVenue>(
+            *live_transport, LiveVenueConfig{.max_orders = cfg_.venue_max_orders});
+        // The transport's receive thread only queues a line; the adapter sees it on the consuming thread, so
+        // every accounting mutation happens where the replay already mutates it.
+        live_transport->set_line_handler(
+            [&venue_lines, &venue_lines_mutex](std::string_view line)
+            {
+                std::lock_guard<std::mutex> guard(venue_lines_mutex);
+                venue_lines.emplace_back(line);
+            });
+    }
+    IMatchingEngine* inner = live_venue ? static_cast<IMatchingEngine*>(live_venue.get())
+                                        : static_cast<IMatchingEngine*>(&engine);
     // The paper broker wraps the venue rather than replacing it: the strategy, the book and the
     // accounting do not know it is there, and with no faults configured it forwards every call and every
     // report, which is what makes a run with it comparable to one without.
@@ -557,14 +605,26 @@ void Application::run_l2_session_mode() const
     if (cfg_.paper_broker)
     {
         broker = std::make_unique<PaperBroker>(
-            engine, BrokerFaults{.reject_every = cfg_.broker_reject_every,
+            *inner, BrokerFaults{.reject_every = cfg_.broker_reject_every,
                                  .partial_every = cfg_.broker_partial_every,
                                  .drop_every = cfg_.broker_drop_every,
                                  .outage_after = cfg_.broker_outage_after,
                                  .outage_holds = cfg_.broker_outage_holds});
     }
-    IMatchingEngine* venue =
-        broker ? static_cast<IMatchingEngine*>(broker.get()) : static_cast<IMatchingEngine*>(&engine);
+    IMatchingEngine* venue = broker ? static_cast<IMatchingEngine*>(broker.get()) : inner;
+    // The live leg's replies are applied here, on the consuming thread, at the point the run is about to look at
+    // the market: a fill that arrived between two events is seen before the next decision and never from the
+    // transport's own thread.
+    const auto drain_venue = [&]()
+    {
+        if (!live_venue) return;
+        std::vector<std::string> lines;
+        {
+            std::lock_guard<std::mutex> guard(venue_lines_mutex);
+            lines.swap(venue_lines);
+        }
+        for (const std::string& line : lines) live_venue->on_frame(line);
+    };
     // The order leg's recording, innermost of the decorators on purpose: it records what the venue itself was
     // asked and what the venue itself answered. Outside the gateway it would record a retry as an order the venue
     // never received, and outside the broker it would miss the refusals the broker invents. Off unless asked for,
@@ -714,6 +774,9 @@ void Application::run_l2_session_mode() const
     // what makes the threaded path comparable with the direct one rather than merely similar.
     const auto consume = [&](const MarketEvent& event)
     {
+            // A live venue's replies first, so a fill that arrived between this event and the last one is in the
+            // account before the strategy's next decision reads it.
+            drain_venue();
             // With two profilers the feed's `start_event()` opens an event in its own instance, so this thread has to
             // open the one its brackets belong to. On the direct path the feed already did it and doing it twice
             // would commit two events per row.
@@ -851,6 +914,22 @@ void Application::run_l2_session_mode() const
         // strategy never heard about appears here as a disagreement between them.
         logger.log("[BROKER] ", broker->summary().to_log_string());
         logger.log("[RECON] ", reconcile_positions(broker->statement(), portfolio).to_log_string());
+    }
+    if (live_venue)
+    {
+        // Whatever arrived after the last event is applied before the summary is written, so [VENUE] and [RECON]
+        // describe the same moment. Its own label, because ADR 0005 decision 6 keeps a venue round trip out of
+        // [LATENCY]: the fields here count frames and refusals, and this run measures no latency at all.
+        drain_venue();
+        const auto& counters = live_venue->counters();
+        logger.log("[VENUE] endpoint=", cfg_.venue_endpoint, " connected=",
+                   live_transport->connected() ? "yes" : "no", " frames_sent=",
+                   live_transport->frames_sent(), " frames_received=",
+                   live_transport->frames_received(), " orders=", counters.orders_sent,
+                   " cancels=", counters.cancels_sent, " refused_by_adapter=",
+                   counters.refused_by_adapter, " write_failures=", counters.transport_failures,
+                   " reports=", counters.reports_decoded, " dropped=", counters.frames_dropped);
+        live_transport->disconnect();
     }
     if (order_log)
     {

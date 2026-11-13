@@ -100,6 +100,12 @@ constexpr std::string_view kSnapshotOutPrefix = "--snapshot-out=";
 constexpr std::string_view kSnapshotInPrefix = "--snapshot-in=";
 // Where a run writes the order leg -- what went out and what came back -- as <prefix>_orders.csv.
 constexpr std::string_view kRecordOrdersPrefix = "--record-orders=";
+// The live order leg: ADR 0005 decision 3's second opt-in, the socket it reaches, and the adapter's own cap. The
+// cap is a required companion rather than a default, because decision 4 puts a bound below the strategy's controls
+// and a live leg with no bound is the case that decision forbids.
+constexpr std::string_view kLiveOrdersFlag = "--live-orders";
+constexpr std::string_view kVenueEndpointPrefix = "--venue-endpoint=";
+constexpr std::string_view kVenueMaxOrdersPrefix = "--venue-max-orders=";
 constexpr std::string_view kNotionalPrefix = "--notional-usd=";
 constexpr std::string_view kLongPrefix = "--long=";
 constexpr std::string_view kMakerFeePrefix = "--maker-fee-rate=";
@@ -197,6 +203,9 @@ void print_usage(const char* executable)
         std::cerr << "   order leg: --record-orders=PREFIX writes <prefix>_orders.csv -- every submission, cancel and "
                      "execution report of the session, in order -- which `RecordedVenue` replays as the venue; "
                      "without it nothing is written and no number moves\n";
+        std::cerr << "   live order leg: --live-orders --venue-endpoint=HOST:PORT --venue-max-orders=N makes the venue "
+                     "the relay's order channel instead of the in-process matcher (l2_replay and ws only); the three "
+                     "are required together, and the cap is the adapter's own, below the strategy's limits\n";
         std::cerr << "   optional flags: --no-output | --fast-validation (l2_replay only) | "
                      "--profile-stages[=N] prints sampled per-stage timings (l2_replay only, default interval 64) | "
                      "--order-size=N, --inventory-limit=N, and --max-position=N override the "
@@ -468,6 +477,19 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                 cfg.snapshot_in_path = flag.substr(kSnapshotInPrefix.size());
             else if (flag.compare(0, kRecordOrdersPrefix.size(), kRecordOrdersPrefix) == 0)
                 cfg.order_log_path = flag.substr(kRecordOrdersPrefix.size());
+            else if (flag == kLiveOrdersFlag)
+                cfg.live_orders = true;
+            else if (flag.compare(0, kVenueEndpointPrefix.size(), kVenueEndpointPrefix) == 0)
+                cfg.venue_endpoint = flag.substr(kVenueEndpointPrefix.size());
+            else if (flag.compare(0, kVenueMaxOrdersPrefix.size(), kVenueMaxOrdersPrefix) == 0)
+            {
+                if (!parse_unsigned(flag.substr(kVenueMaxOrdersPrefix.size()), cfg.venue_max_orders) ||
+                    cfg.venue_max_orders == 0)
+                {
+                    error = "--venue-max-orders must be a positive number of orders";
+                    return false;
+                }
+            }
             else if (flag == kMarkoutCoverFlag)
                 cfg.markout_cover = true;
             else if (flag == kMetricsFlag)
@@ -1270,6 +1292,40 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
         // The order leg is one file per venue, so it belongs to a run that has exactly one: a two-book run has two
         // engines and would need two recordings, which is a shape the flag does not have yet. Every other mode has
         // no venue to record at all.
+        // The live order leg. The endpoint, the cap and the opt-in are one decision, so a run that names one of them
+        // without the others has asked for something that cannot be what it meant: an endpoint that reaches no venue,
+        // or a live leg with no cap of its own, which is the case ADR 0005 decision 4 exists to forbid.
+        if (cfg.live_orders)
+        {
+            if (!is_l2_family)
+            {
+                error = "--live-orders is l2_replay and ws only: it replaces the run's venue with a socket";
+                return false;
+            }
+            if (cfg.venue_endpoint.empty())
+            {
+                error = "--live-orders needs --venue-endpoint=HOST:PORT: the relay's order channel is named, not guessed";
+                return false;
+            }
+            if (cfg.venue_max_orders == 0)
+            {
+                error = "--live-orders needs --venue-max-orders=N, the adapter's own cap: the pipeline's limits "
+                        "protect against a strategy, and this one protects against the adapter and the strategy "
+                        "disagreeing about what was sent";
+                return false;
+            }
+            if (!cfg.trades_b_path.empty() || !cfg.depth_b_path.empty())
+            {
+                error = "--live-orders names one venue, and a two-book run has two engines";
+                return false;
+            }
+        }
+        else if (!cfg.venue_endpoint.empty() || cfg.venue_max_orders != 0)
+        {
+            error = "--venue-endpoint and --venue-max-orders are part of --live-orders: without it the venue is the "
+                    "in-process matcher, and an endpoint that reaches nothing is worse than no flag";
+            return false;
+        }
         if (!cfg.order_log_path.empty())
         {
             if (!is_l2_family)

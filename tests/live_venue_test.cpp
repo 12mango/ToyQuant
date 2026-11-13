@@ -119,8 +119,6 @@ int main()
         assert(venue.counters().refused_by_adapter == 1);
     }
 
-    return 0;
-
     // The four replies a venue can send, mapped onto the reports the pipeline already consumes.
     {
         RecordingTransport wire;
@@ -182,6 +180,39 @@ int main()
         assert(wire.frames.empty());
         assert(venue.counters().orders_sent == 0);
         assert(venue.counters().reports_decoded == 0);
+    }
+
+    // A report carries the owner its order was sent with, and only while the order lives. The pipeline books a
+    // fill against its own owner and ignores every other, so an adapter that dropped the field reported every fill
+    // and accounted for none of them -- which is exactly what the first app-level run did.
+    {
+        RecordingTransport wire;
+        LiveVenue venue(wire);
+        std::vector<ExecutionReport> reports;
+        venue.set_report_callback([&reports](const ExecutionReport& report) { reports.push_back(report); });
+
+        exchange::Order order = make_order(11, exchange::Side::Buy, 10.0, 5);
+        order.owner = "MarketMaker";
+        venue.send_order(order);
+
+        assert(venue.on_frame("FILL 11 10 5"));
+        assert(reports.size() == 1 && reports[0].owner == "MarketMaker");
+        assert(reports[0].side == exchange::Side::Buy && reports[0].liquidity_role == LiquidityRole::Maker);
+        assert(venue.on_frame("CANCELED 11 user"));
+        assert(reports.size() == 2 && reports[1].owner == "MarketMaker");
+        // The order has ended, so its owner is forgotten: a frame for that id afterwards carries none, and the
+        // side falls back to the report's default rather than being guessed from the frame.
+        assert(venue.on_frame("FILL 11 10 1"));
+        assert(reports.size() == 3 && reports[2].owner.empty());
+
+        // A sell order's fill is a sell, and an immediate order's fill is a taker: both come from the sent order,
+        // because the frame carries neither and the report's defaults are the wrong answer for both.
+        exchange::Order sell = make_order(12, exchange::Side::Sell, 10.0, 4, TimeInForce::Ioc);
+        sell.owner = "MarketMaker";
+        venue.send_order(sell);
+        assert(venue.on_frame("FILL 12 10 4"));
+        assert(reports.size() == 4);
+        assert(reports[3].side == exchange::Side::Sell && reports[3].liquidity_role == LiquidityRole::Taker);
     }
 
     return 0;
