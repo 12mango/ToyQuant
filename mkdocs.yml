@@ -1,5 +1,5 @@
 site_name: ToyQuant Docs
-site_description: Eight markets closed by numbers, and the C++ instrument that closed them.
+site_description: A high-precision C++20 market simulator that tests a strategy against real queues, fees and latency -- and re-derives every number it publishes.
 site_url: https://12mango.github.io/ToyQuant/
 repo_url: https://github.com/12mango/ToyQuant
 repo_name: 12mango/ToyQuant

@@ -1,6 +1,7 @@
 # The documentation map
 
-*The three tiers, the path to take for a question, and which document owns which claim. The front door is
+*A high-precision C++20 market simulator that tests whether a strategy survives the queues, the fees and the latency of a
+real venue -- the tiers, the path to take for a question, and which document owns which claim. The front door is
 [`index.md`](index.md); this page is the map behind it.*
 
 ## How the navigation groups these
