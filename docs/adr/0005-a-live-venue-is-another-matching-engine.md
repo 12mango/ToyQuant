@@ -124,10 +124,12 @@ the same session and compared, not one recording replayed alone.
 **The endpoint is the venue's demo environment, not its production one.** The market-data half of this repository
 already speaks this venue -- the relay decodes its `books` and `trades` channels, `src/market/okx_readers.cpp` reads
 its archive, and the contract size and quantity scale of `BTC-USDT-SWAP` are in the tree -- so the order leg uses the
-same venue rather than adding a second protocol to the same demonstration. The endpoint's host, port and query
-parameters are the venue's to publish, and they are not copied into this record: nothing here has connected to it yet,
-so a first sandbox run is what confirms them. A document that printed a host no reader could re-derive would be the
-kind of number this project refuses to quote.
+same venue rather than adding a second protocol to the same demonstration. **A probe on 2026-11-13 reached it**, which
+is the confirmation this record asked a first sandbox run for: the private socket accepts the login and the `orders`
+subscription on `wss://wspap.okx.com:443/ws/v5/private?brokerId=9999`; the venue's own `notice` on port 8443 says that
+port is being retired; and the login timestamp is Unix **epoch seconds**, because the ISO form is refused with `60004
+Invalid timestamp` and epoch milliseconds with `60006 Timestamp request expired`. What the probe did not do is send an
+order -- the adapter is not wired into the app yet -- so the acceptance run is still ahead of this line.
 
 **The venue round trip is not measured, and it does not join `[LATENCY]`.** The last sentence of decision 6 stands:
 the `[LATENCY]` fields describe modelled legs, and a real round trip belongs under its own `[VENUE]` label if it is

@@ -69,6 +69,17 @@ data/v2/
 reports/*
 !reports/synthetic_ticks_optimized.png
 
+# --------------------------------------------------
+# Local credentials: never committed, never in a run's [Mode] line
+# --------------------------------------------------
+# API keys and passphrases live in `secrets/`, which is ignored on purpose: a key in a tracked file is a key in
+# the history, and a command line that carries one reaches every recording the run writes. Load them into a shell
+# with `set -a; . secrets/okx-demo.env; set +a` and let the tools read the environment.
+secrets/
+.env
+.env.*
+!.env.example
+
 # General system temporary files and editor caches
 *.log
 *.tmp

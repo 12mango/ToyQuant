@@ -48,7 +48,6 @@ Usage:
 
 import argparse
 import base64
-import datetime
 import hashlib
 import hmac
 import json
@@ -834,11 +833,10 @@ def serve_venue_orders(listen, url, credentials, instrument, capture=None):
 # halves of the preimage are the venue's, which is why they are named here instead of inlined at the call.
 VERIFY_PATH = "/users/self/verify"
 # The venue's demo endpoint: the same calls and the same order lifecycle as production, with no money (ADR 0005,
-# decision 2). Nothing in this repository has connected to it yet -- the self-test stands a local venue in its
-# place -- so the host, the port and the `brokerId` query are what a first sandbox run confirms rather than what
-# this comment proves. `--order-venue` overrides it, which is how a different endpoint is reached without a code
-# change and how a first run checks the guess before anything is written into a document.
-DEFAULT_PRIVATE_VENUE = "wss://wspap.okx.com:8443/ws/v5/private?brokerId=9999"
+# decision 2). Measured on 2026-11-13 against the venue itself: the private socket accepts the login and the `orders`
+# subscription on port 443, and the venue sends a `notice` on 8443 saying that port will be retired -- which is why
+# this is 443 and not the 8443 a reader may remember. `--order-venue` overrides it.
+DEFAULT_PRIVATE_VENUE = "wss://wspap.okx.com:443/ws/v5/private?brokerId=9999"
 
 
 class VenueCredentials:
@@ -885,9 +883,15 @@ class VenueCredentials:
 
 
 def timestamp_now():
-    """The venue's timestamp: UTC, milliseconds, a literal `Z` -- the string the signature is computed over."""
-    now = datetime.datetime.now(datetime.timezone.utc)
-    return now.strftime("%Y-%m-%dT%H:%M:%S.") + f"{now.microsecond // 1000:03d}Z"
+    """The venue's timestamp for a login: Unix epoch **seconds**, as a string.
+
+    Measured against the demo endpoint on 2026-11-13, because the venue is the only judge and the shape is not the
+    one a reader would guess from the REST docs: the ISO form `2026-11-13T00:00:00.000Z` is refused with
+    `60004 Invalid timestamp`, epoch *milliseconds* with `60006 Timestamp request expired`, and epoch seconds is
+    accepted with `{"event":"login","code":"0"}`. The signature is computed over this exact string, so the two have
+    to be produced together -- which is why this function and `login_message` are one decision.
+    """
+    return str(int(time.time()))
 
 
 def signature(timestamp, secret):
@@ -1165,8 +1169,9 @@ def decode_file(path, decoder):
 # file, and pasted in. A check that called `signature` for its expectation would be the implementation agreeing
 # with itself, and would pass on any wrong preimage; this constant cannot.
 GOLDEN_SECRET = "toyquant-relay-self-test-secret"
-GOLDEN_TIMESTAMP = "2026-11-13T00:00:00.000Z"
-GOLDEN_SIGN = "Pz15x1MaE0LrrWzqApLE86lB0yAVRLdT6fYD7VdNaIo="
+# 2026-11-13T00:00:00Z as Unix epoch seconds, which is the form the venue accepts (see `timestamp_now`).
+GOLDEN_TIMESTAMP = "1794528000"
+GOLDEN_SIGN = "WIUsY7IKdr05lNBq2VgPKZu5ME3ZgT1i6w4ixCiJ9W8="
 
 
 class LocalPrivateVenue(threading.Thread):
@@ -1276,8 +1281,8 @@ class LocalPrivateVenue(threading.Thread):
             self.problems.append(f"the login has the wrong fields: {sorted(argument)}")
             return
         timestamp = str(argument.get("timestamp", ""))
-        if len(timestamp) != 24 or timestamp[10] != "T" or not timestamp.endswith("Z"):
-            self.problems.append(f"the login timestamp is not ISO milliseconds in UTC: {timestamp!r}")
+        if not timestamp.isdigit() or len(timestamp) != 10:
+            self.problems.append(f"the login timestamp is not Unix epoch seconds: {timestamp!r}")
         if argument.get("sign") != signature(timestamp, self.secret):
             self.problems.append("the login signature does not verify: the preimage or the encoding is wrong")
         self.logins += 1
@@ -1395,7 +1400,7 @@ def self_test():
         ("self-test-key", "self-test-passphrase", GOLDEN_TIMESTAMP), argument
     assert argument["sign"] == GOLDEN_SIGN, argument["sign"]
     timestamp = timestamp_now()
-    assert len(timestamp) == 24 and timestamp[10] == "T" and timestamp.endswith("Z"), timestamp
+    assert timestamp.isdigit() and len(timestamp) == 10, timestamp
     # A credential that is missing is refused with the variable named, which is what a run that has not been given
     # one has to be told -- and it names only what is missing.
     try:

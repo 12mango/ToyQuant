@@ -79,8 +79,9 @@ directions, and reconnects -- logging in and subscribing again -- after a drop, 
 `reconnects` in the line it prints when the engine hangs up. The three credentials are read from
 `TOYQUANT_API_KEY`, `TOYQUANT_API_SECRET` and `TOYQUANT_PASSPHRASE`, never from the command line, and a listener with
 neither backend exits naming the variable that is missing. `--order-venue` points the private route at another
-endpoint; its default is the venue's demo environment, which no run in this repository has reached yet, so a first
-sandbox run is what confirms it. `python3 tools/live/venue_relay.py --self-test` checks the login against a pinned
+endpoint; its default is the venue's demo environment, which a probe on 2026-11-13 reached: the login and the `orders`
+subscription are accepted on port 443, and the login timestamp is Unix epoch seconds. `python3
+tools/live/venue_relay.py --self-test` checks the login against a pinned
 signature vector and against a local stand-in venue that verifies what crossed the socket, including one deliberate
 drop and the re-login after it, and the gate runs that self-test on every change.
 

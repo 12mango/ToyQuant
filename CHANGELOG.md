@@ -7,6 +7,25 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The sandbox's first contact, and the three things it corrected (2026-11-13)
+
+- **The credentials never touch git.** They live in `secrets/okx-demo.env`, which `.gitignore` excludes by directory,
+  at mode 600 inside a 700 directory; `git check-ignore -v` names the rule, `git status` does not show the file, and
+  `git ls-files secrets` is empty. The tools read `TOYQUANT_API_KEY`, `TOYQUANT_API_SECRET` and `TOYQUANT_PASSPHRASE`
+  from the environment (`set -a; . secrets/okx-demo.env; set +a`), never from a command line, because a command line
+  reaches a run's `[Mode]` line and every recording it writes.
+- **The login timestamp was the wrong shape, and only the venue could say so.** The self-test pinned a vector and a
+  local stand-in venue that recomputed the same function, so both agreed on `2026-11-13T00:00:00.000Z`; the venue
+  refuses that form with `60004 Invalid timestamp`, refuses epoch milliseconds with `60006 Timestamp request expired`,
+  and accepts **epoch seconds** with `{"event":"login","code":"0"}`. `timestamp_now` is epoch seconds now, the golden
+  vector is re-derived for it, and the stand-in venue checks the digits rather than the ISO shape.
+- **The port moved, because the venue says it is going.** Port 8443 answers a login with a `notice` that the port will
+  be retired. The default is `wss://wspap.okx.com:443/ws/v5/private?brokerId=9999`, and the login and the `orders`
+  subscription are accepted there.
+- **What that buys, measured against the venue**: `logins=1 subscribes=1 reconnects=0`, no error, no unreadable
+  message, and not one order sent -- the adapter is not wired into the app yet, so this proves the private route and
+  not the order leg. The acceptance run in ADR 0005's amendment is still ahead.
+
 ## The volatility floor, measured before it was built (2026-11-13)
 
 - **A slice driver, because the bucket join had nothing to join.** `tools/study/slice_pnl.py` cuts a day's depth
@@ -64,8 +83,9 @@ site now points at `ToyQuant`.
 
 - **The order channel gets the backend the live leg needs.** `tools/live/venue_relay.py` serves `--order-listen` from
   either backend now. `--simulate-orders` is unchanged; without it the relay dials the venue's private websocket, sends
-  a login its own code signs (`timestamp + "GET" + /users/self/verify`, the base64 of an HMAC-SHA256, milliseconds in
-  UTC), waits for the acknowledgement, subscribes `orders`, and then translates in both directions through the same
+  a login its own code signs (`timestamp + "GET" + /users/self/verify`, the base64 of an HMAC-SHA256, with Unix epoch
+  seconds as the timestamp -- corrected on the first sandbox contact, below), waits for the acknowledgement, subscribes
+  `orders`, and then translates in both directions through the same
   `OrderTranslator` the simulation uses -- so the adapter, its transport and the four replies are untouched. A drop is a
   new session: the client logs in and subscribes again, and the summary printed when the engine hangs up counts
   `logins`, `subscribes`, `reconnects`, `messages`, `other_instruments`, `unreadable` and `write_failures`. A request
