@@ -36,7 +36,7 @@ nav:
   - The Core (what and how):
       - User Guide:
           - Modes, flags and data contracts: USER_GUIDE.md
-          - 1. Getting started: using/01-getting-started.md
+          - 1. Quickstart: using/01-getting-started.md
           - 2. Modes: using/02-modes.md
           - 3. The L2 replay:
               - The replay path: using/03-l2-replay.md

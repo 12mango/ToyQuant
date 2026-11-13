@@ -14,7 +14,7 @@ for the regression invariants that pin them. It does not explain *why* the softw
 
 | I want to... | Read this | Skip |
 |---|---|---|
-| see it work once | [1. Getting started](using/01-getting-started.md) | everything else, until you want more |
+| see it work once | [1. Quickstart](using/01-getting-started.md) | everything else, until you want more |
 | understand what a run prints | [6. Reading the output](using/06-reading-the-output.md) + [the glossary](GLOSSARY.md) | -- |
 | look up a flag | [the L2 replay flags](L2_FLAGS.md) | the guide's prose |
 | pick a mode (CSV, UDP, Binance, L2, ws, carry) | [2. Modes](using/02-modes.md) | -- |
@@ -36,7 +36,7 @@ strategy of your own.
 
 | part | what it covers |
 |---|---|
-| [1. Getting started](using/01-getting-started.md) | requirements, the build, the tests, and the three-command demo path |
+| [1. Quickstart](using/01-getting-started.md) | the whole system on one page: one diagram, one scoreboard of the eight closures, three commands, and the flag dictionary folded away |
 | [2. Modes](using/02-modes.md) | the four input modes, what each is for, and the legacy CSV and UDP commands |
 | [3. The L2 replay](using/03-l2-replay.md), in three parts | the mainline: the two inputs, one run, the venue side, funding and the benchmark -- with every flag in [the flag reference](L2_FLAGS.md) |
 | [4. A live session and the carry line](using/04-live-and-carry.md) | the WebSocket session over a local sender, and the two-legged funding carry |

@@ -22,9 +22,9 @@ cmake --build --preset linux-debug
 bash tools/gate/verify_l2.sh fast      # tier 0 and tier 1: the invariants, and every quoted number re-derived
 ```
 
-Then [the getting-started guide](using/01-getting-started.md) walks one replay from input to output, with one command per
-input format on [the modes page](using/02-modes.md). The mainline is the Deribit L2 replay, which is the path every number
-in these documents came from.
+Then [the quickstart](using/01-getting-started.md) puts the whole system on one page -- one diagram, the eight closures
+in one table, three commands -- with one command per input format on [the modes page](using/02-modes.md). The mainline is
+the Deribit L2 replay, which is the path every number in these documents came from.
 
 ## What it is
 

@@ -42,6 +42,7 @@ watch a position build names both: `--order-size=10 --inventory-limit=100`.
 
 ## The flags, by what they change
 
+<!-- --8<-- [start:flags] -->
 | purpose | flags | what to know |
 |---|---|---|
 | which data | the six positional arguments, `--fast-validation` | `--fast-validation` skips the per-event checks a replay of known-good files does not need, and is what every recorded run uses |
@@ -61,6 +62,7 @@ watch a position build names both: `--order-size=10 --inventory-limit=100`.
 | paper trading | `--paper-broker` and its five fault flags, `--order-gateway` and its two | see below: they put a component between the strategy and the venue |
 | execution | `--parent`, `--algo`, `--algo-entry` | needs the `execution_l2` strategy |
 | two books | `--symbol-b`, `--trades-b`, `--depth-b` | see below: one account, two venues, three extra lines |
+<!-- --8<-- [end:flags] -->
 
 ## The six flags that need more than a line
 

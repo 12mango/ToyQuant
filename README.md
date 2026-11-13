@@ -10,7 +10,7 @@ every number this project publishes.**
 [![Tests](https://img.shields.io/badge/tests-CTest-brightgreen)](tests)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-[Documentation map](docs/MAP.md) · [Getting started](docs/using/01-getting-started.md) ·
+[Documentation map](docs/MAP.md) · [Quickstart](docs/using/01-getting-started.md) ·
 [Retrospective](docs/RETROSPECTIVE.md) · [Decisions](docs/adr/index.md)
 
 </div>
@@ -38,9 +38,9 @@ cmake --build --preset linux-debug
 bash tools/gate/verify_l2.sh fast      # tier 0 and tier 1: the invariants, and every quoted number re-derived
 ```
 
-The full tour -- the four run modes, recording a session and replaying it, the two-thread path, the benchmark workflow and
-what each output line means -- is the [getting-started guide](docs/using/01-getting-started.md), with one command per input
-format on [the modes page](docs/using/02-modes.md). This page keeps one command so that it cannot disagree with them.
+The whole system on one page -- a diagram of the path from a market row to a booked fill, the eight closures in one
+table, and three commands -- is the [quickstart](docs/using/01-getting-started.md), with one command per input format on
+[the modes page](docs/using/02-modes.md). This page keeps one command so that it cannot disagree with them.
 
 ## What it is
 
@@ -79,7 +79,7 @@ The record is kept in three places:
 
 | I want | Read |
 |---|---|
-| to run something | [Getting started](docs/using/01-getting-started.md), then [the L2 replay](docs/using/03-l2-replay.md) |
+| to run something | [Quickstart](docs/using/01-getting-started.md), then [the L2 replay](docs/using/03-l2-replay.md) |
 | what the project found | [Retrospective](docs/RETROSPECTIVE.md) |
 | what the engine work returned | [Engine retrospective](docs/LOW_LATENCY.md) |
 | how the engine is built | [Main line](docs/MAINLINE.md), then the [module reference](docs/ARCHITECTURE.md) |
