@@ -42,6 +42,10 @@ watch a position build names both: `--order-size=10 --inventory-limit=100`.
 
 ## The flags, by what they change
 
+<!-- The table below is inlined into `using/01-getting-started.md`, so it carries no relative links: a link inside an
+     included snippet resolves against the page that includes it, and `using/06-...` became `using/using/06-...` and
+     aborted `mkdocs --strict` the first time the fold was parsed as Markdown. Anything that needs a link lives in the
+     prose below the table, which stays on this page. -->
 <!-- --8<-- [start:flags] -->
 | purpose | flags | what to know |
 |---|---|---|
@@ -54,7 +58,7 @@ watch a position build names both: `--order-size=10 --inventory-limit=100`.
 | fees | `--maker-fee-rate`, `--fee-schedule` | a schedule names `min`, `regulatory`, `clearing`, `audit`, `rebate`, `commission`; every term is zero unless named |
 | gates | `--markout-cover`, `--flatten-band`, `--markout-horizon` | `--markout-cover` needs `active_l2`; `--markout-horizon` moves the cycle count behind the markout itself |
 | output | `--metrics`, `--trace-order`, `--record` | each adds a line or a file and changes no number |
-| the one that does change a number | `--close-out` | flattens the carried position at the touch and prints `[WIND-DOWN]`, so `[PNL]` becomes realisable instead of a mark -- see [what a run's numbers do not include](using/06-reading-the-output.md#two-things-a-runs-numbers-do-not-include) |
+| the one that does change a number | `--close-out` | flattens the carried position at the touch and prints `[WIND-DOWN]`, so `[PNL]` becomes realisable instead of a mark |
 | session | `--snapshot-out`, `--snapshot-in` | see below: the account comes back, the strategy's own state does not |
 | order leg | `--record-orders` | see below: one file per venue, and the reader that replays it |
 | signals | `--trend-params` | the non-market-making line's EWMA cross and its exits; `--inventory-limit` doubles as the size of a full signal |
@@ -63,6 +67,9 @@ watch a position build names both: `--order-size=10 --inventory-limit=100`.
 | execution | `--parent`, `--algo`, `--algo-entry` | needs the `execution_l2` strategy |
 | two books | `--symbol-b`, `--trades-b`, `--depth-b` | see below: one account, two venues, three extra lines |
 <!-- --8<-- [end:flags] -->
+
+`--close-out` is the one flag that changes a number rather than a line: it is in the table above, and what it does to
+`[PNL]` is in [what a run's numbers do not include](using/06-reading-the-output.md#two-things-a-runs-numbers-do-not-include).
 
 ## The six flags that need more than a line
 

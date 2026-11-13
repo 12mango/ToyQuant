@@ -73,18 +73,16 @@ turning the adapter on inside the app is the next step in
 
 ## Every flag, folded
 
-<details>
-<summary>Every `l2_replay` flag, grouped by what it changes (click to unfold)</summary>
+/// details | Every `l2_replay` flag, grouped by what it changes
 
 --8<-- "docs/L2_FLAGS.md:flags"
 
-</details>
+///
 
 Six of them need a paragraph each rather than a line -- the recorder, the session snapshot, the order leg, the feed
 thread, the paper broker and the order gateway. Those are on [the flag reference](../L2_FLAGS.md), one screen down.
 
-<details>
-<summary>Build, tests and the sanitizer tier</summary>
+/// details | Build, tests and the sanitizer tier
 
 ```bash
 cmake --preset linux-debug && cmake --build --preset linux-debug
@@ -101,10 +99,9 @@ cmake --preset linux-asan && cmake --build out/build/linux-asan && ctest --prese
 `out/build/linux-debug/toy_quant` is the simulator and replay binary; `out/build/linux-debug/backtest_main` computes
 legacy metrics from recorded tick data.
 
-</details>
+///
 
-<details>
-<summary>The tour's last two commands, with the output to expect</summary>
+/// details | The tour's last two commands, with the output to expect
 
 `bash tools/gate/verify_l2.sh fast` prints one line a tier:
 
@@ -140,5 +137,5 @@ fast  slow  entry_ticks  exit_ticks  stop_ticks  fills  net_pnl_usd  fees_paid  
 taking liquidity. The full 27-cell grid and the rest of that table are in
 [Performance History](../performance/history-03-studies.md#the-non-market-making-signal-what-27-parameter-sets-say).
 
-</details>
+///
 

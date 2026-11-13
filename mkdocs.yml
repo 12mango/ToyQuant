@@ -91,6 +91,11 @@ nav:
       - Document map: MAP.md
 
 markdown_extensions:
+  # `pymdownx.blocks.details` is the foldable block, and it is not the `<details>` tag on purpose: Python-Markdown
+  # passes a raw HTML block through as HTML, so a table inside `<details>` reaches the browser as a paragraph full
+  # of pipes (`md_in_html` fixes the code blocks in one but not the tables). The `/// details | title` form is parsed
+  # as Markdown, so a folded table is a table.
+  - pymdownx.blocks.details
   - toc:
       permalink: true
       toc_depth: 3
