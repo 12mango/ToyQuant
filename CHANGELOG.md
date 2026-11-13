@@ -21,9 +21,11 @@ site now points at `ToyQuant`.
 - **`--check` is the point.** It re-hashes the tree, names every file that changed, appeared or disappeared, and notes
   how far the snapshot's commit is behind HEAD; exit 1 when anything differs. Its `--self-test` proves the check fires
   by corrupting one hash and dropping two entries in a temporary bundle, so the tool is a check rather than a promise.
-- **Measured on this tree at `66f299e`**: 212 code files (2.2 MB) and 55 docs files (1.1 MB), a 28 KB manifest. That is
-  why the halves are separate and why a dump is the wrong artifact for an assistant: a manifest plus the three front
-  doors is about a thousandth of the tokens, and the files a question needs are read on request.
+- **Measured on this tree at `66f299e`**, in bytes and at four bytes a token: `code.txt` 2,217,592 B (~554k tokens),
+  `docs.txt` 1,104,519 B (~276k), `manifest.txt` 26,185 B (~6.5k). The manifest plus the three front doors
+  (`README.md`, `docs/index.md`, `docs/MAP.md`) is 47,605 B (~11.9k), so a dump is **70x** the artifact an assistant
+  should be given first -- and the first version of this sentence said "a thousandth" and "330x", which is arithmetic
+  nobody had done.
 - No C++, no recorded number and no size count moved. The tool is manual like the study tools, and `docs/TOOLS.md` says
   so in the row that lists it.
 
