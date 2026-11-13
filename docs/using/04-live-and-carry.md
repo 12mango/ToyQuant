@@ -118,10 +118,21 @@ conversation:
 - the business route, which is where an order is normally placed, refuses the `orders` subscription outright (`60018`,
   with `ANY` and with `SWAP`), so the subscription and the order placement live on different surfaces.
 
-So the round trip is proven and a fill is not yet, for a reason that is now a question rather than a gap: which of the
-venue's order surfaces this line uses, and what that surface requires (`instIdCode`, or the REST route). The second open
-item is the size: `sz` is in the replay instrument's units, not the venue's -- `10` is ten USD-notional contracts of a
-Deribit perpetual and ten 0.1-BTC contracts of an OKX swap.
+So the round trip is proven and a fill is not yet. What the probes settled, in order:
+
+- the private route's order operation wants `instIdCode`, the venue's internal code for the contract (10459 for
+  `BTC-USDT-SWAP`, read from its public instruments endpoint). `--order-inst-code` passes it through and is deliberately
+  required rather than derived: a guessed code is an order on the wrong contract;
+- with the code the parameter complaints stop, and the venue answers `50026 "System error. Try again later."` for the
+  order and `51400 "Order cancellation failed as the order has been filled, canceled or does not exist"` for its cancel --
+  its own failures, not this side's, and both are booked by the engine as rejections;
+- the business route, which is where an order is normally placed, refuses both the `orders` subscription (`60018`) and an
+  `op: order` (`60012 Illegal request`), which is what `--order-no-subscribe` was written to test.
+
+So the surfaces are now known and the remaining obstacle is the demo venue's own answer, not the shape of a request. The
+second open item is the size: `sz` is in the replay instrument's units, not the venue's -- `10` is ten USD-notional
+contracts of a Deribit perpetual and ten 0.01-BTC contracts of an OKX swap, so the same integer is a hundred times the
+notional.
 
 
 ## Carry: Two Legs Over Two Funding Histories

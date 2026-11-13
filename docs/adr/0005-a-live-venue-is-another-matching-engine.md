@@ -93,15 +93,17 @@ nothing about profit, and what stops it from becoming a program that spends mone
   ignored an order. Both are fixed (the request carries its order id, and a top-level non-zero `code` becomes a
   `REJECT`), `--order-dump=FILE` now records every frame both ways, and `--self-test` pins the redaction (no key, no
   signature) and the four refusal shapes.
-- **What the sandbox run now says.** With the id, the venue correlates its answer and names its own complaint:
-  `sCode 50014, "Parameter instIdCode can not be empty"`, twice, and both reach the engine as reports --
-  `[VENUE] frames_sent=2 frames_received=2 reports=2`, on the private route. The round trip is therefore proven: a frame
-  leaves, the venue's reason comes back attributed to the order, and the engine books it as a rejection. What is not
-  proven is a *fill*, and the reason is now a named question rather than a silence: the private route's order operation
-  wants `instIdCode`, and the business route -- the venue's other order surface -- does not serve the `orders` channel at
-  all (`60018`, with `ANY` and with `SWAP`), so which surface this line places orders on, and what it has to send, is a
-  decision about this record rather than a bug. The size is the second open item: `sz` is in the replay instrument's
-  units, not the venue's.
+- **What the sandbox run now says, and where it stops.** With the id, the venue correlates its answer and names its own
+  complaint: `sCode 50014, "Parameter instIdCode can not be empty"`. That field is the venue's internal code for the
+  contract -- 10459 for `BTC-USDT-SWAP`, read from its public instruments endpoint -- and `--order-inst-code` passes it
+  through rather than deriving it, because a guessed code is an order on the wrong contract. With it the parameter
+  complaints stop and the venue answers `50026 "System error. Try again later."` for the order and
+  `51400 "Order cancellation failed ... does not exist"` for its cancel: its own failures, both booked by the engine as
+  rejections (`[VENUE] frames_sent=2 frames_received=2 reports=2`). The business route, the venue's other order surface,
+  refuses the `orders` subscription (`60018`) and an `op: order` (`60012`), which is what `--order-no-subscribe` was
+  written to establish. So the round trip is proven, the request's shape is settled, and a *fill* is blocked on the demo
+  venue's own answer rather than on anything this side sends. The size is the second open item: `sz` is in the replay
+  instrument's units, not the venue's, and the same integer is a hundred times the notional.
 - **What it costs**: one adapter, one wire, one relay order channel, one recorder with its reader, and the flag
   plumbing -- `src/lines/live_venue.{h,cpp}`, `src/lines/tcp_venue_transport.{h,cpp}`, the order channel in
   `tools/live/venue_relay.py`, `src/lines/order_recorder.{h,cpp}`, `src/lines/recorded_venue.{h,cpp}` and a

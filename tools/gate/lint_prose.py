@@ -177,7 +177,10 @@ def main():
                         # The private route's record of what crossed and the type its subscription asks for. Both
                         # are the relay's: the first exists because a dropped answer looked like a silent venue,
                         # and the second because the venue's two order surfaces want different tokens.
-                        "--order-dump", "--order-inst-type"}:
+                        "--order-dump", "--order-inst-type",
+                        # The placement route's two switches: a login with no subscription (what the business
+                        # endpoint can have) and the venue's internal contract code its order operation demands.
+                        "--order-no-subscribe", "--order-inst-code"}:
             problems.append(f"{flag} is mentioned in a document and is not a flag the binary accepts")
     for model in sorted(models):
         if model not in text.lower():

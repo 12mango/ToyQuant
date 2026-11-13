@@ -21,13 +21,15 @@ site now points at `ToyQuant`.
 - **Two flags make the next silence attributable.** `--order-dump=FILE` writes every frame both ways, one JSON object a
   line, with the login's key and signature redacted (the self-test asserts nothing of the secret reaches the file);
   `--order-inst-type` chooses the `orders` subscription's type.
-- **What the run says now.** With the id, the venue answers per order with a specific complaint -- `sCode 50014,
-  "Parameter instIdCode can not be empty"` for both the order and its cancel -- and both reach the engine:
-  `[VENUE] frames_sent=2 frames_received=2 reports=2`, booked as rejections. The round trip is proven; a *fill* is not,
-  and the reason is a named question: the private route's order operation wants `instIdCode`, and the business route --
-  the venue's other order surface -- refuses the `orders` subscription outright (`60018`, with `ANY` and with `SWAP`), so
-  subscription and placement live on different surfaces. The second open item is the size, which is in the replay
-  instrument's units and not the venue's.
+- **What the run says now, and where it stops.** The venue's parameter complaint names the missing field: `instIdCode`,
+  its internal code for the contract (10459 for `BTC-USDT-SWAP`, from its public instruments endpoint). `--order-inst-code`
+  passes it through and does not derive it, because a guessed code is an order on the wrong contract. With it the
+  parameter complaints stop and the venue answers `50026 "System error. Try again later."` for the order and
+  `51400 "Order cancellation failed ... does not exist"` for its cancel, both booked by the engine as rejections
+  (`[VENUE] frames_sent=2 frames_received=2 reports=2`). The business route refuses the `orders` subscription (`60018`)
+  and an `op: order` (`60012`) -- what `--order-no-subscribe` was written to establish -- so the surfaces are known, the
+  request's shape is settled, and a fill is blocked on the demo venue's own answer. The second open item is the size,
+  which is in the replay instrument's units and not the venue's.
 - No C++, no recorded number and no size count changed; `--self-test` carries the new pins and the gate runs it.
 
 ## The live venue becomes the run's venue (2026-11-13)

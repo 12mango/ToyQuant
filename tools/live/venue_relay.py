@@ -559,8 +559,13 @@ class OrderTranslator:
     of the simulator -- and these two translations stay as they are.
     """
 
-    def __init__(self, instrument):
+    def __init__(self, instrument, inst_code=None):
         self.instrument = instrument
+        # The venue's internal code for the instrument. Newer order operations ask for it alongside `instId` and
+        # refuse with `50014 "Parameter instIdCode can not be empty"` without it; it is a number the operator reads
+        # from the venue's public instruments endpoint, and it is not derived here because a wrong guess would be an
+        # order on the wrong contract.
+        self.inst_code = inst_code
         # What the channel has been told, keyed by the client order id: a cancel needs the instrument it was
         # placed on, and the venue's messages carry the id the engine chose.
         self.orders = {}
@@ -589,19 +594,22 @@ class OrderTranslator:
             # once on `--instrument`. `px` is passed through as the engine wrote it -- the shortest decimal that
             # parses back to the same double -- rather than reformatted, so the venue sees the price the strategy
             # decided.
-            return {"id": cl_ord_id, "op": "order",
-                    "args": [{"instId": self.instrument, "tdMode": "cross",
-                              "side": "buy" if side == "B" else "sell",
-                              "ordType": "limit", "px": price, "sz": quantity,
-                              "clOrdId": cl_ord_id}]}
+            order = {"instId": self.instrument, "tdMode": "cross",
+                     "side": "buy" if side == "B" else "sell",
+                     "ordType": "limit", "px": price, "sz": quantity,
+                     "clOrdId": cl_ord_id}
+            if self.inst_code is not None:
+                order["instIdCode"] = self.inst_code
+            return {"id": cl_ord_id, "op": "order", "args": [order]}
         if fields[0] == "CANCEL":
             if len(fields) != 2:
                 raise OrderError(f"a cancel line has two fields and this one has {len(fields)}")
             cl_ord_id = fields[1]
             if not cl_ord_id.isdigit():
                 raise OrderError(f"the order id '{cl_ord_id}' is not a number")
-            return {"id": cl_ord_id, "op": "cancel-order", "args": [{"instId": self.instrument,
-                                                                     "clOrdId": cl_ord_id}]}
+            return {"id": cl_ord_id, "op": "cancel-order", "args": [dict(
+                {"instId": self.instrument, "clOrdId": cl_ord_id},
+                **({"instIdCode": self.inst_code} if self.inst_code is not None else {}))]}
         raise OrderError(f"'{fields[0]}' is not an order or a cancel")
 
     def decode(self, message):
@@ -755,7 +763,8 @@ def serve_orders(listen, instrument, max_quantity=100, capture=None):
 
 # ---------------------------------------------------------------- credentials and the private route
 
-def serve_venue_orders(listen, url, credentials, instrument, capture=None, dump=None, inst_type="ANY"):
+def serve_venue_orders(listen, url, credentials, instrument, capture=None, dump=None, inst_type="ANY",
+                       subscribe_orders=True, inst_code=None):
     """Answers the engine's order leg from the venue's private channel.
 
     The engine's side is exactly what the simulation serves -- a line socket, one frame a line -- so the adapter
@@ -773,7 +782,7 @@ def serve_venue_orders(listen, url, credentials, instrument, capture=None, dump=
     print(f"order channel listening on {host}:{listener.getsockname()[1]}", flush=True)
     conn, peer = listener.accept()
     print(f"engine connected from {peer[0]}:{peer[1]}", flush=True)
-    translator = OrderTranslator(instrument)
+    translator = OrderTranslator(instrument, inst_code)
     sink = open(capture, "a", encoding="utf-8") if capture else None
     # The raw frames, appended rather than truncated: a run that reconnects writes several sessions into one
     # file, and the order they crossed in is the thing being read.
@@ -794,7 +803,7 @@ def serve_venue_orders(listen, url, credentials, instrument, capture=None, dump=
             replies += 1
 
     client = OrderVenueClient(url, credentials, translator, deliver, stop=stop, dump=dump_sink,
-                              inst_type=inst_type)
+                              inst_type=inst_type, subscribe_orders=subscribe_orders)
     client.start()
     pending = b""
     try:
@@ -960,7 +969,7 @@ class OrderVenueClient(threading.Thread):
     """
 
     def __init__(self, url, credentials, translator, deliver, stop=None, backoff_seconds=1.0, dump=None,
-                 inst_type="ANY"):
+                 inst_type="ANY", subscribe_orders=True):
         super().__init__(daemon=True)
         self.url = url
         self.credentials = credentials
@@ -978,6 +987,10 @@ class OrderVenueClient(threading.Thread):
         # The instrument type the `orders` subscription asks for. `ANY` for the private route, a concrete type for
         # the business route, which refuses `ANY` with `60018`.
         self.inst_type = inst_type
+        # False for a route that places orders and reads the venue's answers to them but subscribes no channel: the
+        # business endpoint serves `op: order` and refuses the `orders` subscription, so a placement route has to be
+        # able to log in without one.
+        self.subscribe_orders = subscribe_orders
         # Outbound requests wait here so the reader never blocks on a write; `write_loop` owns the socket's
         # send side for the length of one session.
         self.outbox = queue.Queue()
@@ -1052,7 +1065,9 @@ class OrderVenueClient(threading.Thread):
             sock.settimeout(PING_AFTER_SECONDS)
             self.pending = []
             self.login(sock)
-            self.subscribe(sock)
+            # A placement route has nothing to subscribe: the venue's answer to each `op: order` is the report.
+            if self.subscribe_orders:
+                self.subscribe(sock)
             writer = threading.Thread(target=self.write_loop, args=(sock, writer_stop), daemon=True)
             writer.start()
             for message in self.pending:
@@ -1414,6 +1429,11 @@ def self_test():
     argument = request["args"][0]
     assert (argument["instId"], argument["side"], argument["ordType"], argument["px"], argument["sz"],
             argument["clOrdId"]) == ("BTC-USDT-SWAP", "buy", "limit", "6421.5", "10", "7"), argument
+    # The venue's internal instrument code goes on the wire only when the operator names it: its newer order
+    # operation refuses without one, and a guessed default would be an order on the wrong contract.
+    assert "instIdCode" not in argument, argument
+    coded = OrderTranslator("BTC-USDT-SWAP", 10459)
+    assert coded.encode("ORDER 7 BTC-PERPETUAL B 6421.5 10 Gtc")["args"][0]["instIdCode"] == 10459
 
     venue = SimulatedVenue(max_quantity=100)
     replies = [line for message in venue.messages(request) for line in translator.decode(message)]
@@ -1572,6 +1592,12 @@ def main():
                         choices=["ANY", "SPOT", "MARGIN", "SWAP", "FUTURES", "OPTION"],
                         help="the instrument type the orders subscription asks for: ANY on the private route, a "
                              "concrete type on the business route, which refuses ANY with 60018")
+    parser.add_argument("--order-no-subscribe", action="store_true",
+                        help="log in without subscribing the orders channel: the venue's answer to each request is "
+                             "the only report, which is what a placement route on the business endpoint can have")
+    parser.add_argument("--order-inst-code", type=int,
+                        help="the venue's internal code for the instrument (instIdCode), which its newer order "
+                             "operation requires; read it from the venue's public instruments endpoint")
     parser.add_argument("--record", help="write the decoded rows straight to PREFIX_trades.csv and "
                                          "PREFIX_depth.csv: the direct route, with no engine")
     parser.add_argument("--replay", help="serve this capture instead of connecting; no network")
@@ -1608,7 +1634,8 @@ def main():
             parser.error("--order-listen without --simulate-orders serves the venue's private channel, and "
                          f"{error}")
         return serve_venue_orders(args.order_listen, args.order_venue, credentials, args.instrument,
-                                  args.order_capture, args.order_dump, args.order_inst_type)
+                                  args.order_capture, args.order_dump, args.order_inst_type,
+                                  not args.order_no_subscribe, args.order_inst_code)
 
     decoder = Decoder(args.instrument, args.contract_size, args.quantity_scale, args.levels)
     stop = threading.Event()
