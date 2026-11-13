@@ -1,0 +1,11 @@
+```mermaid
+%% The front door's version of the path: the same chain, six boxes, no side branches. The full one, with the
+%% three engines and the recording loop, is `path.mmd` on the quickstart. README.md carries a copy, because GitHub
+%% renders mermaid but cannot include a file.
+flowchart LR
+    D["market data<br/>CSV / WebSocket / recorded"] --> B["L2 book<br/>queue modelled"]
+    B --> S["strategy"]
+    S --> G{"risk gate"}
+    G --> M["matching engine<br/>in-process / broker / live"]
+    M --> L["ledger<br/>[PNL] and [RECON]"]
+```
