@@ -121,6 +121,11 @@ compatibility path. Everything below assumes that page.
     - anything that crosses into Windows (`powershell.exe`, `wslpath` on a slow path) gets a `timeout`, because WSL
       interop can block indefinitely and it is the call most likely to hang;
     - poll by **reading a file**, which does not use the shell at all, rather than by `sleep; cat` chains;
+    - **launch detached from the tool's pipe**: `(setsid bash script >/dev/null 2>&1 </dev/null &)`, and afterwards ask
+      the shell nothing at all for a minute. Observed twice, both times while `verify_l2.sh fast` was running: while a
+      backgrounded child is alive, the session stops dispatching -- even `echo` produces nothing -- and it recovers by
+      itself when that child exits (a 186 s `fast` ended the second occurrence). So redirect stdin as well as both
+      output streams, give one long command at a time, and let the log file be the only channel in between.
     - if a command does not report completion, stop chaining and test with `echo`: a shell that cannot echo is wedged,
       and nothing started from inside it will run. Recovery is closing the terminal tab (or `pkill -f` the last
       command), and the repository state is what `git` says afterwards -- not what the wedged shell said.
