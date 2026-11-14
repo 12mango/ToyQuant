@@ -26,7 +26,14 @@ if ! command -v powershell.exe >/dev/null 2>&1; then
 fi
 
 OUT="out/export"
-python3 tools/export/bundle.py --sync --out "$OUT" || exit 1
+# The post-commit hook writes the manifest before it copies, so a copy that dies leaves the next sync with nothing to
+# diff -- the reviewer's `diff.patch` would be empty for the change under review. TOYQUANT_SINCE names the base for
+# exactly that case: `TOYQUANT_SINCE=<commit> bash tools/export/push_windows.sh` re-publishes the change since it.
+if [ -n "${TOYQUANT_SINCE:-}" ]; then
+    python3 tools/export/bundle.py --sync --out "$OUT" --since "$TOYQUANT_SINCE" || exit 1
+else
+    python3 tools/export/bundle.py --sync --out "$OUT" || exit 1
+fi
 
 UNC="$(wslpath -w "$(pwd)/$OUT")"
 echo "copying $OUT -> $DEST"
