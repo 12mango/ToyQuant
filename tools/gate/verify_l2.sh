@@ -486,6 +486,18 @@ tier1() {
   # and the path figures are the ones a reader meets before any number.
   python3 tools/study/figure_path.py --check >> "$TOOL_CHECK_LOG" 2>&1 || tool_check=1
   python3 tools/study/figure_charge.py --check >> "$TOOL_CHECK_LOG" 2>&1 || tool_check=1
+  # A tool script that only works from the repository root is a script a reader meets broken, and the two that were
+  # in that state -- `tools/sweep/compare_runs.sh` and `workload_matrix.sh` -- were written before the convention was
+  # checked rather than remembered. The invariant is mechanical, so it is a loop: every script opens with the same
+  # `cd`, except `lib.sh` (sourced into this script) and `detach.sh` (whose whole job is to run in the caller's
+  # directory). `bash -n` rides along, because a syntax error in a tool nothing runs until an afternoon it is needed
+  # is the same kind of drift as a missing guard.
+  for script in tools/*/*.sh; do
+    bash -n "$script" || { echo "syntax error: $script" >> "$TOOL_CHECK_LOG"; tool_check=1; }
+    case "$script" in tools/gate/lib.sh|tools/gate/detach.sh) continue ;; esac
+    grep -q 'cd "$(dirname "$0")/../.."' "$script" || {
+      echo "no cd guard: $script" >> "$TOOL_CHECK_LOG"; tool_check=1; }
+  done
   fi
   local label=tier1
   [ "$mode" = code ] && label=code

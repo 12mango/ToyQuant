@@ -53,7 +53,7 @@ def split_csv(input_path, output_dir, prefix, start_ts, end_ts, window_us, every
 
 def main():
     parser = argparse.ArgumentParser(description="Analyze L2 strategy performance by time window")
-    parser.add_argument("--binary", type=Path, default=Path("build/toy_quant"))
+    parser.add_argument("--binary", type=Path, default=Path("out/build/linux-debug/toy_quant"))
     parser.add_argument("--trades", type=Path, required=True)
     parser.add_argument("--depth", type=Path, required=True)
     parser.add_argument("--symbol", default="BTC-PERPETUAL")

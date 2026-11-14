@@ -65,9 +65,9 @@ data/v2/
 
 
 
-# Visualization reports: keep the README example image and ignore other outputs
-reports/*
-!reports/synthetic_ticks_optimized.png
+# Visualization reports are a tool's output, not an input: a committed figure is a second, older picture of a
+# system that has since changed, and nothing in the tree reads one back.
+reports/
 
 # --------------------------------------------------
 # Local credentials: never committed, never in a run's [Mode] line

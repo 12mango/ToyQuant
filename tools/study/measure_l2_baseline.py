@@ -17,7 +17,7 @@ def digest_output(output: str) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--binary", type=Path, default=Path("build/toy_quant"))
+    parser.add_argument("--binary", type=Path, default=Path("out/build/linux-debug/toy_quant"))
     parser.add_argument("--trades", type=Path, required=True)
     parser.add_argument("--depth", type=Path, required=True)
     parser.add_argument("--symbol", default="BTC-PERPETUAL")

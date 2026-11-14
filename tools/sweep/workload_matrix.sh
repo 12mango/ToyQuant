@@ -12,6 +12,9 @@
 #
 # TRADES and DEPTH override the inputs; the slice is cut by tools/gate/verify_l2.sh.
 set -u
+# Run from the repository root whatever directory the caller is in, for the reason `compare_runs.sh` states: the
+# inputs and the binary below are relative paths, and the `all` lever re-invokes this script by `$0`.
+cd "$(dirname "$0")/../.." || exit 1
 
 TRADES="${TRADES:-data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz}"
 DEPTH="${DEPTH:-/tmp/depth_200k_base.csv}"

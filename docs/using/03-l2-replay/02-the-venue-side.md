@@ -107,7 +107,7 @@ which is what makes one micro E-mini S&P 500 unit worth five times the index pri
 worth 1.25 USD rather than 0.25, so a commission of about sixty cents a contract is half a tick a side:
 
 ```bash
-./build/toy_quant l2_replay data/v2/futures/glbx_MESZ6_trades.csv.gz data/v2/futures/glbx_MESZ6_depth.csv.gz \
+out/build/linux-debug/toy_quant l2_replay data/v2/futures/glbx_MESZ6_trades.csv.gz data/v2/futures/glbx_MESZ6_depth.csv.gz \
   MESZ6 0 active_l2 1 conservative --order-size=5 --inventory-limit=20 --base-spread-ticks=1
 ```
 
@@ -172,7 +172,7 @@ not sufficient. Use `analyze_l2_windows.py` for repeated 15-minute windows:
 
 ```bash
 python3 tools/study/analyze_l2_windows.py \
-  --binary build/toy_quant \
+  --binary out/build/linux-debug/toy_quant \
   --trades data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
   --depth data/v2/crypto/deribit_book_snapshot_25_2020-04-01_BTC-PERPETUAL.csv \
   --symbol BTC-PERPETUAL \

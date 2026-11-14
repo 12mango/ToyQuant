@@ -21,6 +21,11 @@
 #
 # TOY_QUANT_BIN overrides the binary, TOY_QUANT_FIELDS the columns.
 set -u
+# Run from the repository root whatever directory the caller is in: every path below (`out/...`, `data/...`) is
+# relative, and a script that only works from one directory is a script that fails in the place a reader happens
+# to be. `tools/gate/lib.sh` (sourced) and `tools/gate/detach.sh` (runs in the caller's directory on purpose) are
+# the two exceptions, and `verify_l2.sh` checks the rest for this line.
+cd "$(dirname "$0")/../.." || exit 1
 
 BIN="${TOY_QUANT_BIN:-out/build/linux-debug/toy_quant}"
 FIELDS="${TOY_QUANT_FIELDS:-submitted_orders trade_reports fill_rate queue_ahead_consumed buy_queue_from_quantity_changes sell_queue_from_quantity_changes captured_edge_per_unit_ticks markout_per_unit_ticks markout_count max_abs_inventory max_abs_exposure_usd exposure_over_collateral_fills strategy_position_mismatches position_limit risk_rejected_orders realized_pnl equity fees_paid working_orders}"

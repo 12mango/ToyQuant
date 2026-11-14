@@ -449,7 +449,7 @@ def run_strategy(binary, trades_path, depth_path, symbol, strategy, quantity_sca
 
 def main():
     parser = argparse.ArgumentParser(description="Benchmark L2 strategy variants on an aligned window")
-    parser.add_argument("--binary", type=Path, default=Path("build/toy_quant"))
+    parser.add_argument("--binary", type=Path, default=Path("out/build/linux-debug/toy_quant"))
     parser.add_argument("--trades", type=Path, required=True)
     parser.add_argument("--depth", type=Path, required=True)
     parser.add_argument("--symbol", default="BTC-PERPETUAL")
