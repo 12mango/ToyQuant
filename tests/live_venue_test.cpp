@@ -106,6 +106,28 @@ int main()
         assert(venue.counters().refused_by_adapter == 1);
     }
 
+    // The notional bound is the one a reader can price, and it is computed with the helper the ledger books with: a
+    // thousand dollars of cap takes an order worth exactly that and refuses the next unit of size.
+    {
+        RecordingTransport wire;
+        LiveVenue venue(wire, LiveVenueConfig{.max_order_notional_usd = 1000.0});
+        venue.send_order(make_order(1, exchange::Side::Buy, 10.0, 100));
+        venue.send_order(make_order(2, exchange::Side::Buy, 10.0, 101));
+        assert(wire.frames.size() == 1);
+        assert(venue.counters().orders_sent == 1);
+        assert(venue.counters().refused_by_adapter == 1);
+    }
+
+    // ...and the engine's own scale is part of that arithmetic, which is what `price * qty` would have got wrong:
+    // twenty million units of a one-millionth-scale instrument at a price of ten is 200 USD, not 200 million.
+    {
+        RecordingTransport wire;
+        LiveVenue venue(wire, LiveVenueConfig{.max_order_notional_usd = 100.0, .quantity_scale = 1000000});
+        venue.send_order(make_order(3, exchange::Side::Buy, 10.0, 20000000));
+        assert(wire.frames.empty());
+        assert(venue.counters().refused_by_adapter == 1);
+    }
+
     // A wire that refuses is counted as a failure and not as a sent order. An adapter that reported success on
     // a dead wire would make the next reconciliation the first evidence that anything was wrong.
     {

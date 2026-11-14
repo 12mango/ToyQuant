@@ -7,6 +7,31 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The sandbox's four open items (2026-11-14)
+
+- **The adapter's cap can be priced.** A count and a size bound say nothing about a strategy that sends few, large
+  orders, so `LiveVenue` gained `--venue-max-notional=USD`, computed with `fill_notional_usd` -- the helper the ledger
+  books with -- and refused before anything reaches the wire. `tests/live_venue_test` fires it twice: on a price-quoted
+  instrument, and once where the engine's own `quantity_scale` is what makes twenty million units 200 USD.
+- **The relay converts the engine's numbers into the venue's.** `sz` was sent as if a contract were an engine unit and
+  `px` as if the venue took any decimal. The translator now divides by `--quantity-scale` and the contract's
+  `--contract-size`, rounds down to `--lot-size`, rounds the price onto `--tick-size`, and refuses a size below one
+  contract with both numbers. `venue_relay.py --self-test` and `tests/relay_order_channel_test` measure it end to end:
+  100,000 engine units are ten contracts, and the sandbox's half fill comes back as 50,000 units.
+- **The `orders` channel is de-duplicated.** The venue re-sends an order's state on every change and again after a
+  reconnect, and `accFillSz` is cumulative; one fill is booked per increment of it, the repeats are counted as
+  `deduplicated`, and a counter that goes backwards is refused rather than booked.
+- **`--replay-orders` replays a recorded session on its own clock.** `RecordedVenue` holds every report and releases it
+  when the run's clock passes its timestamp -- the reading ADR 0005's amendment chose -- releases the tail at the end
+  and counts it as `flushed`, and the run prints `[ORDER-REPLAY]`. Measured on the 200k slice: recording and replaying
+  the same session give the same `[PNL]` (`net_pnl_usd=0.0071445`) and the same `[EXECUTION]`
+  (`submitted_orders=305`, `trade_reports=15`), with `[ORDER-REPLAY] reports=655 rows_left=0 pending=0 flushed=0`.
+- **Two commands in the quickstart could not run as written.** `--record /tmp/one` and `--record-orders /tmp/session`
+  are prefix flags the parser accepts only as `--name=value`; both are fixed, and `lint_prose.py` now fails a bash
+  fence that writes one with a space.
+- Gate: `code OK` and `docs OK`, `lint_prose` 0 problems (84 flags, 120 files / 26,363 lines, 47 documents),
+  `check_links` 0 problems, `mkdocs build --strict` green, `fast` green (`tier0 OK` / `tier1 OK`).
+
 ## The data page matches the checkout it describes (2026-11-14)
 
 - **`docs/DATA.md` opened on a directory that no longer exists.** "This directory has two purposes, `scenarios/` and

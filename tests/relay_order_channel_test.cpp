@@ -122,18 +122,22 @@ int main()
     venue.set_report_callback([&reports](const ExecutionReport& report) { reports.push_back(report); });
     transport.set_line_handler([&venue](std::string_view line) { venue.on_frame(line); });
 
-    // An order: the venue's acknowledgement, then half of it filled at the order's own price.
-    venue.send_order(make_order(7, exchange::Side::Buy, 6421.5, 10));
+    // An order: the venue's acknowledgement, then half of it filled at the order's own price. The size is 100,000
+    // engine units, which the relay turns into ten contracts (one is 0.01 of the coin and the engine's scale is
+    // 1e6), and the answer comes back in engine units again -- so this line is the conversion measured across two
+    // processes rather than inside one.
+    venue.send_order(make_order(7, exchange::Side::Buy, 6421.5, 100000));
     if (!wait_for([&reports] { return reports.size() >= 2; }))
         throw std::runtime_error("the order channel never answered the order, so the relay and the adapter "
                                  "disagree about the protocol");
-    if (reports[0].order_id != 7 || reports[0].exec_type != ExecType::Resting || reports[0].quantity != 10)
+    if (reports[0].order_id != 7 || reports[0].exec_type != ExecType::Resting || reports[0].quantity != 100000)
         throw std::runtime_error("the acknowledgement is not the one the sandbox venue sent");
-    if (reports[1].exec_type != ExecType::Trade || reports[1].price != 6421.5 || reports[1].quantity != 5)
+    if (reports[1].exec_type != ExecType::Trade || reports[1].price != 6421.5 || reports[1].quantity != 50000)
         throw std::runtime_error("the fill is not the one the sandbox venue sent");
 
-    // Above the sandbox's cap: a refusal, which is a different report rather than a smaller fill.
-    venue.send_order(make_order(8, exchange::Side::Buy, 6421.0, 1000));
+    // Above the sandbox's cap: a refusal, which is a different report rather than a smaller fill. Ten million units
+    // are a thousand contracts against a cap of a hundred.
+    venue.send_order(make_order(8, exchange::Side::Buy, 6421.0, 10000000));
     if (!wait_for([&reports] { return reports.size() >= 3; }))
         throw std::runtime_error("the sandbox venue never refused the oversized order");
     if (reports[2].order_id != 8 || reports[2].exec_type != ExecType::Rejected)

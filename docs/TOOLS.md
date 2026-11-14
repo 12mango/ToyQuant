@@ -70,7 +70,7 @@ does not.
 | `tools/study/viability.py` | the eight closed lines, re-derived | gate |
 | `tools/study/volatility_window.py` | a windowed true range and its median split | both |
 | `tools/study/walk_forward.py` | chosen on the past, scored on the next window | both |
-| `tools/live/venue_relay.py` | market data to the engine, and the order leg both ways | both |
+| `tools/live/venue_relay.py` | market data to the engine, and the order leg both ways on the venue's grid | both |
 | `tools/live/websocket_sender.py` | a local venue streaming two recorded files | hand |
 | `tools/live/soak_push.sh` | a session's ping, reconnect and sequence counters | hand |
 | `tools/live/trace_order.sh` | the order that waited longest, stage by stage | hand |

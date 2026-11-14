@@ -52,6 +52,7 @@ import hashlib
 import hmac
 import io
 import json
+import math
 import os
 import queue
 import socket
@@ -62,6 +63,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from collections import namedtuple
 from datetime import datetime, timezone
 
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
@@ -69,6 +71,13 @@ DEFAULT_VENUE = "wss://ws.okx.com:8443/ws/v5/public"
 DEFAULT_INSTRUMENT = "BTC-USDT-SWAP"
 DEFAULT_CONTRACT_SIZE = 0.01
 DEFAULT_QUANTITY_SCALE = 1000000
+# The order leg's grid, for the instrument this relay was written for. A price moves in `tick_size` steps and a
+# size in `lot_size` contracts; both are venue facts, so they are flags rather than arithmetic.
+DEFAULT_TICK_SIZE = 0.1
+DEFAULT_LOT_SIZE = 1
+# The four numbers that turn an engine order into a venue order: one contract is `contract_size` of the coin,
+# `quantity_scale` engine units are one of the coin, a price sits on `tick_size` and a size on `lot_size`.
+OrderMapping = namedtuple("OrderMapping", "contract_size quantity_scale tick_size lot_size")
 # OKX closes an idle public connection, and asks for a text ping when nothing has been sent for 30 s.
 PING_AFTER_SECONDS = 25
 # Rows in flight between the venue thread and the thread serving the engine. Bounded, because an engine
@@ -589,16 +598,59 @@ class OrderTranslator:
     of the simulator -- and these two translations stay as they are.
     """
 
-    def __init__(self, instrument, inst_code=None):
+    def __init__(self, instrument, inst_code=None, mapping=None):
         self.instrument = instrument
         # The venue's internal code for the instrument. Newer order operations ask for it alongside `instId` and
         # refuse with `50014 "Parameter instIdCode can not be empty"` without it; it is a number the operator reads
         # from the venue's public instruments endpoint, and it is not derived here because a wrong guess would be an
         # order on the wrong contract.
         self.inst_code = inst_code
+        # The venue's grid and the engine's scale. Every number is a flag for the same reason `inst_code` is: a
+        # wrong guess here is an order of the wrong size at a price the venue refuses.
+        self.mapping = mapping or OrderMapping(DEFAULT_CONTRACT_SIZE, DEFAULT_QUANTITY_SCALE,
+                                               DEFAULT_TICK_SIZE, DEFAULT_LOT_SIZE)
         # What the channel has been told, keyed by the client order id: a cancel needs the instrument it was
-        # placed on, and the venue's messages carry the id the engine chose.
+        # placed on, and the `orders` channel repeats a cumulative fill count, which the de-duplication reads.
         self.orders = {}
+        # Messages that repeated a fill the engine had already been told about. Printed rather than swallowed: a
+        # reconnect re-sends the current state of every live order, so this number being zero on a session with a
+        # drop would be the surprising case.
+        self.fills_deduplicated = 0
+
+    def units_of(self, contracts):
+        """The venue's contracts as engine units -- `Decoder.amount` read the other way."""
+        return int(round(contracts * self.mapping.contract_size * self.mapping.quantity_scale))
+
+    def contracts_for(self, units):
+        """The engine's units as the venue's contracts, rounded down to the venue's lot.
+
+        One contract is `contract_size` of the coin, so a contract is `contract_size * quantity_scale` engine
+        units. Rounded down rather than to nearest, because a size above what the strategy asked for is the
+        direction that turns a demonstration into a position; a size that rounds to nothing is refused here,
+        where the reason can name both numbers, rather than at the venue as a rejection.
+        """
+        per_contract = self.mapping.contract_size * self.mapping.quantity_scale
+        contracts = int(units // per_contract)
+        if self.mapping.lot_size > 1:
+            contracts -= contracts % self.mapping.lot_size
+        if contracts <= 0:
+            raise OrderError(
+                f"quantity {units} engine units is {units / self.mapping.quantity_scale:g} of the coin, below one "
+                f"contract of {self.mapping.contract_size:g} ({per_contract:g} units), so there is nothing to place")
+        return contracts
+
+    def price_on_tick(self, text):
+        """The engine's price on the venue's grid, as a decimal the venue accepts.
+
+        The replay's book is priced on the instrument's tick, and the venue's is the same instrument -- but a
+        price one step off its grid is refused (`51006`) rather than rounded by the venue, and the engine's
+        double can carry digits the grid does not have. Rounding is to the nearest step, which is the smallest
+        change the venue can represent rather than a view on the price.
+        """
+        step = self.mapping.tick_size
+        steps = round(float(text) / step)
+        decimals = max(0, -int(math.floor(math.log10(step)))) if step < 1 else 0
+        return f"{steps * step:.{decimals}f}"
 
     def encode(self, line):
         fields = line.split()
@@ -617,16 +669,18 @@ class OrderTranslator:
                 raise OrderError(f"quantity '{quantity}' is not a positive integer")
             if tif not in ("Gtc", "Ioc", "Fok"):
                 raise OrderError(f"time in force '{tif}' is not Gtc, Ioc or Fok")
-            self.orders[cl_ord_id] = {"symbol": symbol, "quantity": int(quantity)}
-            # OKX's shape for a limit order. The instrument is the relay's, not the engine's: the replay runs on
-            # whatever instrument its book came from, and the venue only knows its own name for the thing, so the
-            # mapping lives here -- the layer ADR 0005 says knows a venue's shapes -- and the operator names it
-            # once on `--instrument`. `px` is passed through as the engine wrote it -- the shortest decimal that
-            # parses back to the same double -- rather than reformatted, so the venue sees the price the strategy
-            # decided.
+            units = int(quantity)
+            contracts = self.contracts_for(units)
+            self.orders[cl_ord_id] = {"symbol": symbol, "units": units, "contracts": contracts,
+                                      "filled": 0, "terminal": False}
+            # OKX's shape for a limit order, with both numbers on the venue's grid: `sz` in contracts (one is
+            # `contract_size` of the coin, so the engine's `quantity_scale` and the contract's value are the two
+            # halves of the conversion) and `px` on the tick. The instrument is the relay's, not the engine's: the
+            # replay runs on whatever instrument its book came from, and the venue only knows its own name for the
+            # thing, so the operator names it once on `--instrument`.
             order = {"instId": self.instrument, "tdMode": "cross",
                      "side": "buy" if side == "B" else "sell",
-                     "ordType": "limit", "px": price, "sz": quantity,
+                     "ordType": "limit", "px": self.price_on_tick(price), "sz": str(contracts),
                      "clOrdId": cl_ord_id}
             if self.inst_code is not None:
                 order["instIdCode"] = self.inst_code
@@ -666,23 +720,56 @@ class OrderTranslator:
                 if str(entry.get("sCode", "0")) != "0":
                     lines.append(f"REJECT {cl_ord_id} venue")
                     continue
-                known = self.orders.setdefault(cl_ord_id, {"quantity": 0})
-                placed = int(entry.get("sz", known["quantity"]))
-                remaining = placed - int(entry.get("accFillSz", 0) or 0)
-                lines.append(f"ACK {cl_ord_id} {max(remaining, 0)}")
+                known = self.orders.setdefault(cl_ord_id, {"units": 0, "contracts": 0, "filled": 0})
+                placed = int(entry.get("sz", known.get("contracts", 0)) or 0)
+                known["contracts"] = placed
+                # The ACK says what is still working. The cumulative it carries is the venue's count, not one the
+                # engine has booked -- an ACK is not a fill -- so it is deliberately not recorded as delivered: the
+                # `orders` push that follows reports the same cumulative, and that is where the fill is booked, once.
+                already = int(entry.get("accFillSz", 0) or 0)
+                lines.append(f"ACK {cl_ord_id} {self.units_of(max(placed - already, 0))}")
             elif operation == "cancel-order":
                 # The acknowledgement of a cancel is the venue saying it will act; the state message that
                 # follows is the order actually ending, and that is the one that becomes CANCELED.
                 if str(entry.get("sCode", "0")) != "0":
                     lines.append(f"REJECT {cl_ord_id} venue")
             elif channel == "orders":
-                fill = int(entry.get("fillSz") or 0)
-                if fill > 0 and entry.get("fillPx"):
-                    lines.append(f"FILL {cl_ord_id} {entry['fillPx']} {fill}")
-                if entry.get("state") == "canceled":
+                # A stream of states, not of events: the venue re-sends an order's current state on every change and
+                # again after a reconnect, and `accFillSz` is cumulative over the order's life. The rule is one fill
+                # per increment of that counter, so a repeated state is not a second fill and a reconnect is not a
+                # second session -- without it a fill booked twice is a position the account never held.
+                #
+                # The increment is priced at this message's `fillPx`, the last price the venue traded at: a push that
+                # merges several prints carries no per-print price, and inventing one would be worse than naming the
+                # limit here.
+                known = self.orders.setdefault(cl_ord_id, {"units": 0, "contracts": 0, "filled": 0})
+                previous = int(known.get("filled", 0))
+                # A state change the venue sends for an order that did not trade carries no `accFillSz` at all --
+                # the cancel path is the common one -- so absent means "no new fill", not "no fill ever".
+                reported = entry.get("accFillSz")
+                cumulative = previous if reported in (None, "") else int(reported)
+                if cumulative < previous:
+                    raise OrderError(f"the venue's fill count for order {cl_ord_id} went backwards: "
+                                     f"{previous} contracts seen, {cumulative} reported")
+                increment = cumulative - previous
+                emitted = False
+                if increment > 0 and entry.get("fillPx"):
+                    lines.append(f"FILL {cl_ord_id} {entry['fillPx']} {self.units_of(increment)}")
+                    known["filled"] = cumulative
+                    emitted = True
+                state = entry.get("state")
+                if state == "canceled" and not known.get("terminal"):
                     lines.append(f"CANCELED {cl_ord_id} user")
-                elif entry.get("state") == "rejected":
+                    known["terminal"] = True
+                    emitted = True
+                elif state == "rejected" and not known.get("terminal"):
                     lines.append(f"REJECT {cl_ord_id} venue")
+                    known["terminal"] = True
+                    emitted = True
+                elif state == "filled":
+                    known["terminal"] = True
+                if not emitted:
+                    self.fills_deduplicated += 1
             else:
                 raise OrderError(f"the venue's message is not one this channel knows: {sorted(message)}")
         return lines
@@ -727,7 +814,7 @@ class SimulatedVenue:
                                           "sMsg": "operation not supported"}]}]
 
 
-def serve_orders(listen, instrument, max_quantity=100, capture=None):
+def serve_orders(listen, instrument, max_quantity=100, capture=None, mapping=None):
     """Serves the engine's order leg on a line socket, one frame a line, until the engine goes away.
 
     The same shape as `accept_client` and `stream`, minus the websocket: `LiveVenue`'s transport speaks lines,
@@ -744,7 +831,7 @@ def serve_orders(listen, instrument, max_quantity=100, capture=None):
     print(f"order channel listening on {host}:{listener.getsockname()[1]}", flush=True)
     conn, peer = listener.accept()
     print(f"engine connected from {peer[0]}:{peer[1]}", flush=True)
-    translator = OrderTranslator(instrument)
+    translator = OrderTranslator(instrument, mapping=mapping)
     venue = SimulatedVenue(max_quantity)
     sink = open(capture, "a", encoding="utf-8") if capture else None
     orders = cancels = replies = refused = 0
@@ -786,15 +873,15 @@ def serve_orders(listen, instrument, max_quantity=100, capture=None):
             sink.close()
         conn.close()
         listener.close()
-    print(f"order channel done: orders={orders} cancels={cancels} replies={replies} refused={refused}",
-          flush=True)
+    print(f"order channel done: orders={orders} cancels={cancels} replies={replies} refused={refused} "
+          f"deduplicated={translator.fills_deduplicated}", flush=True)
     return 0
 
 
 # ---------------------------------------------------------------- credentials and the private route
 
 def serve_venue_orders(listen, url, credentials, instrument, capture=None, dump=None, inst_type="ANY",
-                       subscribe_orders=True, inst_code=None, rest_url=None):
+                       subscribe_orders=True, inst_code=None, rest_url=None, mapping=None):
     """Answers the engine's order leg from the venue: placement over REST, state changes over the private channel.
 
     The engine's side is exactly what the simulation serves -- a line socket, one frame a line -- so the adapter
@@ -817,7 +904,7 @@ def serve_venue_orders(listen, url, credentials, instrument, capture=None, dump=
     print(f"order channel listening on {host}:{listener.getsockname()[1]}", flush=True)
     conn, peer = listener.accept()
     print(f"engine connected from {peer[0]}:{peer[1]}")
-    translator = OrderTranslator(instrument, inst_code)
+    translator = OrderTranslator(instrument, inst_code, mapping)
     sink = open(capture, "a", encoding="utf-8") if capture else None
     # The raw frames, appended rather than truncated: a run that reconnects writes several sessions into one
     # file, and the order they crossed in is the thing being read.
@@ -840,7 +927,7 @@ def serve_venue_orders(listen, url, credentials, instrument, capture=None, dump=
     # Two routes, one loop: a REST placement answers immediately on this thread, and the websocket route hands each
     # request to the client thread and its answers arrive on the receive thread. With `rest_url` no websocket is
     # opened, so there is no `orders` channel here to receive a fill on -- the next piece, and written down as such.
-    placer = RestPlacer(rest_url, credentials, dump=dump_sink) if rest_url else None
+    placer = RestPlacer(rest_url, credentials, translator, dump=dump_sink) if rest_url else None
     client = None
     if placer is None:
         client = OrderVenueClient(url, credentials, translator, deliver, stop=stop, dump=dump_sink,
@@ -895,10 +982,12 @@ def serve_venue_orders(listen, url, credentials, instrument, capture=None, dump=
         listener.close()
     if placer is not None:
         print(f"order channel done (REST placement): orders={orders} cancels={cancels} replies={replies} "
-              f"refused={refused} placed={placer.placed} venue_refusals={placer.refused} "
+              f"refused={refused} deduplicated={translator.fills_deduplicated} placed={placer.placed} "
+              f"venue_refusals={placer.refused} "
               f"transport_failures={placer.failures} dumped={dump_sink.frames}", flush=True)
         return 0
     print(f"order channel done: orders={orders} cancels={cancels} replies={replies} refused={refused} "
+          f"deduplicated={translator.fills_deduplicated} "
           f"logins={client.logins} subscribes={client.subscribes} reconnects={client.reconnects} "
           f"messages={client.messages} other_instruments={client.other_instruments} "
           f"unreadable={client.unreadable} write_failures={client.write_failures} "
@@ -1036,9 +1125,12 @@ class RestPlacer:
     PATHS = {"order": ("POST", "/api/v5/trade/order"),
              "cancel-order": ("POST", "/api/v5/trade/cancel-order")}
 
-    def __init__(self, base_url, credentials, dump=None, simulated=True):
+    def __init__(self, base_url, credentials, translator, dump=None, simulated=True):
         self.base_url = base_url.rstrip("/")
         self.credentials = credentials
+        # The same translator the websocket route uses, because the answer needs the same arithmetic: the venue's
+        # `sz` is in contracts and the adapter's ACK is in engine units.
+        self.translator = translator
         self.dump = dump if dump is not None else FrameDump()
         # The demo host takes the header and the live one does not; a live placement with it is refused, so it is a
         # constructor argument rather than a constant.
@@ -1069,7 +1161,8 @@ class RestPlacer:
         if code == "0" and sub == "0":
             if op == "order":
                 self.placed += 1
-                return [f"ACK {order_id} {data.get('sz', '0')}"]
+                placed = int(data.get("sz", "0") or 0)
+                return [f"ACK {order_id} {self.translator.units_of(placed)}"]
             return [f"CANCELED {order_id} user"]
         self.refused += 1
         reason = data.get("sMsg") or answer.get("msg", "")
@@ -1574,20 +1667,73 @@ def self_test():
     # The engine's symbol is the replay's instrument; the venue is told the relay's name for it. A run whose book
     # comes from one exchange and whose orders go to another would otherwise ask for an instrument that venue has
     # never heard of -- which is what the first sandbox order did, with `BTC-PERPETUAL`.
-    request = translator.encode("ORDER 7 BTC-PERPETUAL B 6421.5 10 Gtc")
+    #
+    # The size is 100,000 engine units: the engine's scale is 1e6 and one contract is 0.01 of the coin, so a
+    # contract is 10,000 units and the order is ten of them. A relay that passed the engine's number through would
+    # ask for a hundred thousand contracts, which is the size error this conversion exists to make impossible.
+    request = translator.encode("ORDER 7 BTC-PERPETUAL B 6421.5 100000 Gtc")
     assert request["op"] == "order", request
     argument = request["args"][0]
     assert (argument["instId"], argument["side"], argument["ordType"], argument["px"], argument["sz"],
             argument["clOrdId"]) == ("BTC-USDT-SWAP", "buy", "limit", "6421.5", "10", "7"), argument
+    # Under one contract there is nothing to send: refused here, with both numbers, rather than as a venue refusing
+    # a size of zero.
+    try:
+        translator.encode("ORDER 9 BTC-PERPETUAL B 6421.5 1000 Gtc")
+    except OrderError as error:
+        assert "below one contract" in str(error), str(error)
+    else:
+        raise AssertionError("a size below one contract was placed")
+    # The price goes onto the venue's grid, because the venue refuses an off-grid price rather than rounding it.
+    assert translator.encode("ORDER 10 BTC-PERPETUAL B 6421.54 100000 Gtc")["args"][0]["px"] == "6421.5"
+    # A venue that trades in lots rather than single contracts rounds down to the lot, not to the nearest one: twelve
+    # contracts on a five-contract grid are ten.
+    lots = OrderTranslator("BTC-USDT-SWAP", mapping=OrderMapping(0.01, 1000000, 0.1, 5))
+    assert lots.encode("ORDER 11 BTC-PERPETUAL B 6421.5 120000 Gtc")["args"][0]["sz"] == "10"
     # The venue's internal instrument code goes on the wire only when the operator names it: its newer order
     # operation refuses without one, and a guessed default would be an order on the wrong contract.
     assert "instIdCode" not in argument, argument
     coded = OrderTranslator("BTC-USDT-SWAP", 10459)
-    assert coded.encode("ORDER 7 BTC-PERPETUAL B 6421.5 10 Gtc")["args"][0]["instIdCode"] == 10459
+    assert coded.encode("ORDER 7 BTC-PERPETUAL B 6421.5 100000 Gtc")["args"][0]["instIdCode"] == 10459
 
     venue = SimulatedVenue(max_quantity=100)
     replies = [line for message in venue.messages(request) for line in translator.decode(message)]
-    assert replies == ["ACK 7 10", "FILL 7 6421.5 5"], replies
+    assert replies == ["ACK 7 100000", "FILL 7 6421.5 50000"], replies
+
+    # The `orders` channel is a stream of states and `accFillSz` is cumulative, so one fill per increment of it: a
+    # repeated push is not a second fill, and the reconnect that re-sends every live order is not a second session.
+    def push(state, filled, order_id="14"):
+        return {"arg": {"channel": "orders"}, "data": [
+            {"clOrdId": order_id, "state": state, "accFillSz": str(filled), "fillPx": "6421.5"}]}
+
+    # An order the channel has not seen before starts at zero, so its first push reports the whole cumulative size.
+    assert translator.decode(push("partially_filled", 6)) == ["FILL 14 6421.5 60000"]
+    assert translator.decode(push("partially_filled", 6)) == []
+    assert translator.fills_deduplicated == 1, translator.fills_deduplicated
+    assert translator.decode(push("partially_filled", 8)) == ["FILL 14 6421.5 20000"]
+    assert translator.decode(push("canceled", 8)) == ["CANCELED 14 user"]
+    assert translator.decode(push("canceled", 8)) == []
+    # An order that fills to completion reports its last fill and then nothing: `filled` is terminal, so a cancel
+    # that arrives afterwards is the venue repeating itself rather than a second end to the same order.
+    assert translator.decode(push("filled", 3, order_id="13")) == ["FILL 13 6421.5 30000"]
+    assert translator.decode(push("canceled", 3, order_id="13")) == []
+    # A placement's answer carries the same counter, and the ACK says what is left -- in engine units, which is what
+    # the adapter's `ACK <id> <remaining>` means. An ACK is not a fill: the push that follows reports the same
+    # cumulative, and that is where the fill is booked.
+    ack = translator.decode({"op": "order", "id": "12",
+                             "data": [{"clOrdId": "12", "sCode": "0", "sz": "10", "accFillSz": "4"}]})
+    assert ack == ["ACK 12 60000"], ack
+    filled_on_ack = translator.decode({"arg": {"channel": "orders"}, "data": [
+        {"clOrdId": "12", "state": "partially_filled", "accFillSz": "4", "fillPx": "6421.5"}]})
+    assert filled_on_ack == ["FILL 12 6421.5 40000"], filled_on_ack
+    # A counter that goes backwards is not a duplicate to ignore: it is a venue bug that would otherwise book a
+    # position nothing explains.
+    try:
+        translator.decode(push("partially_filled", 4))
+    except OrderError as error:
+        assert "went backwards" in str(error), str(error)
+    else:
+        raise AssertionError("a fill count that went backwards was accepted")
 
     # A refused request answers at the top level with an empty data list, and it reaches the engine as a REJECT
     # rather than as nothing: the venue's own words ("parameter id can not be empty") were the first sandbox
@@ -1607,7 +1753,7 @@ def self_test():
 
     # Above the sandbox cap the venue refuses, and the refusal reaches the engine as a REJECT rather than as an
     # acknowledgement of an order that was never placed.
-    over = translator.encode("ORDER 8 BTC-USDT-SWAP S 6421.5 9 Gtc")
+    over = translator.encode("ORDER 8 BTC-USDT-SWAP S 6421.5 90000 Gtc")
     small = SimulatedVenue(max_quantity=8)
     replies = [line for message in small.messages(over) for line in translator.decode(message)]
     assert replies == ["REJECT 8 venue"], replies
@@ -1620,8 +1766,9 @@ def self_test():
     assert replies == ["CANCELED 7 user"], replies
 
     # A line the channel does not understand is refused with a reason rather than guessed at.
-    for bad in ("FILL 7 1 1", "ORDER 7 BTC-USDT-SWAP X 1 1 Gtc", "CANCEL", "ORDER 7 BTC-USDT-SWAP B 0 1 Gtc",
-                "ORDER 7 BTC-USDT-SWAP B 1 0 Gtc", "ORDER 7 BTC-USDT-SWAP B 1 1 Gtc Now"):
+    for bad in ("FILL 7 1 1", "ORDER 7 BTC-USDT-SWAP X 1 1 Gtc", "CANCEL", "ORDER 7 BTC-USDT-SWAP B 0 100000 Gtc",
+                "ORDER 7 BTC-USDT-SWAP B 1 0 Gtc", "ORDER 7 BTC-USDT-SWAP B 1 1.5 Gtc",
+                "ORDER 7 BTC-USDT-SWAP B 1 100000 Gtc Now"):
         try:
             translator.encode(bad)
         except OrderError:
@@ -1675,11 +1822,11 @@ def self_test():
         assert venue.problems == [], venue.problems
         assert (venue.logins, venue.subscribes) == (2, 2), (venue.logins, venue.subscribes, client.error)
         assert client.reconnects == 1, (client.reconnects, client.error)
-        client.submit(private_translator.encode("ORDER 7 BTC-USDT-SWAP B 6421.5 10 Gtc"))
+        client.submit(private_translator.encode("ORDER 7 BTC-USDT-SWAP B 6421.5 100000 Gtc"))
         deadline = time.monotonic() + 5.0
-        while time.monotonic() < deadline and "FILL 7 6421.5 5" not in delivered:
+        while time.monotonic() < deadline and "FILL 7 6421.5 50000" not in delivered:
             time.sleep(0.01)
-        assert delivered == ["ACK 7 10", "FILL 7 6421.5 5"], delivered
+        assert delivered == ["ACK 7 100000", "FILL 7 6421.5 50000"], delivered
         client.submit(private_translator.encode("CANCEL 7"))
         deadline = time.monotonic() + 5.0
         while time.monotonic() < deadline and "CANCELED 7 user" not in delivered:
@@ -1709,12 +1856,12 @@ def self_test():
     # The REST placement: the demo venue's websocket trade operation answers 50026 and its REST order endpoint places
     # the same order, so this is the route the relay uses for placement. The three answer shapes are pinned, and the
     # two timestamp formats are pinned against each other because mixing them is exactly the failure they caused.
-    placer = RestPlacer("https://www.okx.com", credentials, simulated=True)
-    request = private_translator.encode("ORDER 7 BTC-PERPETUAL B 6421.5 10 Gtc")
+    placer = RestPlacer("https://www.okx.com", credentials, private_translator, simulated=True)
+    request = private_translator.encode("ORDER 7 BTC-PERPETUAL B 6421.5 100000 Gtc")
     assert set(RestPlacer.PATHS) == {"order", "cancel-order"}, RestPlacer.PATHS
     assert request["args"][0]["clOrdId"] == "7" and request["id"] == "7", request
     assert placer.lines_for("order", "7", {"code": "0", "msg": "", "data": [{"sCode": "0", "ordId": "1",
-                                                                           "sz": "10"}]}) == ["ACK 7 10"]
+                                                                           "sz": "10"}]}) == ["ACK 7 100000"]
     assert placer.lines_for("cancel-order", "7", {"code": "0", "data": [{"sCode": "0",
                                                                         "ordId": "1"}]}) == ["CANCELED 7 user"]
     assert placer.lines_for("order", "7", {"code": "1", "msg": "All operations failed",
@@ -1739,6 +1886,11 @@ def main():
                         help="levels kept from a snapshot; 0 keeps every level")
     parser.add_argument("--contract-size", type=float, default=DEFAULT_CONTRACT_SIZE)
     parser.add_argument("--quantity-scale", type=int, default=DEFAULT_QUANTITY_SCALE)
+    parser.add_argument("--tick-size", type=float, default=DEFAULT_TICK_SIZE,
+                        help="the price step the venue accepts on this instrument, which the order leg rounds to; "
+                             "the market-data side reads the venue's prices as they arrive")
+    parser.add_argument("--lot-size", type=int, default=DEFAULT_LOT_SIZE,
+                        help="the size step, in contracts, that the venue accepts; the order leg rounds down to it")
     parser.add_argument("--listen", default="127.0.0.1:8765",
                         help="where to serve the engine; empty to only capture")
     parser.add_argument("--capture", help="write the venue's raw messages here, for a later --replay")
@@ -1748,7 +1900,8 @@ def main():
     parser.add_argument("--simulate-orders", action="store_true",
                         help="answer the order channel as a sandbox venue would: no key, no endpoint, no money")
     parser.add_argument("--order-cap", type=int, default=100,
-                        help="the largest order the simulated venue accepts, in instrument quantity")
+                        help="the largest order the simulated venue accepts, in contracts (the size the translator "
+                             "sends after the conversion)")
     parser.add_argument("--order-capture",
                         help="write the translated venue requests here, one JSON object a line")
     parser.add_argument("--order-venue", default=DEFAULT_PRIVATE_VENUE,
@@ -1785,6 +1938,10 @@ def main():
     if args.self_test:
         return self_test()
 
+    # The four numbers the order leg's two conversions need, in one place: the engine's scale, the contract's
+    # value, and the two venue grids a price and a size have to land on.
+    mapping = OrderMapping(args.contract_size, args.quantity_scale, args.tick_size, args.lot_size)
+
     # The order channel has two backends, and a listener with neither says which one is missing rather than
     # accepting a flag and doing nothing: `--simulate-orders` answers as the sandbox venue, and without it the
     # route is the venue's own private channel, which needs the three variables and refuses naming whichever one
@@ -1804,7 +1961,7 @@ def main():
         parser.error("--order-rest needs --order-listen: there is no engine to serve")
     if args.order_listen:
         if args.simulate_orders:
-            return serve_orders(args.order_listen, args.instrument, args.order_cap, args.order_capture)
+            return serve_orders(args.order_listen, args.instrument, args.order_cap, args.order_capture, mapping)
         try:
             credentials = VenueCredentials.from_environment()
         except OrderError as error:
@@ -1812,7 +1969,7 @@ def main():
                          f"{error}")
         return serve_venue_orders(args.order_listen, args.order_venue, credentials, args.instrument,
                                   args.order_capture, args.order_dump, args.order_inst_type,
-                                  not args.order_no_subscribe, args.order_inst_code, args.order_rest)
+                                  not args.order_no_subscribe, args.order_inst_code, args.order_rest, mapping)
 
     decoder = Decoder(args.instrument, args.contract_size, args.quantity_scale, args.levels)
     stop = threading.Event()

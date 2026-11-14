@@ -11,6 +11,7 @@ claims worth checking mechanically are the ones with a single source of truth in
   * every path under `tools/` a document refers to exists;
   * every file under `tools/` is named in `docs/TOOLS.md`, the page a reader with a filename looks it up in;
   * every `.svg` include sits inside a `<figure>`, because a bare one is not a Markdown block;
+  * a `--name=value` flag is not written with a space in a command, which the parser refuses;
   * the tree's file and line counts, the size table's entries and the test-binary count are counted again
     here rather than trusted.
 
@@ -43,6 +44,10 @@ TOOL_FILE = re.compile(r"\.(?:sh|py|c)$")
 # An SVG include on its own is not a Markdown block, so the wrapper is part of the contract, not a style choice: see
 # `svg_include_problems`.
 SVG_INCLUDE = re.compile(r'--8<--\s+"[^"]+\.svg"')
+# A bash fence is where a command a reader copies lives, and a prefix flag is the one the parser reads only as
+# `--name=value`.
+BASH_BLOCK = re.compile(r"```bash[ \t]*\n(.*?)```", re.DOTALL)
+FLAG_TOKEN = re.compile(r"(--[\w-]+)")
 # The tree's size as the documents state it, and the two shorter ways the same claim is made. Each pattern
 # is required to match: a checker that goes quiet because a sentence was reworded is worse than no checker,
 # because it is still believed.
@@ -147,6 +152,25 @@ def svg_include_problems(path, text):
     return problems
 
 
+def spaced_prefix_flag_problems(path, text, declared):
+    """A `--name=value` flag written with a space, in a command a reader would copy.
+
+    The parser reads the prefix form only, so `--record-orders /tmp/x` is not a flag and not its argument: the run
+    stops with "optional replay flags must be ...", which a reader meets as a wall rather than as an error. Only bash
+    fences are read, and a comment line is skipped, because a document may name a flag in prose without a value.
+    """
+    problems = []
+    for block in BASH_BLOCK.findall(text):
+        for line in block.splitlines():
+            if line.strip().startswith("#"):
+                continue
+            for flag in FLAG_TOKEN.findall(line):
+                if flag + "=" in declared and re.search(re.escape(flag) + r"(?:\s|$)", line):
+                    problems.append(f"{path}: `{flag}` is written with a space and the parser accepts only "
+                                    f"`{flag}=`; the command fails as a reader copies it")
+    return problems
+
+
 def expand(documents):
     """A directory argument becomes every markdown file under it.
 
@@ -236,13 +260,17 @@ def main():
                         # The placement surface the demo venue actually accepts, and the base url it lives at:
                         # its websocket trade operation answers 50026 and its REST endpoint places the order.
                         "--order-rest",
+                        # The order leg's grid and the engine's scale. The relay owns them for the same reason it owns
+                        # `--instrument`: the engine's units are not the venue's contracts, and only the venue layer
+                        # knows how many of one make the other.
+                        "--contract-size", "--quantity-scale", "--tick-size", "--lot-size",
                         # `tools/export/bundle.py` owns these: it writes the two bundles a reader who cannot clone the
                         # tree is given, checks a bundle's manifest against the tree, and syncs into the folder a
                         # client uploads from. The tool is manual; its `--self-test` is what proves the check fires.
-                        # `tools/sweep/compare_runs.sh` owns this one: it is what turns a comparison into a table
-                        # and the marked block beside it, and the tools page is where it is described.
-                        "--markdown",
-                        "--emit", "--check", "--out", "--sync", "--since"}:
+                        "--emit", "--check", "--out", "--sync", "--since",
+                        # `tools/sweep/compare_runs.sh` owns this one: it is what turns a comparison into a table and
+                        # the marked block beside it, and the tools page is where it is described.
+                        "--markdown"}:
             problems.append(f"{flag} is mentioned in a document and is not a flag the binary accepts")
     for model in sorted(models):
         if model not in text.lower():
@@ -333,6 +361,7 @@ def main():
         if RAW_DETAILS.search(document_text):
             problems.append(f"{path}: uses a raw <details> block, which renders as text; use `/// details | title`")
         problems.extend(svg_include_problems(path, document_text))
+        problems.extend(spaced_prefix_flag_problems(path, document_text, declared))
         # The front doors carry the main line only. The legacy L1 modes still run -- the tier 1 invariants are pinned
         # on them -- but a front door that runs them beside `l2_replay` asks a reader to choose between the
         # queue-modelled path and the one this project exists to argue against (MAINLINE.md, "What to drop, and

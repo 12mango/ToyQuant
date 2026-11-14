@@ -22,9 +22,10 @@ flowchart LR
 ```
 
 > The order never travels the market channel and its state never comes back on the call: an `op: order` sent to the
-> private route is `60012`, and the demo account answers `50026` until it is in single-currency margin (`acctLv=2`). A
-> `BTC-USDT-SWAP` contract is 0.01 BTC (`ctVal`), so a venue-unit size is a hundredth of the coin amount put in
-> `--order-size` -- the two ways a first sandbox run looks wrong by a factor of a hundred are in
+> private route is `60012`, and the demo account answers `50026` until it is in single-currency margin (`acctLv=2`). The
+> size is the other trap: a `BTC-USDT-SWAP` contract is 0.01 BTC (`ctVal`) and the engine's quantity is in its own
+> units, so the relay does that division (`--contract-size`, `--quantity-scale`) instead of sending the number it was
+> given -- the two ways a first sandbox run looks wrong by a factor of a hundred are in
 > [Troubleshooting](07-troubleshooting.md).
 
 ## Three commands
@@ -118,9 +119,16 @@ every `PING` seconds and a forced reconnect every `DROP` seconds, then replays t
 fails if a sequence gap, a parse error, a ring wait, a reconciliation break or a moved field appears.
 
 `--record-orders=PREFIX` writes the order leg of a session to `<prefix>_orders.csv` -- every submission, cancel and
-execution report, in order -- and prints `[ORDER-LOG]` with its path and its three counts. The file is what
-`RecordedVenue` replays as an engine; no app mode does that yet, because a replayed order leg needs a recorded session
-to compare against and the first one comes from a venue sandbox.
+execution report, in order -- and prints `[ORDER-LOG]` with its path and its three counts. `--replay-orders=PREFIX`
+makes that file the run's venue and prints `[ORDER-REPLAY]`: each report is released when the replay's own clock
+passes the timestamp it was recorded with, so the strategy acts on an answer when the session heard it rather than
+when the replay asked. The two flags are refused together, because recording a replay would write a second file of the
+same answers.
+
+| flag | takes | what it does |
+|---|---|---|
+| `--record-orders` | `PREFIX` | writes `<prefix>_orders.csv`: what the venue was asked and what it answered |
+| `--replay-orders` | `PREFIX` | makes that file the venue, and releases each answer on its recorded clock |
 
 That channel has two backends and two placement routes; the next fold is the whole of it.
 
@@ -161,9 +169,19 @@ statement reconciled against the account. The three flags are one decision:
 | `--live-orders` | nothing | makes the venue the relay's order channel, not the matcher |
 | `--venue-endpoint` | `HOST:PORT` | names the relay's listener; there is no default |
 | `--venue-max-orders` | integer | the adapter's own cap, below the pipeline's limits |
+| `--venue-max-notional` | USD | optional: one order's notional, priced the way the ledger prices it |
 
 > They are required together: an endpoint without the opt-in reaches nothing, and a live leg with no cap of its own is
 > what ADR 0005 decision 4 forbids. They are refused outside `l2_replay` and `ws`, and on a two-book run.
+
+Two things about that channel are the relay's own work rather than the venue's, and `venue_relay.py --self-test`
+checks both. **The engine's numbers are not the venue's**: a quantity is divided by `--quantity-scale` and by the
+contract's `--contract-size` (0.01 of the coin on `BTC-USDT-SWAP`), rounded down to `--lot-size`, and the price is
+rounded onto `--tick-size`; a size that comes out below one contract is refused by the relay with both numbers rather
+than sent as `sz=0`, and the four defaults are that instrument's. **The `orders` channel is a stream of states**: the
+venue re-sends an order's current state on every change and again after a reconnect, and `accFillSz` is cumulative, so
+one fill is booked per increment of that counter, the repeats are counted in the summary as `deduplicated`, and a
+counter that goes backwards is refused -- a fill booked twice is a position the account never held.
 
 Pointing the same three at the real private channel is the sandbox run: the relay needs the credentials in the
 environment and the engine needs nothing new.

@@ -60,7 +60,7 @@ watch a position build names both: `--order-size=10 --inventory-limit=100`.
 | output | `--metrics`, `--trace-order`, `--record` | each adds a line or a file and changes no number |
 | the one that does change a number | `--close-out` | flattens the carried position at the touch and prints `[WIND-DOWN]`, so `[PNL]` becomes realisable instead of a mark |
 | session | `--snapshot-out`, `--snapshot-in` | see below: the account comes back, the strategy's own state does not |
-| order leg | `--record-orders` | see below: one file per venue, and the reader that replays it |
+| order leg | `--record-orders`, `--replay-orders` | see below: one file per venue, the reader that replays it, and the clock it replays on |
 | live order leg | `--live-orders`, `--venue-endpoint`, `--venue-max-orders` | see below: the venue becomes the relay's order channel; the three are required together and only `l2_replay` and `ws` take them |
 | signals | `--trend-params` | the non-market-making line's EWMA cross and its exits; `--inventory-limit` doubles as the size of a full signal |
 | threads and pacing | `--feed-thread`, `--ring-capacity`, `--profile-stages`, `--live-pacing` | see below: the first three report the hand-off; pacing replays against the wall clock and reports `[LIVE]` |
@@ -103,18 +103,23 @@ decimal that parses back to the same double. It is off unless named, which is wh
 no number when it is on: the file is a record of the session, not an input to it, and `[ORDER-LOG]` prints its path and
 its three counts so a reader can check the row count against them. A field the format cannot carry -- a symbol holding a
 comma -- is refused rather than escaped. The file is read back by `RecordedVenue`, which answers from it as an engine
-instead of from a venue; the reader is tested and the app has no mode that uses it yet, because a replayed order leg
-needs a recorded session to compare against and the first one comes from the sandbox. Two runs are refused it rather
-than served: a mode with no venue, and a two-book run, which has two engines and so needs two files.
+instead of from a venue; `--replay-orders=PREFIX` is the flag that makes it the run's venue, and each recorded report
+is released when the replay's own clock passes the timestamp it carries, so the strategy sees a fill where the session
+saw it rather than when it asked. A replay whose market data ends first releases the rest at the end and counts them in
+`flushed`, which is the honest statement that the two inputs were not the same length. Both flags are `l2_replay` and
+`ws` only and both are refused on a two-book run, which has two engines; `--replay-orders` is also refused with
+`--live-orders` (a replay and a socket are two venues) and with `--record-orders` (a second file of the same answers).
 
 **The live order leg.** `--live-orders --venue-endpoint=HOST:PORT --venue-max-orders=N` replaces the in-process matcher
 with `LiveVenue` over `TcpVenueTransport`, so the venue is the relay's order channel rather than a simulation; the run
 prints `[VENUE]` with the frames sent, the frames received and the reports decoded. The three flags are required
 together -- an endpoint without the opt-in reaches nothing, and a live leg with no cap of its own is the case ADR 0005
-decision 4 forbids -- and both are refused outside `l2_replay` and `ws`, and on a two-book run. What the venue echoes
-back is only an order id, so the adapter stamps the owner, the side and the liquidity role from the order it sent: a
-report with no owner is a fill that was reported and never booked, and the report's default side is Buy, which would
-turn every sell fill into a buy. `tests/live_venue_test` pins those three fields, and a run against the relay's
+decision 4 forbids -- and both are refused outside `l2_replay` and `ws`, and on a two-book run. `--venue-max-notional=USD`
+adds the cap a reader can price: one order's notional, computed with `fill_notional_usd`, the same helper the ledger
+books with, so the number refused is the number the accounting would have recorded. What the venue echoes back is only
+an order id, so the adapter stamps the owner, the side and the liquidity role from the order it sent: a report with no
+owner is a fill that was reported and never booked, and the report's default side is Buy, which would turn every sell
+fill into a buy. `tests/live_venue_test` pins those fields and the notional bound, and a run against the relay's
 simulated venue reconciles (`[RECON] status=ok`, no quantity break) -- by hand, not yet in the gate.
 
 **The feed thread.** `--feed-thread` reads on its own thread and hands each event to the strategy thread over a bounded

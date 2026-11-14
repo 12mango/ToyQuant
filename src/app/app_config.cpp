@@ -100,12 +100,14 @@ constexpr std::string_view kSnapshotOutPrefix = "--snapshot-out=";
 constexpr std::string_view kSnapshotInPrefix = "--snapshot-in=";
 // Where a run writes the order leg -- what went out and what came back -- as <prefix>_orders.csv.
 constexpr std::string_view kRecordOrdersPrefix = "--record-orders=";
+constexpr std::string_view kReplayOrdersPrefix = "--replay-orders=";
 // The live order leg: ADR 0005 decision 3's second opt-in, the socket it reaches, and the adapter's own cap. The
 // cap is a required companion rather than a default, because decision 4 puts a bound below the strategy's controls
 // and a live leg with no bound is the case that decision forbids.
 constexpr std::string_view kLiveOrdersFlag = "--live-orders";
 constexpr std::string_view kVenueEndpointPrefix = "--venue-endpoint=";
 constexpr std::string_view kVenueMaxOrdersPrefix = "--venue-max-orders=";
+constexpr std::string_view kVenueMaxNotionalPrefix = "--venue-max-notional=";
 constexpr std::string_view kNotionalPrefix = "--notional-usd=";
 constexpr std::string_view kLongPrefix = "--long=";
 constexpr std::string_view kMakerFeePrefix = "--maker-fee-rate=";
@@ -203,9 +205,14 @@ void print_usage(const char* executable)
         std::cerr << "   order leg: --record-orders=PREFIX writes <prefix>_orders.csv -- every submission, cancel and "
                      "execution report of the session, in order -- which `RecordedVenue` replays as the venue; "
                      "without it nothing is written and no number moves\n";
+        std::cerr << "   order replay: --replay-orders=PREFIX makes <prefix>_orders.csv the run's venue and releases "
+                     "each recorded report on the clock it was recorded with, so a session is replayed rather than "
+                     "believed; it is l2_replay and ws only, and refused with --live-orders and --record-orders\n";
         std::cerr << "   live order leg: --live-orders --venue-endpoint=HOST:PORT --venue-max-orders=N makes the venue "
                      "the relay's order channel instead of the in-process matcher (l2_replay and ws only); the three "
-                     "are required together, and the cap is the adapter's own, below the strategy's limits\n";
+                     "are required together, and the cap is the adapter's own, below the strategy's limits. "
+                     "--venue-max-notional=USD adds the cap a reader can price: one order's notional, computed with "
+                     "the accounting's own helper\n";
         std::cerr << "   optional flags: --no-output | --fast-validation (l2_replay only) | "
                      "--profile-stages[=N] prints sampled per-stage timings (l2_replay only, default interval 64) | "
                      "--order-size=N, --inventory-limit=N, and --max-position=N override the "
@@ -477,6 +484,8 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                 cfg.snapshot_in_path = flag.substr(kSnapshotInPrefix.size());
             else if (flag.compare(0, kRecordOrdersPrefix.size(), kRecordOrdersPrefix) == 0)
                 cfg.order_log_path = flag.substr(kRecordOrdersPrefix.size());
+            else if (flag.compare(0, kReplayOrdersPrefix.size(), kReplayOrdersPrefix) == 0)
+                cfg.order_replay_path = flag.substr(kReplayOrdersPrefix.size());
             else if (flag == kLiveOrdersFlag)
                 cfg.live_orders = true;
             else if (flag.compare(0, kVenueEndpointPrefix.size(), kVenueEndpointPrefix) == 0)
@@ -489,6 +498,17 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                     error = "--venue-max-orders must be a positive number of orders";
                     return false;
                 }
+            }
+            else if (flag.compare(0, kVenueMaxNotionalPrefix.size(), kVenueMaxNotionalPrefix) == 0)
+            {
+                std::istringstream stream(flag.substr(kVenueMaxNotionalPrefix.size()));
+                double usd = 0.0;
+                if (!(stream >> usd) || !(usd > 0.0))
+                {
+                    error = "--venue-max-notional must be a positive number of USD";
+                    return false;
+                }
+                cfg.venue_max_notional_usd = usd;
             }
             else if (flag == kMarkoutCoverFlag)
                 cfg.markout_cover = true;
@@ -1320,10 +1340,10 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                 return false;
             }
         }
-        else if (!cfg.venue_endpoint.empty() || cfg.venue_max_orders != 0)
+        else if (!cfg.venue_endpoint.empty() || cfg.venue_max_orders != 0 || cfg.venue_max_notional_usd != 0.0)
         {
-            error = "--venue-endpoint and --venue-max-orders are part of --live-orders: without it the venue is the "
-                    "in-process matcher, and an endpoint that reaches nothing is worse than no flag";
+            error = "--venue-endpoint, --venue-max-orders and --venue-max-notional are part of --live-orders: without "
+                    "it the venue is the in-process matcher, and an endpoint that reaches nothing is worse than no flag";
             return false;
         }
         if (!cfg.order_log_path.empty())
@@ -1336,6 +1356,41 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
             if (!cfg.trades_b_path.empty() || !cfg.depth_b_path.empty())
             {
                 error = "--record-orders names one prefix for one venue, and a two-book run has two engines";
+                return false;
+            }
+        }
+        // A recorded order leg replayed as the venue. It is the other half of the same opt-in: the file is what
+        // `--record-orders` wrote, and the run is the session that wrote it. Two refusals follow from that -- a live
+        // venue would be a second venue, and recording the replay would write a second file of the same session --
+        // and a missing file is an error naming the path rather than a run that quotes nothing at all.
+        if (!cfg.order_replay_path.empty())
+        {
+            if (!is_l2_family)
+            {
+                error = "--replay-orders is l2_replay and ws only: it replaces the run's venue with a recorded one";
+                return false;
+            }
+            if (cfg.live_orders)
+            {
+                error = "--replay-orders and --live-orders are two venues: a replay answers from a file and a live "
+                        "leg from a socket";
+                return false;
+            }
+            if (!cfg.order_log_path.empty())
+            {
+                error = "--replay-orders and --record-orders would write the session being replayed, which is a "
+                        "second file of the same answers";
+                return false;
+            }
+            if (!cfg.trades_b_path.empty() || !cfg.depth_b_path.empty())
+            {
+                error = "--replay-orders names one recording for one venue, and a two-book run has two engines";
+                return false;
+            }
+            const std::string recording = to_abs_path(cfg.order_replay_path) + "_orders.csv";
+            if (!std::filesystem::is_regular_file(recording))
+            {
+                error = "order recording does not exist: " + recording;
                 return false;
             }
         }

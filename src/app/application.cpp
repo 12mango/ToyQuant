@@ -586,7 +586,12 @@ void Application::run_l2_session_mode() const
             throw std::runtime_error("the venue endpoint " + cfg_.venue_endpoint +
                                      " refused the connection: start the relay's order channel first");
         live_venue = std::make_unique<LiveVenue>(
-            *live_transport, LiveVenueConfig{.max_orders = cfg_.venue_max_orders});
+            *live_transport,
+            LiveVenueConfig{.max_orders = cfg_.venue_max_orders,
+                            .max_order_notional_usd = cfg_.venue_max_notional_usd,
+                            .quantity_scale = instrument.quantity_scale,
+                            .unit_notional_usd = instrument.unit_notional_usd,
+                            .multiplier = instrument.multiplier});
         // The transport's receive thread only queues a line; the adapter sees it on the consuming thread, so
         // every accounting mutation happens where the replay already mutates it.
         live_transport->set_line_handler(
@@ -596,8 +601,15 @@ void Application::run_l2_session_mode() const
                 venue_lines.emplace_back(line);
             });
     }
-    IMatchingEngine* inner = live_venue ? static_cast<IMatchingEngine*>(live_venue.get())
-                                        : static_cast<IMatchingEngine*>(&engine);
+    // A recorded order leg as the venue: the same seam as the live adapter, with the answers read from the file
+    // `--record-orders` wrote and each one due on the clock it was recorded with. It replaces the in-process
+    // matcher, which is the point -- the fills are the session's, not the book's.
+    std::unique_ptr<RecordedVenue> recorded_venue;
+    if (!cfg_.order_replay_path.empty())
+        recorded_venue = std::make_unique<RecordedVenue>(to_abs_path(cfg_.order_replay_path) + "_orders.csv");
+    IMatchingEngine* inner = &engine;
+    if (live_venue) inner = live_venue.get();
+    else if (recorded_venue) inner = recorded_venue.get();
     // The paper broker wraps the venue rather than replacing it: the strategy, the book and the
     // accounting do not know it is there, and with no faults configured it forwards every call and every
     // report, which is what makes a run with it comparable to one without.
@@ -777,6 +789,9 @@ void Application::run_l2_session_mode() const
             // A live venue's replies first, so a fill that arrived between this event and the last one is in the
             // account before the strategy's next decision reads it.
             drain_venue();
+            // The recorded venue answers on the recorded clock: a report is released once the run's own clock is past
+            // the time it was recorded at, which is why this is here rather than inside the venue.
+            if (recorded_venue) recorded_venue->advance_to(market_event_timestamp(event));
             // With two profilers the feed's `start_event()` opens an event in its own instance, so this thread has to
             // open the one its brackets belong to. On the direct path the feed already did it and doing it twice
             // would commit two events per row.
@@ -872,6 +887,14 @@ void Application::run_l2_session_mode() const
         logger.log("[REC] ", recorder->summary().to_log_string(),
                    " trades_path=", recorder->trades_path(), " depth_path=", recorder->depth_path());
     }
+    if (recorded_venue)
+    {
+        // Whatever is still held is released before [WIND-DOWN] and [PNL], so the account is what the session left
+        // it as. `flushed` in the line says the market data ended before the recording did.
+        recorded_venue->flush();
+        logger.log("[ORDER-REPLAY] path=", recorded_venue->path(), " ",
+                   recorded_venue->counters().to_log_string());
+    }
     // The session's end, before the final mark: closing the position is what makes the [PNL] below a realized
     // result rather than a mark, and pricing the exit is the only way to say what the mark was optimistic by.
     if (cfg_.close_out)
@@ -928,7 +951,9 @@ void Application::run_l2_session_mode() const
                    live_transport->frames_received(), " orders=", counters.orders_sent,
                    " cancels=", counters.cancels_sent, " refused_by_adapter=",
                    counters.refused_by_adapter, " write_failures=", counters.transport_failures,
-                   " reports=", counters.reports_decoded, " dropped=", counters.frames_dropped);
+                   " reports=", counters.reports_decoded, " dropped=", counters.frames_dropped,
+                   " max_orders=", cfg_.venue_max_orders,
+                   " max_notional_usd=", cfg_.venue_max_notional_usd);
         live_transport->disconnect();
     }
     if (order_log)

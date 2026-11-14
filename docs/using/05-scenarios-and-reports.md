@@ -26,8 +26,8 @@ venue; a real archive is what makes the queue the thing being measured.
 | `reports/<name>.png` | `tools/study/plot_report.py` | the four views below, for a legacy scenario run |
 
 The two `--record` families are what make a session replayable rather than remembered: the market leg streams back over
-`ws`, and the order leg is the file `RecordedVenue` replays as the venue, so a session's own answers can be checked
-instead of trusted.
+`ws`, and the order leg is the file `--replay-orders=PREFIX` makes the run's venue, each answer released on the clock it
+was recorded with -- so a session's own answers are checked instead of trusted.
 
 /// details | The runtime files, and the legacy analyser
 

@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <string>
 #include <utility>
 #include <vector>
@@ -58,7 +59,14 @@ struct RecordedVenueCounters
     uint64_t submissions{0};
     uint64_t cancels{0};
     uint64_t reports{0};
+    // Rows the run has not replayed yet: the unread ones plus the reports still held for the clock.
     uint64_t rows_left{0};
+    // Held for the recorded clock: a venue answered at a time, and a replay that released every answer on
+    // submission would act on a fill the live run had not heard of yet. This is the queue's current depth.
+    uint64_t reports_pending{0};
+    // Released by `flush` because the market data ended before the session did. Not an error -- a replay can be
+    // shorter than the session -- but the number a reader needs to know the two were not the same length.
+    uint64_t flushed_at_end{0};
 
     std::string to_log_string() const;
 };
@@ -81,10 +89,19 @@ class RecordedVenue : public IMatchingEngine
     const RecordedVenueCounters& counters() const { return counters_; }
     const std::string& path() const { return path_; }
 
+    // The recorded clock. A report is released once the replay's own clock is past the timestamp it was recorded
+    // with, so an answer arrives when the live session heard it rather than when the replay asked: without this a
+    // replay that runs the book faster than the venue runs the strategy on fills it would not have had.
+    void advance_to(uint64_t now_us);
+    // Whatever is still held, released at the end of the run: the market data was shorter than the session. Counted
+    // in `flushed_at_end`, because a replay shorter than its recording is a fact about the two inputs.
+    void flush();
+
    private:
-    // Emits the report rows recorded after `index`, which are the venue's answer to the call at that row, and
-    // advances the cursor past them.
-    void replay_reports_after(std::size_t index);
+    // Queues the report rows recorded after `index`, which are the venue's answer to the call at that row, and
+    // advances the cursor past them. They wait in `pending_` for the clock.
+    void queue_reports_after(std::size_t index);
+    void emit(const ExecutionReport& report);
     // Names the file and the line when a replay asks for something the recording does not contain. An error
     // rather than a count, because a recording and the run replaying it are supposed to be the same session.
     [[noreturn]] void mismatch(const OrderLogRow& row, const std::string& asked) const;
@@ -93,6 +110,7 @@ class RecordedVenue : public IMatchingEngine
     std::string path_;
     std::vector<OrderLogRow> rows_;
     std::size_t cursor_{0};
+    std::deque<std::pair<uint64_t, ExecutionReport>> pending_;
     RecordedVenueCounters counters_;
     ReportCallback callback_;
 };

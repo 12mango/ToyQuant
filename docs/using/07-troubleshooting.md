@@ -11,7 +11,7 @@ One table, ordered by how often it is the answer. Each row names the fix rather 
 | `[RISK]` rejections climb | the fat-finger band or the rate bucket is tighter than the quote | widen `--fat-finger-bps` or `--max-orders-per-second`, and check the quote is inside the band |
 | OKX `50026` on an order | the demo account is not in margin mode | switch it to single-currency margin (`acctLv=2`) |
 | OKX `60012` | an `op: order` sent to the business route | place over REST (`--order-rest`); the private route is for the `orders` channel |
-| a sandbox fill is 100x the size meant | the replay's contract count is not the venue's contract | `ctVal` is 0.01 BTC for `BTC-USDT-SWAP`; size with `--order-size` in venue units |
+| a sandbox fill is 100x the size meant | the relay's contract value and the engine's scale do not describe the same instrument | `ctVal` is 0.01 BTC for `BTC-USDT-SWAP`: the relay converts engine units to contracts from `--contract-size` and `--quantity-scale`, and refuses a size below one contract |
 | `check_docs` red | a recorded number moved | reproduce the command, paste the new output, prove the diff -- never edit the number |
 | a run refuses a file | a bad row or a missing column | the reader names the row: `sed -n '<row>p'` on the input |
 

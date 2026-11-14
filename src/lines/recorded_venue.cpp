@@ -15,7 +15,8 @@ const char* side_text(exchange::Side side)
 std::string RecordedVenueCounters::to_log_string() const
 {
     return "submissions=" + std::to_string(submissions) + " cancels=" + std::to_string(cancels) +
-           " reports=" + std::to_string(reports) + " rows_left=" + std::to_string(rows_left);
+           " reports=" + std::to_string(reports) + " rows_left=" + std::to_string(rows_left) +
+           " pending=" + std::to_string(reports_pending) + " flushed=" + std::to_string(flushed_at_end);
 }
 
 RecordingEngine::RecordingEngine(IMatchingEngine& venue, std::string prefix)
@@ -69,7 +70,7 @@ void RecordedVenue::send_order(const exchange::Order& order)
                           std::to_string(order.qty));
     }
     ++counters_.submissions;
-    replay_reports_after(cursor_);
+    queue_reports_after(cursor_);
 }
 
 void RecordedVenue::cancel_order(uint64_t order_id)
@@ -81,10 +82,10 @@ void RecordedVenue::cancel_order(uint64_t order_id)
     if (row.kind != OrderLogKind::Cancel || row.order_id != order_id)
         mismatch(row, "cancel order " + std::to_string(order_id));
     ++counters_.cancels;
-    replay_reports_after(cursor_);
+    queue_reports_after(cursor_);
 }
 
-void RecordedVenue::replay_reports_after(std::size_t index)
+void RecordedVenue::queue_reports_after(std::size_t index)
 {
     std::size_t next = index + 1;
     while (next < rows_.size() && rows_[next].kind == OrderLogKind::Report)
@@ -103,12 +104,46 @@ void RecordedVenue::replay_reports_after(std::size_t index)
         report.liquidity_role = row.liquidity_role;
         report.fee = row.fee;
         report.owner = row.owner;
-        ++counters_.reports;
-        if (callback_) callback_(report);
+        // Held rather than delivered: the report's own timestamp is the clock it is due on, and the run that reads
+        // it is the run whose clock has to reach it first.
+        pending_.emplace_back(row.ts, report);
         ++next;
     }
     cursor_ = next;
+    counters_.reports_pending = pending_.size();
+    counters_.rows_left = rows_.size() - cursor_ + pending_.size();
+}
+
+void RecordedVenue::advance_to(uint64_t now_us)
+{
+    // Strictly past, not at: a report was booked *during* the event at its timestamp, after the strategy had already
+    // decided at that event, so the first decision that saw it was the next event's. Releasing it at the same
+    // timestamp would hand the strategy a fill one event early, and the order sequence diverges from there.
+    while (!pending_.empty() && pending_.front().first < now_us)
+    {
+        emit(pending_.front().second);
+        pending_.pop_front();
+    }
+    counters_.reports_pending = pending_.size();
+    counters_.rows_left = rows_.size() - cursor_ + pending_.size();
+}
+
+void RecordedVenue::flush()
+{
+    while (!pending_.empty())
+    {
+        ++counters_.flushed_at_end;
+        emit(pending_.front().second);
+        pending_.pop_front();
+    }
+    counters_.reports_pending = 0;
     counters_.rows_left = rows_.size() - cursor_;
+}
+
+void RecordedVenue::emit(const ExecutionReport& report)
+{
+    ++counters_.reports;
+    if (callback_) callback_(report);
 }
 
 void RecordedVenue::mismatch(const OrderLogRow& row, const std::string& asked) const

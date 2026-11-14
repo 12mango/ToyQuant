@@ -58,7 +58,7 @@ cmake --preset linux-debug && cmake --build --preset linux-debug
 bash tools/gate/verify_l2.sh smoke
 ./out/build/linux-debug/toy_quant l2_replay \
     data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
-    /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --record /tmp/one
+    /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation --record=/tmp/one
 
 # 2 the same engine over a socket: a local sender streams what 1 wrote
 python3 tools/live/websocket_sender.py --port 8765 --trades /tmp/one_trades.csv --depth /tmp/one_depth.csv &
@@ -84,14 +84,13 @@ is the loop in the diagram, and `fast` asserts it on this slice every run.
 ./out/build/linux-debug/toy_quant l2_replay \
     data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
     /tmp/depth_200k_base.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation \
-    --record /tmp/session --record-orders /tmp/session
+    --record=/tmp/session --record-orders=/tmp/session
 ./out/build/linux-debug/toy_quant l2_replay \
     /tmp/session_trades.csv /tmp/session_depth.csv BTC-PERPETUAL 0 active_l2 1 prorata --fast-validation
 ```
 
-The order leg is `<prefix>_orders.csv`: the recording `RecordedVenue` replays as an engine, and what `[ORDER-LOG]`
-reports. No app mode replays one yet -- that needs the first recorded session from a venue sandbox
-([the live page](04-live-and-carry.md)).
+The order leg is `<prefix>_orders.csv`: what `[ORDER-LOG]` reports, and what `--replay-orders=PREFIX` replays as the
+venue on the clock it was recorded with ([the live page](04-live-and-carry.md)).
 
 ///
 

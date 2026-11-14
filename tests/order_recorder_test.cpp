@@ -69,7 +69,9 @@ class ScriptedVenue : public IMatchingEngine
         cancelled.order_id = order_id;
         cancelled.exec_type = ExecType::Cancelled;
         cancelled.cancel_reason = CancelReason::User;
-        cancelled.ts = 300;
+        // After the fill above and before the next order, so the scripted session's clock moves forward the way a
+        // real one does; the replay releases its queue as a prefix, in file order.
+        cancelled.ts = 110;
         emit(cancelled);
     }
 
@@ -175,20 +177,82 @@ int main()
     assert(written[4] == "3,cancel,7,,,0,0,0,,,,,0,,");
 
     // The replay: the same four calls against the file instead of the venue, and the reports have to be the same
-    // sequence field for field. This is the mechanism the gate's first acceptance check stands on.
+    // sequence field for field -- but on the recorded clock. Every answer is held until the run's own clock is past
+    // the timestamp it was recorded with, which is the amendment ADR 0005 records: a pull replay would hand the
+    // strategy a fill the live session had not heard yet.
     {
         RecordedVenue replay(log_path);
         std::vector<ExecutionReport> replayed;
         replay.set_report_callback([&replayed](const ExecutionReport& report) { replayed.push_back(report); });
         drive_session(replay);
+        // All six are queued and none is due: the recording's first answer is at ts=100 and this run has not declared
+        // a clock yet.
+        assert(replayed.empty());
+        assert(replay.counters().reports == 0);
+        assert(replay.counters().reports_pending == 6);
+
+        replay.advance_to(99);
+        assert(replayed.empty());
+        // The clock passes the acknowledgement's own time; the session booked it during that event, so the first
+        // decision that saw it was the next one's.
+        replay.advance_to(100);
+        assert(replayed.empty());
+        replay.advance_to(101);
+        assert(replayed.size() == 1 && replayed.front().exec_type == ExecType::Resting);
+        replay.advance_to(105);
+        assert(replayed.size() == 1);
+        replay.advance_to(106);  // its fill, recorded at 105
+        assert(replayed.size() == 2 && replayed.back().exec_type == ExecType::Trade);
+        // The run ended before the recording did: the rest is released at the end and counted, rather than lost.
+        assert(replay.counters().flushed_at_end == 0);
+        replay.flush();
         assert(replayed.size() == recorded.size());
         for (std::size_t index = 0; index < replayed.size(); ++index)
             assert(same_report(replayed[index], recorded[index]));
         assert(replay.counters().submissions == 3);
         assert(replay.counters().cancels == 1);
         assert(replay.counters().reports == 6);
-        // Every row in the file was replayed, so the recorded session and this one are the same length.
+        assert(replay.counters().flushed_at_end == 4);
         assert(replay.counters().rows_left == 0);
+    }
+
+    // A run whose clock reaches every recorded answer needs no flush, and its counters say so.
+    {
+        RecordedVenue replay(log_path);
+        std::vector<ExecutionReport> replayed;
+        replay.set_report_callback([&replayed](const ExecutionReport& report) { replayed.push_back(report); });
+        drive_session(replay);
+        replay.advance_to(1000);
+        assert(replayed.size() == 6);
+        assert(replay.counters().flushed_at_end == 0);
+        assert(replay.counters().rows_left == 0);
+    }
+
+    // A report's timestamp is the order's or the trade's own, not the moment the session booked it, so a recording's
+    // report times are not monotone: two live orders interleave. The queue is released as a prefix, in file order, so
+    // the sequence the session booked is the sequence a replay books -- a report whose own time has passed does not
+    // jump ahead of the row before it.
+    {
+        const std::string interleaved = (root / "interleaved").string() + "_orders.csv";
+        {
+            std::ofstream out(interleaved);
+            out << "seq,kind,order_id,symbol,side,price,qty,ts,exec_type,cancel_reason,reject_reason,"
+                   "liquidity_role,fee,owner,tif\n";
+            out << "0,order,7,BTC-PERPETUAL,B,6421.5,10,100,,,,,,,gtc\n";
+            out << "1,report,7,BTC-PERPETUAL,B,6421.5,10,200,resting,none,none,unknown,0,,\n";
+            out << "2,report,7,BTC-PERPETUAL,B,6421.5,5,150,trade,none,none,maker,0,,\n";
+        }
+        RecordedVenue replay(interleaved);
+        std::vector<ExecutionReport> replayed;
+        replay.set_report_callback([&replayed](const ExecutionReport& report) { replayed.push_back(report); });
+        replay.send_order(make_order(7, exchange::Side::Buy, 6421.5, 10, 100));
+        // The clock reaches the second report's time but not the first's, and the prefix holds: nothing is delivered
+        // out of order.
+        replay.advance_to(150);
+        assert(replayed.empty());
+        replay.advance_to(201);
+        assert(replayed.size() == 2);
+        assert(replayed[0].exec_type == ExecType::Resting && replayed[1].exec_type == ExecType::Trade);
     }
 
     // A replay that stops short of the recording's end is visible rather than silently fine: this is the count
@@ -196,9 +260,10 @@ int main()
     {
         RecordedVenue partial(log_path);
         partial.send_order(make_order(7, exchange::Side::Buy, 6421.5, 10, 100));
-        // Seven of the file's ten rows are still unread: the cancel, its report, the rejected order, the third
-        // submission and their reports.
-        assert(partial.counters().rows_left == 7);
+        // Two rows are held for the clock and seven more are unread, so nine of the file's ten have not reached this
+        // run: that is the count which says the recording and the replay are not the same session.
+        assert(partial.counters().rows_left == 9);
+        assert(partial.counters().reports_pending == 2);
     }
 
     // A field the format cannot carry is refused when it is written, not escaped or truncated.

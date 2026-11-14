@@ -13,7 +13,7 @@ legacy CSV / UDP / Binance ─────────────────�
 
 | | |
 |---|---|
-| **Size** | 120 files, 26,201 lines: `app` 8978, `market` 4071, `legacy` 1851, `lines` 3872, `strategy` 1960, `exchange` 1351, `common` 951, `backtest` 611, `bench` 563, `orderbook` 591, `accounting` 708, `utils` 488, `concurrency` 176, `main` 30 |
+| **Size** | 120 files, 26,363 lines: `app` 9066, `market` 4071, `legacy` 1851, `lines` 3946, `strategy` 1960, `exchange` 1351, `common` 951, `backtest` 611, `bench` 563, `orderbook` 591, `accounting` 708, `utils` 488, `concurrency` 176, `main` 30 |
 | **Tests** | 35 test binaries, at least one per module, run by tier 0 of the gate |
 | **Tools** | the scripts under `tools/` (`*.py` and `*.sh`, grouped by what they do) and one C harness: the gate and its six lints in `tools/gate/`, the measurement sweeps, the source fetches, the one-off studies, and the live harnesses. `docs/TOOLS.md` is the inventory, and the lint requires a line there for every file |
 | **Build** | CMake + presets, C++20, standard library only (zlib for `.gz` inputs) |
@@ -41,7 +41,7 @@ knowing which:
 | Interface | Implementations | Why it is an interface |
 |---|---|---|
 | `Strategy` — `src/strategy/strategy.h` | one class per strategy name, built by `make_strategy` | the pipeline drives any decision module without knowing which |
-| `IMatchingEngine` — `src/exchange/matching_engine.h` | `MatchingEngine` (the matcher), `PaperBroker` (`--paper-broker`) and `LiveVenue` (`--live-orders`) are the three engines; `RecordedVenue` (`src/lines/recorded_venue.h`) replays a recorded order leg as if it were a venue and is driven by no flag yet | reports arrive through a callback, so the pipeline never reaches into the engine -- and a venue is another engine rather than a branch in the loop |
+| `IMatchingEngine` — `src/exchange/matching_engine.h` | `MatchingEngine` (the matcher), `PaperBroker` (`--paper-broker`) and `LiveVenue` (`--live-orders`) are the three engines; `RecordedVenue` (`src/lines/recorded_venue.h`) replays a recorded order leg as if it were a venue, and `--replay-orders` is the flag that drives it | reports arrive through a callback, so the pipeline never reaches into the engine -- and a venue is another engine rather than a branch in the loop |
 
 `IOrderBook` was the third, and the coordinator no longer takes one. It was there for the single branch
 that turns a `BboQuote` into a top of book, which made every caller supply a book, and the L2 path

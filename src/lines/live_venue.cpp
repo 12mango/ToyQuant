@@ -83,6 +83,16 @@ void LiveVenue::send_order(const exchange::Order& order)
         ++counters_.refused_by_adapter;
         return;
     }
+    // Priced with the accounting's own helper rather than `price * qty`: the engine's quantity is in scaled
+    // units and a contract can carry a face value, so the product would be off by `quantity_scale` on one
+    // instrument and by the multiplier on the next.
+    if (config_.max_order_notional_usd > 0.0 &&
+        fill_notional_usd(config_.unit_notional_usd, config_.multiplier, order.price, order.qty,
+                          config_.quantity_scale) > config_.max_order_notional_usd)
+    {
+        ++counters_.refused_by_adapter;
+        return;
+    }
 
     std::ostringstream frame;
     frame << "ORDER " << order.id << ' ' << order.symbol << ' ' << side_token(order.side) << ' '

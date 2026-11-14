@@ -7,6 +7,7 @@
 #include "exchange/execution_report.h"
 #include "exchange/matching_engine.h"
 #include "exchange/order.h"
+#include "common/instrument_spec.h"
 
 // The wire a venue is reached over. This is the seam ADR 0005 turns on: the adapter below is written
 // against this interface, so the shape of "an order goes out and a report comes back" is proved by a test
@@ -29,6 +30,16 @@ struct LiveVenueConfig
     uint64_t max_orders{0};
     // The same bound on one order's size, in the instrument's own quantity units. 0 disables it.
     uint64_t max_order_quantity{0};
+    // The bound that can be priced: one order's USD notional, computed with `fill_notional_usd` -- the helper
+    // the ledger books with -- so the number this refuses is the number the accounting would have recorded.
+    // 0 disables it. A count cap says nothing about a strategy that sends few, large orders, and that is the
+    // shape a size mistake takes.
+    double max_order_notional_usd{0.0};
+    // What that computation needs from the run's instrument: engine units per base unit, and the two fields
+    // that turn a price into a USD value per unit. Defaults are the single-unit, price-quoted case.
+    uint64_t quantity_scale{1};
+    double unit_notional_usd{0.0};
+    double multiplier{1.0};
 };
 
 struct LiveVenueCounters
