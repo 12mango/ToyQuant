@@ -170,6 +170,15 @@ bool LiveVenue::on_frame(std::string_view frame)
         report.exec_type = ExecType::Trade;
         report.price = price;
         report.quantity = quantity;
+        // The venue's own fee, when the frame carries one: the fifth field is the cost the venue booked, in the
+        // quote currency, positive for a charge and negative for a rebate. It is the venue's number rather than a
+        // rate this adapter applies, because the schedule is the venue's and the invoice is right there. A frame
+        // with four fields keeps zero, which is what the simulated venue charges.
+        if (fields.size() >= 5 && !parse_price(fields[4], report.fee))
+        {
+            ++counters_.frames_dropped;
+            return false;
+        }
         // A Gtc order rests, so a venue filling it is filling a maker; an Ioc or Fok order is a taker by
         // definition. The frame carries no role, so this is the adapter's rule rather than the venue's word.
         report.liquidity_role = sent != sent_.end() && sent->second.time_in_force != TimeInForce::Gtc

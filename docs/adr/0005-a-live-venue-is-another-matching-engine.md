@@ -135,6 +135,23 @@ nothing about profit, and what stops it from becoming a program that spends mone
   the loop that reproduces is the matcher's -- one reader, one row order, `[ORDER-REPLAY] submissions=305 cancels=290
   reports=655 rows_left=0`, ending on the same `[PNL]`. A live run still measures the wire and not a strategy, which is
   what this record said before the stamp existed.
+- **The acceptance run happened, on the venue's own book.** A ninety-second `ws` session against the demo venue's public
+  `BTC-USDT-SWAP` channel, placing through `LiveVenue` over REST and hearing the private `orders` channel, filled and
+  reconciled: `[WS] frames=197067 trades=23743 depth_updates=173322 ring_waits=0`, `[VENUE] orders=18 cancels=13
+  reports=83 dropped=0`, `[EXECUTION] submitted_orders=18 trade_reports=42 fill_rate=0.523889`, `[BROKER] fills_seen=42`,
+  `[RECON] status=ok` with `quantity_breaks=0 report_count_difference=0 fee_difference=0.000000`, and `[PNL]
+  gross_pnl_usd=-1.33058 fees_paid=2.19004 net_pnl_usd=-3.52062` -- a decomposition that adds up, with a sign that does
+  not flatter the line. The relay printed `placed=18 venue_refusals=3` and, for the state channel, `logins=1
+  subscribes=1 reconnects=0`. Two defects the run found, both fixed here: a contract fills **in parts** and the venue
+  reports them as decimals (`accFillSz: "0.45"`), where the channel parsed an integer and dropped the private connection
+  on the first such push; and a live fill carried **no fee**, because the adapter's `FILL` frame had no field for one,
+  so `fees_paid` was zero while the venue had charged `fee: "-0.14999409"` on the same fill.
+- **What that run does not settle.** `[PORTFOLIO] equity` at the end equals cash (`1950.98`), because the position was
+  carried into a moment with no mark -- the feed had closed -- so the mark is zero and the equity figure is cash plus
+  nothing; `[PNL]` is the figure that decomposes, and it is the one quoted. The account also ran without
+  `--max-exposure-usd`, and three fills took it over collateral (`exposure_over_collateral_fills=3`), which is a setting
+  rather than a finding. What the run measures is the wire with real fills in it, on a demo venue's book, one contract
+  an order, for ninety seconds -- not an edge.
 - **What it costs**: one adapter, one wire, one relay order channel, one recorder with its reader, and the flag
   plumbing -- `src/lines/live_venue.{h,cpp}`, `src/lines/tcp_venue_transport.{h,cpp}`, the order channel in
   `tools/live/venue_relay.py`, `src/lines/order_recorder.{h,cpp}`, `src/lines/recorded_venue.{h,cpp}` and a

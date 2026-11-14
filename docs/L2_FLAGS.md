@@ -123,8 +123,12 @@ adds the cap a reader can price: one order's notional, computed with `fill_notio
 books with, so the number refused is the number the accounting would have recorded. What the venue echoes back is only
 an order id, so the adapter stamps the owner, the side and the liquidity role from the order it sent: a report with no
 owner is a fill that was reported and never booked, and the report's default side is Buy, which would turn every sell
-fill into a buy. `tests/live_venue_test` pins those fields and the notional bound, and a run against the relay's
-simulated venue reconciles (`[RECON] status=ok`, no quantity break) -- by hand, not yet in the gate.
+fill into a buy. A fill's fee is the venue's own: the `FILL` frame's fifth field is what the venue charged on that fill,
+read from its `fillFee` and negated into the engine's sign, because the venue writes a charge as a negative number. Before
+that field existed every live fill arrived with `fee = 0`, and a live run's `[PNL]` was gross of a fee the venue had
+already taken. `tests/live_venue_test` pins those fields, the optional fee and the notional bound, and a run against the
+relay's simulated venue reconciles (`[RECON] status=ok`, no quantity break) -- by hand, not yet in the gate; the same
+run against the demo venue's own feed fills and reconciles, and ADR 0005 quotes it.
 
 **The feed thread.** `--feed-thread` reads on its own thread and hands each event to the strategy thread over a bounded
 ring, reporting the hand-off as `[LATENCY]`: the ring wait, the processing, and the total, each as mean, p50, p99 and max,

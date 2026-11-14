@@ -721,12 +721,16 @@ class OrderTranslator:
                     lines.append(f"REJECT {cl_ord_id} venue")
                     continue
                 known = self.orders.setdefault(cl_ord_id, {"units": 0, "contracts": 0, "filled": 0})
-                placed = int(entry.get("sz", known.get("contracts", 0)) or 0)
+                # The venue's sizes are decimal strings, not integers: a contract can fill in parts, and the demo
+                # venue answered a one-contract order with `accFillSz: "0.45"`. So neither the placed size nor the
+                # cumulative fill is read with `int()`; `units_of` is where the contract size and the engine's scale
+                # are applied, and it rounds there rather than here.
+                placed = float(entry.get("sz", known.get("contracts", 0)) or 0)
                 known["contracts"] = placed
                 # The ACK says what is still working. The cumulative it carries is the venue's count, not one the
                 # engine has booked -- an ACK is not a fill -- so it is deliberately not recorded as delivered: the
                 # `orders` push that follows reports the same cumulative, and that is where the fill is booked, once.
-                already = int(entry.get("accFillSz", 0) or 0)
+                already = float(entry.get("accFillSz", 0) or 0)
                 lines.append(f"ACK {cl_ord_id} {self.units_of(max(placed - already, 0))}")
             elif operation == "cancel-order":
                 # The acknowledgement of a cancel is the venue saying it will act; the state message that
@@ -743,18 +747,27 @@ class OrderTranslator:
                 # merges several prints carries no per-print price, and inventing one would be worse than naming the
                 # limit here.
                 known = self.orders.setdefault(cl_ord_id, {"units": 0, "contracts": 0, "filled": 0})
-                previous = int(known.get("filled", 0))
+                previous = float(known.get("filled", 0))
                 # A state change the venue sends for an order that did not trade carries no `accFillSz` at all --
                 # the cancel path is the common one -- so absent means "no new fill", not "no fill ever".
                 reported = entry.get("accFillSz")
-                cumulative = previous if reported in (None, "") else int(reported)
-                if cumulative < previous:
+                cumulative = previous if reported in (None, "") else float(reported)
+                # A tolerance rather than an exact compare: these are decimal strings the venue formats itself, and
+                # a re-sent "0.45" must read as the repeat it is rather than as a count that went backwards.
+                if cumulative < previous - 1e-9:
                     raise OrderError(f"the venue's fill count for order {cl_ord_id} went backwards: "
                                      f"{previous} contracts seen, {cumulative} reported")
                 increment = cumulative - previous
                 emitted = False
                 if increment > 0 and entry.get("fillPx"):
-                    lines.append(f"FILL {cl_ord_id} {entry['fillPx']} {self.units_of(increment)}")
+                    line = f"FILL {cl_ord_id} {entry['fillPx']} {self.units_of(increment)}"
+                    # The venue's own charge: `fillFee` is this fill's and `fee` the order's cumulative, and both
+                    # are negative when the venue takes money. The engine books a cost as a positive number and a
+                    # rebate as a negative one, so the sign is flipped here rather than in the accounting.
+                    fee = entry.get("fillFee", entry.get("fee"))
+                    if fee not in (None, ""):
+                        line += f" {-float(fee):.10g}"
+                    lines.append(line)
                     known["filled"] = cumulative
                     emitted = True
                 state = entry.get("state")
@@ -1771,6 +1784,28 @@ def self_test():
         assert "went backwards" in str(error), str(error)
     else:
         raise AssertionError("a fill count that went backwards was accepted")
+
+    # A contract fills in parts, and the demo venue reports those parts as decimals: a one-contract order came back
+    # `accFillSz: "0.45"`, and `int()` on it raised inside `decode`, which dropped the private channel -- so every push
+    # after it was lost, and a session with fills in it recorded none of the later ones. The counter stays a decimal
+    # string, the increment is what is converted, and the contract size is applied there.
+    assert translator.decode(push("partially_filled", "0.45", order_id="15")) == ["FILL 15 6421.5 4500"]
+    assert translator.decode(push("partially_filled", "0.69", order_id="15")) == ["FILL 15 6421.5 2400"]
+    assert translator.decode(push("partially_filled", "0.69", order_id="15")) == []
+    assert translator.decode(push("canceled", "0.69", order_id="15")) == ["CANCELED 15 user"]
+
+    # The venue's own fee rides on the fill line when it reports one: `fillFee` is negative when the venue takes money,
+    # and the engine books a cost as positive, so the sign is flipped in the relay. A push with no fee keeps the
+    # four-field line, which is what the simulated venue sends.
+    with_fee = translator.decode({"arg": {"channel": "orders"}, "data": [
+        {"clOrdId": "16", "state": "partially_filled", "accFillSz": "0.45", "fillPx": "66664.04",
+         "fillFee": "-0.14999409"}]})
+    assert with_fee == ["FILL 16 66664.04 4500 0.14999409"], with_fee
+    # A rebate is the same field with the other sign, and it arrives as a negative cost rather than as no fee.
+    rebate = translator.decode({"arg": {"channel": "orders"}, "data": [
+        {"clOrdId": "17", "state": "partially_filled", "accFillSz": "0.5", "fillPx": "66664.04",
+         "fillFee": "0.02"}]})
+    assert rebate == ["FILL 17 66664.04 5000 -0.02"], rebate
 
     # A refused request answers at the top level with an empty data list, and it reaches the engine as a REJECT
     # rather than as nothing: the venue's own words ("parameter id can not be empty") were the first sandbox

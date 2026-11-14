@@ -242,10 +242,32 @@ and it says, on the engine's side, `[VENUE] frames_sent=2 frames_received=2 orde
 
 Two things were open when this page was first written, and both are closed: the route subscribes the `orders` channel on
 the same login, with `--order-no-subscribe` as the opt-out that restores the placement-only shape it used to have, and
-the size reaches the venue in the venue's units (`--contract-size`, `--quantity-scale`, above). What is still open is
-the *price*: the replay is from 2020 and the venue's book is 2026, so an order sits far from the touch and nothing
-crosses there. Against the simulated venue on this desk the same chain does fill, and the blockquote above is that run --
-an acceptance of the wire, not a measurement of the venue's own book.
+the size reaches the venue in the venue's units (`--contract-size`, `--quantity-scale`, above). The price is closed by
+not replaying at all: the venue's own public feed is the market leg, in two relay processes because `--order-listen`
+returns rather than serving both.
+
+```bash
+set -a; . secrets/okx-demo.env; set +a      # the demo key, read from the environment
+python3 tools/live/venue_relay.py --instrument BTC-USDT-SWAP --listen 127.0.0.1:8765 --max-seconds=120 &
+python3 tools/live/venue_relay.py --instrument BTC-USDT-SWAP --order-listen 127.0.0.1:8766 \
+    --order-rest https://www.okx.com --order-inst-code=10459 &
+./out/build/linux-debug/toy_quant ws 127.0.0.1:8765 BTC-USDT-SWAP active_l2 1000000 prorata \
+  --fast-validation --paper-broker --ws-seconds=120 --order-size=10000 --inventory-limit=10000 \
+  --live-orders --venue-endpoint=127.0.0.1:8766 --venue-max-orders=20
+```
+
+It fills, and the two sides agree. Measured on 2026-11-14 over ninety seconds: `[VENUE] orders=18 cancels=13 reports=83
+dropped=0`, `[EXECUTION] trade_reports=42 fill_rate=0.523889`, `[BROKER] fills_seen=42`, `[RECON] status=ok` with
+`quantity_breaks=0 fee_difference=0.000000`, and `[PNL] gross_pnl_usd=-1.33058 fees_paid=2.19004
+net_pnl_usd=-3.52062`. The relay printed `placed=18 venue_refusals=3` and, for the state channel, `logins=1
+subscribes=1 reconnects=0`.
+
+Two things the demo venue taught, and both are in the tree now. **A contract fills in parts**: a one-contract order came
+back `accFillSz: "0.45"`, and the channel read that with `int()`, which dropped the private connection on the first such
+push and lost every state message after it. **A live fill carried no fee**: the adapter's `FILL` frame had no field for
+one, so `fees_paid` was zero while the venue had charged `fee: "-0.14999409"` on the same fill. The relay now puts the
+venue's own `fillFee` on the line -- negated, because the venue writes a charge as negative -- so the fee is the venue's
+number rather than this repository's rate.
 
 **A live session records; it does not replay.** One `ws` session through the live adapter, recorded twice, was the step
 this page used to name. It cannot do that: the same command run twice on the same market recording gave 154 and 261

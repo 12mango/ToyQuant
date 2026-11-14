@@ -264,5 +264,24 @@ int main()
         assert(reports[1].ts == 1585699220758000);
     }
 
+    // The venue's own fee rides on a fill's frame when it reports one, and a frame without it leaves the report at
+    // zero: this adapter charges nothing of its own, because a fee it invented would be a number the venue never
+    // billed. A fee field the parser cannot read drops the frame rather than booking a zero.
+    {
+        RecordingTransport wire;
+        LiveVenue venue(wire);
+        std::vector<ExecutionReport> reports;
+        venue.set_report_callback([&reports](const ExecutionReport& report) { reports.push_back(report); });
+        assert(venue.on_frame("FILL 7 6421.5 4 0.02"));
+        assert(venue.on_frame("FILL 8 6421.5 4 -0.01"));
+        assert(venue.on_frame("FILL 9 6421.5 4"));
+        assert(reports.size() == 3);
+        assert(reports[0].fee == 0.02);
+        assert(reports[1].fee == -0.01);
+        assert(reports[2].fee == 0.0);
+        assert(!venue.on_frame("FILL 10 6421.5 4 not-a-fee"));
+        assert(venue.counters().frames_dropped == 1);
+    }
+
     return 0;
 }

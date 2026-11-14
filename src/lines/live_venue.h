@@ -65,8 +65,12 @@ struct LiveVenueCounters
 // transport and leaves this file alone.
 //
 //     out:  ORDER <id> <symbol> <B|S> <price> <qty> <Gtc|Ioc|Fok>      CANCEL <id>
-//     in:   ACK <id> <remaining>   FILL <id> <price> <qty>
+//     in:   ACK <id> <remaining>   FILL <id> <price> <qty> [<fee_usd>]
 //           CANCELED <id> <reason>  REJECT <id> <reason>
+//
+// The fee on a fill is the venue's own, in USD, positive when the venue took money: the relay reads it from the
+// venue's `fillFee` and negates it. Absent, the report carries zero -- a venue that reports no fee is not one this
+// adapter may charge for, and the in-process matcher is where a modelled fee comes from.
 class LiveVenue : public IMatchingEngine
 {
   public:

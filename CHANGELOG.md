@@ -7,6 +7,28 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The demo venue's own book, and the two defects it found (2026-11-14)
+
+- **The acceptance run ADR 0005 asked for.** Ninety seconds of the demo venue's public `BTC-USDT-SWAP` channel as the
+  market leg, `LiveVenue` placing over REST with its `orders` channel subscribed for state, both legs recorded: 42 fills
+  at one contract an order, `[RECON] status=ok` with `quantity_breaks=0 fee_difference=0.000000`, and `[PNL]
+  gross_pnl_usd=-1.33058 fees_paid=2.19004 net_pnl_usd=-3.52062`. Every earlier attempt replayed 2020 prices against a
+  2026 book, so nothing crossed; what closed it was using the venue's own feed rather than a replay.
+- **A contract fills in parts, and the venue says so in decimals.** `accFillSz: "0.45"` on a one-contract order was read
+  with `int()`, which raised inside the decoder and dropped the private connection -- every state message after the first
+  fractional fill was lost, and the session recorded three of its fills. The counter is a decimal string now, and the
+  increment is converted to engine units after the contract size is applied.
+- **A live fill carried no fee.** The adapter's `FILL` frame had no field for one, so `fees_paid` was zero while the
+  venue had charged `fee: "-0.14999409"` on the same fill: a live `[PNL]` was gross of the fee the project is about. The
+  relay now puts the venue's own `fillFee` on the line, negated into the engine's sign, so a rebate arrives negative.
+  `tests/live_venue_test` and `venue_relay.py --self-test` pin a decimal counter, a fee-bearing fill, a rebate and a
+  frame with no fee.
+- **Two things the run does not settle**, said rather than smoothed: `[PORTFOLIO] equity` ends equal to cash because the
+  carried position was marked at a zero price after the feed closed, and the account ran without `--max-exposure-usd`, so
+  three fills took it over collateral.
+- No recorded number moved; `src/lines` gained 13 lines (the adapter's optional fee field and its comment), and the size
+  table and `MAINLINE.md` now state 26,408.
+
 ## The live leg's record had no clock (2026-11-14)
 
 - **A live venue's answers now carry the market clock.** `LiveVenue` decoded `ACK`, `FILL`, `CANCELED` and `REJECT`
