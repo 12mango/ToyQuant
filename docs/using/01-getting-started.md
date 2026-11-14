@@ -5,7 +5,9 @@ is folded away.*
 
 ## The system, end to end
 
---8<-- "docs/_figures/path.mmd"
+<figure>
+--8<-- "docs/_figures/path.svg"
+</figure>
 
 Two rows, and each is a claim. The top row is the path a market event takes -- a feed, a book with an **explicit** queue,
 a strategy, a pre-trade gate, one venue interface with three engines behind it (the matcher, the paper broker, the live
@@ -30,7 +32,9 @@ Every figure in this table is the [Retrospective](../RETROSPECTIVE.md)'s, and th
 
 /// details | The same numbers as a picture, and the two lines measured after the eight
 
+<figure>
 --8<-- "docs/_figures/charge.svg"
+</figure>
 
 Two bars a market: what a fill captured, and what it cost. Where the fee bar is taller, no quote width pays. The labels
 round to fit (0.088, 0.0131 and 0.268 ticks captured; 2.57, 0.5 and 0.35 ticks of fee); the table above carries the

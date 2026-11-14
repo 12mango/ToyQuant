@@ -3,7 +3,9 @@
 **A high-precision C++20 market simulator that tests whether a trading strategy survives the queues, the fees and the
 latency of a real venue -- and every number it publishes is re-derived by its own gate rather than remembered.**
 
---8<-- "docs/_figures/path-front.mmd"
+<figure>
+--8<-- "docs/_figures/path-front.svg"
+</figure>
 
 A backtest that fills your quote because the price touched it answers a question the venue never asks. ToyQuant replays
 a full L2 ladder with an **explicit queue position**, so a fill depends on the size standing ahead of the quote and on how

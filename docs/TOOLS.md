@@ -57,6 +57,7 @@ does not.
 | `tools/study/capacity_table.py` | what a book costs to run, by capital, breadth and tier | both |
 | `tools/study/check_okx_book.py` | a rebuilt book against the archive's own snapshots | hand |
 | `tools/study/figure_charge.py` | the quickstart's cost figure as inline SVG | hand |
+| `tools/study/figure_path.py` | the two path figures as inline SVG | both |
 | `tools/study/funding_extreme_test.py` | whether a funding extreme predicts the next eight hours | hand |
 | `tools/study/lowturnover_test.py` | the pre-registered rule on sixty equity windows | hand |
 | `tools/study/measure_l2_baseline.py` | replay seconds, and the hash of the output | hand |

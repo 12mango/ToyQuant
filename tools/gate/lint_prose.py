@@ -10,6 +10,7 @@ claims worth checking mechanically are the ones with a single source of truth in
   * every queue model is mentioned, and no document names a model that does not exist;
   * every path under `tools/` a document refers to exists;
   * every file under `tools/` is named in `docs/TOOLS.md`, the page a reader with a filename looks it up in;
+  * every `.svg` include sits inside a `<figure>`, because a bare one is not a Markdown block;
   * the tree's file and line counts, the size table's entries and the test-binary count are counted again
     here rather than trusted.
 
@@ -39,6 +40,9 @@ SOURCE_FILE = re.compile(r"\.(?:h|cpp)$")
 # A tool is a script someone runs, not every file in the directory: `lib.sh` is sourced and still has to be named,
 # a `__pycache__` entry is not a tool at all.
 TOOL_FILE = re.compile(r"\.(?:sh|py|c)$")
+# An SVG include on its own is not a Markdown block, so the wrapper is part of the contract, not a style choice: see
+# `svg_include_problems`.
+SVG_INCLUDE = re.compile(r'--8<--\s+"[^"]+\.svg"')
 # The tree's size as the documents state it, and the two shorter ways the same claim is made. Each pattern
 # is required to match: a checker that goes quiet because a sentence was reworded is worse than no checker,
 # because it is still believed.
@@ -119,6 +123,27 @@ def tool_inventory_problems(root, page):
             continue
         if str(path) not in page:
             problems.append(f"{path} is in the tree and docs/TOOLS.md has no line for it")
+    return problems
+
+
+def svg_include_problems(path, text):
+    """Every `.svg` include against the block wrapper that makes it render.
+
+    Python-Markdown closes the paragraph after a line that starts with `<svg>`, so a bare include reaches the browser
+    as `<p><svg></p>` followed by a paragraph per `<text>` element: the figure is in the source, the build is green,
+    and the page has no figure. That is how `charge.svg` was rendered until it was wrapped. `<figure>` is block level,
+    so it passes through whole, and this check is the only thing that can see the difference -- neither the prose
+    lint's other rules nor `mkdocs build --strict` can.
+    """
+    lines = text.splitlines()
+    problems = []
+    for number, line in enumerate(lines, start=1):
+        if not SVG_INCLUDE.search(line):
+            continue
+        before = next((lines[index].strip() for index in range(number - 2, -1, -1) if lines[index].strip()), "")
+        after = next((lines[index].strip() for index in range(number, len(lines)) if lines[index].strip()), "")
+        if before != "<figure>" or after != "</figure>":
+            problems.append(f"{path}:{number}: an SVG include without a <figure> wrapper, so Markdown splits it")
     return problems
 
 
@@ -287,9 +312,10 @@ def main():
             problems.append(f"a document states {stated} test binaries and the build registers "
                             f"{len(test_targets)}")
 
-    # The figures. A figure that several pages show lives in `docs/_figures/*.mmd` as a whole fenced block, so
-    # the block a reader sees is often not in a `.md` file at all: both sets are checked, or the diagrams this
-    # check exists for would be exactly the ones it never read.
+    # The figures. The path figures used to live in `docs/_figures/*.mmd` as whole fenced blocks, and the point still
+    # holds: the block a reader sees is not in a `.md` file. They are SVG now -- drawn by `tools/study/figure_path.py`
+    # and checked in tier 1 -- so this loop only reads a `.mmd` again if someone writes one. Both sets are checked,
+    # or the diagrams this check exists for would be exactly the ones it never read.
     figures = sorted(Path("docs/_figures").glob("*.mmd")) if Path("docs/_figures").is_dir() else []
     for path in list(args.documents) + figures:
         document_text = path.read_text()
@@ -306,6 +332,7 @@ def main():
         # that is parsed. The owner found this one by looking at the published page.
         if RAW_DETAILS.search(document_text):
             problems.append(f"{path}: uses a raw <details> block, which renders as text; use `/// details | title`")
+        problems.extend(svg_include_problems(path, document_text))
         # The front doors carry the main line only. The legacy L1 modes still run -- the tier 1 invariants are pinned
         # on them -- but a front door that runs them beside `l2_replay` asks a reader to choose between the
         # queue-modelled path and the one this project exists to argue against (MAINLINE.md, "What to drop, and

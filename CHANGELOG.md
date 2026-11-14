@@ -7,6 +7,24 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The two path figures are drawn by a script, and an SVG include is checked (2026-11-14)
+
+- **The front door's diagram was unreadable in the site's dark palette.** The site's own text colour won over the
+  figure's `classDef` colour, so every label came out pale on a pale box, and the quickstart's two-row figure was laid
+  out side by side as well -- two subgraphs with `direction LR` and no edge between them are one row to Mermaid. Both
+  are SVG now, drawn by `tools/study/figure_path.py`: dark ink on a pale fill and a mid-grey connector, fixed rather
+  than inherited, so the same file reads on a white page, on Material's dark scheme and as the image README shows.
+  `--check` runs in tier 1, the generator refuses a label that cannot fit its box, and the root carries `width` and
+  `height` so an `<img>` has an intrinsic size.
+- **`charge.svg` was never on the page.** An SVG included on its own is not a Markdown block: Python-Markdown closed
+  the paragraph after `<svg>`, so the built page carried `<p><svg></p>` and then a paragraph per `<text>` element. It
+  sits in a fold, which is why no reader had said so. Every include is wrapped in `<figure>` now, `lint_prose.py`
+  fails a bare one, and the two figure checks run in the gate.
+- The two `.mmd` files are gone, and README's hand-kept Mermaid copy is an image of the same SVG: one source, not two.
+- No C++, no recorded number and no size count moved.
+- Gate: `code OK`, `docs OK` on the three pages, `lint_prose` 0 problems, `check_links` 0 problems,
+  `mkdocs build --strict` green, `fast` green (`tier0 OK` / `tier1 OK`).
+
 ## The tools page becomes an inventory, and the lint counts it (2026-11-14)
 
 - **`docs/TOOLS.md` named ten of the fifty-five files under `tools/`, and it is the page a reader is sent to for a

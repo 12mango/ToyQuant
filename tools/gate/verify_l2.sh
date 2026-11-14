@@ -12,7 +12,7 @@
 #                    fills, PnL, queue consumed, the recorder round trip, direct against threaded, the paper
 #                    broker and its reconciliation, the two-book run, the session and halt paths, the depth
 #                    guards -- plus the source-level checks (every field written, the layering, the eight
-#                    verdicts) and the seven tool self-tests
+#                    verdicts) and the seven tool self-tests plus the two figure checks
 #   tier 1  docs half (~110 s)  every number a document quotes, re-derived; the prose, link and layering lints;
 #                    `mkdocs build --strict` and the site's repository name. Almost all of those seconds are one
 #                    page: `docs/performance/history-03-studies.md` alone takes ~95 s, because its blocks replay
@@ -479,6 +479,11 @@ tier1() {
   # so they run here rather than being trusted. `tests/relay_order_channel_test` drives the simulated backend with
   # the real adapter; this runs the private route's own checks with no key and no endpoint.
   python3 tools/live/venue_relay.py --self-test >> "$TOOL_CHECK_LOG" 2>&1 || tool_check=1
+  # A figure that no longer matches the script that draws it is a picture of a system that changed, and neither the
+  # site build nor the prose lint reads a `.svg`. Both figures are checked here for that reason: the same contract,
+  # and the path figures are the ones a reader meets before any number.
+  python3 tools/study/figure_path.py --check >> "$TOOL_CHECK_LOG" 2>&1 || tool_check=1
+  python3 tools/study/figure_charge.py --check >> "$TOOL_CHECK_LOG" 2>&1 || tool_check=1
   fi
   local label=tier1
   [ "$mode" = code ] && label=code

@@ -17,19 +17,7 @@ latency of a real venue -- and every number it publishes is re-derived by its ow
 
 ---
 
-```mermaid
-%%{init: {"theme":"base","themeVariables":{"fontSize":"15px","primaryColor":"#e8f1f8","primaryTextColor":"#10233a","primaryBorderColor":"#2f6fa8","lineColor":"#6b7b8c","textColor":"#10233a","nodeTextColor":"#10233a","titleColor":"#10233a"}}}%%
-%% A copy of docs/_figures/path-front.mmd, because GitHub renders mermaid but cannot include a file. Keep the two in step.
-flowchart LR
-    D["feed"] --> B["L2 book"] --> S["strategy"] --> G{"risk gate"} --> M["venue"] --> L["ledger"]
-
-    classDef box fill:#e8f1f8,stroke:#2f6fa8,stroke-width:1.5px,color:#10233a
-    classDef gate fill:#fdf3e3,stroke:#b07d1c,stroke-width:1.5px,color:#3b2a06
-    classDef good fill:#eaf6ef,stroke:#2c7d54,stroke-width:1.5px,color:#0d2f21
-    class D,B,S,M box
-    class G gate
-    class L good
-```
+![The path a market event takes: feed, L2 book, strategy, risk gate, venue, ledger](docs/_figures/path-front.svg)
 
 A backtest that fills your quote because the price touched it answers a question the venue never asks. ToyQuant replays
 a full L2 ladder with an **explicit queue position**, so a fill depends on the size standing ahead of the quote and on how
