@@ -34,9 +34,11 @@ The order session moves into the engine, in four slices, each with its own test 
    landed here*; it is first because it is the one thing a reader cannot check by reading, so it is the one that has to
    be checked against a vector computed elsewhere.
 2. **The translator.** The engine's `ORDER`/`CANCEL` lines and the venue's `args[0]` object, the response's `sCode`, the
-   decimal `accFillSz` and `fillFee`, and the rule that one fill is booked per increment of the cumulative counter. Pinned
-   against the cases `tools/live/venue_relay.py --self-test` already states, so a port that loses one fails a test rather
-   than a session.
+   decimal `accFillSz` and `fillFee`, and the rule that one fill is booked per increment of the cumulative counter.
+   Pinned against the cases `tools/live/venue_relay.py --self-test` already states, so a port that loses one fails a test
+   rather than a session. *Landed in `src/lines/venue_order_translator.*`, over a JSON reader extracted from the relay
+   into `src/lines/venue_json.h`.* One duplication is deliberate and temporary: the relay still carries its own
+   file-local copy of that reader, which slice three deletes when the session moves beside the translator.
 3. **The session.** Login, the `orders` subscription, ping/pong, and a reconnect that logs in and subscribes again —
    beside the TLS/WebSocket code the market leg already uses. Its test is a local stand-in venue in C++ that
    verifies the signature it receives and drops a connection once, which is the claim the Python test makes today and this

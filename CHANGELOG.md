@@ -7,6 +7,26 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The order translator moves in, on the relay's own test cases (2026-11-15)
+
+- **ADR 0006's second slice: `src/lines/venue_order_translator.{h,cpp}`.** The engine's `ORDER` and `CANCEL` lines become
+  the venue's `args[0]` object, and the venue's replies become the `ACK`/`FILL`/`CANCELED`/`REJECT` lines the adapter
+  decodes. The rules are ported rather than reinvented: a size below one contract is refused where both numbers can be
+  named, a size rounds **down** to the venue's lot because rounding up turns a demonstration into a position, a price is
+  rounded onto the tick because the venue refuses one step off its grid, and a fill is one per increment of the decimal
+  `accFillSz` -- never an integer read, which is the defect the first live session found in the Python relay.
+- **The fee rides on the fill.** `fillFee`, or the order's cumulative `fee` when there is no per-fill one, is negated into
+  the engine's sign so a charge is positive and a rebate negative -- the same convention the fixed relay uses, now in the
+  engine.
+- **One JSON reader, extracted rather than copied.** The relay's recursive parser moved to `src/lines/venue_json.h`, which
+  the translator includes. The relay keeps its file-local copy until slice three deletes it with the session; that
+  duplication is in the ADR rather than hidden.
+- `tests/venue_order_translator_test` pins the relay's own cases as literals: the request's shape with and without
+  `instIdCode`, a cancel naming the instrument, the below-one-contract refusal with both numbers, rounding down, the tick,
+  the ACK's working size, a decimal fill (0.45 → 4500 units) and its repeat counted rather than booked, the fee and a
+  rebate, a counter that goes backwards, a top-level refusal with and without an id, and an unknown channel.
+- No recorded number moved; the live path still needs the relay for slices three and four.
+
 ## The venue's order session starts moving into the engine (2026-11-15)
 
 - **ADR 0006 accepts the move, in four slices.** The market leg's session is already C++ -- TLS, the WebSocket client, the

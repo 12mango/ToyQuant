@@ -1,6 +1,6 @@
 # The main line: the order to read this repository in, and what to drop
 
-This repository is 26,753 lines of source and 36 test binaries, and it is two things at once: **an instrument about
+This repository is 27,375 lines of source and 37 test binaries, and it is two things at once: **an instrument about
 five thousand lines long, and the evidence that instrument produced.** The main line is the instrument — the path a
 single market event takes: a file becomes an event, an event becomes a book, a book becomes a decision, a decision
 becomes an order, an order becomes a fill, a fill becomes cash, and cash becomes the number a document quotes.
@@ -77,7 +77,7 @@ removing it would make a claim in the documents unreproducible.
 | `src/bench/ring_bench_main.cpp` | 560 | keep | The ring benchmark is quoted in a checked block |
 | `src/backtest/*`, `src/app/strategy_benchmark*` | ~900 | keep, off the reading path | Drivers rather than lessons; they are how the tables were produced |
 | `src/lines/paper_broker.*`, `src/lines/reconciliation.*` | ~700 | keep, off the reading path | The machinery the roadmap's Stage B needs, exercised by tests |
-| `src/lines/live_venue.*`, `tcp_venue_transport.*`, `recorded_venue.*`, `order_recorder.*`, `venue_auth.*`, and the `venue_relay` executable | 3,037 | **keep, marked as the boundary** | [ADR 0005](adr/0005-a-live-venue-is-another-matching-engine.md) is why a venue is a third engine rather than a branch in the loop; [ADR 0006](adr/0006-the-venue-order-session-moves-in.md) is why the venue's order session is moving out of the relay and into these files, one slice at a time, with the authentication landed first. The recorder's two files are what make a session replayable, and `recorded_venue` is the reader that would check one. It moves no measured number, so its verdict is a decision rather than a measurement |
+| `src/lines/live_venue.*`, `tcp_venue_transport.*`, `recorded_venue.*`, `order_recorder.*`, `venue_auth.*`, `venue_json.h`, `venue_order_translator.*`, and the `venue_relay` executable | 3,659 | **keep, marked as the boundary** | [ADR 0005](adr/0005-a-live-venue-is-another-matching-engine.md) is why a venue is a third engine rather than a branch in the loop; [ADR 0006](adr/0006-the-venue-order-session-moves-in.md) is why the venue's order session is moving out of the relay and into these files, one slice at a time, with the authentication and the translator landed. The recorder's two files are what make a session replayable, and `recorded_venue` is the reader that would check one. It moves no measured number, so its verdict is a decision rather than a measurement |
 
 **The deletions are a separate and gated step rather than a part of this document**, because tier 1 compares the L1
 invariants and the legacy replay: removing the legacy line means removing those checks in the same change, and a change
