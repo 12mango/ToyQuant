@@ -457,7 +457,11 @@ void Application::run_replay_mode() const
         [&](const MarketEvent& event)
         {
             if (const auto* quote = std::get_if<BboQuote>(&event))
-                final_mid = (quote->bid_price + quote->ask_price) / 2.0;
+            {
+                // The last *valid* midpoint, not the last one: a quote with no bid or no offer is not a mark.
+                if (quote->bid_price > 0.0 && quote->ask_price > 0.0)
+                    final_mid = (quote->bid_price + quote->ask_price) / 2.0;
+            }
             pipeline.process_event(event);
         },
         cfg_.delay);
@@ -830,7 +834,11 @@ void Application::run_l2_session_mode() const
                         if (profiler != nullptr) profiler->begin(Stage::MarketView);
                         const auto view = l2_book.market_view();
                         if (profiler != nullptr) profiler->end(Stage::MarketView);
-                        final_mid = (view.top.bid_price + view.top.ask_price) / 2.0;
+                        // The last *valid* midpoint, not the last one: a book whose side emptied is not a mark,
+                        // and letting it overwrite a good price is what left a carried position unmarked at the
+                        // end of a session.
+                        if (const double mid = (view.top.bid_price + view.top.ask_price) / 2.0; mid > 0.0)
+                            final_mid = mid;
                         pipeline.process_l2_market_view(view);
                     }
                     else if constexpr (std::is_same_v<Event, IncrementalBookBatch>)
@@ -841,7 +849,8 @@ void Application::run_l2_session_mode() const
                         if (profiler != nullptr) profiler->begin(Stage::MarketView);
                         const auto view = l2_book.market_view();
                         if (profiler != nullptr) profiler->end(Stage::MarketView);
-                        final_mid = (view.top.bid_price + view.top.ask_price) / 2.0;
+                        if (const double mid = (view.top.bid_price + view.top.ask_price) / 2.0; mid > 0.0)
+                            final_mid = mid;
                         pipeline.process_l2_market_view(view);
                     }
                 },
@@ -918,7 +927,20 @@ void Application::run_l2_session_mode() const
         const WindDownSummary wind_down = pipeline.close_out(pipeline.last_event_ts());
         if (wind_down.attempted()) logger.log("[WIND-DOWN] ", wind_down.to_log_string());
     }
-    if (final_mid > 0.0) portfolio.mark_to_market({{cfg_.symbol, final_mid}});
+    if (final_mid > 0.0)
+    {
+        portfolio.mark_to_market({{cfg_.symbol, final_mid}});
+    }
+    else if (const PortfolioPosition* carried = portfolio.find_position(cfg_.symbol);
+             carried != nullptr && carried->quantity != 0)
+    {
+        // The feed ended on a book with no bid or offer, so there is no price for the position it left behind. The
+        // run finishes and reconciles; what it does not do is print cash as if it were equity -- an unmarked short
+        // is a liability, and a reader cannot see one that was valued at zero.
+        portfolio.declare_unmarked();
+        logger.log("[MARK] missing symbol=", cfg_.symbol, " quantity=", carried->quantity,
+                   " reason=no_positive_midpoint equity_is_n/a");
+    }
     logger.log("[L2 DATA] events=", validation.events, " trades=", validation.trades,
                " depth_snapshots=", validation.depth_snapshots,
                " incremental_batches=", validation.incremental_batches,

@@ -265,7 +265,14 @@ double Portfolio::equity_at(const std::unordered_map<std::string, double>& price
 
 void Portfolio::mark_to_market(const std::unordered_map<std::string, double>& prices)
 {
-    mark_values(prices, unrealized_pnl_, equity_);
+    // A zero or missing price is not a mark. A book whose last view had no bid or offer would otherwise value an
+    // open position at nothing and report an equity that is just the cash -- which is how a carried short came to
+    // read as no liability. The account is valued at the best price known for each symbol: this call's positive
+    // price, or the last positive one it ever saw. That is also what `metrics()` reads to say whether every open
+    // position was actually marked.
+    for (const auto& [symbol, price] : prices)
+        if (price > 0.0) last_positive_marks_[symbol] = price;
+    mark_values(last_positive_marks_, unrealized_pnl_, equity_);
 }
 
 const PortfolioPosition* Portfolio::find_position(const std::string& symbol) const
@@ -288,9 +295,12 @@ PortfolioExposure Portfolio::exposure(const std::unordered_map<std::string, doub
         const Valuation valuation = valuation_of(symbol);
         const double units = static_cast<double>(position.quantity) /
                              static_cast<double>(valuation.quantity_scale);
+        const bool marked = price > 0.0;
+        if (!marked) ++out.unmarked;
         out.legs.push_back(ExposureLeg{.symbol = symbol,
                                        .quantity = position.quantity,
-                                       .notional_usd = units * unit_value(valuation, price)});
+                                       .notional_usd = marked ? units * unit_value(valuation, price) : 0.0,
+                                       .marked = marked});
     }
     // Sorted by symbol: the account is a hash map, and a report whose lines move between runs is a report
     // nobody can diff.

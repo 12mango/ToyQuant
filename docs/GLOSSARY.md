@@ -38,7 +38,7 @@ aggressor.
 | `fee_ratio` | `fees_paid / abs(gross_pnl)`, with a 1e-12 floor on the denominator | `src/app/strategy_benchmark.cpp` |
 | `breakeven_maker_rate` | `gross_pnl_usd / maker_notional_usd` -- the maker rate at which the window would be flat. **Negative means no fee tier could have saved it**; positive means the venue could have charged this much on top of the commission and the window would still break even | `src/app/run_summary.h` |
 | net per fill | `net_pnl_usd / trade_reports` | `[PNL]` |
-| gross, closed, net | gross is the whole run marked to the last mid; closed is the part opened *and* closed inside the window; net is gross less fees and commission. The spread between gross and closed is the position left open | `[PORTFOLIO]`, `[PNL]` |
+| gross, closed, net | gross is the whole run marked to the last mid; closed is the part opened *and* closed inside the window; net is gross less fees and commission. The spread between gross and closed is the position left open. When the closing mark is missing, the three mark-dependent figures print `n/a` and `marks_complete=0` says why | `[PORTFOLIO]`, `[PNL]` |
 
 ## Queue and flow
 

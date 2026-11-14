@@ -63,15 +63,28 @@ struct PortfolioMetrics
     double taker_fees{0.0};
     uint64_t maker_trade_count{0};
     uint64_t taker_trade_count{0};
+    // Whether every position still open was marked at a positive price. False means `unrealized_pnl` and
+    // `equity` are not numbers -- cash plus an unmarked position is not what the account is worth -- and the
+    // line prints `n/a` for them rather than a cash-only figure a reader would quote as equity. A run that
+    // carried a short into a closed feed was printing exactly that: `equity` equal to `cash`, with the
+    // liability of the position nowhere.
+    bool marks_complete{true};
 
     std::string to_log_string() const
     {
         std::ostringstream stream;
-        stream << "cash=" << cash << " realized_pnl=" << realized_pnl
-               << " unrealized_pnl=" << unrealized_pnl << " equity=" << equity
-               << " fees_paid=" << fees_paid << " maker_fees=" << maker_fees
+        stream << "cash=" << cash << " realized_pnl=" << realized_pnl << " unrealized_pnl=";
+        if (marks_complete) stream << unrealized_pnl;
+        else stream << "n/a";
+        stream << " equity=";
+        if (marks_complete) stream << equity;
+        else stream << "n/a";
+        stream << " fees_paid=" << fees_paid << " maker_fees=" << maker_fees
                << " taker_fees=" << taker_fees << " maker_trade_count=" << maker_trade_count
                << " taker_trade_count=" << taker_trade_count;
+        // Printed only when it is not true, like the other "absent means zero" counters in this tree: a run whose
+        // marks are complete prints exactly the line it printed before this field existed.
+        if (!marks_complete) stream << " marks_complete=0";
         return stream.str();
     }
 };
@@ -83,6 +96,10 @@ struct ExposureLeg
     std::string symbol;
     int64_t quantity{0};
     double notional_usd{0.0};
+    // False when the run had no positive mark for this symbol, so its notional is not a number: the leg prints
+    // `n/a` and the line counts it. Valuing an open position at zero and reporting no exposure is the failure
+    // this flag exists to stop.
+    bool marked{true};
 };
 
 // What the book is exposed to, which a single position cannot answer. One account can be long one instrument
@@ -96,6 +113,7 @@ struct PortfolioExposure
     double net_usd{0.0};           // the absolute value of the sum of signed notionals
     double fees_usd{0.0};          // fees booked to this account, either side
     std::size_t symbol_count{0};
+    std::size_t unmarked{0};        // legs the run had no positive mark for, so the totals are `n/a`
 
     // Gross carried per unit of net: 1.0 for a single leg, and unbounded for a book that holds two legs while
     // being flat in net terms. Zero is reported as zero rather than as infinity, because a flat book has no
@@ -109,11 +127,24 @@ struct PortfolioExposure
         for (size_t index = 0; index < legs.size(); ++index)
         {
             if (index != 0) stream << ',';
-            stream << legs[index].symbol << ':' << legs[index].quantity << ':' << legs[index].notional_usd;
+            stream << legs[index].symbol << ':' << legs[index].quantity << ':';
+            if (legs[index].marked) stream << legs[index].notional_usd;
+            else stream << "n/a";
         }
         if (legs.empty()) stream << "none";
-        stream << " gross_usd=" << gross_usd << " net_usd=" << net_usd
-               << " gross_to_net=" << gross_to_net() << " fees_usd=" << fees_usd;
+        stream << " gross_usd=";
+        if (unmarked == 0) stream << gross_usd;
+        else stream << "n/a";
+        stream << " net_usd=";
+        if (unmarked == 0) stream << net_usd;
+        else stream << "n/a";
+        stream << " gross_to_net=";
+        if (unmarked == 0) stream << gross_to_net();
+        else stream << "n/a";
+        stream << " fees_usd=" << fees_usd;
+        // Only when a leg could not be priced: a run whose every leg has a mark prints exactly the line it printed
+        // before this field existed, which is what keeps two-book outputs and their assertions comparable.
+        if (unmarked != 0) stream << " unmarked=" << unmarked;
         return stream.str();
     }
 };
@@ -257,8 +288,30 @@ class Portfolio
 
     PortfolioMetrics metrics() const
     {
-        return {cash_,       realized_pnl_, unrealized_pnl_,    equity_,           fees_paid_,
-                maker_fees_, taker_fees_,   maker_trade_count_, taker_trade_count_};
+        PortfolioMetrics out{cash_,       realized_pnl_, unrealized_pnl_,    equity_,           fees_paid_,
+                             maker_fees_, taker_fees_,   maker_trade_count_, taker_trade_count_};
+        out.marks_complete = marks_complete();
+        return out;
+    }
+
+    // A run that ends holding a position it could not mark says so here rather than letting the account's
+    // value stand as cash. The caller knows the fact -- its last view had no bid or offer -- and this is the
+    // one place that turns it into `equity=n/a` on the line.
+    void declare_unmarked() { unmarked_declared_ = true; }
+
+    // Whether every position still open has a positive price in the marks the account was last given. A
+    // position valued at zero is not a position worth zero: an unmarked short would read as no liability at
+    // all, which is the difference between an equity figure and a cash figure.
+    bool marks_complete() const
+    {
+        if (unmarked_declared_) return false;
+        for (const auto& [symbol, position] : positions_)
+        {
+            if (position.quantity == 0) continue;
+            const auto mark = last_positive_marks_.find(symbol);
+            if (mark == last_positive_marks_.end() || mark->second <= 0.0) return false;
+        }
+        return true;
     }
 
     const PortfolioPosition* find_position(const std::string& symbol) const;
@@ -337,6 +390,13 @@ class Portfolio
     double unit_notional_usd_;
     double multiplier_;
     std::unordered_map<std::string, Valuation> instruments_;
+    // The last positive prices the account was marked at, kept so `metrics()` can say whether every open
+    // position was actually marked rather than assuming it. Cleared on each mark call: the completeness
+    // question is about the marks the account was last given, not about every price it ever saw.
+    // The last positive price seen for each symbol, and the only map the valuation reads: a caller that marks one
+    // symbol of a two-book account is not saying the other leg is unmarked, and a zero price never enters here.
+    std::unordered_map<std::string, double> last_positive_marks_;
+    bool unmarked_declared_{false};
     // The per-symbol split of the two account totals above. A sum of them is what the totals are, and a two-book
     // run reads them one leg at a time.
     std::unordered_map<std::string, double> realized_by_symbol_;

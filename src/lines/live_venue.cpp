@@ -105,7 +105,7 @@ void LiveVenue::send_order(const exchange::Order& order)
     }
     ++counters_.orders_sent;
     // Kept until the order ends, because the venue's frames carry the id and nothing else.
-    sent_[order.id] = SentOrder{order.owner, order.side, order.time_in_force};
+    sent_[order.id] = SentOrder{order.owner, order.symbol, order.side, order.time_in_force};
 }
 
 void LiveVenue::cancel_order(uint64_t order_id)
@@ -136,14 +136,17 @@ bool LiveVenue::on_frame(std::string_view frame)
         return false;
     }
     report.order_id = order_id;
-    // Owner, side and role are the sending order's, not the frame's: the pipeline books a fill against its own
-    // owner, in the side the order was for, and counts maker and taker fills separately -- and the report's
-    // defaults are none of those.
+    // Owner, side, the symbol and the role are the sending order's, not the frame's: the pipeline books a fill
+    // against its own owner, in the side the order was for, under the symbol the position is keyed by, and counts
+    // maker and taker fills separately -- and the report's defaults are none of those. A missing symbol is not a
+    // cosmetic gap: the position lands under the empty string, no mid is ever found for it, and the account
+    // reports its cash as equity while the position is worth nothing -- which is what a live run did.
     const auto sent = sent_.find(order_id);
     if (sent != sent_.end())
     {
         report.owner = sent->second.owner;
         report.side = sent->second.side;
+        report.symbol = sent->second.symbol;
     }
 
     const std::string_view kind = fields[0];

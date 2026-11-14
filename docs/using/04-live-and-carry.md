@@ -253,21 +253,30 @@ python3 tools/live/venue_relay.py --instrument BTC-USDT-SWAP --order-listen 127.
     --order-rest https://www.okx.com --order-inst-code=10459 &
 ./out/build/linux-debug/toy_quant ws 127.0.0.1:8765 BTC-USDT-SWAP active_l2 1000000 prorata \
   --fast-validation --paper-broker --ws-seconds=120 --order-size=10000 --inventory-limit=10000 \
-  --live-orders --venue-endpoint=127.0.0.1:8766 --venue-max-orders=20
+  --max-exposure-usd=1000 --live-orders --venue-endpoint=127.0.0.1:8766 --venue-max-orders=20
 ```
 
-It fills, and the two sides agree. Measured on 2026-11-14 over ninety seconds: `[VENUE] orders=18 cancels=13 reports=83
-dropped=0`, `[EXECUTION] trade_reports=42 fill_rate=0.523889`, `[BROKER] fills_seen=42`, `[RECON] status=ok` with
-`quantity_breaks=0 fee_difference=0.000000`, and `[PNL] gross_pnl_usd=-1.33058 fees_paid=2.19004
-net_pnl_usd=-3.52062`. The relay printed `placed=18 venue_refusals=3` and, for the state channel, `logins=1
-subscribes=1 reconnects=0`.
+It fills, and the two sides agree. Measured on 2026-11-14 over ninety seconds, with the exposure cap set: `[VENUE]
+orders=20 cancels=20 reports=66 dropped=0`, `[EXECUTION] submitted_orders=28 trade_reports=15 fill_rate=0.333214` with
+`max_abs_exposure_usd=656.583` and `exposure_over_collateral_fills=0`, `[BROKER] fills_seen=15`, `[RECON] status=ok` with
+`quantity_breaks=0 fee_difference=0.000000`. The account closed at `[PORTFOLIO] cash=1437.13 realized_pnl=-2.55906
+unrealized_pnl=-0.064655 equity=997.376 fees_paid=2.99724` and `[PNL] gross_pnl_usd=0.373523
+net_pnl_usd=-2.62371`: gross positive, net not, because the fee is 2.99724 of a 0.373523 gross. Fifteen fills in ninety
+seconds is a wire acceptance, not a rate.
 
-Two things the demo venue taught, and both are in the tree now. **A contract fills in parts**: a one-contract order came
+Three things the demo venue taught, and all are in the tree now. **A contract fills in parts**: a one-contract order came
 back `accFillSz: "0.45"`, and the channel read that with `int()`, which dropped the private connection on the first such
 push and lost every state message after it. **A live fill carried no fee**: the adapter's `FILL` frame had no field for
-one, so `fees_paid` was zero while the venue had charged `fee: "-0.14999409"` on the same fill. The relay now puts the
-venue's own `fillFee` on the line -- negated, because the venue writes a charge as negative -- so the fee is the venue's
-number rather than this repository's rate.
+one, so `fees_paid` was zero while the venue had charged `fee: "-0.14999409"` on the same fill -- the relay now carries the
+venue's own `fillFee`, negated because the venue writes a charge as negative. **A live fill carried no symbol**: the
+position was booked under the empty string, `[EXPOSURE]` printed `legs=:-14300:-0`, and the account reported its cash as
+equity, because no midpoint can be found for a position with no name. The adapter now stamps the symbol from the order it
+sent, and the same run prints `legs=BTC-USDT-SWAP:-6700:-439.749`.
+
+**A run that ends on an empty book says so.** Two guards protect the figure that went wrong first: the closing mark is the
+last *positive* midpoint, so an empty book's zero cannot overwrite it, and where no mark exists at all the run prints
+`[MARK] missing symbol=… quantity=… reason=no_positive_midpoint equity_is_n/a`, `equity=n/a marks_complete=0` on the
+account and `unmarked=1` on the exposure, rather than a cash figure a reader could quote as equity.
 
 **A live session records; it does not replay.** One `ws` session through the live adapter, recorded twice, was the step
 this page used to name. It cannot do that: the same command run twice on the same market recording gave 154 and 261

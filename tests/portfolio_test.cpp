@@ -462,6 +462,48 @@ int main()
         assert(std::abs(plain.metrics().unrealized_pnl - 1.0) < 1e-6);
     }
 
+    // A price of zero is not a mark. The account keeps the last positive one, and when the run knows it never had
+    // one it says `n/a` rather than reporting cash as equity: an unmarked short is a liability, and a line whose
+    // `equity` equals `cash` hides it. This is the shape a live session took into a closed feed.
+    {
+        Portfolio book(1, 1000.0, 0.0, 1.0);
+        // A ten-unit short at 100 credits 1000 USD of proceeds, so cash is 2000 and the position owes 1000.
+        book.apply(ExecutionReport{.side = exchange::Side::Sell,
+                                   .exec_type = ExecType::Trade,
+                                   .symbol = "BTC-PERPETUAL",
+                                   .price = 100.0,
+                                   .quantity = 10,
+                                   .owner = "test",
+                                   .liquidity_role = LiquidityRole::Maker,
+                                   .fee = 0.0});
+        book.mark_to_market({{"BTC-PERPETUAL", 100.0}});
+        assert(book.metrics().marks_complete);
+        assert(std::abs(book.metrics().equity - 1000.0) < 1e-9);
+        assert(book.metrics().to_log_string().find("equity=n/a") == std::string::npos);
+        // The flag is absent when the account is fully marked, so a healthy run's line is what it always was.
+        assert(book.metrics().to_log_string().find("marks_complete") == std::string::npos);
+        // A book with no bid or offer reports zero, and that is not a mark: the account keeps the one it had, and
+        // the position does not become free.
+        book.mark_to_market({{"BTC-PERPETUAL", 0.0}});
+        assert(book.metrics().marks_complete);
+        assert(std::abs(book.metrics().equity - 1000.0) < 1e-9);
+        // With no mark ever taken, the run says so instead of printing cash.
+        book.declare_unmarked();
+        const PortfolioMetrics unmarked = book.metrics();
+        assert(!unmarked.marks_complete);
+        const std::string line = unmarked.to_log_string();
+        assert(line.find("unrealized_pnl=n/a") != std::string::npos);
+        assert(line.find("equity=n/a") != std::string::npos);
+        assert(line.find("marks_complete=0") != std::string::npos);
+        // The exposure line names the leg it could not price and withholds the totals rather than printing zero.
+        const PortfolioExposure unpriced = book.exposure({{"BTC-PERPETUAL", 0.0}});
+        assert(unpriced.unmarked == 1);
+        assert(unpriced.to_log_string().find("BTC-PERPETUAL:-10:n/a") != std::string::npos);
+        assert(unpriced.to_log_string().find("gross_usd=n/a") != std::string::npos);
+        assert(unpriced.to_log_string().find("unmarked=1") != std::string::npos);
+        assert(book.exposure({{"BTC-PERPETUAL", 100.0}}).unmarked == 0);
+    }
+
     // The book's exposure, which one position cannot answer: gross is what fees are charged on and net is what
     // the position risk is. A single-leg book reports the same number twice, and that identity is what makes the
     // pair readable.

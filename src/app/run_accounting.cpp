@@ -525,6 +525,7 @@ PnlSummary RunAccounting::pnl_summary_of(const Portfolio& portfolio, const std::
     // Y" are different facts, and only the second one says whether the hedge was the problem.
     const auto leg = portfolio.pnl_of(symbol, price);
     PnlSummary pnl;
+    pnl.marks_complete = portfolio.metrics().marks_complete;
     pnl.closed_pnl_usd = leg.realized_pnl;
     pnl.net_pnl_usd = leg.realized_pnl + leg.unrealized_pnl;
     pnl.gross_closed_pnl_usd = pnl.closed_pnl_usd + leg.fees_paid;
@@ -545,6 +546,7 @@ PnlSummary RunAccounting::pnl_summary(const Portfolio& portfolio, double maker_n
 {
     const auto metrics = portfolio.metrics();
     PnlSummary pnl;
+    pnl.marks_complete = metrics.marks_complete;
     pnl.closed_pnl_usd = metrics.realized_pnl;
     pnl.net_pnl_usd = metrics.realized_pnl + metrics.unrealized_pnl;
     pnl.gross_closed_pnl_usd = pnl.closed_pnl_usd + metrics.fees_paid;

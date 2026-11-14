@@ -7,27 +7,33 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
-## The demo venue's own book, and the two defects it found (2026-11-14)
+## The demo venue's own book, and the three defects it found (2026-11-14)
 
 - **The acceptance run ADR 0005 asked for.** Ninety seconds of the demo venue's public `BTC-USDT-SWAP` channel as the
-  market leg, `LiveVenue` placing over REST with its `orders` channel subscribed for state, both legs recorded: 42 fills
-  at one contract an order, `[RECON] status=ok` with `quantity_breaks=0 fee_difference=0.000000`, and `[PNL]
-  gross_pnl_usd=-1.33058 fees_paid=2.19004 net_pnl_usd=-3.52062`. Every earlier attempt replayed 2020 prices against a
-  2026 book, so nothing crossed; what closed it was using the venue's own feed rather than a replay.
+  market leg, `LiveVenue` placing over REST with its `orders` channel subscribed for state, both legs recorded, and the
+  exposure cap set: 15 fills at one contract an order, `max_abs_exposure_usd=656.583` with
+  `exposure_over_collateral_fills=0`, `[RECON] status=ok` with `quantity_breaks=0 fee_difference=0.000000`, and the
+  account closing at `equity=997.376` with `[PNL] gross_pnl_usd=0.373523 net_pnl_usd=-2.62371` -- gross positive, net
+  not, because the fee is 2.99724 of a 0.373523 gross.
 - **A contract fills in parts, and the venue says so in decimals.** `accFillSz: "0.45"` on a one-contract order was read
   with `int()`, which raised inside the decoder and dropped the private connection -- every state message after the first
-  fractional fill was lost, and the session recorded three of its fills. The counter is a decimal string now, and the
-  increment is converted to engine units after the contract size is applied.
+  fractional fill was lost, and the session recorded three of its fills.
 - **A live fill carried no fee.** The adapter's `FILL` frame had no field for one, so `fees_paid` was zero while the
   venue had charged `fee: "-0.14999409"` on the same fill: a live `[PNL]` was gross of the fee the project is about. The
-  relay now puts the venue's own `fillFee` on the line, negated into the engine's sign, so a rebate arrives negative.
-  `tests/live_venue_test` and `venue_relay.py --self-test` pin a decimal counter, a fee-bearing fill, a rebate and a
-  frame with no fee.
-- **Two things the run does not settle**, said rather than smoothed: `[PORTFOLIO] equity` ends equal to cash because the
-  carried position was marked at a zero price after the feed closed, and the account ran without `--max-exposure-usd`, so
-  three fills took it over collateral.
-- No recorded number moved; `src/lines` gained 13 lines (the adapter's optional fee field and its comment), and the size
-  table and `MAINLINE.md` now state 26,408.
+  frame now carries the venue's own `fillFee`, negated into the engine's sign, so a rebate arrives negative.
+- **A live fill carried no symbol, and that is why the equity looked like cash.** `LiveVenue` stamped owner, side and
+  role but not the symbol, so the position was booked under the empty string: `[EXPOSURE] legs=:-14300:-0` and
+  `[PORTFOLIO] equity=1950.98` -- cash, with a 1.43-contract short worth nothing in the account. The symbol now comes
+  from the order that was sent.
+- **Two guards for the case where there is genuinely no price.** The closing mark is the last *positive* midpoint, so a
+  book whose side emptied cannot overwrite it; and with no mark at all the run prints `[MARK] missing symbol=… quantity=…
+  reason=no_positive_midpoint equity_is_n/a`, `equity=n/a marks_complete=0`, `[EXPOSURE] … unmarked=1` and `n/a` for
+  `gross_usd`, while `[PNL]`'s `net`, `gross` and the two per-fill rates follow the same flag and `closed_pnl_usd` stays a
+  number. The run still finishes and reconciles: this is a statement about a number, not a refusal.
+- `tests/portfolio_test` pins the guard (a zero-price mark keeps the previous one; a declared-unmarked account prints
+  `n/a` on both lines and the exposure names the leg it could not price), and `tests/live_venue_test` pins the symbol on
+  a report next to the owner, the side and the optional fee.
+- No recorded number moved; the source counts did, and the size table and `MAINLINE.md` carry the new total.
 
 ## The live leg's record had no clock (2026-11-14)
 

@@ -219,6 +219,9 @@ int main()
 
         assert(venue.on_frame("FILL 11 10 5"));
         assert(reports.size() == 1 && reports[0].owner == "MarketMaker");
+        // The symbol is the position's key: a report without it books the fill under the empty string, where no mid
+        // is ever found, and the account reports its cash as equity while the position is worth nothing.
+        assert(reports[0].symbol == "BTC-PERPETUAL");
         assert(reports[0].side == exchange::Side::Buy && reports[0].liquidity_role == LiquidityRole::Maker);
         assert(venue.on_frame("CANCELED 11 user"));
         assert(reports.size() == 2 && reports[1].owner == "MarketMaker");

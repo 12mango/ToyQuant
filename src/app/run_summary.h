@@ -163,6 +163,10 @@ struct PnlSummary
     double closed_pnl_usd{0.0};       // what completed, so a position still open is not counted
     double gross_pnl_usd{0.0};        // net, before fees
     double gross_closed_pnl_usd{0.0}; // closed, before fees
+    // False when the run ended holding a position it could not mark, so `net`, `gross` and the two per-fill
+    // numbers that follow from them are not numbers: they carry the open position's mark, and there was none.
+    // `closed_pnl_usd` and `gross_closed_pnl_usd` are unaffected -- they are about trades that completed.
+    bool marks_complete{true};
     double maker_notional_usd{0.0};   // what the maker fees were charged on
     double net_per_fill_usd{0.0};     // net PnL per trade report
     double gross_closed_per_fill_usd{0.0};
@@ -510,14 +514,27 @@ struct RunSummary
     static std::string pnl_fields(const PnlSummary& pnl)
     {
         std::ostringstream stream;
-        stream << "gross_pnl_usd=" << pnl.gross_pnl_usd
-               << " net_pnl_usd=" << pnl.net_pnl_usd
+        // The fields that carry the open position's mark print `n/a` when the run had no mark to carry: `net` is
+        // realized plus unrealized, `gross` adds the fees back, and the two per-fill rates divide them. The closed
+        // fields do not touch the mark, so they stay numbers either way.
+        const auto marked = [&pnl](double value)
+        {
+            if (!pnl.marks_complete) return std::string("n/a");
+            std::ostringstream text;
+            text << value;
+            return text.str();
+        };
+        stream << "gross_pnl_usd=" << marked(pnl.gross_pnl_usd)
+               << " net_pnl_usd=" << marked(pnl.net_pnl_usd)
                << " gross_closed_pnl_usd=" << pnl.gross_closed_pnl_usd
                << " closed_pnl_usd=" << pnl.closed_pnl_usd
                << " maker_notional_usd=" << pnl.maker_notional_usd
-               << " net_per_fill_usd=" << pnl.net_per_fill_usd
+               << " net_per_fill_usd=" << marked(pnl.net_per_fill_usd)
                << " gross_closed_per_fill_usd=" << pnl.gross_closed_per_fill_usd
-               << " breakeven_maker_rate=" << pnl.breakeven_maker_rate;
+               << " breakeven_maker_rate=" << marked(pnl.breakeven_maker_rate);
+        // Absent when the marks are complete, like the account's own flag: a healthy run's [PNL] is byte for byte
+        // the line it printed before this field existed.
+        if (!pnl.marks_complete) stream << " marks_complete=0";
         return stream.str();
     }
 

@@ -117,6 +117,7 @@ class LiveVenue : public IMatchingEngine
     struct SentOrder
     {
         std::string owner;
+        std::string symbol;
         exchange::Side side{exchange::Side::Buy};
         TimeInForce time_in_force{TimeInForce::Gtc};
     };

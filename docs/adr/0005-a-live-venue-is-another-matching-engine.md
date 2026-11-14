@@ -136,22 +136,37 @@ nothing about profit, and what stops it from becoming a program that spends mone
   reports=655 rows_left=0`, ending on the same `[PNL]`. A live run still measures the wire and not a strategy, which is
   what this record said before the stamp existed.
 - **The acceptance run happened, on the venue's own book.** A ninety-second `ws` session against the demo venue's public
-  `BTC-USDT-SWAP` channel, placing through `LiveVenue` over REST and hearing the private `orders` channel, filled and
-  reconciled: `[WS] frames=197067 trades=23743 depth_updates=173322 ring_waits=0`, `[VENUE] orders=18 cancels=13
-  reports=83 dropped=0`, `[EXECUTION] submitted_orders=18 trade_reports=42 fill_rate=0.523889`, `[BROKER] fills_seen=42`,
-  `[RECON] status=ok` with `quantity_breaks=0 report_count_difference=0 fee_difference=0.000000`, and `[PNL]
-  gross_pnl_usd=-1.33058 fees_paid=2.19004 net_pnl_usd=-3.52062` -- a decomposition that adds up, with a sign that does
-  not flatter the line. The relay printed `placed=18 venue_refusals=3` and, for the state channel, `logins=1
-  subscribes=1 reconnects=0`. Two defects the run found, both fixed here: a contract fills **in parts** and the venue
-  reports them as decimals (`accFillSz: "0.45"`), where the channel parsed an integer and dropped the private connection
-  on the first such push; and a live fill carried **no fee**, because the adapter's `FILL` frame had no field for one,
-  so `fees_paid` was zero while the venue had charged `fee: "-0.14999409"` on the same fill.
-- **What that run does not settle.** `[PORTFOLIO] equity` at the end equals cash (`1950.98`), because the position was
-  carried into a moment with no mark -- the feed had closed -- so the mark is zero and the equity figure is cash plus
-  nothing; `[PNL]` is the figure that decomposes, and it is the one quoted. The account also ran without
-  `--max-exposure-usd`, and three fills took it over collateral (`exposure_over_collateral_fills=3`), which is a setting
-  rather than a finding. What the run measures is the wire with real fills in it, on a demo venue's book, one contract
-  an order, for ninety seconds -- not an edge.
+  `BTC-USDT-SWAP` channel, placing through `LiveVenue` over REST and hearing the private `orders` channel, with the
+  exposure cap set, filled and reconciled: `[WS] frames=119616 trades=3600 depth_updates=116014 ring_waits=0`,
+  `[VENUE] orders=20 cancels=20 reports=66 dropped=0`, `[EXECUTION] submitted_orders=28 trade_reports=15
+  fill_rate=0.333214` with `max_abs_exposure_usd=656.583`, `hard_limit_rejections=12` and
+  `exposure_over_collateral_fills=0` -- the cap held, so nothing traded past collateral. `[BROKER] fills_seen=15` and
+  `[RECON] status=ok` with `quantity_breaks=0 report_count_difference=0 fee_difference=0.000000`; the account closed at
+  `[PORTFOLIO] cash=1437.13 realized_pnl=-2.55906 unrealized_pnl=-0.064655 equity=997.376
+  fees_paid=2.99724` (and no `marks_complete=0`, which is how a complete mark reads), and `[PNL] gross_pnl_usd=0.373523
+  net_pnl_usd=-2.62371 breakeven_maker_rate=6.09892e-05`. Gross is
+  positive and net is not: the fee is 2.99724 of a 0.373523 gross, which is the whole question in one line. Fifteen
+  fills over ninety seconds is a wire acceptance, not a rate -- it is not evidence that a maker paying this fee is
+  profitable, and the eight closed lines are why.
+- **Three defects the run found, all fixed here.** A contract fills **in parts** and the venue reports them as decimals
+  (`accFillSz: "0.45"`), where the channel parsed an integer and dropped the private connection on the first such push.
+  A live fill carried **no fee**, because the adapter's `FILL` frame had no field for one, so `fees_paid` was zero while
+  the venue had charged `fee: "-0.14999409"` on the same fill. And the adapter's reports carried **no symbol**: the
+  position was booked under the empty string, `[EXPOSURE]` printed `legs=:-14300:-0`, and the account reported its cash
+  as equity because no midpoint could ever be found for a position with no name -- the run that first showed this ended
+  at `equity=1950.98`, which was cash and not the account's value.
+- **The equity hole, and the two guards that keep it from reading as cash.** The first live session ended holding a
+  1.43-contract short with `[PORTFOLIO] equity` equal to cash (`1950.98`) and `[EXPOSURE] legs=:-14300:-0`: the report
+  had no symbol, so the position was keyed under the empty string and no midpoint could ever be found for it. With the
+  symbol fixed the account marks as it should (`[EXPOSURE] legs=BTC-USDT-SWAP:-6700:-439.749 gross_usd=439.749`,
+  `equity=997.376`). Two guards remain for the moment a run really has no price: it keeps the last
+  *positive* midpoint rather than letting an empty book's zero overwrite it, and where no mark exists at all it says so --
+  `[MARK] missing symbol=… quantity=… reason=no_positive_midpoint equity_is_n/a`, `equity=n/a marks_complete=0`,
+  `[EXPOSURE] … unmarked=1` -- instead of printing cash as equity. `[PNL]`'s `net`, `gross` and the two per-fill rates
+  follow the same flag; `closed_pnl_usd` does not, because a completed trade needs no mark.
+- **What that run still does not settle.** The account ran without `--max-exposure-usd`, and three fills took it over
+  collateral (`exposure_over_collateral_fills=3`), which is a setting rather than a finding. What the run measures is the
+  wire with real fills in it, on a demo venue's book, one contract an order, for ninety seconds -- not an edge.
 - **What it costs**: one adapter, one wire, one relay order channel, one recorder with its reader, and the flag
   plumbing -- `src/lines/live_venue.{h,cpp}`, `src/lines/tcp_venue_transport.{h,cpp}`, the order channel in
   `tools/live/venue_relay.py`, `src/lines/order_recorder.{h,cpp}`, `src/lines/recorded_venue.{h,cpp}` and a
