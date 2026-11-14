@@ -41,6 +41,11 @@ compatibility path. Everything below assumes that page.
 - **A result that looks too good is a bug until its decomposition reconciles.** Capture, markout, fee and `net_pnl_usd`
   have to add up; when they do not, say so and do not quote the number (the MU quoting rows are the standing example).
 - **The answer "closed, and here is why" is a deliverable.** Do not manufacture work to avoid delivering it.
+- **Exploration has a buffer, and the guides are not it.** A new direction is tried with a rough note in the studies
+  record (`docs/archive/studies.md`) or an ADR if it closes a decision; it does not enter the guide, the front doors or
+  the retrospective until the core path works and the skeleton has stopped moving. After that point every change is a
+  local increment inside the existing framework -- one page, one table, one flag, one figure at a time -- and there is
+  no clean-it-all-up pass held back to the end, because a rewrite kept until then is a second tree nobody reviewed.
 
 ## 2. Files, data and scope
 

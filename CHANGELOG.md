@@ -7,6 +7,25 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The data page matches the checkout it describes (2026-11-14)
+
+- **`docs/DATA.md` opened on a directory that no longer exists.** "This directory has two purposes, `scenarios/` and
+  `runtime/`" was true before the 2020-2026 market data arrived, and the page is almost entirely about `data/v2/`. The
+  opening is a three-row table now, and its useful column says `data/v2/` is ignored: a copy of it is local, so the
+  inventory further down is a snapshot rather than a fact about the repository.
+- **The inventory named six families and the checkout has seven.** `options/` -- five equity-option series, 124 KB --
+  was missing, `crypto/` said 12 files and 4.6 GB where `ls` and `du` give 21 and 8.5 GB, and the "removed" paragraph
+  claimed three 2020 snapshots that are on disk again. The table says what its numbers were measured on, which is what
+  a page about ignored files can honestly claim.
+- **The buffer rule is written down.** `.clinerules` now carries it: exploration lands in the studies record or an
+  ADR, the guides wait until the core path works, and after that every change is a local increment -- a rewrite held
+  back to the end is a second tree nobody reviewed.
+- The slice examples lost their tab indentation, and two lead-ins were counts that no longer matched what followed
+  them ("Two things" over three rows, "Six properties" over five); no command changed. No C++, no recorded number and
+  no size count of `src/` moved.
+- Gate: `tier0 OK` / `tier1 OK` (`fast`), `lint_prose` 0 problems, `check_links` 0 problems, `mkdocs build --strict`
+  green.
+
 ## The two path figures are drawn by a script, and an SVG include is checked (2026-11-14)
 
 - **The front door's diagram was unreadable in the site's dark palette.** The site's own text colour won over the

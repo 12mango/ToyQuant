@@ -2,12 +2,15 @@
 
 *Part of the reference tier. The map of the documents is [`MAP.md`](MAP.md).*
 
-This directory has two purposes:
+Three paths, and the one every measured number comes from is the one git ignores:
 
-- `scenarios/`: Tick scenarios used as market-data inputs.
-- `runtime/`: Generated order and trade outputs.
+| path | what it is | in git |
+|---|---|---|
+| `scenarios/` | the legacy Tick scenarios the L1 modes read | yes |
+| `v2/` | the market data behind the quoted numbers, grouped by family -- [the inventory](#what-is-in-datav2-now-and-what-was-removed) below | no: `data/v2/` is ignored |
+| `runtime/` | the orders and trades a legacy run writes | no, generated |
 
-Two things a reader comes here for, and where they are:
+What a reader comes here for, and where it is:
 
 | you want | open |
 |---|---|
@@ -85,16 +88,16 @@ does not load the source file into memory. Deribit snapshot timestamps are in mi
 
 ```bash
 python3 tools/fetch/slice.py snapshot \
-	data/v2/crypto/deribit_book_snapshot_25_2020-04-01_BTC-PERPETUAL.csv \
-	/tmp/l2_tiny.csv \
-	--max-rows 100
+  data/v2/crypto/deribit_book_snapshot_25_2020-04-01_BTC-PERPETUAL.csv \
+  /tmp/l2_tiny.csv \
+  --max-rows 100
 ```
 
 Use an inclusive timestamp window or keep every Nth matching row when needed:
 
 ```bash
 python3 tools/fetch/slice.py snapshot input.csv /tmp/l2_window.csv \
-	--start-ts 1585699200000000 --end-ts 1585699500000000 --every 10
+  --start-ts 1585699200000000 --end-ts 1585699500000000 --every 10
 ```
 
 The same tool accepts Tardis gzip-compressed trades files, so a small paired sample can be made
@@ -102,8 +105,8 @@ without first extracting the full file:
 
 ```bash
 python3 tools/fetch/slice.py snapshot \
-	data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
-	/tmp/trades_tiny.csv --max-rows 1000
+  data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz \
+  /tmp/trades_tiny.csv --max-rows 1000
 ```
 
 ## More Deribit Days
@@ -429,7 +432,7 @@ That produces `data/v2/funding/okx_funding_2026-01-07_BTC-USDT-SWAP.csv` (3 sett
 (93 settlements, one file day cut and concatenated per day of the range) and
 `data/v2/funding/BTCUSDT-fundingRate-2024-03.csv` (93 settlements, `calc_time,funding_interval_hours,last_funding_rate`).
 The March 2024 pair is what the acceptance number is measured on, because a carry needs two histories that cover
-the same window and Binance publishes monthly while OKX publishes daily. Six properties decide how a series joins
+the same window and Binance publishes monthly while OKX publishes daily. Five properties decide how a series joins
 a run:
 
 - **The OKX day is cut on midnight UTC+8**, like its trade archive, so the file named `2026-01-07` holds the
@@ -488,24 +491,30 @@ The generated built-in scenarios contain 1,000 ticks each, which is enough for a
 4. Reuse the same scenario and parameters to compare repeated results.
 
 The application's default paths follow this directory layout.
+
 ## What is in `data/v2` now, and what was removed
 
-The top level is grouped by family: `crypto/`, `equities/`, `futures/`, `funding/`, `fixtures/`, and `screen/` for the
-cached top-of-book files. The grouping is a directory fact rather than a comment, and it was done as one change with
-every reference in it — the gate, the checked run blocks, the tools, the tests and this document — because those blocks
-are re-run on every gate pass and a path left behind fails tier 1 and names itself.
+The top level is grouped by family: `crypto/`, `equities/`, `futures/`, `funding/`, `fixtures/`, `options/` for the
+equity-option series the options gate re-derives, and `screen/` for the cached top-of-book files. The grouping is a
+directory fact rather than a comment, and it was done as one change with every reference in it -- the gate, the checked
+run blocks, the tools, the tests and this document -- because those blocks are re-run on every gate pass and a path left
+behind fails tier 1 and names itself.
 
 | family | files | size | what it is | regenerable |
 |---|---:|---:|---|---|
-| `crypto/` | 12 | 4.6 GB | the 2020 perpetual snapshots, incremental books and trades the L2 path is measured on, plus the Binance and OKX archives of a closed line | yes, from the Tardis samples and the venue archives |
+| `crypto/` | 21 | 8.5 GB | the 2020 perpetual snapshots, incremental books and trades the L2 path is measured on, plus the Binance and OKX archives of a closed line | yes, from the Tardis samples and the venue archives |
 | `equities/` | 29 | 1.8 GB | the US equity windows: depth and trades per symbol and session | yes, from Databento, about two dollars a session |
 | `futures/` | 3 | 2.0 GB | the micro E-mini session, raw and converted | yes, from Databento |
-| `funding/` | 25 | 148 KB | both venues' funding histories for 2024, which closed the carry line | yes, and they are free |
+| `funding/` | 25 | 152 KB | both venues' funding histories for 2024, which closed the carry line | yes, and they are free |
 | `fixtures/` | 2 | 2.7 MB | the small pinned inputs the replay tests use | no, they are fixtures |
+| `options/` | 5 | 124 KB | the equity-option series the options gate re-derives, re-bought for 0.012 USD | yes, from Databento, and cheap |
 | `screen/` | 60 | 1.2 GB | the top-of-book files of the thirty symbol screen, cached so the rule can be re-measured for nothing | yes, but it is the cache that makes the re-measurement free |
 
+Counts and sizes are `ls` and `du` on the development checkout, not a claim a gate re-derives: `data/v2/` is ignored, so
+another copy may hold fewer files and every number here is a snapshot rather than a fact about the repository.
 
-**Removed, and why**: eighteen `*:Zone.Identifier` files (Windows alternate-data-stream metadata rather than data), an
-empty `v2/carry/` directory, and four archives no gate or checked block names — `BTCUSDT-bookTicker-2024-03-30` and the
-June, July and August 2020 Deribit snapshots — for **873 MB**. Each is re-fetchable with the commands above, and every
-file a checked block re-derives its numbers from was deliberately left alone.
+**Removed**: the empty `v2/carry/` directory, and `BTCUSDT-bookTicker-2024-03-30`, which no gate or checked block
+names. The June, July and August 2020 Deribit snapshots an earlier version of this paragraph listed as removed are on
+disk again and the row above counts them, and four `*:Zone.Identifier` sidecars are present -- Windows metadata rather
+than data, which no reader opens. What the gate needs is the files the checked blocks name, and every one of those was
+left alone.
