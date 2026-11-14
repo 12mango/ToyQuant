@@ -52,6 +52,18 @@ aggressor.
 | quote distance | how far from the mid a quote sat, in ticks; the gate buckets fills into near (within a tick) and far | `total_quote_distance_ticks` |
 
 
+## The order leg, and a venue that answers
+
+The one place where a run leaves the process. The terms are small but they are the ones a first sandbox run gets wrong:
+
+| term | what it means | comes from |
+|---|---|---|
+| the order leg | a run's own orders leaving the process: a socket to the relay, which signs the venue's REST calls, with the venue's private `orders` channel coming back as state | `src/lines/live_venue.h` |
+| `owner` | the client id the adapter stamps on every order, so a venue report can be matched to the order that caused it | `ExecutionReport::owner` |
+| `liquidity_role` | what the **venue** says the fill was, `maker` or `taker`, which picks the fee rate; the engine's own queue model does not set it | `ExecutionReport::liquidity_role` |
+| `ctVal` | a contract's size in the underlying -- `0.01` BTC for `BTC-USDT-SWAP` -- so a venue-unit quantity is not a coin quantity | the venue's instrument list |
+| reconciliation | the ledger's statement against the venue's own reports; `status=break` means the two disagree, and no number from that run is quoted | `[RECON]` |
+
 ## Statistics, when a set of runs is quoted
 
 `tools/study/pnl_interval.py` resamples a series and prints one line; these are its fields.

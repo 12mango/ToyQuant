@@ -48,7 +48,7 @@ existing design, architecture and user documents are the whole plan.
 | portfolio and PnL | several instruments in one run against one account: a book, a decision layer, a venue and a pipeline per symbol, per-instrument valuation, and `[EXPOSURE]` reporting gross against net; a book prints its own `[PNL] symbol=`, and `--close-out` prices the exit so a "net" figure that carries a position can be read as the mark it is | the maker comparison needs a larger fill count than the free days give; that is data, not code | done |
 | broker and gateway simulation | paper broker plus gateway faults and timeout queries, and idempotent client order ids: a re-send under an id the venue has already seen is refused rather than filled, so a retry cannot become a second position | an id that survives a client *restart*, which is the snapshot's `next_order_id` and is a different mechanism | done |
 | persistence and recovery | a session is written down and taken over: the account, the positions with their entries, the marks, the working orders and the clock, **one record per book** in a two-symbol run; a resumed run restores the account and asks the venue about each order it inherited | a venue that remembers its own fills across a client restart, which is the durable-venue line and not a persistence feature | done |
-| live venue, TLS and authentication | missing; current boundary | out of the demo; lift by request | P3 |
+| live venue | done behind a relay: REST placement and cancels on a demo venue, its private `orders` channel for state, and the login, subscription and reconnect in `tools/live/venue_relay.py` | a venue that is not a demo, and a recovery matrix of our own | P3 |
 | market impact and realistic taker fills | partial: capacity cap only; there is still no price-impact model | none inside the current boundary | done |
 | out-of-sample, Sharpe and capacity | the Sharpe, volatility, drawdown and Calmar figures are measured on demand behind `--metrics`; the out-of-sample and capacity studies are still not a demo goal | the studies, not the measurement, are out of the demo | out |
 | documents and the maintained plan | done: one plan, no new documents | keep it current; no interview material required | done |
@@ -145,7 +145,8 @@ existing design, architecture and user documents are the whole plan.
     of two and no window in which the quote is absent, and those need the latency model (`--order-latency-us`,
     `--cancel-latency-us`) to price; a version that reports "amends saved nothing" would be a claim about a lever
     this engine does not have.
-    **Still deferred (P3, out of the demo):** live venue/TLS/authentication, a price-impact model, out-of-sample
+    **Still deferred (P3, out of the demo):** a venue that is not a demo, FIX, the relay's recovery matrix lifted into
+    the engine, a price-impact model, out-of-sample
     studies, and the performance experiments (block parsing, shared memory, binary telemetry, configuration hot
     reload).
 

@@ -106,8 +106,9 @@ ledger's no-effect rows say in their own words.
 
 This is the part a retrospective owes a reader, and it is why the page exists at a level above the numbers:
 
-- **No live venue round trip.** The latency legs are modelled and swept, not measured against a broker; the
-  [design review](DESIGN_REVIEW.md) records it as a boundary rather than a gap.
+- **No live venue round trip.** The latency legs are modelled and swept, not measured against a broker: the order leg
+  reaches a demo venue ([ADR 0005](adr/0005-a-live-venue-is-another-matching-engine.md)), but no round-trip time was
+  measured on it, and the [design review](DESIGN_REVIEW.md) records that as a boundary rather than a gap.
 - **One host.** The measurements are from a single machine under WSL2. There is no second physical core, no NUMA
   distance and no cross-machine comparison in anything here, so the hand-off's cost is one number from one topology.
 - **One workload for the byte-exact reference.** Tier 2 compares a full-file hash of a single workload, which makes it

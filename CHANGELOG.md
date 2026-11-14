@@ -31,6 +31,30 @@ site now points at `ToyQuant`.
   `lint_prose` 0 problems, `check_links` 416 links in 51 documents / 0 problems, `mkdocs build --strict` green,
   `fast` green.
 
+## The documents that still said "no exchange connectivity" (2026-11-14)
+
+- **Three documents described a boundary that had moved, and the code had it.** `--live-orders` puts `LiveVenue` over a
+  socket and the relay signs the venue's own REST calls, so the design review's opening claim ("No exchange
+  connectivity"), its §6 list ("No connectivity, no FIX"), `MAP.md`'s "what it deliberately does not" paragraph and the
+  roadmap's coverage row all described an instrument that no longer existed. Each now states what exists: one order
+  channel to a demo venue, the login, subscription and reconnect held by the relay, and no quoted number measured
+  through it.
+- **`IMatchingEngine` had four implementations while the design review said one.** The interface table now names
+  `MatchingEngine`, `PaperBroker`, `LiveVenue` and `RecordedVenue` -- three engines a run can be configured with and one
+  reader -- and the architecture's source map gained the leg's row plus a paragraph: a venue is another engine rather
+  than a branch in the loop.
+- **The roadmap's coverage row moved** from "live venue, TLS and authentication: missing; current boundary" to done
+  behind a relay, with what is still deferred (a venue that is not a demo, FIX, the relay's recovery matrix lifted into
+  the engine) kept in the P3 list. The change-log row for `--live-orders` already recorded the work; only the table that
+  summarised it was behind.
+- **`GLOSSARY.md` gained the order leg's terms** -- the leg itself, `owner`, `liquidity_role`, `ctVal` and
+  reconciliation -- because the front door promises three engines behind one venue interface and the reference tier had
+  no venue term at all.
+- **`LOW_LATENCY.md` keeps its "no live venue round trip" limitation and now says why it survives a working order leg:**
+  the leg exists, the round-trip time does not.
+- Gate: `docs OK` on the seven pages, `lint_prose` 0 problems, `check_links` 420 links in 51 documents / 0 problems,
+  `mkdocs build --strict` green, `fast` green.
+
 ## The sync that was running and failing for ten days (2026-11-14)
 
 - **The workflow was persisted, and it was broken in a way nobody could see.** `.git/hooks/post-commit` already called a

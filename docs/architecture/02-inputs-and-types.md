@@ -263,6 +263,17 @@ and a cancel for an order that has already finished is counted rather than sent.
 counts as a `[GATEWAY]` line; with every knob at zero it forwards every call and every report, which is what
 makes a run with it comparable to one without.
 
+The venue leg is the same seam with the wire injected. `LiveVenue` (`src/lines/live_venue.*`) is an
+`IMatchingEngine` whose transport is an `IVenueTransport` -- `TcpVenueTransport` (`tcp_venue_transport.*`) is the
+socket -- so a run that names `--live-orders` hands its orders to a process on the other side instead of to the
+matcher, and the reports that come back are the `ExecutionReport`s the ledger already reads
+([ADR 0005](../adr/0005-a-live-venue-is-another-matching-engine.md)). The adapter refuses an order past its own
+count and size bounds before anything is written, counts a failed write as a failure rather than as a sent order,
+and stamps every order with an `owner` so a report can be matched to the order that caused it: the venue answers
+asynchronously, so nothing about the loop's ordering changes. `RecordedVenue` (`recorded_venue.*`) answers the same
+interface from a recorded order log rather than from a venue, which is what makes a recorded session checkable
+instead of remembered; no app mode drives it yet.
+
 Levels are held in `TickLadder`, a flat array indexed by price tick. A `std::map` access descends
 about ten pointer levels, and a sorted vector moves several kilobytes per insertion once a book holds
 a thousand levels; Deribit BTC-PERPETUAL keeps more than a thousand live levels per side across a

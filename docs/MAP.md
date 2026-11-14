@@ -69,14 +69,17 @@ document that starts explaining something in another document's row is the failu
 
 ## What the project covers, and what it deliberately does not
 
-The loop is feed adapters, an order book, a strategy, a matching engine with an explicit queue model, execution reports,
-a portfolio, and a session that can be written down and taken over, in C++20 with CMake and a Python 3 toolchain for the
-measurement tools.
+The loop is feed adapters, an order book, a strategy, a pre-trade gate, one venue interface with four implementations
+behind it (the matcher, the paper broker, a live venue reached through a relay, and a recording replayed as one),
+execution reports, a portfolio, and a session that can be written down and taken over, in C++20 with CMake and a Python 3
+toolchain for the measurement tools.
 
-It is not a production exchange stack, a connectivity layer, or a live-trading system. There is no exchange connectivity
-or authentication, no market impact, no queue-position feedback from the strategy's own resting size, no calendar or
-contract lifecycle, and no portfolio risk model beyond signed notional. The pre-trade risk pipeline is in-process (kill
-switch, fat finger, rate, exposure, position), not a broker or exchange risk gateway. Each of those is a limitation in
+It is not a production exchange stack or a live-trading system. The connectivity is one order channel to a demo venue --
+the relay holds the login, the `orders` subscription and the reconnect
+([ADR 0005](adr/0005-a-live-venue-is-another-matching-engine.md)) -- and no quoted number was measured through it. There
+is no market impact, no queue-position feedback from the strategy's own resting size, no calendar or contract lifecycle,
+and no portfolio risk model beyond signed notional. The pre-trade risk pipeline is in-process (kill switch, fat finger,
+rate, exposure, position), not a broker or exchange risk gateway. Each of those is a limitation in
 the [Design Review](DESIGN_REVIEW.md) and a boundary with a reason in the
 [Roadmap](ROADMAP.md#deliberately-not-planned), rather than a gap that nobody wrote down.
 

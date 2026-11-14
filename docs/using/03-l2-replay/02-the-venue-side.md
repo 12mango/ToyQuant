@@ -114,7 +114,15 @@ worth 1.25 USD rather than 0.25, so a commission of about sixty cents a contract
 The collateral fields stay a cash-only figure, which is the documented model and not a description of a margined
 future: such a run reports exposure over collateral and should be read for its capture, fee and markout columns.
 
-That is the whole main view: two layers, one comparison, and the state an order is in between them. What follows is the
+## The live venue
+
+`--live-orders --venue-endpoint=HOST:PORT --venue-max-orders=N` replaces the engine with `LiveVenue` over a socket: the
+orders leave the process, a relay signs the venue's own REST calls, and the venue's private `orders` channel answers
+with state, so the reports the ledger reads are the venue's rather than the matcher's. The three flags are required
+together, the answers arrive asynchronously, and the two recorders are what keep such a session replayable. The relay's
+flags, the two channels and the sandbox's own error codes are [the live page](../04-live-and-carry.md).
+
+That is the whole main view: three layers, one comparison, and the state an order is in between them. What follows is the
 boundary detail -- pacing, the benchmark's columns, the cash-only ceiling and the terminal rules for immediate orders.
 
 /// details | Pacing, the benchmark, and the cash-only ceiling

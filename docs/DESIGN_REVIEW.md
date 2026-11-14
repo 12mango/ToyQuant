@@ -19,10 +19,13 @@ legacy CSV / UDP / Binance ─────────────────�
 | **Build** | CMake + presets, C++20, standard library only (zlib for `.gz` inputs) |
 | **Numbers** | every figure below is re-derived by `bash tools/gate/verify_l2.sh fast` on every change |
 
-**This is an instrument, not a trading system.** No exchange connectivity, no persistence across runs beyond the session
-snapshot, no market impact; the in-process pre-trade risk pipeline is not a broker or exchange risk gateway. The loop is
-meant to be readable in one sitting, because a cost that is not modelled cannot be the reason for a result. What is
-worth reading is the engineering in sections 2 to 4.
+**This is an instrument, not a trading system.** No persistence across runs beyond the session snapshot, no market
+impact, no risk gateway -- the in-process pre-trade pipeline is not a broker's. The order leg can leave the process:
+`--live-orders` makes the venue a socket whose relay signs the venue's own REST calls, and the venue's order state comes
+back on its private `orders` channel
+([ADR 0005](adr/0005-a-live-venue-is-another-matching-engine.md)), so connectivity exists as one channel to a demo venue
+and no number in this document was measured on it. The loop is meant to be readable in one sitting, because a cost that
+is not modelled cannot be the reason for a result. What is worth reading is the engineering in sections 2 to 4.
 
 **What this document is not.** It is not the module reference — [Architecture](ARCHITECTURE.md) is — and it is
 not the measurement record: the numbers here are summaries of records that live in
@@ -31,12 +34,14 @@ the boundaries between the documents are listed in the [documentation map](MAP.m
 
 ## 1. The loop, in code
 
-Two interfaces carry the design, each with one production implementation:
+Two interfaces carry the design. `Strategy` has one class per strategy name; `IMatchingEngine` has four implementations --
+three engines a run can be configured with, and one reader -- and the pipeline drives whichever it was given without
+knowing which:
 
-| Interface | Implementation | Why it is an interface |
+| Interface | Implementations | Why it is an interface |
 |---|---|---|
 | `Strategy` — `src/strategy/strategy.h` | one class per strategy name, built by `make_strategy` | the pipeline drives any decision module without knowing which |
-| `IMatchingEngine` — `src/exchange/matching_engine.h` | `MatchingEngine` | reports arrive through a callback, so the pipeline never reaches into the engine |
+| `IMatchingEngine` — `src/exchange/matching_engine.h` | `MatchingEngine` (the matcher), `PaperBroker` (`--paper-broker`) and `LiveVenue` (`--live-orders`) are the three engines; `RecordedVenue` (`src/lines/recorded_venue.h`) replays a recorded order leg as if it were a venue and is driven by no flag yet | reports arrive through a callback, so the pipeline never reaches into the engine -- and a venue is another engine rather than a branch in the loop |
 
 `IOrderBook` was the third, and the coordinator no longer takes one. It was there for the single branch
 that turns a `BboQuote` into a top of book, which made every caller supply a book, and the L2 path
@@ -432,6 +437,8 @@ references, so `tier3 OK` means the probes were on. A clean run under a probe th
 nothing, which is the rule the rest of this document follows too. The first full sanitizer build takes about
 three minutes; the tier rebuilds incrementally, so accepting a change costs the few seconds in the table.
 
+/// details | The tier function, as it is written
+
 ```bash
 # tools/gate/verify_l2.sh — tiers 0 and 1
 tier0()  { ctest --test-dir "$build_dir" ...; }                       # a red test cannot pass
@@ -448,6 +455,8 @@ tier1()  {
   python3 tools/gate/check_docs.py --binary "$BIN" docs
 }
 ```
+
+///
 
 Five lints stand behind the four tiers, and each owns one kind of claim. `check_written_fields.py` says every field of
 every summary struct is written somewhere. `lint_prose.py` re-counts what a paragraph states — the flags the binary
@@ -520,8 +529,10 @@ rows are in [Performance History](PERFORMANCE_HISTORY.md).
 
 ## 6. What it deliberately does not do
 
-* **No connectivity, no FIX, no recovery, no risk gateway, no persistence.** The loop is meant to be readable
-  in one sitting, and none of those would make a single number here more trustworthy.
+* **No FIX, no recovery matrix of its own, no risk gateway, no persistence.** Connectivity is one order channel to a
+  demo venue ([ADR 0005](adr/0005-a-live-venue-is-another-matching-engine.md)): the relay holds the login, the
+  subscription and the reconnect, and no number on this page was measured through it. What it deliberately does not do
+  is the rest of that list, and the loop is meant to be readable in one sitting.
 * **No market impact and no feedback from our own resting size** into the queue in front of us. The optional
   participation cap is a capacity limit on the displayed touch, not a price-impact model.
 * **One venue, one instrument, one day.** Deribit BTC-PERPETUAL on 2020-04-01, in windows of 200,000 to

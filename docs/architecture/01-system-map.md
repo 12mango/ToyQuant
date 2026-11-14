@@ -70,6 +70,7 @@ The source map is:
 | Market view | `src/orderbook/top_of_book.h`, `l2_orderbook.*`, `l2_market_view.h`, `tick_ladder.*` | `TopOfBook`, `L2OrderBook`, `L2MarketView`, `TickLadder` |
 | Matching | `src/exchange/matching_engine.*`, `queue_model.h` | `MatchingEngine::match`, `send_order`, `TimeInForce`, `QueueAheadModel::advance_quantity` |
 | Strategy | `src/strategy/strategy.h`, `src/strategy/baseline_market_makers.h`, `src/lines/legacy/l1_market_maker.h`, L2 strategy headers | Shared API, frozen L1 compatibility family, baseline pair, active L2 family |
+| Live venue leg | `src/lines/live_venue.*`, `src/lines/tcp_venue_transport.*`, `src/lines/recorded_venue.*` | `LiveVenue`, `IVenueTransport`, `TcpVenueTransport`, `RecordedVenue` |
 | Legacy analysis | `src/backtest/backtest_driver.*` | `legacy::BacktestDriver::run`, `print_report` |
 | Runtime logging | `src/utils/logger.*` | `Logger::log`, `Logger::error` |
 
