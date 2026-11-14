@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -85,6 +86,15 @@ class LiveVenue : public IMatchingEngine
 
     void set_report_callback(ReportCallback cb) override { callback_ = std::move(cb); }
 
+    // The clock a report is stamped with when the frame carries no time, which is every frame: a venue
+    // answers on its own clock and the wire has no field for the run's. A session recorded through this
+    // adapter needs the stamp, because `RecordedVenue` releases each answer once the replay's clock passes
+    // the timestamp it was recorded with -- and a file whose answers are all due at zero is a file that
+    // replays every one of them at the first event, which is not the session that happened. The
+    // application points this at the pipeline's market clock; a test leaves it empty, and the timestamp
+    // stays zero as it did before the stamp existed.
+    void set_report_clock(std::function<uint64_t()> clock) { report_clock_ = std::move(clock); }
+
     // One frame from the venue. Returns false when it was not understood, so the caller can count it.
     bool on_frame(std::string_view frame);
 
@@ -107,4 +117,5 @@ class LiveVenue : public IMatchingEngine
         TimeInForce time_in_force{TimeInForce::Gtc};
     };
     std::unordered_map<uint64_t, SentOrder> sent_;
+    std::function<uint64_t()> report_clock_;
 };

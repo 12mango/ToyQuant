@@ -7,6 +7,30 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The live leg's record had no clock (2026-11-14)
+
+- **A live venue's answers now carry the market clock.** `LiveVenue` decoded `ACK`, `FILL`, `CANCELED` and `REJECT`
+  without a timestamp at all -- the wire has no field for one -- so `--record-orders` wrote `ts=0` on every report row. A
+  replay of that file then released every answer at its first event and stopped at the third submission: three replays,
+  the same order, one tick apart. The adapter stamps each report with the run's market clock, one microsecond before the
+  event it is applied at, because `RecordedVenue` releases strictly past a timestamp and an answer that arrived between
+  two events has to reach the strategy at the event it reached it live. `tests/live_venue_test` pins both halves: no
+  clock keeps `ts=0` (a test with no market), a clock carries the market time of the frame it came from.
+- **The step the live page named does not work, and that is measured rather than argued.** One `ws` session through the
+  live adapter, recorded twice and replayed with `--replay-orders`, cannot reproduce: the same command run twice on one
+  market recording placed 154 and 261 orders and wrote two different order legs, while the two market legs were
+  byte-identical. Which answers have been drained when an event is handled is the receive thread's timing, so a live
+  recording is an audit trail rather than a replayable stream. The loop that reproduces is the matcher's: recording and
+  replaying then run the same reader over the same rows, `[ORDER-REPLAY] submissions=305 cancels=290 reports=655
+  rows_left=0`, ending on the same `[PNL]`.
+- **The live page's sandbox command could not place a single order.** Its third positional is the engine's
+  `quantity_scale`, and it was `1` against a relay whose default is a million units a coin: every order was 1e-6 of a
+  coin and was refused as below one contract. The command now matches the two scales (`active_l2 1000000`,
+  `--order-size=10000`, one contract an order), and the page states what that gives: `[VENUE] orders=15 cancels=15
+  reports=30`, `[EXECUTION] trade_reports=7`, `[ORDER-LOG] submissions=15 reports=30`.
+- No recorded number moved; the source counts did -- `app` by 16 lines and `lines` by 16 (the stamp, its wiring and the
+  test), so the size table and `MAINLINE.md` state 26,395.
+
 ## The order leg on the venue's two surfaces at once (2026-11-14)
 
 - **The REST route subscribes the `orders` channel.** The demo venue answers `50026` to its websocket trade operation

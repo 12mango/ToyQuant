@@ -105,7 +105,11 @@ its three counts so a reader can check the row count against them. A field the f
 comma -- is refused rather than escaped. The file is read back by `RecordedVenue`, which answers from it as an engine
 instead of from a venue; `--replay-orders=PREFIX` is the flag that makes it the run's venue, and each recorded report
 is released when the replay's own clock passes the timestamp it carries, so the strategy sees a fill where the session
-saw it rather than when it asked. A replay whose market data ends first releases the rest at the end and counts them in
+saw it rather than when it asked. A live venue's frames carry no time, so `LiveVenue` stamps each answer with the run's
+market clock; what that buys is a file whose `ts` column is a timeline, not a replayable stream -- a `ws` session
+through the live adapter is one realization of a wire whose answers arrive between events, and two runs of the same
+command have already differed in the orders they placed ([the live page](using/04-live-and-carry.md) measures it). A
+replay whose market data ends first releases the rest at the end and counts them in
 `flushed`, which is the honest statement that the two inputs were not the same length. Both flags are `l2_replay` and
 `ws` only and both are refused on a two-book run, which has two engines; `--replay-orders` is also refused with
 `--live-orders` (a replay and a socket are two venues) and with `--record-orders` (a second file of the same answers).

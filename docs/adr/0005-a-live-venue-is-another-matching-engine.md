@@ -123,11 +123,23 @@ nothing about profit, and what stops it from becoming a program that spends mone
   channel's cumulative `accFillSz` counter, booked once per order. `sz` reaches the venue in the venue's units
   (`--contract-size`, `--quantity-scale`), but the run prices a 2020 replay against the 2026 book, so no order crosses
   and no fill exists to see. That is why this is an acceptance of the wire rather than of a strategy.
+- **The recording needed the clock its answers were heard on.** A live venue's frames carry no timestamp, so every
+  report `LiveVenue` decoded had `ts = 0` and `--record-orders` wrote that: a session recorded through the adapter
+  replayed with every answer due at the first event, and stopped at the third submission -- three replays, the same
+  order, one tick apart. The adapter now stamps each report with the run's market clock, one microsecond before the
+  event the answer is applied at, because `RecordedVenue` releases strictly past a timestamp and an answer that arrived
+  between two events has to reach the strategy at the event it reached it live. What the stamp cannot fix was measured
+  rather than argued: the same live command, run twice on one market recording, placed 154 and 261 orders and wrote two
+  different order legs, while the two market legs were byte-identical, because *which* answers have been drained when an
+  event is handled is the receive thread's timing. So a live recording is an audit trail, not a replayable stream, and
+  the loop that reproduces is the matcher's -- one reader, one row order, `[ORDER-REPLAY] submissions=305 cancels=290
+  reports=655 rows_left=0`, ending on the same `[PNL]`. A live run still measures the wire and not a strategy, which is
+  what this record said before the stamp existed.
 - **What it costs**: one adapter, one wire, one relay order channel, one recorder with its reader, and the flag
   plumbing -- `src/lines/live_venue.{h,cpp}`, `src/lines/tcp_venue_transport.{h,cpp}`, the order channel in
   `tools/live/venue_relay.py`, `src/lines/order_recorder.{h,cpp}`, `src/lines/recorded_venue.{h,cpp}` and a
-  `--record-orders` flag. No core file moved and no recorded number changed, because every part of it is off unless
-  asked for.
+  `--record-orders` flag, plus the stamp above (two lines in the adapter and its wiring in the application). No core file
+  moved and no recorded number changed, because every part of it is off unless asked for.
 - **What it forbids**: claiming anything about edge from a live run. A run that fills an order proves the wiring; the
   profit question was closed by eight measurements and a sandbox order does not reopen it.
 - **The smell to watch**: `process_bbo` and `process_market_trade` are no-ops for a live venue, because the venue matches

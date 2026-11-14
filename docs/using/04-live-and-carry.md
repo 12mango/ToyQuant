@@ -156,10 +156,19 @@ process and the venue's answers come back as the same `ExecutionReport`s the led
 
 ```bash
 python3 tools/live/venue_relay.py --simulate-orders --order-listen 127.0.0.1:8766 &
-./out/build/linux-debug/toy_quant l2_replay <trades> <depth> BTC-PERPETUAL 0 active_l2 1 prorata \
-    --fast-validation --paper-broker \
+./out/build/linux-debug/toy_quant l2_replay <trades> <depth> BTC-PERPETUAL 0 active_l2 1000000 prorata \
+    --fast-validation --paper-broker --order-size=10000 \
     --live-orders --venue-endpoint=127.0.0.1:8766 --venue-max-orders=200
 ```
+
+> **The two scales have to agree or nothing is placed.** The relay's defaults are the demo instrument's -- a
+> `BTC-USDT-SWAP` contract is 0.01 of the coin and a million engine units are one coin -- so an order of one unit is
+> 1e-6 of a coin, below one contract, and the relay refuses it naming both numbers. That is why the third positional
+> here is `1000000` and `--order-size` is a contract's worth (`10000` units); the replay examples above keep `1`,
+> because a replay never asks a venue. With the two scales matched the same command fills: `[VENUE] orders=15
+> cancels=15 reports=30`, `[EXECUTION] trade_reports=7`, `[ORDER-LOG] submissions=15 reports=30`, and the relay's
+> `orders=7 cancels=15 replies=22 refused=8 deduplicated=7` is its own counter -- one fill per increment of the
+> venue's cumulative `accFillSz`, a half fill coming back as 5,000 units.
 
 It prints `[VENUE]` beside `[BROKER]` and `[RECON]`: the frames sent and received, the reports decoded, and the broker's
 statement reconciled against the account. The three flags are one decision:
@@ -231,12 +240,23 @@ and it says, on the engine's side, `[VENUE] frames_sent=2 frames_received=2 orde
 `placed=1 venue_refusals=0 transport_failures=0`. The venue's two answers name the order it made:
 `{"code":"0","data":[{"clOrdId":"1","ordId":"4096362816047378433","sCode":"0","sMsg":"Order placed"}]}` and its cancel.
 
-Two things were open when this page was first written, and one of them is closed: the route now subscribes the `orders`
-channel on the same login, with `--order-no-subscribe` as the opt-out that restores the placement-only shape it used to
-have, and the size reaches the venue in the venue's units (`--contract-size`, `--quantity-scale`, above). What is still
-open is the *price*: the replay is from 2020 and the venue's book is 2026, so an order sits far from the touch, nothing
-crosses, and a fill is a number this line has still not measured. Closing it needs one `ws` session recorded twice --
-book and orders -- and then `recorded_venue` replaying both on the clock they crossed on.
+Two things were open when this page was first written, and both are closed: the route subscribes the `orders` channel on
+the same login, with `--order-no-subscribe` as the opt-out that restores the placement-only shape it used to have, and
+the size reaches the venue in the venue's units (`--contract-size`, `--quantity-scale`, above). What is still open is
+the *price*: the replay is from 2020 and the venue's book is 2026, so an order sits far from the touch and nothing
+crosses there. Against the simulated venue on this desk the same chain does fill, and the blockquote above is that run --
+an acceptance of the wire, not a measurement of the venue's own book.
+
+**A live session records; it does not replay.** One `ws` session through the live adapter, recorded twice, was the step
+this page used to name. It cannot do that: the same command run twice on the same market recording gave 154 and 261
+submissions and two different order legs, while the two market legs were byte-identical (`md5sum` equal), because the
+venue's answers are drained between market events and *which* answers have arrived by then is the receive thread's
+timing. `RecordedVenue` requires the replay to ask in exactly the recorded order, so a live recording stops it at the
+first answer the two realizations placed differently. The loop that does reproduce is the one whose venue is the
+in-process matcher -- recording and replaying then run the same reader over the same rows, and `[ORDER-REPLAY]
+submissions=305 cancels=290 reports=655 rows_left=0` ends on the same `[PNL]`. A live recording is an audit trail: what
+was asked, what was answered, and when. `LiveVenue` now stamps each answer with the run's market clock, so that "when"
+is in the file at all -- before the stamp every report row carried `ts=0`.
 
 ### The error codes this line has actually produced
 

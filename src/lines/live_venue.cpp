@@ -196,6 +196,11 @@ bool LiveVenue::on_frame(std::string_view frame)
     // because an order can fill more than once.
     if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Rejected)
         sent_.erase(order_id);
+    // The frame carries no time, so the report is stamped here with the clock the run is on. Without it a
+    // recorded live session's answers are all due at zero: `--replay-orders` then releases every one of them
+    // at the first event, and a session that had an answer between two quotes replays as one that did not --
+    // measured as a replay that diverges at the third order through a venue that refused every one.
+    report.ts = report_clock_ ? report_clock_() : 0;
     ++counters_.reports_decoded;
     if (callback_) callback_(report);
     return true;

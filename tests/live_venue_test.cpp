@@ -237,5 +237,32 @@ int main()
         assert(reports[3].side == exchange::Side::Sell && reports[3].liquidity_role == LiquidityRole::Taker);
     }
 
+    // A report's timestamp is the market clock the run was on when it heard the answer, and without a clock it
+    // stays zero. The stamp is what makes a session recorded through this adapter replayable: `RecordedVenue`
+    // releases each answer once the replay's clock passes its timestamp, so zero means "every answer at the
+    // first event", which is not the session that happened.
+    {
+        RecordingTransport wire;
+        LiveVenue venue(wire);
+        std::vector<ExecutionReport> reports;
+        venue.set_report_callback([&reports](const ExecutionReport& report) { reports.push_back(report); });
+        assert(venue.on_frame("ACK 7 10"));
+        assert(reports.size() == 1 && reports[0].ts == 0);
+    }
+    {
+        RecordingTransport wire;
+        LiveVenue venue(wire);
+        std::vector<ExecutionReport> reports;
+        venue.set_report_callback([&reports](const ExecutionReport& report) { reports.push_back(report); });
+        uint64_t market_time = 1585699220749000;
+        venue.set_report_clock([&market_time] { return market_time; });
+        assert(venue.on_frame("ACK 7 10"));
+        market_time += 9000;  // the next event, nine microseconds of market later
+        assert(venue.on_frame("CANCELED 7 user"));
+        assert(reports.size() == 2);
+        assert(reports[0].ts == 1585699220749000);
+        assert(reports[1].ts == 1585699220758000);
+    }
+
     return 0;
 }

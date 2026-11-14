@@ -683,6 +683,22 @@ void Application::run_l2_session_mode() const
     }
     Pipeline pipeline(output_files.orders, output_files.trades, *strategy, *venue, portfolio,
                       instrument.tick_size);
+    // A live venue's answers carry no timestamp, and a recorded order leg is released on one: stamped here
+    // with the run's own market clock, one microsecond before the event this run is about to apply it at.
+    // The answer arrived between two events, so the replay must hand it to the strategy at the same event
+    // this run does -- and `RecordedVenue` releases strictly past a timestamp, so a stamp equal to the
+    // previous event's own clock would make a replay whose next event carries the same microsecond one
+    // event late. One microsecond is the smallest step that says "before this event" in a clock that has
+    // microsecond resolution.
+    if (live_venue)
+    {
+        live_venue->set_report_clock(
+            [&pipeline]
+            {
+                const uint64_t now = pipeline.last_event_ts();
+                return now > 0 ? now - 1 : 0;
+            });
+    }
     // The prints are scored against the book's own midpoint, with the same two limits the feed's validator uses: a
     // run that changed them for the feed would otherwise measure its data with one pair of thresholds and report it
     // with another. The config is built here rather than beside the feed because the pipeline is created first and

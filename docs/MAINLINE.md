@@ -1,6 +1,6 @@
 # The main line: the order to read this repository in, and what to drop
 
-This repository is 26,363 lines of source and 35 test binaries, and it is two things at once: **an instrument about
+This repository is 26,395 lines of source and 35 test binaries, and it is two things at once: **an instrument about
 five thousand lines long, and the evidence that instrument produced.** The main line is the instrument — the path a
 single market event takes: a file becomes an event, an event becomes a book, a book becomes a decision, a decision
 becomes an order, an order becomes a fill, a fill becomes cash, and cash becomes the number a document quotes.
