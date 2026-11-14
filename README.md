@@ -66,8 +66,9 @@ in-process, with the venue's own answer booked like any other report.
 
 **Boundaries, stated rather than implied.** No market impact, no contract lifecycle, no claim about future
 profitability, and none of the eight markets examined cleared its gates. The venue leg is real but narrow: an order and
-its cancel reach a testnet through `--live-orders`, and the mapping between a replay instrument's quantity and a venue
-contract's is measured and named rather than solved. CI re-checks what needs no market data -- the prose, the links, the
+its cancel reach a testnet through `--live-orders`, and the relay converts the engine's quantity into the venue's
+contracts from the venue's own numbers (`--contract-size`, `--quantity-scale`) instead of sending what it was given. CI
+re-checks what needs no market data -- the prose, the links, the
 site, the field lists; the numbered blocks need the 1.5 GB depth file and run on the machine that has it. Each boundary
 carries its reason in [the design review](docs/DESIGN_REVIEW.md) and
 [the roadmap](docs/ROADMAP.md#deliberately-not-planned).

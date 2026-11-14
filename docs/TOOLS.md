@@ -7,7 +7,7 @@ kind of tool a file is:
 
 | directory | what lives there | the gate runs |
 |---|---|---|
-| `gate/` | the gate, the six lints it calls, and `lib.sh`, the shared shell helpers | the lints, on every tier 1 run; `check_docs.py` on the pages a docs run names |
+| `gate/` | the gate, the six lints it calls, `lib.sh` (the shared shell helpers) and `detach.sh` (one long command, started detached) | the lints, on every tier 1 run; `check_docs.py` on the pages a docs run names |
 | `sweep/` | the measurements that vary one thing over a window and print a table | `risk_check.sh` |
 | `fetch/` | getting data in and cutting it down: five venue fetchers, `slice.py`, `inspect_source.py` | `slice.py window`, `fetch_iex_hist.py --self-test` |
 | `study/` | the studies: one question each, and the drivers that turn a window into a row | five `--self-test`s, and `viability.py` |
@@ -33,6 +33,7 @@ does not.
 | `tools/gate/check_adr.py` | a decision and its index row that disagree | gate |
 | `tools/gate/lint_prose.py` | a flag, model, path or size figure the documents get wrong | gate |
 | `tools/gate/lib.sh` | `field_of` and `emit_block`, sourced by the shell tools | sourced |
+| `tools/gate/detach.sh` | the log path; the status lands in `/tmp/<name>.exit` beside it | hand |
 | `tools/sweep/fee_sweep.sh` | PnL before fees, what closed, what the schedule kept | hand |
 | `tools/sweep/latency_sweep.sh` | one row per order and cancel latency, 1 to 50 ms | hand |
 | `tools/sweep/limit_sweep.sh` | what the kill switch saves, and what it costs | hand |

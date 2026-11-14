@@ -7,6 +7,27 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The agent's own protocol, measured (2026-11-14)
+
+- **A long command now has one runner.** `tools/gate/detach.sh <name> [seconds] -- <command>` starts the command
+  detached from the agent's shell, writes `/tmp/<name>.log` and drops `/tmp/<name>.exit` with the status when it is over,
+  so "is it finished" is a file read rather than a question to a shell that loses completion. It exists because a
+  foreground command that outlived the tool's budget was killed by the next one, cutting a post-commit sync between its
+  manifest and its copy and leaving an empty `diff.patch` for review.
+- **The rules that cost the most to learn are now in section 3 of `.clinerules`**, with the timings measured on this
+  host: `code` ~20 s, `fast` ~4 min (the header's 100-130 s was a quieter machine), and the document half costing
+  ~3.5 min because `check_docs.py` walks the studies page and the multi-day check.
+- **Polling has a rule against the loop detector**: read `/tmp/<name>.exit` first, alternate with real work, and never
+  ask the same unchanged file five times -- that is what stopped a session this week.
+- **The front doors no longer call the size mapping unsolved.** `docs/index.md` and `README.md` both said the quantity
+  mapping was "measured and named rather than solved"; the relay converts it now, so both say that instead.
+- **A commit is not finished when `git commit` returns.** The hook is a child of the committing shell; the reply waits
+  for the four `ok` lines and `synced <hash>`, and a log that stops at `copying ...` is re-run with
+  `TOYQUANT_SINCE=<the previous manifest commit>`.
+- No C++, no recorded number and no size count of `src/` moved.
+- Gate: `docs OK` on `TOOLS.md`, `lint_prose` 0 problems, `check_links` 0 problems, `mkdocs build --strict` green,
+  `fast` green (`tier0 OK` / `tier1 OK`).
+
 ## The sandbox's four open items (2026-11-14)
 
 - **The adapter's cap can be priced.** A count and a size bound say nothing about a strategy that sends few, large

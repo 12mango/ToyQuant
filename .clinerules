@@ -81,15 +81,17 @@ compatibility path. Everything below assumes that page.
   |---|---|---|
   | nothing compiles yet | `cmake --build out/build/linux-debug -j4` | ~16 s after one source file |
   | one line changed, does it still run | `bash tools/gate/verify_l2.sh smoke` | ~1 s |
-  | a change under `src/` or `tests/` | `bash tools/gate/verify_l2.sh code` | ~10-15 s |
-  | a change under `docs/` | `bash tools/gate/verify_l2.sh docs <the pages you touched>` | ~6 s a page, ~95 s for `history-03-studies.md` |
-  | the task is finished, before the commit | `bash tools/gate/verify_l2.sh fast` | ~2 min, **once** |
+  | a change under `src/` or `tests/` | `bash tools/gate/verify_l2.sh code` | ~20 s |
+  | a change under `docs/` | `bash tools/gate/verify_l2.sh docs <the pages you touched>` | ~6 s a page, ~3.5 min for the set on this host |
+  | the task is finished, before the commit | `bash tools/gate/verify_l2.sh fast` | **~4 min on this host**, once |
   | accepting a change for good | `bash tools/gate/verify_l2.sh all` | adds the 1.5 GB hash and the sanitizer build |
 
-  The document half is almost all one page: `docs/performance/history-03-studies.md` replays Databento equity windows
-  at ~35 s a run against ~0.1 s for a Deribit slice, so a documentation edit names its pages instead of paying for the
-  set. Running `fast` after every edit "to be safe" is the anti-pattern this table exists to stop: it is a hundred
-  seconds to learn nothing about the line just written, and the log is long enough to bury the failure that matters.
+  Measured on 2026-11-14: the document half is almost all two things -- `docs/performance/history-03-studies.md` replays
+  Databento equity windows at ~35 s a run, and the multi-day check replays one snapshot slice a day -- so the whole set
+  costs ~3.5 min here while a named page costs seconds. The header of `verify_l2.sh` still says 100-130 s for `fast`;
+  that was a quieter host, and a plan is made against four minutes. Running `fast` after every edit "to be safe" is the
+  anti-pattern this table exists to stop: four minutes to learn nothing about the line just written, and a log long
+  enough to bury the failure that matters.
 - **Batch the edits, then verify.** When a change spans files -- a header, its implementation, the test and the page
   that documents it -- make all of them in one pass and run the checks once at the end of the pass. Verifying between
   every file is how a task spends its budget on gates instead of on the change.
@@ -112,32 +114,30 @@ compatibility path. Everything below assumes that page.
   worked example).
 - **Deleting a tool breaks a document, not the program.** Before removing anything, grep the documents and the gate for
   it; if nothing names it, say so in the commit message.
-- **Shell discipline, from things that actually went wrong here:**
-  - never append a file to itself (`x >> x` filled `/tmp` to 100% and took `tail` down with it);
-  - check `df -h /tmp` before cutting slices -- a 200k-row 25-level snapshot is ~130 MB and a full day is gigabytes;
-  - `/tmp` slices are wiped by the system, so a number that depends on one must be re-cut by the gate, not assumed;
-  - the terminal periodically swallows command output: write to a file and read the file, and prefer
-    `(setsid bash ... &)` plus a poll for anything over a minute;
-  - **the shell is single-threaded, so a command that outlives its budget blocks every command after it.** This is what
-    wedged this session's terminal: foreground `sleep 240`/`sleep 300` "waits" and one `bash -lc` that called
-    `powershell.exe`, each left attached after the tool's 300 s budget ran out, and then even `echo hi > /tmp/ping.txt`
-    produced nothing. The symptom to recognise is *no output and no file*, not an error. So:
-    - never wait in the foreground -- `sleep` longer than about 30 s belongs in a backgrounded script;
-    - anything that crosses into Windows (`powershell.exe`, `wslpath` on a slow path) gets a `timeout`, because WSL
-      interop can block indefinitely and it is the call most likely to hang;
-    - poll by **reading a file**, which does not use the shell at all, rather than by `sleep; cat` chains;
-    - **launch detached from the tool's pipe**: `(setsid bash script >/dev/null 2>&1 </dev/null &)`, and afterwards ask
-      the shell nothing at all for a minute. Observed twice, both times while `verify_l2.sh fast` was running: while a
-      backgrounded child is alive, the session stops dispatching -- even `echo` produces nothing -- and it recovers by
-      itself when that child exits (a 186 s `fast` ended the second occurrence). So redirect stdin as well as both
-      output streams, give one long command at a time, and let the log file be the only channel in between.
-    - if a command does not report completion, stop chaining and test with `echo`: a shell that cannot echo is wedged,
-      and nothing started from inside it will run. Recovery is closing the terminal tab (or `pkill -f` the last
-      command), and the repository state is what `git` says afterwards -- not what the wedged shell said.
-  - **`verify_l2.sh fast` (~110 s) is the longest foreground call this terminal tolerates; `all` goes in a backgrounded
-    script.** The same rule for any measurement that replays the 1.5 GB depth file.
-  - the `post-commit` hook pushes detached, so confirm `origin/main` moved and read `/tmp/toyquant-push.log` instead of
-    assuming the push happened.
+- **A long command is started detached, and "is it done" is a file.** The terminal here loses completion signals, and a
+  foreground command that outlives the tool's budget is killed when the next one is typed -- that is how a post-commit
+  sync was cut between its manifest and its copy, and how a reviewer was left an empty `diff.patch`. So:
+  `tools/gate/detach.sh <name> [seconds] -- <command>` starts it, writes `/tmp/<name>.log`, and drops
+  `/tmp/<name>.exit` with the status (124 when the timeout fired) when it is over. Read the exit file to learn
+  *whether*, the log to learn *what*. Nothing waits in the foreground: a `sleep` over ~30 s belongs in a detached
+  script, and `fast`, `all` and any run over the 1.5 GB depth file always go through the runner.
+- **Polling is a file read, and never the same file twice in a row.** A reader that asks the same unchanged path five
+  times is taken for a loop and the session stops -- that happened on a gate log. Check `/tmp/<name>.exit` first
+  (absent = still running), then do a real piece of work -- the next page to edit, the diff to read -- before looking
+  again; or copy the log to a fresh name and read the copy, so each read is a new artifact.
+- **One shell command at a time.** The shell is single-threaded: a command still running blocks the next one or is
+  killed by it. After launching a detached command, ask the shell nothing until its exit file appears. A shell that
+  cannot answer `echo` is wedged; recovery is closing the terminal tab, and the state that counts afterwards is what
+  `git` says, not what the wedged shell said.
+- **The zsh prompt eats the first character.** oh-my-zsh asks `[Y/n]` before a command and takes the first keystroke,
+  so `pgrep` ran as `grep`. Prefix every command with one space: the prompt swallows it and the command runs.
+- **Anything that crosses into Windows gets a `timeout`** (`powershell.exe`, `wslpath`), because WSL interop can block
+  indefinitely and it is the call most likely to hang.
+- **A commit is not finished when `git commit` returns** -- section 6 has the three things that have to agree.
+- **`/tmp` is scratch with a size.** Never append a file to itself (`x >> x` filled `/tmp` to 100% and took `tail` down
+  with it); check `df -h /tmp` before cutting slices (a 200k-row 25-level snapshot is ~130 MB, a full day is
+  gigabytes); and a number that depends on a `/tmp` slice is re-cut by the gate rather than assumed, because the system
+  wipes them.
 - **Do not run destructive commands outside the repository**, and do not `git add -A` in a tree with untracked data
   files unless `git status` was read first.
 - **Commit style**: an imperative sentence as the subject, a body that says what the number now is, which gate proved it
@@ -160,6 +160,8 @@ compatibility path. Everything below assumes that page.
   first paragraph and record the fix where the claim lives.
 - **No marketing voice, no superlatives, no emoji in documents.** A hedge that is true ("the interval says how well the
   mean is pinned, not how far the draws spread") is worth more than a stronger claim that is not.
+- **A status is not an answer.** "The gate is running" is a state, not a result: launch it detached, and end the reply
+  only when the exit file and the log say what it said.
 - **Close with the ledger**: what was done, what the evidence now says, what is still open and who owns it. A task
   without that list is not finished.
 
@@ -215,6 +217,12 @@ review of one change needs the change.
   `/home/mango12/tq_snapshot.py`, a script outside the repository whose default repo was the pre-rename checkout
   directory, so every commit for ten days wrote `ERROR: <that directory> is not a git repository` into a log nobody
   opened and the Drive copy stayed at `7035823`. A sync is a copy that was checked, not a command that ran.
+- **A commit is not finished when `git commit` returns.** The hook syncs and pushes as a child of the shell that
+  committed, so the next command typed into that shell kills it between the manifest and the copy -- observed twice, and
+  what it leaves is an empty `diff.patch` for the change under review. Leave the shell alone until
+  `/tmp/toyquant-sync.log` shows the four `ok` lines and `synced <hash>`, then check the push log and the remote
+  manifest. A log that stops at `copying ...` is a copy that did not happen: re-run
+  `TOYQUANT_SINCE=<the previous manifest commit> bash tools/export/push_windows.sh` and verify the four lines again.
 - **A sync that cannot find its folder is a failure, not a skip.** The command names the directory and exits 1, and a
   reply that reports a task finished while the sync was not run is wrong.
 - **What the reviewer is given, in this order:** `manifest.txt` + `diff.patch`; the three front doors (`README.md`,
