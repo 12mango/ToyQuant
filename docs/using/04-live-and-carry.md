@@ -231,10 +231,12 @@ and it says, on the engine's side, `[VENUE] frames_sent=2 frames_received=2 orde
 `placed=1 venue_refusals=0 transport_failures=0`. The venue's two answers name the order it made:
 `{"code":"0","data":[{"clOrdId":"1","ordId":"4096362816047378433","sCode":"0","sMsg":"Order placed"}]}` and its cancel.
 
-Two things are still open, and they are why this is not a profitable run: the `orders` channel is not subscribed on the
-REST route, so a *fill* would not be seen (that is the next piece, and it needs a de-duplication rule for the state
-changes it would also deliver); and `sz` is in the replay instrument's units, not the venue's -- one contract of
-`BTC-USDT-SWAP` is 0.01 BTC, and the replay's prices are from 2020, so a fill here would be a number about nothing.
+Two things were open when this page was first written, and one of them is closed: the route now subscribes the `orders`
+channel on the same login, with `--order-no-subscribe` as the opt-out that restores the placement-only shape it used to
+have, and the size reaches the venue in the venue's units (`--contract-size`, `--quantity-scale`, above). What is still
+open is the *price*: the replay is from 2020 and the venue's book is 2026, so an order sits far from the touch, nothing
+crosses, and a fill is a number this line has still not measured. Closing it needs one `ws` session recorded twice --
+book and orders -- and then `recorded_venue` replaying both on the clock they crossed on.
 
 ### The error codes this line has actually produced
 

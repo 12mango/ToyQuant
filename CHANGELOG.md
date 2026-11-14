@@ -7,6 +7,24 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The order leg on the venue's two surfaces at once (2026-11-14)
+
+- **The REST route subscribes the `orders` channel.** The demo venue answers `50026` to its websocket trade operation
+  and places the same order over REST, so `--order-rest` had been a placement-only route: it opened no socket, and a
+  fill on the venue's `orders` channel had nowhere to arrive. `serve_venue_orders` now opens the private socket for the
+  subscription beside the placer -- two connections, because that is what the venue offers rather than a choice of the
+  relay's -- and `--order-no-subscribe` restores the placement-only shape. The three combinations are a function,
+  `venue_order_route`, whose rows `--self-test` pins without a key or an endpoint.
+- **The two halves print on two lines.** A REST run's summary keeps `placed`/`venue_refusals`/`transport_failures` and
+  adds `order state channel: logins=… subscribes=… reconnects=… messages=…` when the socket is open, so a run whose
+  placements were answered and whose reports never arrived says which of the two connections was silent.
+- **A fill is still unmeasured, and now for one reason.** The de-duplication the channel needs is its cumulative
+  `accFillSz` counter, and the size reaches the venue in the venue's units. What is left is the price: the replay is from
+  2020 and the venue's book is 2026, so an order sits far from the touch and nothing crosses. The next step is one `ws`
+  session recorded twice -- book and orders -- for `recorded_venue` to replay on its clock.
+- No C++, no recorded number and no size count moved.
+
+
 ## The agent's own protocol, measured (2026-11-14)
 
 - **A long command now has one runner.** `tools/gate/detach.sh <name> [seconds] -- <command>` starts the command

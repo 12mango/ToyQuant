@@ -880,6 +880,27 @@ def serve_orders(listen, instrument, max_quantity=100, capture=None, mapping=Non
 
 # ---------------------------------------------------------------- credentials and the private route
 
+def venue_order_route(rest_url, subscribe_orders):
+    """Which of the venue's two surfaces each half of the order leg uses, and whether a socket is opened at all.
+
+    The demo venue put placement on REST (`50026` from the websocket trade op) and state on the `orders` subscription,
+    so the three combinations are not a choice of taste:
+
+      * no `rest_url`: one websocket, requests out and reports in, and `subscribe_orders` decides the reports;
+      * `rest_url` with the subscription: REST places, the private socket reports -- the sandbox route, and the only
+        one on which a fill can be seen;
+      * `rest_url` and `--order-no-subscribe`: REST places and answers, nothing is subscribed, which is the shape a
+        placement-only route on the business endpoint allows.
+
+    A tuple rather than a branch decided inline, so the self-test can pin all three rows with no key and no endpoint.
+    """
+    place_over_rest = rest_url is not None
+    # A socket is opened unless the placer answers everything this route needs -- that is, unless it places and
+    # nothing is subscribed for it to report.
+    need_client = subscribe_orders or not place_over_rest
+    return place_over_rest, need_client, subscribe_orders
+
+
 def serve_venue_orders(listen, url, credentials, instrument, capture=None, dump=None, inst_type="ANY",
                        subscribe_orders=True, inst_code=None, rest_url=None, mapping=None):
     """Answers the engine's order leg from the venue: placement over REST, state changes over the private channel.
@@ -889,10 +910,17 @@ def serve_venue_orders(listen, url, credentials, instrument, capture=None, dump=
     summary at the end carries the session counts, because "it worked" in a live run means the login happened
     again after every drop and the subscription was remade, not that the first one succeeded.
 
-    With `rest_url` the requests are placed by `RestPlacer` and no websocket session is opened at all: the demo
-    venue's websocket trade operation answers `50026` while its REST order endpoint places the same order and
-    returns an id. The `orders` channel -- fills, state changes -- is therefore not subscribed on this route, which
-    is the next piece rather than a hidden one.
+    With `rest_url` the requests are placed by `RestPlacer`, because the demo venue's websocket trade operation
+    answers `50026` while its REST order endpoint places the same order and returns an id. The private socket is
+    opened anyway, for the other half of the venue's protocol: the `orders` channel, which is where a fill and a
+    state change arrive, and which the same login and the same subscription serve once the trade op is not used. So
+    `--order-rest` without `--order-no-subscribe` is two connections for the reason the venue gave -- placement is
+    REST there, state is a subscription -- and not for a reason of this relay's.
+
+    An acknowledgement placed over REST still says the whole size is working, because `RestPlacer.lines_for` reads
+    the reply's `sz` and not its fill counter, and the channel's own pushes are booked against a per-order counter
+    that starts at zero. An order that was already filled when the placement answered is therefore booked once by
+    the first push, rather than twice.
     """
     host, _, port = listen.partition(":")
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -924,14 +952,16 @@ def serve_venue_orders(listen, url, credentials, instrument, capture=None, dump=
                 return
             replies += 1
 
-    # Two routes, one loop: a REST placement answers immediately on this thread, and the websocket route hands each
-    # request to the client thread and its answers arrive on the receive thread. With `rest_url` no websocket is
-    # opened, so there is no `orders` channel here to receive a fill on -- the next piece, and written down as such.
-    placer = RestPlacer(rest_url, credentials, translator, dump=dump_sink) if rest_url else None
+    # Two routes, one loop: a REST placement answers immediately on this thread, and the websocket hands each
+    # request to the client thread with its answers arriving on the receive thread. The two are not exclusive --
+    # the venue made placement REST and state a subscription -- so the client is opened whenever its subscription
+    # is wanted, and `client.submit` is the only thing a placer takes away from it.
+    place_over_rest, need_client, client_subscribes = venue_order_route(rest_url, subscribe_orders)
+    placer = RestPlacer(rest_url, credentials, translator, dump=dump_sink) if place_over_rest else None
     client = None
-    if placer is None:
+    if need_client:
         client = OrderVenueClient(url, credentials, translator, deliver, stop=stop, dump=dump_sink,
-                                  inst_type=inst_type, subscribe_orders=subscribe_orders)
+                                  inst_type=inst_type, subscribe_orders=client_subscribes)
         client.start()
     pending = b""
     try:
@@ -985,6 +1015,13 @@ def serve_venue_orders(listen, url, credentials, instrument, capture=None, dump=
               f"refused={refused} deduplicated={translator.fills_deduplicated} placed={placer.placed} "
               f"venue_refusals={placer.refused} "
               f"transport_failures={placer.failures} dumped={dump_sink.frames}", flush=True)
+        # The state half on its own line, because it is its own connection: a run whose placements were answered and
+        # whose reports never arrived has this line and the one above to say which of the two was silent.
+        if client is not None:
+            print(f"order state channel: logins={client.logins} subscribes={client.subscribes} "
+                  f"reconnects={client.reconnects} messages={client.messages} "
+                  f"other_instruments={client.other_instruments} unreadable={client.unreadable} "
+                  f"write_failures={client.write_failures}", flush=True)
         return 0
     print(f"order channel done: orders={orders} cancels={cancels} replies={replies} refused={refused} "
           f"deduplicated={translator.fills_deduplicated} "
@@ -1872,6 +1909,15 @@ def self_test():
     assert rest_timestamp_now().endswith("Z") and len(rest_timestamp_now()) == 24, rest_timestamp_now()
     assert timestamp_now().isdigit() and len(timestamp_now()) == 10, timestamp_now()
 
+    # Which surface each half of the leg uses, as a table, because the three rows are three different routes and a
+    # silent change to one of them is a run that places orders and hears no reports. The middle row is the sandbox
+    # route: REST places, the private socket subscribes `orders`, so a fill on that channel reaches the engine.
+    assert venue_order_route(None, True) == (False, True, True)
+    assert venue_order_route(DEFAULT_PRIVATE_VENUE, True) == (True, True, True)
+    assert venue_order_route(DEFAULT_PRIVATE_VENUE, False) == (True, False, False)
+    # A websocket route with no subscription still needs its socket: that is where its requests go.
+    assert venue_order_route(None, False) == (False, True, False)
+
     print("self-test OK")
     return 0
 
@@ -1916,14 +1962,16 @@ def main():
                              "concrete type on the business route, which refuses ANY with 60018")
     parser.add_argument("--order-no-subscribe", action="store_true",
                         help="log in without subscribing the orders channel: the venue's answer to each request is "
-                             "the only report, which is what a placement route on the business endpoint can have")
+                             "the only report. On --order-rest this is the placement-only route -- REST places and "
+                             "answers, and a fill is not seen, because nothing is subscribed to report one")
     parser.add_argument("--order-inst-code", type=int,
                         help="the venue's internal code for the instrument (instIdCode), which its newer order "
                              "operation requires; read it from the venue's public instruments endpoint")
     parser.add_argument("--order-rest",
                         help="place the order leg over REST at this base url (https://www.okx.com) instead of the "
-                             "websocket trade operation, which the demo venue answers with 50026; the orders channel "
-                             "is not subscribed on this route, so a fill would not be seen")
+                             "websocket trade operation, which the demo venue answers with 50026; the private "
+                             "socket is still opened for the orders channel, so a fill is seen unless "
+                             "--order-no-subscribe is also given")
     parser.add_argument("--record", help="write the decoded rows straight to PREFIX_trades.csv and "
                                          "PREFIX_depth.csv: the direct route, with no engine")
     parser.add_argument("--replay", help="serve this capture instead of connecting; no network")
