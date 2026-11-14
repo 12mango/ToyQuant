@@ -8,28 +8,30 @@
 # estimated:
 #
 #   tier 0  (~1 s)   the unit tests, because a red test must not be able to pass this gate
-#   tier 1  code half (~10-15 s)  about twenty invariants on the 200k slice and the L1 fixtures -- events, orders,
+#   tier 1  code half (~20 s)  about twenty invariants on the 200k slice and the L1 fixtures -- events, orders,
 #                    fills, PnL, queue consumed, the recorder round trip, direct against threaded, the paper
 #                    broker and its reconciliation, the two-book run, the session and halt paths, the depth
 #                    guards -- plus the source-level checks (every field written, the layering, the eight
 #                    verdicts) and the seven tool self-tests plus the two figure checks
-#   tier 1  docs half (~110 s)  every number a document quotes, re-derived; the prose, link and layering lints;
-#                    `mkdocs build --strict` and the site's repository name. Almost all of those seconds are one
-#                    page: `docs/performance/history-03-studies.md` alone takes ~95 s, because its blocks replay
-#                    Databento equity windows at about thirty-five seconds a run against a tenth of a second for
-#                    a Deribit slice. A page with no equity block costs about six seconds
-#   tier 1  whole (~2 min)  both halves; this is what `fast` runs
+#   tier 1  docs half (~2-4 min)  every number a document quotes, re-derived; the prose, link and layering lints;
+#                    `mkdocs build --strict` and the site's repository name. The spread is the host: on a quiet one
+#                    the set costs ~110 s, and on a loaded one ~3.5 min, which is why this half is never run in the
+#                    foreground. Almost all of it is two pages' blocks: `docs/performance/history-03-studies.md`
+#                    replays Databento equity windows at about thirty-five seconds a run, and the multi-day check
+#                    replays one snapshot slice a day. A page with no equity block costs about six seconds
+#   tier 1  whole (~4 min on a loaded host)  both halves; this is what `fast` runs, so `fast` is backgrounded
 #   tier 2  (~15 s)  full 1.5 GB stdout hash against a cached reference
 #   tier 3  (~8 s)   the same tests and one short replay under ASan and UBSan
 #
-# The halves are separate verbs because they are paid for by different kinds of change, and paying a hundred
-# seconds to learn nothing about the line that was just edited is not a gate, it is a tax:
+# The halves are separate verbs because they are paid for by different kinds of change, and paying minutes
+# to learn nothing about the line that was just edited is not a gate, it is a tax:
 #
 #   smoke            two replays, six fields each: ~1 s, the cheapest thing that can see a broken line
-#   code             tier 0 plus the code half: ~10-15 s, the loop for a change under src/ or tests/
-#   docs [paths]     the document half, on the whole set or on the pages named: ~6 s a page, ~95 s for the page
-#                    with the equity windows, ~110 s for the set
-#   fast             tier 0 plus both halves: ~2 min, once per task and before a commit
+#   code             tier 0 plus the code half: ~20 s, the loop for a change under src/ or tests/
+#   docs [paths]     the document half, on the whole set or on the pages named: ~6 s a page, ~3.5 min for the set
+#                    on a loaded host
+#   fast             tier 0 plus both halves: ~4 min, once per task and before a commit; run it through
+#                    `tools/gate/detach.sh` rather than in the foreground
 #   all              everything: the acceptance gate
 #
 # An incremental build after touching one source file is ~16 s on this host, so the smallest honest code

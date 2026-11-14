@@ -21,6 +21,8 @@ site now points at `ToyQuant`.
   ask the same unchanged file five times -- that is what stopped a session this week.
 - **The front doors no longer call the size mapping unsolved.** `docs/index.md` and `README.md` both said the quantity
   mapping was "measured and named rather than solved"; the relay converts it now, so both say that instead.
+- **The gate's own header says what a `fast` costs here.** `verify_l2.sh` claimed ~110 s for the document half and ~2 min
+  for `fast`; measured on this host the same run is ~3.5 min and ~4 min, so the header says that and names the runner.
 - **A commit is not finished when `git commit` returns.** The hook is a child of the committing shell; the reply waits
   for the four `ok` lines and `synced <hash>`, and a log that stops at `copying ...` is re-run with
   `TOYQUANT_SINCE=<the previous manifest commit>`.
