@@ -76,7 +76,9 @@ toolchain for the measurement tools.
 
 It is not a production exchange stack or a live-trading system. The connectivity is one order channel to a demo venue --
 the relay holds the login, the `orders` subscription and the reconnect
-([ADR 0005](adr/0005-a-live-venue-is-another-matching-engine.md)) -- and no quoted number was measured through it. There
+([ADR 0005](adr/0005-a-live-venue-is-another-matching-engine.md)), which
+[ADR 0006](adr/0006-the-venue-order-session-moves-in.md) is moving into the engine slice by slice -- and no quoted number
+was measured through it. There
 is no market impact, no queue-position feedback from the strategy's own resting size, no calendar or contract lifecycle,
 and no portfolio risk model beyond signed notional. The pre-trade risk pipeline is in-process (kill switch, fat finger,
 rate, exposure, position), not a broker or exchange risk gateway. Each of those is a limitation in

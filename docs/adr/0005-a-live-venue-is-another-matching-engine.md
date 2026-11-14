@@ -170,7 +170,9 @@ nothing about profit, and what stops it from becoming a program that spends mone
 - **What it costs**: one adapter, one wire, one relay order channel, one recorder with its reader, and the flag
   plumbing -- `src/lines/live_venue.{h,cpp}`, `src/lines/tcp_venue_transport.{h,cpp}`, the order channel in
   `tools/live/venue_relay.py`, `src/lines/order_recorder.{h,cpp}`, `src/lines/recorded_venue.{h,cpp}` and a
-  `--record-orders` flag, plus the stamp above (two lines in the adapter and its wiring in the application). No core file
+  `--record-orders` flag, plus the stamp above (two lines in the adapter and its wiring in the application).
+  [ADR 0006](0006-the-venue-order-session-moves-in.md) is moving the relay's half of this into the engine slice by slice,
+  with the authentication already there; the relay stays until that port's fourth slice. No core file
   moved and no recorded number changed, because every part of it is off unless asked for.
 - **What it forbids**: claiming anything about edge from a live run. A run that fills an order proves the wiring; the
   profit question was closed by eight measurements and a sandbox order does not reopen it.

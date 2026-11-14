@@ -7,6 +7,26 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The venue's order session starts moving into the engine (2026-11-15)
+
+- **ADR 0006 accepts the move, in four slices.** The market leg's session is already C++ -- TLS, the WebSocket client, the
+  reconnect loop -- while everything about an *order* is still in `tools/live/venue_relay.py`. A live path that needs a
+  Python process to hold its session is a second implementation of the engine's liveness, and the two have never run in
+  one process. The record splits the port into authentication, the translator, the session and the REST placement, each
+  with its own test; it amends ADR 0005's cost list rather than superseding it, because 0005's decision stands.
+- **The authentication is the first slice, and it is in.** `src/lines/venue_auth.{h,cpp}` is SHA-256, HMAC-SHA256 and
+  base64 written dependency-free beside the adapter, for the reason `ws_feed.cpp` writes SHA-1 and base64 for the opening
+  handshake: linking OpenSSL into the engine's line library would make every build depend on it. The two preimages are
+  the venue's -- Unix epoch seconds for the login, ISO 8601 milliseconds for REST -- and `tests/venue_auth_test` pins
+  RFC 4231's first and sixth cases (the sixth covers a key longer than the block, the branch a port silently skips), the
+  relay's own pinned login signature, and a REST signature computed with an independent implementation. The two
+  signatures are asserted to differ: a client that shares one preimage across both surfaces is one error code away from
+  looking like a bad key.
+- **What it does not do**: the session, the translator and the REST placement stay in the relay for now, so the live path
+  still needs it and the live page still says so. The remaining slices and their tests are named in the ADR; slice
+  three's is a C++ stand-in venue that verifies the signature it receives and drops a connection once.
+- No recorded number moved; the source counts did.
+
 ## The demo venue's own book, and the three defects it found (2026-11-14)
 
 - **The acceptance run ADR 0005 asked for.** Ninety seconds of the demo venue's public `BTC-USDT-SWAP` channel as the
