@@ -9,6 +9,7 @@ claims worth checking mechanically are the ones with a single source of truth in
     binary accepts is documented;
   * every queue model is mentioned, and no document names a model that does not exist;
   * every path under `tools/` a document refers to exists;
+  * every file under `tools/` is named in `docs/TOOLS.md`, the page a reader with a filename looks it up in;
   * the tree's file and line counts, the size table's entries and the test-binary count are counted again
     here rather than trusted.
 
@@ -35,6 +36,9 @@ DOCUMENTED_FLAG = re.compile(r"`(--[\w-]+)")
 # failure this line exists to prevent.
 TOOL_PATH = re.compile(r"\b(tools/[\w/]+\.(?:sh|py))\b")
 SOURCE_FILE = re.compile(r"\.(?:h|cpp)$")
+# A tool is a script someone runs, not every file in the directory: `lib.sh` is sourced and still has to be named,
+# a `__pycache__` entry is not a tool at all.
+TOOL_FILE = re.compile(r"\.(?:sh|py|c)$")
 # The tree's size as the documents state it, and the two shorter ways the same claim is made. Each pattern
 # is required to match: a checker that goes quiet because a sentence was reworded is worse than no checker,
 # because it is still believed.
@@ -99,6 +103,23 @@ def counted_source(root):
         entry[0] += 1
         entry[1] += path.read_text().count("\n")
     return counts
+
+
+def tool_inventory_problems(root, page):
+    """Every tool file against the page that is meant to name it.
+
+    A reader who has a filename in a marked block and no entry in `docs/TOOLS.md` has to grep the tree, which is the
+    search `docs/MAP.md`'s "find the tool behind a number" row sends them here to avoid. Only the path is required, not
+    a description: what a tool prints changes with every measurement, that it exists does not, and a checker that read
+    prose would be a checker nobody keeps green.
+    """
+    problems = []
+    for path in sorted(root.rglob("*")):
+        if not path.is_file() or not TOOL_FILE.search(path.name) or "__pycache__" in path.parts:
+            continue
+        if str(path) not in page:
+            problems.append(f"{path} is in the tree and docs/TOOLS.md has no line for it")
+    return problems
 
 
 def expand(documents):
@@ -193,6 +214,9 @@ def main():
                         # `tools/export/bundle.py` owns these: it writes the two bundles a reader who cannot clone the
                         # tree is given, checks a bundle's manifest against the tree, and syncs into the folder a
                         # client uploads from. The tool is manual; its `--self-test` is what proves the check fires.
+                        # `tools/sweep/compare_runs.sh` owns this one: it is what turns a comparison into a table
+                        # and the marked block beside it, and the tools page is where it is described.
+                        "--markdown",
                         "--emit", "--check", "--out", "--sync", "--since"}:
             problems.append(f"{flag} is mentioned in a document and is not a flag the binary accepts")
     for model in sorted(models):
@@ -212,6 +236,13 @@ def main():
     for name in sorted(set(TOOL_PATH.findall(text))):
         if not Path(name).exists():
             problems.append(f"{name} is referenced by a document and does not exist")
+    # The other direction: a tool the tree has and the page does not name. `docs/TOOLS.md` is where a reader with a
+    # filename looks it up, and it named ten of the fifty-five files before this check existed -- `compare_runs.sh`,
+    # the tool the marked-block convention itself quotes, among the missing. Counting the directory is what makes the
+    # page an index rather than a list of the tools each sweep happened to touch.
+    inventory = Path("docs/TOOLS.md")
+    if inventory.exists():
+        problems.extend(tool_inventory_problems(Path("tools"), inventory.read_text()))
 
     # The counts. They are hand-copied into prose, nothing else reads them, and one drifted for a whole
     # commit before anyone noticed: the CLI change added ninety-eight lines to `app` while the size table

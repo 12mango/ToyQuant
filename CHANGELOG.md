@@ -7,6 +7,33 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The tools page becomes an inventory, and the lint counts it (2026-11-14)
+
+- **`docs/TOOLS.md` named ten of the fifty-five files under `tools/`, and it is the page a reader is sent to for a
+  filename.** `docs/MAP.md`'s "find the tool behind a number" row points there; the directory table described each
+  directory in a phrase, so `compare_runs.sh` -- the tool whose `--markdown` emits the marked blocks `check_docs.py`
+  re-runs -- could not be found from its name. The page now carries a folded inventory: one row per file, what it
+  prints, and whether the gate runs it.
+- **Two cells of that table were wrong.** `live/` was marked as never run by the gate while tier 1 runs
+  `venue_relay.py --self-test`, and `study/` counted five self-tests and left out `viability.py`, the verdict fixture.
+  `verify_l2.sh`'s own header said "three tool self-tests" where it runs seven.
+- **One heading counted six where the page below it had eight.** `L2_FLAGS.md` said "the six flags that need more than a
+  line" over eight sections, `MAP.md` copied the six and left out the order leg and the live order leg, and the
+  venue-side page's two links pointed at the old anchor. All three now say eight.
+- **The design review had a sentence cut mid-clause**, `... restarted from the` running straight into the next heading
+  with no blank line between them; it now ends "one walk rather than one walk per level", which is what the paragraph
+  on the hint below measures.
+- **The inventory is a checked claim, not a list.** `lint_prose.py` walks `tools/` and fails the build when a file has
+  no line in the page; fed an empty page it reports all 55, so the check is known to fire. `--markdown` joins the flags
+  that belong to a tool rather than to the binary.
+- **The design review was keeping a second copy of two counts.** Its "46 scripts ... and its five lints" row now points
+  at the inventory and names the six lints, its tier sketch gained `check_adr.py`, and `docs/MAP.md` counts the guide's
+  eight pages instead of seven.
+- No C++, no recorded number and no size count moved.
+- Gate: `code OK` and `docs OK` on the six pages the change names, `lint_prose` 0 problems (82 flags, 4 queue models
+  and 120 source files / 26,201 lines against 47 documents), `check_links` 423 links in 51 documents / 0 problems,
+  `mkdocs build --strict` green, and `fast` green (`tier0 OK` / `tier1 OK`).
+
 ## The guide's pages: one figure, one table, three commands (2026-11-14)
 
 - **The quickstart now shows the three paths the rest of the guide is about.** Its demo path was three invocations of one

@@ -58,7 +58,7 @@ document that starts explaining something in another document's row is the failu
 | [Retrospective](RETROSPECTIVE.md) | 1 | the eight closures, the number that closed each, the rules that came out of them | what exists in the code, or how to run it | prose linted |
 | [Low-Latency Retrospective](LOW_LATENCY.md) | 1 | the engine line as a whole: what it was for, the order the attempts came in, what returned, the condition that stopped it, and what it never measured | a number, the mechanism of a change, or the measurement record | prose linted; every figure it needs is a link to a block the gate re-runs |
 | [Design Review](DESIGN_REVIEW.md) | 1 | why the instrument is built this way, the C++ decisions with anchors, the headline results, the questions a reader asks, the limitations | the module reference, or the raw measurement records | prose linted; the size, test count, flags and tool paths it states are re-counted |
-| [User Guide](USER_GUIDE.md) | 1 | every mode, every flag, the data contracts, and the failure modes that waste an afternoon: an index over seven parts in `docs/using/` | why anything is designed the way it is, or what a field means | prose linted, so a flag it forgets or invents fails the build |
+| [User Guide](USER_GUIDE.md) | 1 | every mode, every flag, the data contracts, and the failure modes that waste an afternoon: an index over the eight pages in `docs/using/` | why anything is designed the way it is, or what a field means | prose linted, so a flag it forgets or invents fails the build |
 | [Architecture](ARCHITECTURE.md) | 2 | what each module is, the contracts between them, the matching rules: an index over six parts in `docs/architecture/` | the rationale and the trade-offs | marked blocks re-run on every gate run |
 | [Main Line](MAINLINE.md) | 2 | the order to read the source in, the measured result each step produced, the verdict on what to keep, freeze or delete | how to run anything, or the mechanism behind a result | prose linted |
 | [Learning Path](LEARNING.md) | 2 | the mechanisms the instrument has to model, and the field reference for each output line | engineering decisions, or how to run anything | prose linted |
@@ -84,9 +84,10 @@ the [Design Review](DESIGN_REVIEW.md) and a boundary with a reason in the
 [Roadmap](ROADMAP.md#deliberately-not-planned), rather than a gap that nobody wrote down.
 
 What keeps these tables true is mechanical, which is the only reason to trust them: `tools/gate/lint_prose.py` re-counts
-every flag, queue model, tool path and size figure a document states, `tools/gate/check_docs.py` re-runs the command
-behind every quoted number, `tools/gate/check_links.py` follows every link and anchor in the three tiers, and
-`tools/gate/check_adr.py` holds each decision's status to the table that lists it.
+every flag, queue model, tool path and size figure a document states and every file under `tools/` that the tools page
+leaves out, `tools/gate/check_docs.py` re-runs the command behind every quoted number, `tools/gate/check_links.py` follows
+every link and anchor in the three tiers, and `tools/gate/check_adr.py` holds each decision's status to the table that
+lists it.
 
 ## How the tree is laid out
 
@@ -101,5 +102,5 @@ closures in tier 1 possible, kept because a reason that is not written down is a
 | [Research Notes](archive/research-notes.md) | 3 | external cases of individual quantitative trading, and what a personal account can do about the fee | any measurement of this repository, or a plan | every external claim carries a `[read]`, `[reported]` or `[not verified]` mark |
 | [Decisions](adr/index.md) | 3 | one file per technical decision that closed a question: the context, the decision, what it costs, and the two or three links that measure it | the numbers themselves, or the research behind a market | a record quotes no figure it does not own, so every number in it is a link to a block the gate re-runs and the record cannot drift |
 | [Glossary](GLOSSARY.md) | 2 | the concepts behind the numbers: one formula per term, the sign convention, and the file that computes it | the field list, which the learning path owns, or the measurement record | prose linted; every formula names the file it comes from |
-| [The L2 replay flags](L2_FLAGS.md) | 2 | every flag `l2_replay` takes, grouped by what it changes, plus the six whose semantics need more than a line -- two books, the recorder, the session snapshot, the feed thread, the paper broker's faults, the gateway's timeouts | how to run a replay, which the guide's part 1 owns, or the numbers a run prints | prose linted, so a flag the parser accepts and this page forgets fails the build |
+| [The L2 replay flags](L2_FLAGS.md) | 2 | every flag `l2_replay` takes, grouped by what it changes, plus the eight whose semantics need more than a line -- two books, the recorder, the session snapshot, the order leg, the live order leg, the feed thread, the paper broker's faults, the gateway's timeouts | how to run a replay, which the guide's part 1 owns, or the numbers a run prints | prose linted, so a flag the parser accepts and this page forgets fails the build |
 | [Writing your own strategy](using/08-writing-a-strategy.md) | 1 | how a strategy reaches the binary: the interface, the two seams, registration, and what a strategy may not own | the strategy layer's design, which the architecture owns | prose linted, so a flag or a class it forgets or invents fails the build |

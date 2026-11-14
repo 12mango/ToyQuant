@@ -12,7 +12,7 @@
 #                    fills, PnL, queue consumed, the recorder round trip, direct against threaded, the paper
 #                    broker and its reconciliation, the two-book run, the session and halt paths, the depth
 #                    guards -- plus the source-level checks (every field written, the layering, the eight
-#                    verdicts) and the three tool self-tests
+#                    verdicts) and the seven tool self-tests
 #   tier 1  docs half (~110 s)  every number a document quotes, re-derived; the prose, link and layering lints;
 #                    `mkdocs build --strict` and the site's repository name. Almost all of those seconds are one
 #                    page: `docs/performance/history-03-studies.md` alone takes ~95 s, because its blocks replay

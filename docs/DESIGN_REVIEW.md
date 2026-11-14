@@ -15,7 +15,7 @@ legacy CSV / UDP / Binance ─────────────────�
 |---|---|
 | **Size** | 120 files, 26,201 lines: `app` 8978, `market` 4071, `legacy` 1851, `lines` 3872, `strategy` 1960, `exchange` 1351, `common` 951, `backtest` 611, `bench` 563, `orderbook` 591, `accounting` 708, `utils` 488, `concurrency` 176, `main` 30 |
 | **Tests** | 35 test binaries, at least one per module, run by tier 0 of the gate |
-| **Tools** | 46 scripts (`*.py` and `*.sh` under `tools/`, grouped by what they do) and one C harness: the gate and its five lints in `tools/gate/`, the measurement sweeps, the source fetches, the one-off studies, and the live harnesses. `docs/TOOLS.md` is the map of the directory |
+| **Tools** | the scripts under `tools/` (`*.py` and `*.sh`, grouped by what they do) and one C harness: the gate and its six lints in `tools/gate/`, the measurement sweeps, the source fetches, the one-off studies, and the live harnesses. `docs/TOOLS.md` is the inventory, and the lint requires a line there for every file |
 | **Build** | CMake + presets, C++20, standard library only (zlib for `.gz` inputs) |
 | **Numbers** | every figure below is re-derived by `bash tools/gate/verify_l2.sh fast` on every change |
 
@@ -127,7 +127,8 @@ The sorted `std::vector` was implemented and measured rather than argued away: *
 of the exercise — the rejected alternative is a result, and it also says the two structures pay for the same
 shape. Two smaller choices inside the class earned their place the same way: `set()` returns early when the
 slot already holds the requested quantity, which an incremental feed does constantly, and `top_levels()`
-produces the touch and the summed depth in **one** walk, where asking `nth()` per level restarted from the
+produces the touch and the summed depth in **one** walk rather than one walk per level.
+
 ### `TickLadder` in full: one array, one hint, one growth margin
 
 The container is a single `std::vector<uint64_t>` of quantities indexed by `tick - base_`, plus the remembered
@@ -384,6 +385,7 @@ column says what fails when the row stops being true -- or that nothing does yet
 | the flags the binary accepts | `parse_config` and its `print_usage` | `tools/gate/lint_prose.py`, in both directions |
 | the size of the tree, per directory | the table above | `tools/gate/lint_prose.py`, which counts it |
 | the number of test binaries | `CMakeLists.txt` | `tools/gate/lint_prose.py`, which counts `add_toy_test` |
+| the tools that exist | the files under `tools/` | `tools/gate/lint_prose.py`, which requires `docs/TOOLS.md` to name every one |
 | a field of a run's output | `tools/gate/lib.sh`'s `field_of` | nothing yet: the agreement with `tools/gate/check_docs.py`'s rule was measured once, on a 115-field run |
 | the interval a mean carries | `tools/study/pnl_interval.py`, and the window list it replays | its own self-test in tier 1 and a `tool:` block in `docs/PERFORMANCE_HISTORY.md`, so the quoted interval is re-derived and the tool's arithmetic is checked |
 
@@ -444,12 +446,13 @@ three minutes; the tier rebuilds incrementally, so accepting a change costs the 
 tier0()  { ctest --test-dir "$build_dir" ...; }                       # a red test cannot pass
 tier1()  {
   python3 tools/gate/check_written_fields.py   # every summary field is actually computed
-  python3 tools/gate/lint_prose.py docs   # flags, queue models, tool paths, size figures
+  python3 tools/gate/lint_prose.py docs   # flags, queue models, tool paths, size figures, the tool inventory
   python3 tools/gate/check_links.py            # every link and every #anchor resolves
   python3 tools/gate/check_layering.py         # the core includes nothing that belongs to a line
+  python3 tools/gate/check_adr.py              # a decision and the index row that lists it
   python3 tools/study/viability.py             # every quotient that closed a line, re-derived
   mkdocs build --strict                        # the documents as a site: no unresolved link, no old repository name
-  python3 tools/fetch/fetch_iex_hist.py --self-test   # the pcap/IEX-TP walk, on a file it builds itself
+  python3 tools/fetch/fetch_iex_hist.py --self-test   # the pcap/IEX-TP walk, on a file it builds itself (one of seven)
   python3 tools/study/pnl_interval.py --self-test      # the interval's arithmetic, on hand-checked samples
   "$BIN" l2_replay ... | grep -oE 'submitted_orders=406|trade_reports=1|...'   # pinned invariants
   python3 tools/gate/check_docs.py --binary "$BIN" docs
@@ -458,16 +461,17 @@ tier1()  {
 
 ///
 
-Five lints stand behind the four tiers, and each owns one kind of claim. `check_written_fields.py` says every field of
+Six lints stand behind the four tiers, and each owns one kind of claim. `check_written_fields.py` says every field of
 every summary struct is written somewhere. `lint_prose.py` re-counts what a paragraph states — the flags the binary
-accepts, the queue models that exist, the tool paths and the size figures — so prose cannot describe a model set that
-changed. `check_links.py` follows every link and every anchor, because a reader moves between documents by link and a
-document that is split breaks them silently — and it follows an absolute GitHub URL back to the path it names as well,
-so the handful of links that `mkdocs` forces out of the tree are checked rather than skipped. `check_layering.py` reads
-the `#include` lines, so the core cannot reach into a feed family or a closed line. `check_docs.py` re-runs the command
-behind every quoted number.
+accepts, the queue models that exist, the tool paths, the size figures and the tools that exist — so prose cannot
+describe a model set that changed. `check_links.py` follows every link and every anchor, because a reader moves between
+documents by link and a document that is split breaks them silently — and it follows an absolute GitHub URL back to the
+path it names as well, so the handful of links that `mkdocs` forces out of the tree are checked rather than skipped.
+`check_layering.py` reads the `#include` lines, so the core cannot reach into a feed family or a closed line.
+`check_adr.py` holds each decision record to the index row that lists it. `check_docs.py` re-runs the command behind
+every quoted number.
 
-The sixth check in that tier is not a lint: `mkdocs build --strict` builds the documents into the site a reader opens,
+The seventh check in that tier is not a lint: `mkdocs build --strict` builds the documents into the site a reader opens,
 and it refuses a link that resolves outside `docs_dir`. Such a link is legal on GitHub and passes `check_links.py`,
 which is satisfied by the file existing — what it violates is the site's rule that every page lives under `docs/`. So a
 paragraph could point outside the published tree and stay green locally, which is how a relative `../CHANGELOG.md`

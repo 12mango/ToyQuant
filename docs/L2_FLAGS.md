@@ -72,7 +72,7 @@ watch a position build names both: `--order-size=10 --inventory-limit=100`.
 `--close-out` is the one flag that changes a number rather than a line: it is in the table above, and what it does to
 `[PNL]` is in [what a run's numbers leave out](using/06-reading-the-output.md#what-a-number-in-that-line-leaves-out).
 
-## The six flags that need more than a line
+## The eight whose semantics need more than a line
 
 **Two books.** Each symbol gets its own book, decision layer, venue and pipeline, and they share one account. The four
 readers are merged by timestamp with ties going to the stream listed first. Three things change in what is printed: one

@@ -29,7 +29,7 @@ prints two lines of its own:
 [RECON] symbols_checked=1 quantity_breaks=0 max_quantity_break=0 net_quantity_break=0 gross_quantity_break=0 report_count_difference=0 fee_difference=0.000000 fees_match=1 status=ok
 ```
 
-The faults are counts of orders or fills rather than drawn probabilities, so a faulted run is reproducible from its command line alone; the five fault flags, what each withholds and the rule that a fault without `--paper-broker` is refused are in [the flag reference](../../L2_FLAGS.md#the-six-flags-that-need-more-than-a-line).
+The faults are counts of orders or fills rather than drawn probabilities, so a faulted run is reproducible from its command line alone; the five fault flags, what each withholds and the rule that a fault without `--paper-broker` is refused are in [the flag reference](../../L2_FLAGS.md#the-eight-whose-semantics-need-more-than-a-line).
 
 `[RECON]` is the check the whole thing exists for. The statement is built from the reports the venue sent and
 the portfolio from the reports the strategy received, so a fill the strategy never heard about is a position
@@ -98,7 +98,7 @@ as a fill or a cancel. The ledger keeps the order `Pending` until a real report 
 
 The client order id is the strategy's order id, entered in the table before the venue is called. A second
 submission under an id already in the table is absorbed rather than forwarded, so a retry cannot become a
-second position. Its two flags -- the acknowledgement timeout and the retry under the same client id -- and what each does to a run are in [the flag reference](../../L2_FLAGS.md#the-six-flags-that-need-more-than-a-line).
+second position. Its two flags -- the acknowledgement timeout and the retry under the same client id -- and what each does to a run are in [the flag reference](../../L2_FLAGS.md#the-eight-whose-semantics-need-more-than-a-line).
 
 The symbol decides the instrument, through `instrument_spec_of`: `BTC-PERPETUAL`, `BTC-USDT-SWAP`, `SPY` and
 `MESZ6` are the entries today, and a symbol with no entry is an error rather than a default, because a default
