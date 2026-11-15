@@ -8,18 +8,18 @@ strategy state is separate from the L1 `OrderBook`; it never consumes raw vendor
 
 ```mermaid
 flowchart TD
-    V[L2MarketView] --> F[Fair price]
-    V --> I[Depth imbalance]
-    T[Recent aggressor trades] --> F
-    T --> X[Flow toxicity]
-    P[Position] --> R[Inventory reservation]
+    V["L2MarketView"] --> F["Fair price"]
+    V --> I["Depth imbalance"]
+    T["Recent aggressor trades"] --> F
+    T --> X["Flow toxicity"]
+    P["Position"] --> R["Inventory reservation"]
     F --> R
     I --> R
-    X --> G[Quantity and side gates]
+    X --> G["Quantity and side gates"]
     R --> G
-    G --> Q[Tick-rounded passive quotes]
-    Q --> L[Refresh / cancel lifecycle]
-    L --> M[Queue-aware matching]
+    G --> Q["Tick-rounded passive quotes"]
+    Q --> L["Refresh / cancel lifecycle"]
+    L --> M["Queue-aware matching"]
 ```
 
 | Production setting | Value | Used for |

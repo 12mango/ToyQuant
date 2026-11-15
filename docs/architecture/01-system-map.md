@@ -9,24 +9,24 @@ rule that keeps two modules from writing the same state.
 
 ```mermaid
 flowchart LR
-    CSV[CsvFeed\nCSV rows] --> T[Legacy Tick]
-    UDP[UdpFeed\nUDP packets] --> T
-    T --> LT[legacy::TickPipeline]
-    BA[Market data adapter\nBinance or future formats] --> RF[ReplayFeed\ntime merge]
-    RF --> MEV[MarketEvent\nTrade, BBO, or L2 snapshot]
-    LT --> P[Pipeline::process_legacy_tick]
-    MEV --> PE[Pipeline::process_event]
+    CSV["CsvFeed<br/>CSV rows"] --> T["Legacy Tick"]
+    UDP["UdpFeed<br/>UDP packets"] --> T
+    T --> LT["legacy::TickPipeline"]
+    BA["Market data adapter<br/>Binance or future formats"] --> RF["ReplayFeed<br/>time merge"]
+    RF --> MEV["MarketEvent<br/>Trade, BBO, or L2 snapshot"]
+    LT --> P["Pipeline::process_legacy_tick"]
+    MEV --> PE["Pipeline::process_event"]
     PE --> OB
     PE --> ME
-    P --> OB[OrderBook\non_tick / top]
-    P --> ME[MatchingEngine\nmarket tick]
-    OB --> S[Strategy]
-    S -->|quotes and cancels| P
-    P -->|limit orders| ME
-    ME -->|ExecutionReport| S
-    ME -->|Trade reports| TR[trades.csv]
-    P -->|submitted orders| OR[orders.csv]
-    TR --> BT[legacy::BacktestDriver]
+    P --> OB["OrderBook<br/>on_tick / top"]
+    P --> ME["MatchingEngine<br/>market tick"]
+    OB --> S["Strategy"]
+    S -->|"quotes and cancels"| P
+    P -->|"limit orders"| ME
+    ME -->|"ExecutionReport"| S
+    ME -->|"Trade reports"| TR["trades.csv"]
+    P -->|"submitted orders"| OR["orders.csv"]
+    TR --> BT["legacy::BacktestDriver"]
     T --> BT
 ```
 

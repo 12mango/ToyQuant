@@ -20,12 +20,12 @@ line names a different one as binding.
 ```mermaid
 flowchart LR
     Q["a quoting line"] --> F{"one fill's capture<br/>covers the fee?"}
-    F -- no --> X1["closed on the fee:<br/>crypto perpetuals,<br/>micro E-mini, SPY"]
-    F -- yes --> P{"a window's capture<br/>covers its position sigma?"}
-    P -- no --> X2["closed on the position:<br/>US large caps"]
-    P -- yes --> A{"are there enough<br/>prints a window?"}
-    A -- no --> X3["closed on the actions:<br/>options, 15 days and out"]
-    A -- yes --> C["carry: does a month<br/>pay back the round trip?"]
+    F -->|"no"| X1["closed on the fee:<br/>crypto perpetuals,<br/>micro E-mini, SPY"]
+    F -->|"yes"| P{"a window's capture<br/>covers its position sigma?"}
+    P -->|"no"| X2["closed on the position:<br/>US large caps"]
+    P -->|"yes"| A{"are there enough<br/>prints a window?"}
+    A -->|"no"| X3["closed on the actions:<br/>options, 15 days and out"]
+    A -->|"yes"| C["carry: does a month<br/>pay back the round trip?"]
     C --> X4["closed on payback:<br/>0 of 12 months"]
 ```
 

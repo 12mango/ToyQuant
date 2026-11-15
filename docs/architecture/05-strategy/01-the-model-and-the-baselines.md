@@ -71,15 +71,15 @@ every strategy in the repository by the mechanisms it has.
 
 ```mermaid
 flowchart LR
-    MV[Market view] --> D[Strategy decision]
-    D --> Q[Candidate quotes]
-    D --> C[Cancel requests]
-    Q --> P[Pipeline assigns IDs]
+    MV["Market view"] --> D["Strategy decision"]
+    D --> Q["Candidate quotes"]
+    D --> C["Cancel requests"]
+    Q --> P["Pipeline assigns IDs"]
     C --> P
-    P --> E[MatchingEngine]
-    E --> R[ExecutionReport]
-    R --> S[Strategy state update]
-    R --> A[Portfolio and metrics]
+    P --> E["MatchingEngine"]
+    E --> R["ExecutionReport"]
+    R --> S["Strategy state update"]
+    R --> A["Portfolio and metrics"]
 ```
 
 | Callback | Direction | Responsibility |
@@ -213,16 +213,16 @@ The optimized strategy adds controls in a deliberate order:
 
 ```mermaid
 flowchart LR
-    T[TopOfBook] --> M[Midpoint]
-    M --> W[deque midpoint window]
-    W --> SM[Smoothed midpoint]
-    SM --> TR[Simple trend]
-    SM --> SP[Spread adjustment]
-    TR --> Q[Three quote levels]
+    T["TopOfBook"] --> M["Midpoint"]
+    M --> W["deque midpoint window"]
+    W --> SM["Smoothed midpoint"]
+    SM --> TR["Simple trend"]
+    SM --> SP["Spread adjustment"]
+    TR --> Q["Three quote levels"]
     SP --> Q
-    INV[Position + working exposure] --> Q
-    Q --> O[Buy/sell StrategyOrder]
-    O --> C[Refresh and cancel policy]
+    INV["Position + working exposure"] --> Q
+    Q --> O["Buy/sell StrategyOrder"]
+    O --> C["Refresh and cancel policy"]
 ```
 
 `OptimizedMarketMaker` is the stateful strategy. It keeps a window of recent midpoints in a

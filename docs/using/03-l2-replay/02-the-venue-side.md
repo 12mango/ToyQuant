@@ -68,12 +68,12 @@ stateDiagram-v2
     state "Working (venue holds it)" as Working
     state "Not held (venue says no)" as NotHeld
     state "Rejected (pre-trade control)" as Rejected
-    [*] --> Pending : submit, id already in the table
-    Pending --> Pending : retry under the same client id is absorbed
-    Pending --> Working : ack
-    Pending --> NotHeld : ack timeout, then the query
-    Pending --> Rejected : refused before the venue is called
-    Working --> [*] : fill or cancel
+    [*] --> Pending: submit, id already in the table
+    Pending --> Pending: retry under the same client id is absorbed
+    Pending --> Working: ack
+    Pending --> NotHeld: ack timeout, then the query
+    Pending --> Rejected: refused before the venue is called
+    Working --> [*]: fill or cancel
     NotHeld --> [*]
     Rejected --> [*]
 ```

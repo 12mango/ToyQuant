@@ -67,17 +67,17 @@ immediate order's remainder is cancelled by `send_order_now` after `match` retur
 
 ```mermaid
 flowchart TD
-    I[Incoming order] --> V{Valid?}
-    V -- no --> X[Ignore submission]
-    V -- yes --> P{Crosses best opposite price?}
-    P -- no --> R[Rest limit order]
-    P -- yes --> Q[Take front order at best price]
-    Q --> ST{Same normalized owner?}
-    ST -- yes --> C[Cancel incoming order]
-    ST -- no --> F[Emit two Trade reports]
-    F --> L{Quantity remains?}
-    L -- yes --> Q
-    L -- no --> D[Emit Filled or PartialFill]
+    I["Incoming order"] --> V{"Valid?"}
+    V -->|"no"| X["Ignore submission"]
+    V -->|"yes"| P{"Crosses best opposite price?"}
+    P -->|"no"| R["Rest limit order"]
+    P -->|"yes"| Q["Take front order at best price"]
+    Q --> ST{"Same normalized owner?"}
+    ST -->|"yes"| C["Cancel incoming order"]
+    ST -->|"no"| F["Emit two Trade reports"]
+    F --> L{"Quantity remains?"}
+    L -->|"yes"| Q
+    L -->|"no"| D["Emit Filled or PartialFill"]
 ```
 
 Owner normalization removes whitespace and lowercases characters. A self-trade cancels the
