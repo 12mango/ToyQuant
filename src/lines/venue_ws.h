@@ -138,11 +138,22 @@ class Stream
             ssl_ = SSL_new(ctx_);
             SSL_set_tlsext_host_name(ssl_, url.host.c_str());
             SSL_set_fd(ssl_, fd_);
-            if (SSL_connect(ssl_) != 1)
+            // The socket's 200 ms receive timeout is what lets a caller's loop keep its clock, and a TLS handshake that
+            // reads through it returns `WANT_READ` rather than failing: retried against a deadline of its own, the same
+            // budget the WebSocket handshake uses.
+            const std::int64_t deadline = now_ms() + 15'000;
+            while (true)
             {
+                const int result = SSL_connect(ssl_);
+                if (result == 1) break;
+                const int error = SSL_get_error(ssl_, result);
+                if ((error == SSL_ERROR_WANT_READ || error == SSL_ERROR_WANT_WRITE) && now_ms() < deadline) continue;
                 const unsigned long code = ERR_get_error();
-                throw std::runtime_error(std::string("TLS handshake failed: ") +
-                                         ERR_error_string(code, nullptr));
+                throw std::runtime_error(
+                    std::string("TLS handshake failed: ") +
+                    (code != 0 ? ERR_error_string(code, nullptr)
+                               : error == SSL_ERROR_SYSCALL ? "the connection was closed during the handshake"
+                                                            : "the handshake did not complete in fifteen seconds"));
             }
         }
 #endif
@@ -366,11 +377,22 @@ inline void client_handshake(Stream& stream, const Url& url)
                           "\r\nSec-WebSocket-Version: 13\r\n"
                           "User-Agent: Mozilla/5.0 toyquant-relay-cpp/1.0\r\n\r\n";
     if (!stream.write_all(request)) throw std::runtime_error("could not write the handshake");
+    // The socket polls every 200 ms so a caller's loop keeps its clock, and that poll is not an answer: a venue that is
+    // slow to reply must be waited for, which is why the handshake has a deadline of its own. Python's client waits on a
+    // blocking read here, measured against fifteen seconds; this is the same budget with the poll inside it.
     std::string response;
     char byte = 0;
+    const std::int64_t deadline = now_ms() + 15'000;
     while (response.find("\r\n\r\n") == std::string::npos)
     {
-        if (stream.read(&byte, 1) != 1)
+        const int got = stream.read(&byte, 1);
+        if (got == -2)
+        {
+            if (now_ms() >= deadline)
+                throw std::runtime_error("the venue did not answer the handshake within fifteen seconds");
+            continue;
+        }
+        if (got != 1)
             throw std::runtime_error("the venue closed during the handshake");
         response.push_back(byte);
         if (response.size() > 16 * 1024) throw std::runtime_error("handshake response too large");

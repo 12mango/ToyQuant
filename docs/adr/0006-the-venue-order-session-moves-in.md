@@ -52,8 +52,10 @@ The order session moves into the engine, in four slices, each with its own test 
    and answers `50026` on the websocket trade operation. The Python relay stays the TLS terminator on a host where
    OpenSSL's headers are absent, which is the case CMake's comment already allows. *Landed as `RestPlacer` in
    `src/lines/venue_order_wire.*` and driven by `--order-rest`: the body is the translator's own `args[0]`, so one
-   translation serves both transports, and the answer is read as `ACK`/`CANCELED`/`REJECT`. The host this slice was
-   written on has no OpenSSL, so the evidence is a loopback socket and the venue itself was not reached from here.*
+   translation serves both transports, and the answer is read as `ACK`/`CANCELED`/`REJECT`. It is accepted against the
+   demo venue rather than only on a loopback: a 120-second session through this route placed twenty orders over REST and
+   reconciled (`[RECON] status=ok`, `quantity_breaks=0 fee_difference=0.000000`) with no Python in the order leg. The run,
+   its numbers and the three defects it found are on [the live page](../using/04-live-and-carry.md).*
 
 ## Consequences
 

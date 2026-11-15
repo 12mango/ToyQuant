@@ -477,10 +477,11 @@ int main()
     assert(sink.venue[4] == R"({"op":"subscribe","args":[{"channel":"orders","instType":"ANY"}]})");
     assert((session.counters().logins == 2 && session.counters().subscribes == 2));
 
-    // The keepalive is a cadence, not a frame per event: nothing at nineteen seconds, a ping at twenty.
+    // The keepalive is a cadence, not a frame per event: nothing at nineteen seconds, the channel's own text ping at
+    // twenty -- the literal `ping`, because the object form is refused by the venue as `60012`.
     assert(!session.on_tick(1794528119));
     assert(session.on_tick(1794528120));
-    assert(sink.venue.back() == R"({"op":"ping"})");
+    assert(sink.venue.back() == "ping");
     assert(!session.on_tick(1794528120));
 
     // A message the session cannot read is counted rather than answered, and the summary names every counter the relay

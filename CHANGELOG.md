@@ -7,7 +7,29 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
-## The order leg places over REST, so the engine's route needs no interpreter (2026-11-15)
+## The demo venue accepts the engine's own order leg (2026-11-15)
+
+- **ADR 0006's fourth slice is accepted against the venue, not only on a loopback.** With OpenSSL present -- a build flag
+  rather than a code path -- the C++ relay served both legs of a 120-second demo session with no Python in it: the market
+  leg from the venue's public feed, and the order leg on `--order-listen 127.0.0.1:8766 --order-rest https://www.okx.com
+  --order-inst-code=10459`. The engine's side: `[VENUE] orders=20 cancels=32 refused_by_adapter=16 write_failures=0
+  reports=103 dropped=0`, `[EXECUTION] trade_reports=27 fill_rate=0.132222`, `[PORTFOLIO] equity=998.5 fees_paid=1.0772`,
+  `[PNL] gross_pnl_usd=-0.423298 net_pnl_usd=-1.50049`, and `[RECON] status=ok` with `quantity_breaks=0
+  fee_difference=0.000000`. The relay's side: `placed=20 venue_refusals=19 transport_failures=0 sessions=1
+  unreadable=0`. `placed=20` is this slice's own quotient: twenty placements signed with an ISO-millisecond timestamp and
+  sent as HTTP, none of them over the socket.
+- **Three defects the venue found, each fixed where it lives.** The 200 ms receive timeout is what keeps a caller's clock,
+  and both handshakes read its first expiry as "the venue hung up": one run reported `transport_failures=26` while the
+  loopback test stayed green, and the handshakes now retry against a fifteen-second deadline of their own. The keepalive
+  sent `{"op":"ping"}`, which the private channel refuses as `60012 Illegal request` -- it takes the bare text `ping`, as
+  the Python relay always did. And a `notice` or an `error` event was counted as `unreadable`, so a healthy session
+  printed a number that reads as a defect; an `error` event is printed now and neither is counted.
+- **What the run does not claim**: 19 of the 32 cancels were refused `51400`, because a REST round trip is long enough
+  that the venue had often filled the order first. That is the route's shape rather than its defect, and each refusal was
+  answered `REJECT <id> venue` instead of dropped. Twenty-seven fills in two minutes is a wire acceptance, not a rate.
+- The live page gained the run, the command that reproduces it and the three defects; `[RECON] status=ok` is unchanged.
+
+
 
 - **ADR 0006's fourth slice: `RestPlacer`.** This venue answers `50026` to its websocket trade operation and places over
   REST, so `venue_order_wire` now posts the translator's own `args[0]` as the body of `POST /api/v5/trade/order` and

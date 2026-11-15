@@ -145,11 +145,9 @@ over `POST /api/v5/trade/order` with an ISO-millisecond signature while the sock
 the split this venue forces (`50026` on the websocket trade operation). The engine's side of it is a line socket, one
 frame a line, so `TcpVenueTransport` cannot tell the route from the simulated one.
 
-**The commands above still show the Python relay, and the numbers under them were measured through it.** They can be run
-against the C++ relay instead -- `python3 tools/live/venue_relay.py ...` becoming `./out/build/linux-debug/venue_relay
---order-listen 127.0.0.1:8766 --order-rest https://www.okx.com --order-inst-code=10459` -- but no run here has taken that
-route to the venue: where the build has no OpenSSL a `wss://` venue is refused by name, and the Python relay stays the TLS
-terminator on such a host.
+**Both relays serve that route.** The commands below are the Python relay's, because the numbers under them were measured
+through it on 2026-11-14; the C++ relay runs the same leg from the engine's side, and *The same leg on the C++ relay* at
+the end of this section is the run that says so.
 
 The order channel that produces a recording is in the relay, answering as a simulated venue: `python3
 tools/live/venue_relay.py --simulate-orders --order-listen 127.0.0.1:8766`, which `tests/relay_order_channel_test` drives
@@ -287,6 +285,40 @@ venue's own `fillFee`, negated because the venue writes a charge as negative. **
 position was booked under the empty string, `[EXPOSURE]` printed `legs=:-14300:-0`, and the account reported its cash as
 equity, because no midpoint can be found for a position with no name. The adapter now stamps the symbol from the order it
 sent, and the same run prints `legs=BTC-USDT-SWAP:-6700:-439.749`.
+### The same leg on the C++ relay
+
+The engine's side of the order leg is C++ from the login to the placement, so the two Python processes above can be
+replaced by the relay binary. The shape is the same -- the market leg is one process and the order leg another, because
+`--order-listen` serves the order channel and returns:
+
+```bash
+set -a; . secrets/okx-demo.env; set +a      # the demo key, read from the environment
+./out/build/linux-debug/venue_relay --instrument BTC-USDT-SWAP --listen 127.0.0.1:8765 --max-seconds=150 &
+./out/build/linux-debug/venue_relay --instrument BTC-USDT-SWAP --order-listen 127.0.0.1:8766 \
+    --order-rest https://www.okx.com --order-inst-code=10459 &
+./out/build/linux-debug/toy_quant ws 127.0.0.1:8765 BTC-USDT-SWAP active_l2 1000000 prorata \
+  --fast-validation --paper-broker --ws-seconds=120 --order-size=10000 --inventory-limit=10000 \
+  --max-exposure-usd=1000 --live-orders --venue-endpoint=127.0.0.1:8766 --venue-max-orders=20
+```
+
+Measured on 2026-11-15 over 120 s through that route: `[VENUE] orders=20 cancels=32 refused_by_adapter=16
+write_failures=0 reports=103 dropped=0`, `[EXECUTION] submitted_orders=36 trade_reports=27 fill_rate=0.132222`,
+`[PORTFOLIO] equity=998.5 fees_paid=1.0772 maker_trade_count=27`, `[PNL] gross_pnl_usd=-0.423298
+net_pnl_usd=-1.50049`, and `[RECON] status=ok` with `quantity_breaks=0 fee_difference=0.000000`. On the relay's side:
+`order channel done: orders=20 cancels=32 replies=103 refused=0 write_failures=0 sessions=1 placed=20 venue_refusals=19
+transport_failures=0 logins=1 subscribes=1 reconnects=0 messages=74 unreadable=0`. `placed=20` is the number this route
+exists for: twenty placements signed with an ISO-millisecond timestamp and sent as HTTP, none of them over the socket. The
+`venue_refusals=19` are all `51400` on the cancels -- a REST round trip is long enough that the venue has often filled the
+order by the time the cancel arrives -- and each was answered `REJECT <id> venue` rather than dropped.
+
+Three defects the demo venue found on the way in, all fixed. **The handshakes read the poll as a close**: the socket's
+200 ms receive timeout is what keeps a caller's clock, and both the TLS and the WebSocket handshake treated the first
+timeout as "the venue hung up", so a 120-second run reported `transport_failures=26` while a loopback test stayed green.
+**The keepalive was the wrong shape**: the session sent `{"op":"ping"}` and the venue answered `60012 Illegal request` --
+the private channel's ping is the bare text `ping`. **Protocol events counted as unreadable**: `notice` frames and that
+error between them made a healthy session print `unreadable=6`, a number that reads as a defect and is not one.
+
+
 
 **A run that ends on an empty book says so.** Two guards protect the figure that went wrong first: the closing mark is the
 last *positive* midpoint, so an empty book's zero cannot overwrite it, and where no mark exists at all the run prints
@@ -313,9 +345,9 @@ is in the file at all -- before the stamp every report row carried `ts=0`.
 | `50014` | `op: order` | a field was missing: first `id`, then `instIdCode` |
 | `50026` | `op: order` | a system error, which here was the `51010` below |
 | `51010` | REST order | the account cannot trade this instrument: `acctLv=1` is spot-only |
-| `60012` | business endpoint | that endpoint does not serve `op: order` |
+| `60012` | business endpoint, private channel | that endpoint does not serve `op: order`; the private channel refuses an `{"op":"ping"}` keepalive, which is the bare text `ping` |
 | `60018` | business endpoint | it does not serve the `orders` channel either; the private route does |
-| `51400` | `op: cancel-order` | the order never existed, so the cancel had nothing to cancel |
+| `51400` | `op: cancel-order` | the order never existed, or had already filled or been cancelled by the time the cancel arrived |
 
 The two timestamp formats are the trap worth remembering: a login signed in the wrong format is refused by one surface
 and a REST call by the other, so a client that shares one timestamp function across both is exactly one code away from

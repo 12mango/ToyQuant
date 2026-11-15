@@ -1,5 +1,6 @@
 #include "lines/venue_order_session.h"
 
+#include <iostream>
 #include <sstream>
 
 #include "lines/venue_auth.h"
@@ -65,9 +66,13 @@ void OrderSession::on_frame(std::string_view frame)
         subscribe();
         return;
     }
-    if (event != nullptr && event->as_text() == "error")
+    if (event != nullptr)
     {
-        ++counters_.unreadable;
+        // Any other event is the venue's protocol rather than a message this session failed to read: a late
+        // acknowledgement, a `notice` about the endpoint, or an error it reported. `unreadable` means what it says -- a
+        // frame that could not be parsed or is not one of this channel's -- and counting these here made a healthy session
+        // print `unreadable=6` for six notices, which is a number that reads as a defect and is not one.
+        if (event->as_text() == "error") std::cerr << "the venue reported an error: " << frame << std::endl;
         return;
     }
 
@@ -107,6 +112,10 @@ bool OrderSession::on_tick(std::uint64_t now_seconds)
     // keepalive a round trip rather than a write into a socket that has already gone.
     if (now_seconds < last_ping_seconds_ + 20) return false;
     last_ping_seconds_ = now_seconds;
-    sink_.to_venue(R"({"op":"ping"})");
+    // The private channel's keepalive is the literal text `ping`, not the `{"op":"ping"}` its business endpoint takes.
+    // Measured against the demo venue on 2026-11-15: the object form came back as
+    // `{"event":"error","msg":"Illegal request: {\"op\":\"ping\"}","code":"60012"}`, which is a keepalive the venue
+    // refused while the session went on looking healthy.
+    sink_.to_venue("ping");
     return true;
 }
