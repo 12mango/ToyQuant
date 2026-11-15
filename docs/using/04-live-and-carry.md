@@ -317,6 +317,16 @@ timeout as "the venue hung up", so a 120-second run reported `transport_failures
 **The keepalive was the wrong shape**: the session sent `{"op":"ping"}` and the venue answered `60012 Illegal request` --
 the private channel's ping is the bare text `ping`. **Protocol events counted as unreadable**: `notice` frames and that
 error between them made a healthy session print `unreadable=6`, a number that reads as a defect and is not one.
+The reconnect path was exercised against the venue too, because a healthy session never takes it:
+`--order-drop-after-seconds=40` closes and reopens the private connection every forty seconds, and the session has to log
+in and subscribe again each time. Measured on 2026-11-15 over 180 s with that hook armed: `order channel done:
+orders=20 cancels=46 replies=87 refused=0 write_failures=0 sessions=5 placed=20 venue_refusals=31 transport_failures=0
+logins=5 subscribes=5 reconnects=4 messages=54 unreadable=0`, and the engine still reconciles -- `[RECON] status=ok` with
+`quantity_breaks=0 report_count_difference=0 fee_difference=0.000000`. That is the claim the session's design makes: a gap
+costs a re-subscription, not a fill, because the channel re-sends a live order's cumulative state when it comes back. Four
+fills against the previous run's twenty-seven is the cap rather than the channel -- `--venue-max-orders=20` refused 29 of
+the 49 submissions this strategy made, and a cancel-and-replace cycle spends that cap quickly.
+
 
 
 

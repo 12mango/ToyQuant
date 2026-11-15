@@ -59,6 +59,10 @@ struct WireConfig
     OrderMapping mapping{};
     // The first wait after a drop, doubling to eight seconds -- the schedule the Python relay's half uses.
     double backoff_seconds{1.0};
+    // Close and reopen the venue connection after this many seconds of a session, for the reconnect test against a venue
+    // that has no reason to drop one; 0 never drops. The market leg has the same hook (`--drop-after-seconds`) for the
+    // same reason: the reconnect path is the one a healthy session never exercises.
+    double drop_after_seconds{0.0};
 };
 
 struct WireCounters

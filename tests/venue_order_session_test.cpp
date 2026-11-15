@@ -18,11 +18,13 @@
 #include <cctype>
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -211,11 +213,16 @@ class StandInVenue
 
     void serve()
     {
-        // Two connections, because the drop the test asks for is a *new session* at the venue: the first one is answered
-        // and closed, and the second has to be logged in and subscribed again.
-        if (auto first = accept()) serve_session(*first, true);
-        drop_.store(false);
-        if (auto second = accept()) serve_session(*second, false);
+        // Every connection is answered until the test stops. A dropped session is a *new* session at the venue -- the
+        // login and the subscription go out again -- and both the forced drop in the first half and the scheduled one in
+        // the second make several, so the loop is the venue's shape rather than two counts of it.
+        while (!stop_.load())
+        {
+            auto stream = accept();
+            if (stream == nullptr) return;
+            serve_session(*stream, true);
+            drop_.store(false);
+        }
     }
 
     std::string secret_;
@@ -387,6 +394,39 @@ class StandInRest
             body_ = body;
         }
         ++requests_;
+        // Three answer shapes a loopback with one fixed reply never produces, chosen by the order id so one stand-in can
+        // pin all of the client's paths: a chunked body, a body that is not JSON, and a connection closed with no answer.
+        if (body.find("\"clOrdId\":\"21\"") != std::string::npos)
+        {
+            const std::string answer = R"({"code":"0","msg":"","data":[{"clOrdId":"21","ordId":"2",)"
+                                       R"("sCode":"0","sMsg":"Order placed","sz":"10"}]})";
+            const std::size_t split = answer.size() / 3;
+            std::string chunked = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+                                  "Transfer-Encoding: chunked\r\n\r\n";
+            for (const std::string_view part : {answer.substr(0, split),
+                                                answer.substr(split, split),
+                                                answer.substr(2 * split)})
+            {
+                char size[32];  // wider than %zx needs for a size_t, because the compiler's bound is not
+                std::snprintf(size, sizeof(size), "%zx", part.size());
+                chunked += size;
+                chunked += "\r\n";
+                chunked += part;
+                chunked += "\r\n";
+            }
+            chunked += "0\r\n\r\n";
+            ::send(fd, chunked.data(), chunked.size(), MSG_NOSIGNAL);
+            return;
+        }
+        if (body.find("\"clOrdId\":\"22\"") != std::string::npos)
+        {
+            const std::string answer = "not JSON, because a proxy can answer instead of the venue";
+            const std::string response = "HTTP/1.1 502 Bad Gateway\r\nContent-Type: text/plain\r\nContent-Length: " +
+                                         std::to_string(answer.size()) + "\r\nConnection: close\r\n\r\n" + answer;
+            ::send(fd, response.data(), response.size(), MSG_NOSIGNAL);
+            return;
+        }
+        if (body.find("\"clOrdId\":\"23\"") != std::string::npos) return;  // closed with no answer at all
         // The demo venue's two answers, which are the two this route has to read: an accepted placement whose `sz` is in
         // contracts, and a refusal that is a *sub*-code with the top-level code saying the call itself failed.
         std::string answer;
@@ -568,6 +608,10 @@ int main()
     rest_wire.rest_url = "http://127.0.0.1:" + std::to_string(placement.port());
     rest_wire.inst_code = 10459;
     rest_wire.backoff_seconds = 0.05;
+    // The scheduled drop is the hook a live run uses to exercise the reconnect path the venue has no reason to exercise:
+    // a fifth of a second into each private session, so the REST assertions below run beside a channel that keeps coming
+    // back. The stand-in counts the logins, and that counter is atomic, so the wait does not read a session mid-write.
+    rest_wire.drop_after_seconds = 0.2;
     venue_order_wire::VenueOrderConnection resting(
         "BTC-USDT-SWAP", OrderSession::Credentials{.api_key = "key-1", .secret = secret, .passphrase = "pass-1"},
         rest_wire, rest_port);
@@ -594,14 +638,33 @@ int main()
     resting.on_engine_line("CANCEL 11");
     assert(wait_for([&rest_port] { return rest_port.contains("CANCELED 11 user"); }));
 
+    // Three answer shapes only a venue or a proxy in front of one produces. A chunked body has to be read as the
+    // acknowledgement it is -- the path exists and no test reached it before this one -- and a body that is not JSON or a
+    // connection closed with no answer are `REJECT`s *counted as transport failures*, not silences and not venue refusals.
+    resting.on_engine_line("ORDER 21 BTC-USDT-SWAP B 6421.5 100000 Gtc");
+    assert(wait_for([&rest_port] { return rest_port.contains("ACK 21 100000"); }));
+    resting.on_engine_line("ORDER 22 BTC-USDT-SWAP B 6421.5 100000 Gtc");
+    assert(wait_for([&rest_port] { return rest_port.contains("REJECT 22 venue"); }));
+    resting.on_engine_line("ORDER 23 BTC-USDT-SWAP B 6421.5 100000 Gtc");
+    assert(wait_for([&rest_port] { return rest_port.contains("REJECT 23 venue"); }));
+    assert(resting.counters().transport_failures.load() == 2);
+    assert(resting.counters().placed.load() == 2);  // the two accepted placements and no more
+
     // The state half is still the socket: the subscription pushed a fill, which is the half REST cannot carry.
     assert(wait_for([&state] { return state.fills() >= 1; }));
     assert(wait_for([&rest_port] { return rest_port.contains("FILL 7 "); }));
+    // ... and the private channel has come back more than once meanwhile: the scheduled drop closed each session after a
+    // fifth of a second, and each one had to log in again (`logins` counts what the stand-in received).
+    assert(wait_for([&state] { return state.logins() >= 3; }));
 
     resting.stop();
     rest_runner.join();
-    assert(placement.requests() == 3);
+    assert(placement.requests() == 6);
     assert(resting.counters().write_failures.load() == 0);
+    // The scheduled drop ran: every session it closed was a new login at the venue, which is the reconnect path a live
+    // run takes when the venue drops the private channel.
+    assert(resting.session().counters().reconnects >= 1);
+    assert(resting.session().counters().logins >= 2);
 
     return 0;
 }

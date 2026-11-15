@@ -264,6 +264,10 @@ def main():
                         # `--instrument`: the engine's units are not the venue's contracts, and only the venue layer
                         # knows how many of one make the other.
                         "--contract-size", "--quantity-scale", "--tick-size", "--lot-size",
+                        # The order leg's reconnect hook, the private channel's twin of `--drop-after-seconds`: it closes
+                        # and reopens the venue connection on a timer so the re-login and the re-subscription run against
+                        # a venue that has no reason to drop one. Named in the live page with the run it produced.
+                        "--order-drop-after-seconds",
                         # `tools/export/bundle.py` owns these: it writes the two bundles a reader who cannot clone the
                         # tree is given, checks a bundle's manifest against the tree, and syncs into the folder a
                         # client uploads from. The tool is manual; its `--self-test` is what proves the check fires.

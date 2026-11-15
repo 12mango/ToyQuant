@@ -7,7 +7,26 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
-## One home for the line protocol and the market decoder (2026-11-15)
+## The demo venue also survives a dropped private channel (2026-11-15)
+
+- **The reconnect path is now measured against the venue, not only on a loopback.** `--order-drop-after-seconds=N` closes
+  and reopens the private connection every N seconds -- the order leg's twin of the market leg's `--drop-after-seconds` --
+  and a 180-second demo run with it armed logged in five times and subscribed five times over four reconnects:
+  `orders=20 cancels=46 replies=87 refused=0 write_failures=0 sessions=5 placed=20 venue_refusals=31 transport_failures=0
+  logins=5 subscribes=5 reconnects=4 unreadable=0`. The engine reconciled across all of it: `[RECON] status=ok` with
+  `quantity_breaks=0 report_count_difference=0 fee_difference=0.000000`. A gap costs a re-subscription rather than a fill,
+  because the channel re-sends a live order's cumulative state when it comes back.
+- **Four fills against the previous run's twenty-seven is the cap, not the channel.** `--venue-max-orders=20` refused 29 of
+  the 49 submissions this strategy made, and a cancel-and-replace cycle spends that cap quickly. Said out loud because the
+  two runs are otherwise the same command.
+- **The REST client's three untested branches are tested.** A stand-in that answers `Transfer-Encoding: chunked`, answers
+  with a body that is not JSON, and closes without answering pins `dechunk`, the parse refusal and the closed-connection
+  case: the first is the `ACK` it is, and the other two are `REJECT`s counted as transport failures rather than as
+  silences. `tests/venue_order_session_test` grew all three, and its stand-in venue now serves every connection until the
+  test stops rather than exactly two, which is what lets a scheduled drop be observed.
+- No recorded number moved; the source counts did.
+
+
 
 - **The order leg's wire is one file.** `src/lines/line_socket.h` holds what both ends of the adapter's protocol need --
   `write_all`, `write_line` and `dispatch_lines` -- and `TcpVenueTransport` and the relay's order channel call it. Before

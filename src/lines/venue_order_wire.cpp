@@ -291,8 +291,14 @@ void VenueOrderConnection::session_once()
     std::string payload;
     int opcode = 0;
     bool fin = true;
+    const std::int64_t drop_at =
+        config_.drop_after_seconds > 0.0
+            ? venue_ws::now_ms() + static_cast<std::int64_t>(config_.drop_after_seconds * 1000.0)
+            : 0;
     while (!stop_.load())
     {
+        if (drop_at > 0 && venue_ws::now_ms() >= drop_at)
+            throw std::runtime_error("dropped for the reconnect test");
         const int status = venue_ws::read_frame(stream, payload, opcode, fin);
         if (status == -2)
         {

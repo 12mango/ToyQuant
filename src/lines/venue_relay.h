@@ -33,6 +33,9 @@ struct RelayConfig
     // The two venue grids an order has to land on; the market side reads the venue's prices as they arrive.
     double tick_size{0.1};
     int64_t lot_size{1};
+    // Close and reopen the private connection every N seconds, so the reconnect path runs against a venue that has no
+    // reason to drop one; 0 never drops. The market leg's `--drop-after-seconds` is the same hook for the same reason.
+    double order_drop_after_seconds{0.0};
     // The venue's raw messages, appended, for a later --replay.
     std::string capture;
     // A prefix: the decoded rows are written to <prefix>_trades.csv and <prefix>_depth.csv.
