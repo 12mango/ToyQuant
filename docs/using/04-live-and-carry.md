@@ -317,6 +317,7 @@ timeout as "the venue hung up", so a 120-second run reported `transport_failures
 **The keepalive was the wrong shape**: the session sent `{"op":"ping"}` and the venue answered `60012 Illegal request` --
 the private channel's ping is the bare text `ping`. **Protocol events counted as unreadable**: `notice` frames and that
 error between them made a healthy session print `unreadable=6`, a number that reads as a defect and is not one.
+
 The reconnect path was exercised against the venue too, because a healthy session never takes it:
 `--order-drop-after-seconds=N` closes and reopens the private connection every N seconds, and the session has to log in and
 subscribe again each time. Measured on 2026-11-15 over 300 s with a drop every 50 s and the order cap raised to 60:
