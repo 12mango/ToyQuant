@@ -7,8 +7,8 @@
 # pass before it is accepted, and the times below are measured on the development host rather than
 # estimated:
 #
-#   tier 0  (~1 s)   the unit tests, because a red test must not be able to pass this gate
-#   tier 1  code half (~20 s)  about twenty invariants on the 200k slice and the L1 fixtures -- events, orders,
+#   tier 0  (~3 s)   the unit tests, because a red test must not be able to pass this gate
+#   tier 1  code half (~23 s)  about twenty invariants on the 200k slice and the L1 fixtures -- events, orders,
 #                    fills, PnL, queue consumed, the recorder round trip, direct against threaded, the paper
 #                    broker and its reconciliation, the two-book run, the session and halt paths, the depth
 #                    guards -- plus the source-level checks (every field written, the layering, the eight
@@ -19,9 +19,9 @@
 #                    foreground. Almost all of it is two pages' blocks: `docs/performance/history-03-studies.md`
 #                    replays Databento equity windows at about thirty-five seconds a run, and the multi-day check
 #                    replays one snapshot slice a day. A page with no equity block costs about six seconds
-#   tier 1  whole (~4 min on a loaded host)  both halves; this is what `fast` runs, so `fast` is backgrounded
-#   tier 2  (~15 s)  full 1.5 GB stdout hash against a cached reference
-#   tier 3  (~8 s)   the same tests and one short replay under ASan and UBSan
+#   tier 1  whole (~4.5 min on a loaded host)  both halves; this is what `fast` runs, so `fast` is backgrounded
+#   tier 2  (~26 s)  full 1.5 GB stdout hash against a cached reference
+#   tier 3  (~10 s built, 632 s cold)  the same tests (6 s) and one short replay (4 s) under ASan and UBSan
 #
 # The halves are separate verbs because they are paid for by different kinds of change, and paying minutes
 # to learn nothing about the line that was just edited is not a gate, it is a tax:

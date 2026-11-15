@@ -7,6 +7,23 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The gate's costs are measured, not remembered (2026-11-16)
+
+- **One set of numbers, in the four places that state a cost.** Measured on eight cores on 2026-11-16: tier 0 is 3 s,
+  `code` 26 s, `full` 26 s, `asan` 6 s of tests plus 4 s of replay on a built tree (632 s when the sanitizer tree is
+  cold), and `fast` 4 min 22 s end to end, of which the document half is about four minutes. `tools/gate/verify_l2.sh`'s
+  header, the tier table in `docs/DESIGN_REVIEW.md`, section 3.7 of `docs/PERFORMANCE.md` and the table in
+  `.clinerules` section 3 now say the same thing, because a cost that lives in four places and is remembered in each is a
+  cost that is wrong in three of them.
+- **Two of the old numbers were wrong by two orders of magnitude.** `docs/PERFORMANCE.md` said a `fast` costs `~3.6 s`
+  and `bash verify_l2.sh all` `~18 s`, and it gave `all` a row of its own when `all` is the sum of three tiers rather
+  than one. `docs/DESIGN_REVIEW.md` said tier 1 was `~60 s`. ADR 0003 records this exact defect being fixed once ("the
+  previous one had been wrong by an order of magnitude for months and nothing was checking it"); it had survived in a
+  second and a third file, which is why the numbers now say where they were taken.
+- **A correction of the previous entry.** That entry said a cold sanitizer run costs "the compiler and the 200k replay".
+  Measured apart, the replay is 4 s: the compiler is all of it, and the incremental tier is ~10 s.
+- No C++, no recorded number and no size count moved.
+
 ## The sanitizer tier builds in parallel (2026-11-15)
 
 - **One flag, and the tier's cold cost is now measured.** `tier3()` called `cmake --build "$asan_build_dir"` with no

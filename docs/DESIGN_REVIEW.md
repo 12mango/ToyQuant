@@ -423,10 +423,10 @@ One script, four tiers, run on every change. `tools/gate/verify_l2.sh all`:
 
 | Tier | Time | What it checks |
 |---|---|---|
-| 0 | ~1 s | CTest: 38 unit-test binaries |
-| 1 | ~60 s | pinned invariants on an L2 and an L1 run, every number quoted in the documents, the prose lints, the site build, and the IEX and futures registries' own checks |
-| 2 | ~15 s | the SHA-256 of the full 1.5 GB standard output against `tests/fixtures/l2_full_ref.sha256`, taken with the mode line filtered out so the reference describes the code rather than one checkout's absolute paths |
-| 3 | ~5 s | the same 38 test binaries and one 200k-row replay under AddressSanitizer and UndefinedBehaviorSanitizer, with leak detection on |
+| 0 | ~3 s | CTest: 38 unit-test binaries |
+| 1 | ~4.5 min | pinned invariants on an L2 and an L1 run, every number quoted in the documents, the prose lints, the site build, and the IEX and futures registries' own checks -- the code half is 26 s and the document half is the rest |
+| 2 | ~26 s | the SHA-256 of the full 1.5 GB standard output against `tests/fixtures/l2_full_ref.sha256`, taken with the mode line filtered out so the reference describes the code rather than one checkout's absolute paths |
+| 3 | ~10 s built, 632 s cold | the same 38 test binaries and one 200k-row replay under AddressSanitizer and UndefinedBehaviorSanitizer, with leak detection on -- 6 s of tests and 4 s of replay once the sanitizer tree exists |
 
 Most of tier 1 is the document check: it re-runs the 53 recorded runs the documents quote, which include the
 F4 windows, the latency sweep on converted Databento data and the interval a five-window series carries, so a
@@ -438,9 +438,9 @@ rather than assumed**: the sanitizer binary links `libasan` and `libubsan` and c
 references, so `tier3 OK` means the probes were on. A clean run under a probe that never armed is worth
 nothing, which is the rule the rest of this document follows too. The build is parallel,
 `cmake --build ... -j$(nproc)`, and it was serial until 2026-11-15: a cold tier now measures 632 s end to end
-on eight cores, against the roughly fifteen minutes the same tier took before the flag, and the 38 test
-binaries inside that run finish in under a minute, so the cost is the compiler and the replay rather than the
-check. The tier rebuilds incrementally, so accepting a change pays the replay, not the build.
+on eight cores, against the roughly fifteen minutes the same tier took before the flag. Measured apart on a
+built tree, the tier is 6 s of tests and 4 s of replay, so a cold run is the compiler and nothing else; the
+tier rebuilds incrementally, which is why accepting a change pays ~10 s rather than ten minutes.
 
 /// details | The tier function, as it is written
 
