@@ -7,6 +7,22 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The order leg's frame dump, and the acceptance tiers get one word (2026-11-15)
+
+- **`--order-dump=FILE`.** Every frame both ways, appended, one JSON object a line -- the file the Python route used to
+  explain its first silent sandbox order, where the venue had answered twice and the client had dropped both. The login's
+  `apiKey`, `passphrase` and `sign` are replaced by `***` on the way in, because a file that exists to explain a silent run
+  must not become the copy of the key that leaked; the frame is JSON-escaped, so a quote inside one cannot end the line
+  early; and a path that cannot be opened is an error naming it rather than a silent no-op.
+  `tests/venue_order_session_test` points the dump at a file, then asserts that both directions appear and that neither
+  the api key nor the passphrase does.
+- **`--order-no-subscribe` stays out, and here is why.** The Python route has it for the *business* endpoint, which refuses
+  the `orders` subscription; this route targets the private channel, where the subscription is the half that carries
+  state. A placement-only shape would be a different route -- no socket at all -- rather than a flag on this one.
+- **`.run.sh` gained `full` and `asan`**, so the two acceptance tiers `all` is made of are one word in this environment
+  instead of a hand-typed command the terminal may not deliver.
+- The counts moved and nothing else did.
+
 ## The placement route's latency is counted before it is designed (2026-11-15)
 
 - **Three counters and one number.** `RestPlacer` now counts every call it makes, the milliseconds spent in connect plus

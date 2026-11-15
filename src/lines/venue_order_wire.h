@@ -3,6 +3,7 @@
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
+#include <fstream>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -63,6 +64,10 @@ struct WireConfig
     // that has no reason to drop one; 0 never drops. The market leg has the same hook (`--drop-after-seconds`) for the
     // same reason: the reconnect path is the one a healthy session never exercises.
     double drop_after_seconds{0.0};
+    // Every frame both ways, one JSON object a line, appended. Empty disables it. A run that heard nothing cannot say
+    // whether the venue was silent or this client was looking somewhere else, and the Python route's dump is what
+    // explained the first such session; the login's key, passphrase and signature are masked on the way in.
+    std::string dump_path;
 };
 
 struct WireCounters
@@ -175,6 +180,9 @@ class VenueOrderConnection : public OrderSession::Sink
     static constexpr std::size_t kMaxPending = 1024;
 
     bool send(std::string_view payload, int opcode = 0x1);
+    // One frame to the dump, whichever thread moved it, with the login's three credential fields replaced. A file that
+    // exists to explain a silent run must not become the copy of the key that leaked.
+    void dump_frame(std::string_view direction, std::string_view frame);
     // One connection, login to drop. It sets `up_` once the handshake has completed, which is what makes counting a drop
     // honest: a socket that never came up is a failed attempt, not a session that ended.
     void session_once();
@@ -199,6 +207,8 @@ class VenueOrderConnection : public OrderSession::Sink
     std::condition_variable wait_;
     mutable std::mutex error_mutex_;
     std::string last_error_;
+    std::mutex dump_mutex_;
+    std::ofstream dump_;
     WireCounters counters_;
 };
 }  // namespace venue_order_wire

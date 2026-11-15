@@ -36,6 +36,9 @@ struct RelayConfig
     // Close and reopen the private connection every N seconds, so the reconnect path runs against a venue that has no
     // reason to drop one; 0 never drops. The market leg's `--drop-after-seconds` is the same hook for the same reason.
     double order_drop_after_seconds{0.0};
+    // Every frame both ways, appended, one JSON object a line: the file that explains a run which heard nothing. The
+    // login's key, passphrase and signature are masked on the way in, so it is never the copy of the key that leaked.
+    std::string order_dump;
     // The venue's raw messages, appended, for a later --replay.
     std::string capture;
     // A prefix: the decoded rows are written to <prefix>_trades.csv and <prefix>_depth.csv.

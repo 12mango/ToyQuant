@@ -268,6 +268,10 @@ def main():
                         # and reopens the venue connection on a timer so the re-login and the re-subscription run against
                         # a venue that has no reason to drop one. Named in the live page with the run it produced.
                         "--order-drop-after-seconds",
+                        # The order leg's frame dump: every frame both ways into one file, credentials masked. It is the
+                        # relay's flag rather than the engine's -- the file exists to explain a session that heard
+                        # nothing, and the live page is where it is described.
+                        "--order-dump",
                         # `tools/export/bundle.py` owns these: it writes the two bundles a reader who cannot clone the
                         # tree is given, checks a bundle's manifest against the tree, and syncs into the folder a
                         # client uploads from. The tool is manual; its `--self-test` is what proves the check fires.

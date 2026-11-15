@@ -222,6 +222,48 @@ HttpResponse post_json(const venue_ws::Url& url, std::string_view path, std::str
 }
 }  // namespace
 
+namespace
+{
+// A JSON string body, as the dump's line needs it: the frames are JSON themselves, so a quote inside one would end the
+// line's string early and make the file unreadable at exactly the frame a reader wants.
+std::string json_escaped(std::string_view text)
+{
+    std::string out;
+    out.reserve(text.size());
+    for (const char c : text)
+    {
+        switch (c)
+        {
+            case '"': out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            default: out.push_back(c);
+        }
+    }
+    return out;
+}
+
+// The login is the only frame that carries the account's key, passphrase and signature, and the dump is written to be
+// read by whoever is debugging a silent session. Masking is done here rather than by the session because the session has
+// no reason to know a file exists -- and this is the one place in the tree that could copy a key into one.
+std::string masked_credentials(std::string_view frame)
+{
+    std::string text(frame);
+    for (const std::string_view field : {"\"apiKey\":\"", "\"passphrase\":\"", "\"sign\":\""})
+    {
+        const std::size_t at = text.find(field);
+        if (at == std::string::npos) continue;
+        const std::size_t from = at + field.size();
+        const std::size_t to = text.find('"', from);
+        if (to == std::string::npos) continue;
+        text.replace(from, to - from, "***");
+    }
+    return text;
+}
+}  // namespace
+
 VenueOrderConnection::VenueOrderConnection(std::string instrument, OrderSession::Credentials credentials,
                                            WireConfig config, EnginePort& engine,
                                            std::function<std::uint64_t()> clock)
@@ -233,6 +275,22 @@ VenueOrderConnection::VenueOrderConnection(std::string instrument, OrderSession:
 {
     if (!config_.rest_url.empty())
         placer_ = std::make_unique<RestPlacer>(config_.rest_url, session_.credentials());
+    if (!config_.dump_path.empty())
+    {
+        // Appended rather than truncated: a run that reconnects writes several sessions into one file, and the order they
+        // crossed in is what a reader follows. A file that cannot be opened is an error naming it, not a silent no-op.
+        dump_.open(config_.dump_path, std::ios::out | std::ios::app);
+        if (!dump_.is_open())
+            throw std::runtime_error("could not open the order dump " + config_.dump_path);
+    }
+}
+
+void VenueOrderConnection::dump_frame(std::string_view direction, std::string_view frame)
+{
+    if (!dump_.is_open()) return;
+    std::lock_guard<std::mutex> lock(dump_mutex_);
+    dump_ << "{\"dir\": \"" << direction << "\", \"frame\": \"" << json_escaped(masked_credentials(frame)) << "\"}\n";
+    dump_.flush();
 }
 
 void VenueOrderConnection::run()
@@ -338,6 +396,7 @@ void VenueOrderConnection::session_once()
             continue;
         }
         if (payload == "pong") continue;
+        dump_frame("venue", payload);
         std::lock_guard<std::mutex> lock(session_mutex_);
         session_.on_frame(payload);
     }
@@ -390,7 +449,11 @@ void VenueOrderConnection::place(std::string_view line)
     counters_.rest_place_ms.store(placer_->place_ms());
 }
 
-void VenueOrderConnection::to_venue(std::string_view frame) { send(frame); }
+void VenueOrderConnection::to_venue(std::string_view frame)
+{
+    dump_frame("request", frame);
+    send(frame);
+}
 
 void VenueOrderConnection::to_engine(std::string_view line)
 {

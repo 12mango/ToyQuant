@@ -478,6 +478,7 @@ void serve_order_leg(const RelayConfig& config)
     wire.venue_url = config.order_venue;
     wire.rest_url = config.order_rest;
     wire.drop_after_seconds = config.order_drop_after_seconds;
+    wire.dump_path = config.order_dump;
     wire.inst_code = config.order_inst_code;
     wire.mapping = OrderMapping{.contract_size = config.contract_size,
                                 .quantity_scale = config.quantity_scale,

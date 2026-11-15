@@ -329,6 +329,12 @@ would have to beat. **The decision is not to pool it now**: what a faster cancel
 framing, reuse and failure modes, and nothing this page reports needs it today. `rest_calls` and the two averages stay in
 the summary, so a later session can re-open the question with a number.
 
+A session that hears nothing can be asked what crossed: `--order-dump=FILE` appends every frame both ways, one JSON
+object a line, with the login's key, passphrase and signature replaced by `***` -- the file exists to explain a silent
+run, so it must not be the copy of the key that leaked. The Python route has had this since its first sandbox order,
+where the venue had answered twice and the client had dropped both; the C++ route has it now, and
+`tests/venue_order_session_test` asserts that both directions appear in the file and that the api key never does.
+
 The reconnect path was exercised against the venue too, because a healthy session never takes it:
 `--order-drop-after-seconds=N` closes and reopens the private connection every N seconds, and the session has to log in and
 subscribe again each time. Measured on 2026-11-15 over 300 s with a drop every 50 s and the order cap raised to 60:

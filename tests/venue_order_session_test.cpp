@@ -20,8 +20,10 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
 #include <memory>
 #include <mutex>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -277,6 +279,15 @@ bool wait_for(Predicate predicate)
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
     return predicate();
+}
+
+// A whole file, for the assertions that read what a run left behind rather than what it printed.
+std::string read_file(const std::string& path)
+{
+    std::ifstream file(path);
+    std::ostringstream text;
+    text << file.rdbuf();
+    return text.str();
 }
 
 
@@ -548,6 +559,10 @@ int main()
     wire.mapping = OrderMapping{};
     // A drop has to be answered inside a test rather than after the first second of the production schedule.
     wire.backoff_seconds = 0.05;
+    // The frame dump, which the assertions below read: both directions recorded and the login's key, passphrase and
+    // signature masked, so a file that explains a silent session is never the copy of the key that leaked.
+    wire.dump_path = "/tmp/toyquant_order_dump_test.txt";
+    std::remove(wire.dump_path.c_str());
     venue_order_wire::VenueOrderConnection connection(
         "BTC-USDT-SWAP", OrderSession::Credentials{.api_key = "key-1", .secret = secret, .passphrase = "pass-1"},
         wire, port);
@@ -594,6 +609,17 @@ int main()
     assert(connection.session().counters().reconnects == 1);
     assert(connection.counters().sessions.load() == 2);
     assert(connection.counters().write_failures.load() == 0);
+
+    // What the dump holds: both directions, and no credential. The negative assertion is the one that matters -- the api
+    // key this test sends must appear nowhere in the file, because the file is what a reader opens to find out why a
+    // session heard nothing.
+    const std::string dumped = read_file(wire.dump_path);
+    assert(dumped.find("\"dir\": \"request\"") != std::string::npos);
+    assert(dumped.find("\"dir\": \"venue\"") != std::string::npos);
+    assert(dumped.find("apiKey") != std::string::npos);
+    assert(dumped.find("***") != std::string::npos);
+    assert(dumped.find("key-1") == std::string::npos);
+    assert(dumped.find("pass-1") == std::string::npos);
 
     // ---- slice four: placement over REST, state over the same private channel
     //
