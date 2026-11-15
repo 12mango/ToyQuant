@@ -314,6 +314,13 @@ the checks are split by what they are for:
 > the sanitizer tree is cold. `code` (tier 0 and the code half) is 26 s, so almost all of a `fast` is its document half,
 > about four minutes. `all` has no row because it is the sum rather than a tier, and quoting it as one number is what made
 > the previous version of this table wrong.
+>
+> What those four minutes are made of, counted rather than guessed: eight of the thirty-four recorded runs on
+> [`history-03-studies.md`](performance/history-03-studies.md) replay an equity window, and each costs about thirty-five
+> seconds. A split that moved them onto a page of their own would therefore make `docs <that page>` ~6 s for a prose edit,
+> and it would not move `fast` at all, because `fast` runs every page: the saving is per-page, not per-task. That is the
+> measurement ADR 0003's "to revisit" asks for before the split is written, and it is why the split is a page to write
+> later rather than a cheaper gate today.
 
 Tier 1 compares batch counts, order and fill counts, realised PnL and consumed queue position, which is
 what a reader or book change can actually break. Tier 2 is what makes a timing claim defensible,
