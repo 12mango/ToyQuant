@@ -180,6 +180,7 @@ find_package(OpenSSL QUIET)
 add_executable(venue_relay
     src/lines/venue_relay.cpp
     src/lines/venue_relay_main.cpp
+    src/lines/venue_market_decoder.cpp
     src/lines/venue_order_wire.cpp
     src/lines/venue_order_session.cpp
     src/lines/venue_order_translator.cpp
