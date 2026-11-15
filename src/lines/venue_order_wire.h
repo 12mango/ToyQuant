@@ -83,6 +83,12 @@ struct WireCounters
     std::atomic<std::uint64_t> placed{0};
     std::atomic<std::uint64_t> venue_refusals{0};
     std::atomic<std::uint64_t> transport_failures{0};
+    // The placement route's cost, counted rather than guessed: one placement is one connection today, so whether a
+    // kept-alive connection is worth designing is answered by these three numbers first -- calls, the milliseconds spent
+    // in connect plus TLS per call, and the whole call. Averaged in `to_log_string`.
+    std::atomic<std::uint64_t> rest_calls{0};
+    std::atomic<std::uint64_t> rest_connect_ms{0};
+    std::atomic<std::uint64_t> rest_place_ms{0};
 
     WireCounters() = default;
     WireCounters(const WireCounters&) = delete;
@@ -109,6 +115,11 @@ class RestPlacer
     std::uint64_t placed() const { return placed_; }
     std::uint64_t refused() const { return refused_; }
     std::uint64_t transport_failures() const { return failures_; }
+    // What a placement cost: calls, the milliseconds inside connect plus TLS, and the whole call. Summed here and
+    // averaged by the caller, so the count and the cost are stated by the same object.
+    std::uint64_t calls() const { return calls_; }
+    std::uint64_t connect_ms() const { return connect_ms_; }
+    std::uint64_t place_ms() const { return place_ms_; }
 
    private:
     std::vector<std::string> lines_for(std::string_view op, const std::string& order_id, const Json& answer,
@@ -119,6 +130,9 @@ class RestPlacer
     std::uint64_t placed_{0};
     std::uint64_t refused_{0};
     std::uint64_t failures_{0};
+    std::uint64_t calls_{0};
+    std::uint64_t connect_ms_{0};
+    std::uint64_t place_ms_{0};
 };
 
 class VenueOrderConnection : public OrderSession::Sink

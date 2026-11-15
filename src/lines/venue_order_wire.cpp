@@ -59,12 +59,20 @@ class CurrentStream
 
 std::string WireCounters::to_log_string() const
 {
+    // The placement route's two averages are the counting measurement a kept-alive connection would have to beat; both
+    // are summed across every call, including the ones whose answer never came back, because those paid for a handshake
+    // too. Zero calls reports zero rather than a division by nothing.
+    const std::uint64_t calls = rest_calls.load();
+    const std::string connect_avg = std::to_string(calls == 0 ? 0 : rest_connect_ms.load() / calls);
+    const std::string place_avg = std::to_string(calls == 0 ? 0 : rest_place_ms.load() / calls);
     return "orders=" + std::to_string(orders.load()) + " cancels=" + std::to_string(cancels.load()) +
            " replies=" + std::to_string(replies.load()) + " refused=" + std::to_string(refused.load()) +
            " write_failures=" + std::to_string(write_failures.load()) +
            " sessions=" + std::to_string(sessions.load()) + " placed=" + std::to_string(placed.load()) +
            " venue_refusals=" + std::to_string(venue_refusals.load()) +
-           " transport_failures=" + std::to_string(transport_failures.load());
+           " transport_failures=" + std::to_string(transport_failures.load()) +
+           " rest_calls=" + std::to_string(calls) + " rest_connect_ms_avg=" + connect_avg +
+           " rest_place_ms_avg=" + place_avg;
 }
 
 OrderSession::Credentials credentials_from_environment()
@@ -167,11 +175,15 @@ HttpResponse parse_answer(const std::string& answer)
 }
 
 // One POST on its own connection, which is what the venue's endpoint expects: the Python relay's placer makes one call
-// per order too, and a kept-alive connection would need a pool this line has no reason to own yet.
-HttpResponse post_json(const venue_ws::Url& url, std::string_view path, std::string_view headers, std::string_view body)
+// per order too, and a kept-alive connection would need a pool this line has no reason to own yet -- `connect_ms` is the
+// number that decides whether it should, filled with the time spent in connect plus the TLS handshake.
+HttpResponse post_json(const venue_ws::Url& url, std::string_view path, std::string_view headers, std::string_view body,
+                       std::int64_t& connect_ms)
 {
     venue_ws::Stream stream;
+    const std::int64_t started = venue_ws::now_ms();
     stream.connect(url);
+    connect_ms = venue_ws::now_ms() - started;
     std::string request = "POST ";
     request += path;
     request += " HTTP/1.1\r\nHost: ";
@@ -373,6 +385,9 @@ void VenueOrderConnection::place(std::string_view line)
     counters_.placed.store(placer_->placed());
     counters_.venue_refusals.store(placer_->refused());
     counters_.transport_failures.store(placer_->transport_failures());
+    counters_.rest_calls.store(placer_->calls());
+    counters_.rest_connect_ms.store(placer_->connect_ms());
+    counters_.rest_place_ms.store(placer_->place_ms());
 }
 
 void VenueOrderConnection::to_venue(std::string_view frame) { send(frame); }
@@ -453,22 +468,32 @@ std::vector<std::string> RestPlacer::place(const OrderTranslator::Request& reque
 
     Json answer;
     std::string error;
+    std::int64_t connect_ms = 0;
+    const std::int64_t started = venue_ws::now_ms();
+    ++calls_;
+    bool parsed = true;
+    std::string failure;
     try
     {
-        const HttpResponse response = post_json(url_, path, headers, request.args_object);
+        const HttpResponse response = post_json(url_, path, headers, request.args_object, connect_ms);
         JsonParser parser(response.body);
-        if (!parser.parse(answer, error))
-        {
-            ++failures_;
-            std::cerr << "the venue answered a placement with something that is not JSON (" << error << "): "
-                      << response.body.substr(0, 160) << std::endl;
-            return {"REJECT " + request.id + " venue"};
-        }
+        parsed = parser.parse(answer, error);
+        if (!parsed)
+            failure = "the venue answered a placement with something that is not JSON (" + error + "): " +
+                      response.body.substr(0, 160);
     }
-    catch (const std::exception& failure)
+    catch (const std::exception& error_text)
+    {
+        failure = std::string("the REST placement could not reach the venue (") + error_text.what() + ")";
+    }
+    // Counted on every path, because a call whose answer never arrived paid for its handshake too -- and those are
+    // exactly the calls a kept-alive connection would have saved.
+    connect_ms_ += static_cast<std::uint64_t>(connect_ms);
+    place_ms_ += static_cast<std::uint64_t>(venue_ws::now_ms() - started);
+    if (!failure.empty())
     {
         ++failures_;
-        std::cerr << "the REST placement could not reach the venue (" << failure.what() << ")" << std::endl;
+        std::cerr << failure << std::endl;
         return {"REJECT " + request.id + " venue"};
     }
     return lines_for(request.op, request.id, answer, translator);

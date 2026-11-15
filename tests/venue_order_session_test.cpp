@@ -666,5 +666,13 @@ int main()
     assert(resting.session().counters().reconnects >= 1);
     assert(resting.session().counters().logins >= 2);
 
+    // The cost counters a kept-alive connection would have to beat: one call per placement, and the handshake inside the
+    // call. The timing itself cannot be asserted here -- the stand-in answers in microseconds -- but the relationship can:
+    // a placement contains its connection, and the summary states both averages beside the count.
+    const std::string wire_summary = resting.counters().to_log_string();
+    assert(wire_summary.find("rest_calls=6") != std::string::npos);
+    assert(wire_summary.find("rest_connect_ms_avg=") != std::string::npos);
+    assert(resting.counters().rest_place_ms.load() >= resting.counters().rest_connect_ms.load());
+
     return 0;
 }

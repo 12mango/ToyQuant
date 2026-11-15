@@ -7,7 +7,24 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
-## The demo venue also survives a dropped private channel (2026-11-15)
+## The placement route's latency is counted before it is designed (2026-11-15)
+
+- **Three counters and one number.** `RestPlacer` now counts every call it makes, the milliseconds spent in connect plus
+  the TLS handshake, and the milliseconds of the whole placement, and the summary prints them as `rest_calls`,
+  `rest_connect_ms_avg` and `rest_place_ms_avg`. The counts are taken on the failure path too, because a call whose
+  answer never arrived paid for its handshake as well -- and those are exactly the calls a kept-alive connection would
+  have saved.
+- **Measured on the demo venue**, 120 s, 25 REST calls: `rest_calls=25 rest_connect_ms_avg=94 rest_place_ms_avg=228`
+  beside `orders=14 cancels=11 placed=14 venue_refusals=3 transport_failures=0` and `[RECON] status=ok`. So connect plus
+  the handshake is about two-fifths of a placement (arithmetic on those two averages), which is the share a pooled
+  connection would have to beat. **No keep-alive is proposed by this change**: the rule is that a performance change
+  needs a counting measurement first, and this is the count.
+- `tests/venue_order_session_test` pins the shape rather than the timing: the summary carries `rest_calls=6` and a
+  `rest_connect_ms_avg=` field after its six REST calls, and a placement's total is never less than the connection inside
+  it.
+- The counts moved (133 files, 28,397 lines; the live group 4,725) and nothing else did.
+
+
 
 - **The reconnect path is now measured against the venue, not only on a loopback.** `--order-drop-after-seconds=N` closes
   and reopens the private connection every N seconds -- the order leg's twin of the market leg's `--drop-after-seconds` --

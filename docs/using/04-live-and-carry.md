@@ -318,6 +318,14 @@ timeout as "the venue hung up", so a 120-second run reported `transport_failures
 the private channel's ping is the bare text `ping`. **Protocol events counted as unreadable**: `notice` frames and that
 error between them made a healthy session print `unreadable=6`, a number that reads as a defect and is not one.
 
+The placement route's cost is counted, because a kept-alive connection would be a design change and a performance change
+needs a number before it needs a design: the summary carries `rest_calls`, `rest_connect_ms_avg` and
+`rest_place_ms_avg`. Measured on 2026-11-15 over 120 s through this route, 25 REST calls:
+`rest_calls=25 rest_connect_ms_avg=94 rest_place_ms_avg=228`, beside `orders=14 cancels=11 placed=14 venue_refusals=3
+transport_failures=0` and `[RECON] status=ok`. Connect plus the TLS handshake is therefore about two-fifths of a
+placement -- arithmetic on those two averages, not a measured keep-alive -- and that is the share a pooled connection
+would have to beat.
+
 The reconnect path was exercised against the venue too, because a healthy session never takes it:
 `--order-drop-after-seconds=N` closes and reopens the private connection every N seconds, and the session has to log in and
 subscribe again each time. Measured on 2026-11-15 over 300 s with a drop every 50 s and the order cap raised to 60:
