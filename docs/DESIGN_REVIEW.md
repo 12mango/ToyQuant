@@ -436,8 +436,11 @@ cost of the rule that a documented number is a claim about the code.
 Tier 3 is the one standard C++ check this project did not run until now, and it is **checked to be live
 rather than assumed**: the sanitizer binary links `libasan` and `libubsan` and contains 34 `__asan`
 references, so `tier3 OK` means the probes were on. A clean run under a probe that never armed is worth
-nothing, which is the rule the rest of this document follows too. The first full sanitizer build takes about
-three minutes; the tier rebuilds incrementally, so accepting a change costs the few seconds in the table.
+nothing, which is the rule the rest of this document follows too. The build is parallel,
+`cmake --build ... -j$(nproc)`, and it was serial until 2026-11-15: a cold tier now measures 632 s end to end
+on eight cores, against the roughly fifteen minutes the same tier took before the flag, and the 38 test
+binaries inside that run finish in under a minute, so the cost is the compiler and the replay rather than the
+check. The tier rebuilds incrementally, so accepting a change pays the replay, not the build.
 
 /// details | The tier function, as it is written
 

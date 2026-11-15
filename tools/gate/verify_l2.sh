@@ -578,7 +578,7 @@ tier3() {
     echo "tier3 SKIP (the sanitizer preset did not configure on this toolchain)"
     return 0
   fi
-  if ! cmake --build "$asan_build_dir" >> "$log" 2>&1; then
+  if ! cmake --build "$asan_build_dir" -j"$(nproc)" >> "$log" 2>&1; then
     echo "tier3 MISMATCH (sanitizer build failed)"
     tail -20 "$log" | sed 's/^/  /'
     return 1
