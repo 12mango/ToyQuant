@@ -138,7 +138,10 @@ compatibility path. Everything below assumes that page.
   verbs `status build smoke code docs fast lint full asan sync push commit tail`): it starts the verb detached, writes
   `/tmp/tq/<verb>.out` and `/tmp/tq/<verb>.exit`, and returns at once. Read the exit file (absent = running), then the
   log; a `tail` verb prints both. `full` and `asan` are the acceptance tiers `all` is made of, so the gate this section
-  calls the commit-time cost is reachable with the same one word.
+  calls the commit-time cost is reachable with the same one word. **One verb at a time**: the runner refuses a second
+  start of a verb whose pid is alive, because two gates in one tree write the same `/tmp` slices and the same `out/lat`
+  recordings -- on 2026-11-15 that collision produced a `recorder: replaying the recording did not reproduce the run`
+  MISMATCH in one log and a plain `code OK` in the other, which reads exactly like a real regression.
 - **Anything that crosses into Windows gets a `timeout`** (`powershell.exe`, `wslpath`), because WSL interop can block
   indefinitely and it is the call most likely to hang.
 - **A commit is not finished when `git commit` returns** -- section 6 has the three things that have to agree.

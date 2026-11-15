@@ -63,13 +63,15 @@ The order session moves into the engine, in four slices, each with its own test 
   only a fill would reveal. Saying "the live path has no Python in it" was forbidden until this slice; what is true now is
   that the engine's side of the order leg is C++ from the login to the placement, and that a build without OpenSSL still
   needs the Python relay as its TLS terminator — a property of the build rather than of the design.
-- **What it costs**: a second implementation of the translator until the Python one is retired, and a crypto primitive in
-  the tree that has to be right the first time: SHA-256 and HMAC written by hand, as `ws_feed.cpp` already writes SHA-1
-  and base64 for the opening handshake, because linking OpenSSL into `toy_lines` would make every build of the engine
-  depend on it. The vectors are the guard.
+- **What it costs**: a second implementation of the translator, kept as the reference rather than retired (below), and a
+  crypto primitive in the tree that has to be right the first time: SHA-256 and HMAC written by hand, as `ws_feed.cpp`
+  already writes SHA-1 and base64 for the opening handshake, because linking OpenSSL into `toy_lines` would make every
+  build of the engine depend on it. The vectors are the guard.
 - **What stays in Python**: the discovery tools — `--self-test`, the stand-in venues, the frame dump — and, on a host
-  whose build has no OpenSSL, the TLS terminator's role. After slice four the tools are fixtures for a port rather than
-  the client, and retiring them is a separate decision.
+  whose build has no OpenSSL, the TLS terminator's role. After slice four they are the reference a reader diffs the port
+  against rather than the client, they are kept on purpose, and they are documented as the secondary route: one fold on
+  the live page, and the `live/` row of `docs/TOOLS.md`. Retiring them is a separate decision, and the owner's answer to
+  the question was "keep them for review".
 - **To revisit**: if the venue opened a websocket trade operation, slice four would disappear; if a TLS client in the
   engine were refused, the relay would stay the terminator and slices one to three would still be worth having.
 

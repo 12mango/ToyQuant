@@ -37,7 +37,8 @@ python3 tools/live/websocket_sender.py --port 8765 --trades out/lat/live_trades.
   --fast-validation --record=out/lat/live
 
 # 2 the sandbox order leg: the relay places over REST, the engine books the venue's own answer
-python3 tools/live/venue_relay.py --order-listen 127.0.0.1:8766 \
+#   (the three credentials come from the environment: set -a; . secrets/okx-demo.env; set +a)
+./out/build/linux-debug/venue_relay --instrument BTC-USDT-SWAP --order-listen 127.0.0.1:8766 \
   --order-rest https://www.okx.com --order-inst-code=10459 &
 ./out/build/linux-debug/toy_quant l2_replay <trades> <depth> BTC-PERPETUAL 0 active_l2 1 prorata \
   --fast-validation --paper-broker \
@@ -261,38 +262,6 @@ returns rather than serving both.
 
 ```bash
 set -a; . secrets/okx-demo.env; set +a      # the demo key, read from the environment
-python3 tools/live/venue_relay.py --instrument BTC-USDT-SWAP --listen 127.0.0.1:8765 --max-seconds=120 &
-python3 tools/live/venue_relay.py --instrument BTC-USDT-SWAP --order-listen 127.0.0.1:8766 \
-    --order-rest https://www.okx.com --order-inst-code=10459 &
-./out/build/linux-debug/toy_quant ws 127.0.0.1:8765 BTC-USDT-SWAP active_l2 1000000 prorata \
-  --fast-validation --paper-broker --ws-seconds=120 --order-size=10000 --inventory-limit=10000 \
-  --max-exposure-usd=1000 --live-orders --venue-endpoint=127.0.0.1:8766 --venue-max-orders=20
-```
-
-It fills, and the two sides agree. Measured on 2026-11-14 over ninety seconds, with the exposure cap set: `[VENUE]
-orders=20 cancels=20 reports=66 dropped=0`, `[EXECUTION] submitted_orders=28 trade_reports=15 fill_rate=0.333214` with
-`max_abs_exposure_usd=656.583` and `exposure_over_collateral_fills=0`, `[BROKER] fills_seen=15`, `[RECON] status=ok` with
-`quantity_breaks=0 fee_difference=0.000000`. The account closed at `[PORTFOLIO] cash=1437.13 realized_pnl=-2.55906
-unrealized_pnl=-0.064655 equity=997.376 fees_paid=2.99724` and `[PNL] gross_pnl_usd=0.373523
-net_pnl_usd=-2.62371`: gross positive, net not, because the fee is 2.99724 of a 0.373523 gross. Fifteen fills in ninety
-seconds is a wire acceptance, not a rate.
-
-Three things the demo venue taught, and all are in the tree now. **A contract fills in parts**: a one-contract order came
-back `accFillSz: "0.45"`, and the channel read that with `int()`, which dropped the private connection on the first such
-push and lost every state message after it. **A live fill carried no fee**: the adapter's `FILL` frame had no field for
-one, so `fees_paid` was zero while the venue had charged `fee: "-0.14999409"` on the same fill -- the relay now carries the
-venue's own `fillFee`, negated because the venue writes a charge as negative. **A live fill carried no symbol**: the
-position was booked under the empty string, `[EXPOSURE]` printed `legs=:-14300:-0`, and the account reported its cash as
-equity, because no midpoint can be found for a position with no name. The adapter now stamps the symbol from the order it
-sent, and the same run prints `legs=BTC-USDT-SWAP:-6700:-439.749`.
-### The same leg on the C++ relay
-
-The engine's side of the order leg is C++ from the login to the placement, so the two Python processes above can be
-replaced by the relay binary. The shape is the same -- the market leg is one process and the order leg another, because
-`--order-listen` serves the order channel and returns:
-
-```bash
-set -a; . secrets/okx-demo.env; set +a      # the demo key, read from the environment
 ./out/build/linux-debug/venue_relay --instrument BTC-USDT-SWAP --listen 127.0.0.1:8765 --max-seconds=150 &
 ./out/build/linux-debug/venue_relay --instrument BTC-USDT-SWAP --order-listen 127.0.0.1:8766 \
     --order-rest https://www.okx.com --order-inst-code=10459 &
@@ -301,9 +270,9 @@ set -a; . secrets/okx-demo.env; set +a      # the demo key, read from the enviro
   --max-exposure-usd=1000 --live-orders --venue-endpoint=127.0.0.1:8766 --venue-max-orders=20
 ```
 
-Measured on 2026-11-15 over 120 s through that route: `[VENUE] orders=20 cancels=32 refused_by_adapter=16
-write_failures=0 reports=103 dropped=0`, `[EXECUTION] submitted_orders=36 trade_reports=27 fill_rate=0.132222`,
-`[PORTFOLIO] equity=998.5 fees_paid=1.0772 maker_trade_count=27`, `[PNL] gross_pnl_usd=-0.423298
+It fills, and the two sides agree. Measured on 2026-11-15 over 120 s through that route: `[VENUE] orders=20 cancels=32
+refused_by_adapter=16 write_failures=0 reports=103 dropped=0`, `[EXECUTION] submitted_orders=36 trade_reports=27
+fill_rate=0.132222`, `[PORTFOLIO] equity=998.5 fees_paid=1.0772 maker_trade_count=27`, `[PNL] gross_pnl_usd=-0.423298
 net_pnl_usd=-1.50049`, and `[RECON] status=ok` with `quantity_breaks=0 fee_difference=0.000000`. On the relay's side:
 `order channel done: orders=20 cancels=32 replies=103 refused=0 write_failures=0 sessions=1 placed=20 venue_refusals=19
 transport_failures=0 logins=1 subscribes=1 reconnects=0 messages=74 unreadable=0`. `placed=20` is the number this route
@@ -311,7 +280,18 @@ exists for: twenty placements signed with an ISO-millisecond timestamp and sent 
 `venue_refusals=19` are all `51400` on the cancels -- a REST round trip is long enough that the venue has often filled the
 order by the time the cancel arrives -- and each was answered `REJECT <id> venue` rather than dropped.
 
-Three defects the demo venue found on the way in, all fixed. **The handshakes read the poll as a close**: the socket's
+Three things the demo venue taught on the Python route, before the port, and all are in the tree now. **A contract fills in
+parts**: a one-contract order came back `accFillSz: "0.45"`, and the channel read that with `int()`, which dropped the
+private connection on the first such push and lost every state message after it. **A live fill carried no fee**: the
+adapter's `FILL` frame had no field for one, so `fees_paid` was zero while the venue had charged `fee: "-0.14999409"` on the
+same fill -- the relay now carries the venue's own `fillFee`, negated because the venue writes a charge as negative.
+**A live fill carried no symbol**: the position was booked under the empty string, `[EXPOSURE]` printed `legs=:-14300:-0`,
+and the account reported its cash as equity, because no midpoint can be found for a position with no name. The adapter now
+stamps the symbol from the order it sent, and the same run prints `legs=BTC-USDT-SWAP:-6700:-439.749`.
+
+### What the route costs, and what it survived
+
+Three more defects, found after the port, all fixed. **The handshakes read the poll as a close**: the socket's
 200 ms receive timeout is what keeps a caller's clock, and both the TLS and the WebSocket handshake treated the first
 timeout as "the venue hung up", so a 120-second run reported `transport_failures=26` while a loopback test stayed green.
 **The keepalive was the wrong shape**: the session sent `{"op":"ping"}` and the venue answered `60012 Illegal request` --
@@ -347,9 +327,6 @@ the channel re-sends a live order's cumulative state when it comes back. The `ve
 cancels, which a REST round trip makes routine, and `refused_by_adapter=56` of 116 submissions is the 60-order cap still
 binding -- the strategy replaces faster than the cap allows.
 
-
-
-
 **A run that ends on an empty book says so.** Two guards protect the figure that went wrong first: the closing mark is the
 last *positive* midpoint, so an empty book's zero cannot overwrite it, and where no mark exists at all the run prints
 `[MARK] missing symbol=… quantity=… reason=no_positive_midpoint equity_is_n/a`, `equity=n/a marks_complete=0` on the
@@ -365,6 +342,27 @@ in-process matcher -- recording and replaying then run the same reader over the 
 submissions=305 cancels=290 reports=655 rows_left=0` ends on the same `[PNL]`. A live recording is an audit trail: what
 was asked, what was answered, and when. `LiveVenue` now stamps each answer with the run's market clock, so that "when"
 is in the file at all -- before the stamp every report row carried `ts=0`.
+
+/// details | The same route through the Python relay, kept as the reference the port was written from
+The order session moved out of `tools/live/venue_relay.py` and into the engine in four slices (ADR 0006), and the Python
+file stays in the tree on purpose: its `--self-test`, its stand-in venues and its frame dump are what the C++ tests were
+written against, and a reader checking the port has the file it was ported from. It is not the route a run uses.
+
+```bash
+set -a; . secrets/okx-demo.env; set +a
+python3 tools/live/venue_relay.py --instrument BTC-USDT-SWAP --listen 127.0.0.1:8765 --max-seconds=120 &
+python3 tools/live/venue_relay.py --instrument BTC-USDT-SWAP --order-listen 127.0.0.1:8766 \
+    --order-rest https://www.okx.com --order-inst-code=10459 &
+```
+
+Measured on 2026-11-14 over ninety seconds through it, with the exposure cap set: `[VENUE] orders=20 cancels=20 reports=66
+dropped=0`, `[EXECUTION] submitted_orders=28 trade_reports=15 fill_rate=0.333214` with `max_abs_exposure_usd=656.583` and
+`exposure_over_collateral_fills=0`, `[BROKER] fills_seen=15`, `[RECON] status=ok` with `quantity_breaks=0
+fee_difference=0.000000`. The account closed at `[PORTFOLIO] cash=1437.13 realized_pnl=-2.55906
+unrealized_pnl=-0.064655 equity=997.376 fees_paid=2.99724` and `[PNL] gross_pnl_usd=0.373523
+net_pnl_usd=-2.62371`: gross positive, net not, because the fee is 2.99724 of a 0.373523 gross. Fifteen fills in ninety
+seconds is a wire acceptance, not a rate.
+///
 
 ### The error codes this line has actually produced
 

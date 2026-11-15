@@ -7,6 +7,34 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The sanitizer tier builds in parallel (2026-11-15)
+
+- **One flag, and the tier's cold cost is now measured.** `tier3()` called `cmake --build "$asan_build_dir"` with no
+  `-j`, so a cold sanitizer tree compiled one translation unit at a time: the same tier took roughly fifteen minutes on
+  this host, while the review's table quotes the *incremental* cost and so never showed it. The call now passes
+  `-j"$(nproc)"`, a cold `bash tools/gate/verify_l2.sh asan` on eight cores measured **632 s end to end** with
+  `tier3 OK`, and the 38 test binaries inside it finished in under a minute -- so the remaining cost is the compiler and
+  the 200k replay, not the check.
+- **Nothing in the tier's assertions moved.** Same preset, same `ASAN_OPTIONS`/`UBSAN_OPTIONS`, same three greps for a
+  sanitizer finding, same `tier3 OK` line. A parallel build changes how long the evidence takes, not what counts as it.
+- `docs/DESIGN_REVIEW.md` states the cold and the incremental cost separately now, and says the build is parallel, so a
+  reader cannot read a fifteen-minute run as a check that grew.
+
+## The Python relay is the reference, not the route (2026-11-15)
+
+- **The live page leads with the relay binary.** The `ws` sandbox section and the three copy-paste commands place orders
+  through `./out/build/linux-debug/venue_relay`, and the numbers beside them are the C++ route's own 120-second run
+  (`placed=20`, `trade_reports=27`, `[RECON] status=ok`), not the Python run's.
+- **`tools/live/venue_relay.py` stays, and the documents say what it is for.** It is the implementation the engine's
+  order session was ported from, kept so a reader can diff the port against its source; its `--self-test`, stand-in
+  venues and frame dump are what the C++ tests were written from, and tier 1 still runs the self-test. It is documented
+  as the secondary route: one `/// details` fold on the live page (with the 2026-11-14 Python numbers, kept as the
+  record they are), the `live/` row and the inventory line of `docs/TOOLS.md`, and the "What stays in Python" bullet of
+  ADR 0006.
+- **The defects the demo venue taught are attributed.** The contract that fills in parts, the fill with no fee and the
+  fill with no symbol were found on the Python route before the port; the paragraph now says so, because the fixes are
+  the port's reason to exist and the runs that found them are the Python ones.
+
 ## The order leg's frame dump, and the acceptance tiers get one word (2026-11-15)
 
 - **`--order-dump=FILE`.** Every frame both ways, appended, one JSON object a line -- the file the Python route used to

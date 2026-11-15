@@ -16,6 +16,10 @@ kind of tool a file is:
 | `bench/` | two harnesses for the performance line: the paired A/B runner and the libc call counter | no |
 | `legacy/` | the CSV and UDP generators for the L1 path that the demo and `data/scenarios/` still use | no |
 
+> The relay exists twice. `tools/live/venue_relay.py` is the implementation the engine's order session was ported from
+> (ADR 0006) and stays in the tree as the reference a reader can diff the port against -- kept for review, not the route a
+> run uses; `src/lines/venue_relay_main.cpp` is the one a session runs.
+
 Two things a reader can rely on, because both are counted rather than promised. A tool the gate does not run is quoted
 only through a marked block that `check_docs.py` re-runs, so its arithmetic has a witness even when nobody runs it by
 hand; and every file under `tools/` has a line in the inventory below, because `lint_prose.py` fails a build when one
@@ -71,7 +75,7 @@ does not.
 | `tools/study/viability.py` | the eight closed lines, re-derived | gate |
 | `tools/study/volatility_window.py` | a windowed true range and its median split | both |
 | `tools/study/walk_forward.py` | chosen on the past, scored on the next window | both |
-| `tools/live/venue_relay.py` | market data to the engine, and the order leg both ways on the venue's grid | both |
+| `tools/live/venue_relay.py` | market data to the engine and the order leg both ways, on the venue's grid; the reference the engine's order session was ported from, kept for review | both |
 | `tools/live/websocket_sender.py` | a local venue streaming two recorded files | hand |
 | `tools/live/soak_push.sh` | a session's ping, reconnect and sequence counters | hand |
 | `tools/live/trace_order.sh` | the order that waited longest, stage by stage | hand |
