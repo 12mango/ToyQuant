@@ -7,6 +7,18 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The relay stops carrying a second JSON reader (2026-11-15)
+
+- **One parser, two users.** `src/lines/venue_json.h` -- extracted from the relay for the order translator -- is now what
+  the relay itself reads: its file-local `Json`/`JsonParser` is deleted and it includes the shared header. The C++ relay's
+  `--self-test` decodes the same captured shapes as before and the market decoder is untouched, so the removal is one
+  definition fewer rather than a behaviour of its own.
+- The duplication ADR 0006 named as deliberate and temporary is therefore gone in the same stretch that landed the state
+  machine, which is when the record said it would go. A second parser that drifts is the failure the record exists to
+  stop, and a header both sides include is how it stops.
+- No recorded number moved; the source counts fell by the parser's length, and the size table and MAINLINE's file group
+  state the new totals.
+
 ## The order session's state machine moves in (2026-11-15)
 
 - **ADR 0006's third slice, state machine first.** `src/lines/venue_order_session.{h,cpp}` holds what to send when the

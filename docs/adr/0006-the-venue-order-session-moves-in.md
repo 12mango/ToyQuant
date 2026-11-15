@@ -37,13 +37,13 @@ The order session moves into the engine, in four slices, each with its own test 
    decimal `accFillSz` and `fillFee`, and the rule that one fill is booked per increment of the cumulative counter.
    Pinned against the cases `tools/live/venue_relay.py --self-test` already states, so a port that loses one fails a test
    rather than a session. *Landed in `src/lines/venue_order_translator.*`, over a JSON reader extracted from the relay
-   into `src/lines/venue_json.h`.* One duplication is deliberate and temporary: the relay still carries its own
-   file-local copy of that reader, which slice three deletes when the session moves beside the translator.
+   into `src/lines/venue_json.h`.* That reader is the tree's only one now: the relay's file-local copy is deleted and it
+   includes the shared header, so the duplication this record named as temporary is gone.
 3. **The session.** Login, the `orders` subscription, ping/pong, and a reconnect that logs in and subscribes again —
    beside the TLS/WebSocket code the market leg already uses. *The state machine is landed in
    `src/lines/venue_order_session.*`, behind a `Sink` the caller supplies, so it runs in one process under a test whose
    stand-in recomputes the login's signature from the secret it holds and forces a reconnection.* The TLS/WebSocket
-   wiring beside it is the next step, and the relay's file-local JSON reader is deleted with it.
+   wiring beside it is the next step; the relay's file-local JSON reader is already gone, deleted in the same pass.
 4. **REST placement.** An HTTP/1.1 client over the TLS socket the tree already has, because this venue places over REST
    and answers `50026` on the websocket trade operation. The Python relay stays the TLS terminator on a host where
    OpenSSL's headers are absent, which is the case CMake's comment already allows.
