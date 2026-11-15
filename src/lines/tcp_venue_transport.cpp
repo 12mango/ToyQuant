@@ -1,6 +1,5 @@
 #include "lines/tcp_venue_transport.h"
 
-#include <arpa/inet.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
@@ -12,6 +11,8 @@
 #include <cstring>
 #include <utility>
 #include <vector>
+
+#include "lines/line_socket.h"
 
 namespace
 {
@@ -83,19 +84,10 @@ bool TcpVenueTransport::send(std::string_view frame)
     const int fd = socket_.load(std::memory_order_relaxed);
     if (fd < 0) return false;
 
-    std::string line(frame);
-    line.push_back('\n');
-    std::size_t written = 0;
-    while (written < line.size())
+    if (!line_socket::write_line(fd, frame))
     {
-        const ssize_t sent = ::send(fd, line.data() + written, line.size() - written, MSG_NOSIGNAL);
-        if (sent <= 0)
-        {
-            if (sent < 0 && (errno == EINTR || errno == EAGAIN)) continue;
-            running_.store(false);
-            return false;
-        }
-        written += static_cast<std::size_t>(sent);
+        running_.store(false);
+        return false;
     }
     frames_sent_.fetch_add(1, std::memory_order_relaxed);
     return true;
@@ -124,15 +116,9 @@ void TcpVenueTransport::receive_loop()
             break;
         }
         pending.append(buffer.data(), static_cast<std::size_t>(got));
-        std::size_t newline = pending.find('\n');
-        while (newline != std::string::npos)
-        {
-            std::string_view line(pending.data(), newline);
-            if (!line.empty() && line.back() == '\r') line.remove_suffix(1);
+        line_socket::dispatch_lines(pending, [this](std::string_view line) {
             frames_received_.fetch_add(1, std::memory_order_relaxed);
             if (handler_) handler_(line);
-            pending.erase(0, newline + 1);
-            newline = pending.find('\n');
-        }
+        });
     }
 }

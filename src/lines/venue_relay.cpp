@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "market/ws_feed.h"
+#include "lines/line_socket.h"
 #include "lines/venue_json.h"
 #include "lines/venue_order_wire.h"
 #include "lines/venue_ws.h"
@@ -344,16 +345,10 @@ void accept_engine(const std::string& listen, Stream& stream, std::string_view r
     const std::string response = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n"
                                  "Connection: Upgrade\r\nSec-WebSocket-Accept: " +
                                  accept + "\r\n\r\n";
-    std::size_t done = 0;
-    while (done < response.size())
+    if (!line_socket::write_all(conn, response))
     {
-        const ssize_t sent = ::send(conn, response.data() + done, response.size() - done, MSG_NOSIGNAL);
-        if (sent <= 0)
-        {
-            ::close(conn);
-            throw std::runtime_error("could not answer the engine handshake");
-        }
-        done += static_cast<std::size_t>(sent);
+        ::close(conn);
+        throw std::runtime_error("could not answer the engine handshake");
     }
     std::cout << "engine connected" << std::endl;
     stream.adopt(conn);
@@ -646,16 +641,7 @@ class EngineLinePort : public venue_order_wire::EnginePort
         // Written by the venue's reader while this thread reads the same socket. A mutex is enough because a line is
         // written whole or not at all.
         std::lock_guard<std::mutex> lock(mutex_);
-        std::string text(line);
-        text.push_back('\n');
-        std::size_t done = 0;
-        while (done < text.size())
-        {
-            const ssize_t sent = ::send(fd_, text.data() + done, text.size() - done, MSG_NOSIGNAL);
-            if (sent <= 0) return false;
-            done += static_cast<std::size_t>(sent);
-        }
-        return true;
+        return line_socket::write_line(fd_, line);
     }
 
    private:
@@ -707,15 +693,9 @@ void serve_order_leg(const RelayConfig& config)
             break;
         }
         pending.append(buffer, static_cast<std::size_t>(got));
-        std::size_t newline = pending.find('\n');
-        while (newline != std::string::npos)
-        {
-            std::string_view line(pending.data(), newline);
-            if (!line.empty() && line.back() == '\r') line.remove_suffix(1);
+        line_socket::dispatch_lines(pending, [&connection](std::string_view line) {
             if (!line.empty()) connection.on_engine_line(line);
-            pending.erase(0, newline + 1);
-            newline = pending.find('\n');
-        }
+        });
     }
     // The engine's fd is closed after the session thread has joined: a write that lands between the engine hanging up and
     // the thread noticing would otherwise go to a descriptor number the kernel may already have given to the venue's next
