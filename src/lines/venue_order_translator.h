@@ -51,6 +51,11 @@ class OrderTranslator
     // The venue's message as the adapter's lines. Throws `OrderError` for a message it cannot attribute to an order.
     std::vector<std::string> decode(const Json& message);
 
+    // One entry of an `orders` push: the fills it carries and the state it ends on. The envelope (`op`, `arg`) is the
+    // session's business, so this is the method a caller that has already checked the channel uses -- and the one place
+    // the cumulative counter is kept.
+    std::vector<std::string> decode_orders_entry(const Json& entry);
+
     std::uint64_t units_of(double contracts) const;
     std::uint64_t contracts_for(std::uint64_t units) const;
     std::string price_on_tick(std::string_view text) const;

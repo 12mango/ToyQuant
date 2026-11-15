@@ -7,6 +7,28 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The order session's state machine moves in (2026-11-15)
+
+- **ADR 0006's third slice, state machine first.** `src/lines/venue_order_session.{h,cpp}` holds what to send when the
+  connection comes up (the login, over the timestamp its signature is computed from), what the venue's frames mean (its
+  login answer turns into the `orders` subscription, an `orders` push turns into the adapter's lines), the keepalive
+  cadence, and the reconnect that logs in and subscribes again. It writes to a `Sink` the caller supplies, so the machine
+  runs in one process under a test -- the claim the relay's Python stand-in makes across a socket, which a straight port
+  of the socket code could not inherit.
+- **An account's channel is filtered here, not in the translator.** The venue's `orders` subscription covers every
+  instrument the account trades, so an entry for another one is counted as `other_instruments` rather than answered to the
+  engine: a fill booked against the wrong symbol is a position nothing explains.
+- **`decode_orders_entry` splits out of the translator** so the session can check the instrument before decoding one
+  entry; `decode()` loops over the entries and calls it, with no behaviour change -- `venue_order_translator_test` is
+  untouched and green.
+- `tests/venue_order_session_test` drives the machine in one process: the stand-in recomputes the login's signature from
+  the secret it holds and finds the relay's pinned vector at the pinned timestamp, the subscription follows the venue's
+  answer rather than a timer, a drop forces a second login and a second subscription with a different timestamp, the ping
+  fires at twenty seconds and not at nineteen, and a frame it cannot read is counted rather than answered.
+- **What it does not do**: the TLS/WebSocket plumbing is not wired to it yet, so the live path still needs the relay, and
+  the relay's file-local JSON reader is deleted when that wiring lands. The ADR says which part of the slice is landed.
+- No recorded number moved; the source counts did.
+
 ## The order translator moves in, on the relay's own test cases (2026-11-15)
 
 - **ADR 0006's second slice: `src/lines/venue_order_translator.{h,cpp}`.** The engine's `ORDER` and `CANCEL` lines become

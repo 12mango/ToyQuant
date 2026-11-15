@@ -76,6 +76,7 @@ set(LINE_SOURCES
     src/lines/recorded_venue.cpp
     src/lines/venue_auth.cpp
     src/lines/venue_order_translator.cpp
+    src/lines/venue_order_session.cpp
     src/lines/legacy/tick_csv_parser.cpp
     src/lines/legacy/order_book.cpp
     src/lines/legacy/csv_feed.cpp
@@ -229,6 +230,7 @@ add_toy_test(relay_order_channel_test)
 add_toy_test(order_recorder_test)
 add_toy_test(venue_auth_test)
 add_toy_test(venue_order_translator_test)
+add_toy_test(venue_order_session_test)
 add_toy_test(matching_engine_test)
 add_toy_test(tick_csv_parser_test)
 add_toy_test(line_reader_test)

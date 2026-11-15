@@ -222,7 +222,20 @@ std::vector<std::string> OrderTranslator::decode(const Json& message)
         // A stream of states, not of events: the venue re-sends an order's current state on every change and again
         // after a reconnect, and `accFillSz` is cumulative over the order's life. One fill per increment of it, so a
         // repeated state is not a second fill and a reconnect is not a second session.
-        Known& known = orders_[cl_ord_id];
+        for (const std::string& line : decode_orders_entry(entry)) lines.push_back(line);
+    }
+    return lines;
+}
+
+std::vector<std::string> OrderTranslator::decode_orders_entry(const Json& entry)
+{
+    std::vector<std::string> lines;
+    const Json* id_field = entry.find("clOrdId");
+    const std::string cl_ord_id = id_field != nullptr ? id_field->as_text() : std::string();
+    if (!all_digits(cl_ord_id))
+        throw OrderError("the venue's message carries no order id the engine knows");
+    Known& known = orders_[cl_ord_id];
+    {
         const double previous = known.filled;
         const Json* reported = entry.find("accFillSz");
         double cumulative = previous;
