@@ -7,7 +7,22 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
-## The demo venue accepts the engine's own order leg (2026-11-15)
+## One home for the line protocol and the market decoder (2026-11-15)
+
+- **The order leg's wire is one file.** `src/lines/line_socket.h` holds what both ends of the adapter's protocol need --
+  `write_all`, `write_line` and `dispatch_lines` -- and `TcpVenueTransport` and the relay's order channel call it. Before
+  this, "send every byte with `MSG_NOSIGNAL`" was written out four times and "split on the newline, strip a `\r`" twice,
+  which is how one end starts accepting a carriage return the other never sends without anything failing.
+- **The market decoder left the relay.** `src/lines/venue_market_decoder.{h,cpp}` holds `VenueDecoder` and `RelayStats`;
+  `venue_relay.cpp` fell from 865 lines to 657 and now holds the venue client, the row queue, the recorder and the two
+  entry points. `venue_relay --self-test` decodes the same shapes, caps a snapshot the same way and counts the same gaps.
+- **Two things deliberately not done.** The two `split_fields` are not one function: the translator splits an engine line on
+  spaces and drops empty fields, the recorder splits a CSV row on commas and keeps them, so merging them would move a
+  behaviour change into a refactor. And there is no wider pass: the rules in `.clinerules` forbid a clean-it-all-up
+  rewrite, so each change above is a move with a countable witness (four copies to one, twice; 865 lines to 657).
+- The counts moved (133 files, 28,340 lines; the live group 4,668) and nothing else did.
+
+
 
 - **ADR 0006's fourth slice is accepted against the venue, not only on a loopback.** With OpenSSL present -- a build flag
   rather than a code path -- the C++ relay served both legs of a 120-second demo session with no Python in it: the market
