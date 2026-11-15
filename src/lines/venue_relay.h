@@ -21,6 +21,15 @@ struct RelayConfig
     uint64_t quantity_scale{1000000};
     // Where to serve the engine; empty disables serving.
     std::string listen{"127.0.0.1:8765"};
+    // The order leg: serve the engine's order channel here and dial the venue's private channel. Serving it returns when
+    // the engine hangs up, which is the shape the Python relay has, so a session that needs both legs runs two of these.
+    std::string order_listen;
+    std::string order_venue{"wss://wspap.okx.com:443/ws/v5/private?brokerId=9999"};
+    // The venue's own name for the contract, sent only when it is known (-1 leaves it out).
+    int64_t order_inst_code{-1};
+    // The two venue grids an order has to land on; the market side reads the venue's prices as they arrive.
+    double tick_size{0.1};
+    int64_t lot_size{1};
     // The venue's raw messages, appended, for a later --replay.
     std::string capture;
     // A prefix: the decoded rows are written to <prefix>_trades.csv and <prefix>_depth.csv.

@@ -7,7 +7,35 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
-## The relay stops carrying a second JSON reader (2026-11-15)
+## The order session gets its transport, and the relay serves it (2026-11-15)
+
+- **ADR 0006's third slice is complete.** `src/lines/venue_order_wire.{h,cpp}` is the connection the state machine runs
+  beside: it dials the venue, reads on a 200 ms timeout so the session's keepalive is due on its own clock, answers both
+  heartbeat forms this venue uses (a control ping and a text `ping`), and reconnects -- logging in and subscribing again --
+  on the Python relay's schedule (one second, doubling to eight).
+- **One socket implementation, not two.** The market leg's URL, TLS stream, WebSocket frames and opening handshake moved
+  out of `venue_relay.cpp` into `src/lines/venue_ws.h`, which both legs include; the relay's file-local copies are deleted.
+  That is the move `venue_json.h` made for the reader in `706ec3c`, and it is what lets the order leg's test run a
+  stand-in venue through the frames the client actually writes instead of a string comparison.
+- **`--order-listen` serves the order channel from C++.** The relay accepts the engine's WebSocket connection, translates
+  `ORDER`/`CANCEL` and returns the venue's reports as the adapter's lines, so `LiveVenue` over `TcpVenueTransport` cannot
+  tell this route from the simulated one. A line the translator refuses is answered as `REJECT <id> venue` rather than
+  dropped, and the summary prints what crossed plus the session's own counters. The three credentials come from the
+  environment; the leg's flags are `--order-listen`, `--order-venue`, `--order-inst-code`, `--tick-size` and `--lot-size`.
+- **A request submitted before the login is held, not dropped.** The relay accepts the engine's connection before the
+  venue's login has come back, so the first order of a session can arrive with no socket to write it to; it waits in a
+  bounded queue and goes out after the login, and only a frame that could not be *written* is counted as a failure and
+  discarded -- an order sent twice is worse than one nobody answered.
+- **What it does not do**: placement still needs the relay's REST route, which is slice four, so a run against the demo
+  venue -- whose websocket trade operation answers `50026` -- still uses `tools/live/venue_relay.py` for the order leg.
+  Nothing here has been run against a venue: the evidence is a loopback socket.
+- `tests/venue_order_session_test` gained the socket half. Its stand-in venue answers the handshake, recomputes the
+  login's signature from the secret it holds, acknowledges the subscription, and pushes one fill; the assertions are the
+  driver's lines (`FILL 7 6421.5 10000 0.1`, a `REJECT` for a size below one contract) and a forced drop that has to
+  produce a second login and a second subscription (`sessions=2`, `reconnects=1`, no write failure).
+- No recorded number moved; the source counts did.
+
+
 
 - **One parser, two users.** `src/lines/venue_json.h` -- extracted from the relay for the order translator -- is now what
   the relay itself reads: its file-local `Json`/`JsonParser` is deleted and it includes the shared header. The C++ relay's

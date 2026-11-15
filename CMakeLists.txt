@@ -173,11 +173,17 @@ set_target_properties(ring_bench PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMA
 # The C++ twin of tools/live/venue_relay.py. TLS is optional on purpose: a `wss://` venue is spoken directly
 # only when OpenSSL's headers are present, and without them the relay speaks plaintext `ws://` and the
 # Python relay is kept as the TLS terminator. ws_feed.cpp is compiled in rather than linked so the
-# target needs no layer library; the relay uses one thing from it, the accept-key helper.
+# target needs no layer library; the relay uses one thing from it, the accept-key helper. The order leg's
+# three files are compiled in for a reason of their own: `TOYQUANT_HAVE_OPENSSL` is a definition of this
+# target, and a `venue_ws.h` Stream with and without TLS members must not meet in one link.
 find_package(OpenSSL QUIET)
 add_executable(venue_relay
     src/lines/venue_relay.cpp
     src/lines/venue_relay_main.cpp
+    src/lines/venue_order_wire.cpp
+    src/lines/venue_order_session.cpp
+    src/lines/venue_order_translator.cpp
+    src/lines/venue_auth.cpp
     src/market/ws_feed.cpp)
 target_include_directories(venue_relay PRIVATE ${COMMON_INCLUDE_DIRS})
 target_link_libraries(venue_relay PRIVATE Threads::Threads)
@@ -231,6 +237,10 @@ add_toy_test(order_recorder_test)
 add_toy_test(venue_auth_test)
 add_toy_test(venue_order_translator_test)
 add_toy_test(venue_order_session_test)
+# The session's transport is compiled into its own test rather than into a layer library, for the reason the relay's
+# target states above: TLS is a compile definition a target carries, and the test needs no TLS at all -- its venue is a
+# loopback socket -- so linking OpenSSL in to prove that would make the dependency universal for no measurement.
+target_sources(venue_order_session_test PRIVATE src/lines/venue_order_wire.cpp)
 add_toy_test(matching_engine_test)
 add_toy_test(tick_csv_parser_test)
 add_toy_test(line_reader_test)

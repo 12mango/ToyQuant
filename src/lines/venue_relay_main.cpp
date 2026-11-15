@@ -22,6 +22,11 @@ void usage(const char* executable)
               << "  --contract-size=X       contract value for the quantity scale (default 0.01)\n"
               << "  --quantity-scale=N      engine units per base unit (default 1000000)\n"
               << "  --listen=HOST:PORT      serve the engine here; empty disables serving\n"
+              << "  --order-listen=HOST:PORT serve the engine's order leg here; empty disables it\n"
+              << "  --order-venue=URL       the venue's private websocket url for that leg (default: its demo endpoint)\n"
+              << "  --order-inst-code=N     the venue's own code for the contract, sent when known; -1 leaves it out\n"
+              << "  --tick-size=X           the price step the venue accepts on this instrument (default 0.1)\n"
+              << "  --lot-size=N            the size step, in contracts, the venue accepts (default 1)\n"
               << "  --capture=FILE          append the venue's raw messages, for --replay\n"
               << "  --record=PREFIX         write PREFIX_trades.csv and PREFIX_depth.csv directly\n"
               << "  --replay=FILE           serve a capture instead of connecting; no network\n"
@@ -96,6 +101,36 @@ int main(int argc, char** argv)
         if (present("--ping-seconds")) config.ping_seconds = std::stod(options["--ping-seconds"]);
         if (present("--drop-after-seconds"))
             config.drop_after_seconds = std::stod(options["--drop-after-seconds"]);
+
+        config.order_listen = option(options, "--order-listen", config.order_listen);
+        config.order_venue = option(options, "--order-venue", config.order_venue);
+        if (present("--order-inst-code")) config.order_inst_code = std::stoll(options["--order-inst-code"]);
+        if (present("--tick-size")) config.tick_size = std::stod(options["--tick-size"]);
+        if (present("--lot-size")) config.lot_size = std::stoll(options["--lot-size"]);
+        if (config.order_listen.empty())
+        {
+            // Named rather than accepted and ignored: each of these describes the order leg, and a run without that
+            // listener would place nothing while looking configured.
+            for (const char* name : {"--order-venue", "--order-inst-code", "--tick-size", "--lot-size"})
+                if (present(name))
+                {
+                    std::cerr << "Error: " << name << " describes the order leg, which --order-listen serves; "
+                              << "without it there is no order channel to configure\n";
+                    return 1;
+                }
+        }
+        else
+        {
+            // The market leg's flags are refused from the other side for the same reason: this route serves the order
+            // channel and returns, so a run that also named a market listener would look like both legs and be one.
+            for (const char* name : {"--listen", "--capture", "--record", "--replay"})
+                if (present(name))
+                {
+                    std::cerr << "Error: " << name << " is the market leg's; --order-listen serves the order channel "
+                              << "and returns, so the market leg is a second process\n";
+                    return 1;
+                }
+        }
 
         return self_test ? relay_self_test() : run_relay(config);
     }

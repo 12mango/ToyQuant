@@ -137,9 +137,12 @@ That channel has two backends and two placement routes; the next fold is the who
 /// details | The relay's routes, the sandbox chain, and the venue's error codes
 
 The order half of that relay is on its way into the engine: [ADR 0006](../adr/0006-the-venue-order-session-moves-in.md)
-accepts the move in four slices, and the first -- the login and REST signatures, pinned against the relay's own vector --
-is `src/lines/venue_auth.*`. Until the fourth slice lands, the session, the translator and the REST placement stay in the
-relay, so the commands above still need it.
+accepts the move in four slices, and three are landed -- the signatures (`src/lines/venue_auth.*`), the translator
+(`src/lines/venue_order_translator.*`) and the session with its transport (`src/lines/venue_order_session.*`,
+`src/lines/venue_order_wire.*`). The C++ relay serves that session from `--order-listen`, so an order leg no longer needs
+an interpreter. What is still Python is the placement route: this venue answers `50026` on the websocket trade operation
+and places over REST, and the REST client is the fourth slice, so **the commands above still use the Python relay** for a
+run against the demo venue.
 
 The order channel that produces a recording is in the relay, answering as a simulated venue: `python3
 tools/live/venue_relay.py --simulate-orders --order-listen 127.0.0.1:8766`, which `tests/relay_order_channel_test` drives

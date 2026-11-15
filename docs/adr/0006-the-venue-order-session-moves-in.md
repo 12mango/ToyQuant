@@ -42,8 +42,12 @@ The order session moves into the engine, in four slices, each with its own test 
 3. **The session.** Login, the `orders` subscription, ping/pong, and a reconnect that logs in and subscribes again —
    beside the TLS/WebSocket code the market leg already uses. *The state machine is landed in
    `src/lines/venue_order_session.*`, behind a `Sink` the caller supplies, so it runs in one process under a test whose
-   stand-in recomputes the login's signature from the secret it holds and forces a reconnection.* The TLS/WebSocket
-   wiring beside it is the next step; the relay's file-local JSON reader is already gone, deleted in the same pass.
+   stand-in recomputes the login's signature from the secret it holds and forces a reconnection.* *The transport is
+   landed beside it in `src/lines/venue_order_wire.*`, and the socket it runs on is one implementation for both legs:
+   the relay's URL, TLS stream, frames and opening handshake moved to `src/lines/venue_ws.h`, which the market leg and
+   the order leg both include. The C++ relay serves the order channel from `--order-listen`, so the engine's order leg
+   no longer needs an interpreter; the test drives the whole connection against a stand-in venue on a loopback socket,
+   through the same frames the client writes.*
 4. **REST placement.** An HTTP/1.1 client over the TLS socket the tree already has, because this venue places over REST
    and answers `50026` on the websocket trade operation. The Python relay stays the TLS terminator on a host where
    OpenSSL's headers are absent, which is the case CMake's comment already allows.

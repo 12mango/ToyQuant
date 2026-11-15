@@ -1,15 +1,8 @@
 #include "lines/venue_relay.h"
 
 #include <arpa/inet.h>
-#include <netdb.h>
 #include <sys/socket.h>
-#include <sys/time.h>
 #include <unistd.h>
-
-#ifdef TOYQUANT_HAVE_OPENSSL
-#include <openssl/err.h>
-#include <openssl/ssl.h>
-#endif
 
 #include <algorithm>
 #include <atomic>
@@ -33,18 +26,18 @@
 
 #include "market/ws_feed.h"
 #include "lines/venue_json.h"
+#include "lines/venue_order_wire.h"
+#include "lines/venue_ws.h"
 
 namespace
 {
-constexpr std::string_view kGuid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+// The URL, the TLS stream, the frames and the opening handshake are `venue_ws`'s, because the order leg needs the same
+// four and a second copy would be a client that disagrees with this one about a mask or a timeout. The names are used
+// unqualified here for the same reason `Json` is: this file is a client of that header, not a second implementation of it.
+using namespace venue_ws;
+
 constexpr int kPingAfterSeconds = 25;
 
-int64_t now_ms()
-{
-    return std::chrono::duration_cast<std::chrono::milliseconds>(
-               std::chrono::steady_clock::now().time_since_epoch())
-        .count();
-}
 
 // ------------------------------------------------------------------ the venue decoder
 
@@ -233,330 +226,6 @@ void VenueDecoder::decode_books(const Json& root, const std::string& symbol,
 }
 
 
-// ------------------------------------------------------------------ transport and framing
-
-struct Url
-{
-    bool secure{false};
-    std::string host;
-    uint16_t port{0};
-    std::string target{"/"};
-};
-
-Url parse_url(const std::string& url)
-{
-    Url parsed;
-    const std::size_t scheme = url.find("://");
-    if (scheme == std::string::npos)
-        throw std::runtime_error("a venue url needs a scheme: " + url);
-    parsed.secure = url.substr(0, scheme) == "wss";
-    const std::string rest = url.substr(scheme + 3);
-    const std::size_t slash = rest.find('/');
-    const std::string host_port = slash == std::string::npos ? rest : rest.substr(0, slash);
-    parsed.target = slash == std::string::npos ? "/" : rest.substr(slash);
-    const std::size_t colon = host_port.find(':');
-    parsed.host = colon == std::string::npos ? host_port : host_port.substr(0, colon);
-    parsed.port = static_cast<uint16_t>(
-        colon == std::string::npos ? (parsed.secure ? 443 : 80) : std::stoi(host_port.substr(colon + 1)));
-    if (parsed.host.empty() || parsed.port == 0)
-        throw std::runtime_error("a venue url needs a host and a port: " + url);
-    return parsed;
-}
-
-// One connection, plaintext or TLS. The TLS branch is compiled only when OpenSSL's headers were found,
-// which is the one thing this tree cannot assume; without it a `wss://` url is refused by name rather
-// than half-connected.
-class Stream
-{
-   public:
-    Stream() = default;
-    Stream(const Stream&) = delete;
-    Stream& operator=(const Stream&) = delete;
-    ~Stream() { close(); }
-
-    void connect(const Url& url)
-    {
-        if (url.secure)
-        {
-#ifdef TOYQUANT_HAVE_OPENSSL
-            OPENSSL_init_ssl(0, nullptr);
-#else
-            throw std::runtime_error(
-                "this build has no TLS: pass a ws:// url, or build with OpenSSL's headers");
-#endif
-        }
-        addrinfo hints{};
-        hints.ai_family = AF_UNSPEC;
-        hints.ai_socktype = SOCK_STREAM;
-        addrinfo* result = nullptr;
-        const std::string port = std::to_string(url.port);
-        if (getaddrinfo(url.host.c_str(), port.c_str(), &hints, &result) != 0)
-            throw std::runtime_error("could not resolve " + url.host);
-        for (addrinfo* address = result; address != nullptr; address = address->ai_next)
-        {
-            fd_ = ::socket(address->ai_family, address->ai_socktype, address->ai_protocol);
-            if (fd_ < 0) continue;
-            if (::connect(fd_, address->ai_addr, address->ai_addrlen) == 0) break;
-            ::close(fd_);
-            fd_ = -1;
-        }
-        freeaddrinfo(result);
-        if (fd_ < 0) throw std::runtime_error("could not connect to " + url.host + ":" + port);
-
-        timeval timeout{};
-        timeout.tv_sec = 0;
-        timeout.tv_usec = 200'000;
-        setsockopt(fd_, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-
-#ifdef TOYQUANT_HAVE_OPENSSL
-        if (url.secure)
-        {
-            ctx_ = SSL_CTX_new(TLS_client_method());
-            if (ctx_ == nullptr) throw std::runtime_error("could not create a TLS context");
-            SSL_CTX_set_default_verify_paths(ctx_);
-            SSL_CTX_set_verify(ctx_, SSL_VERIFY_PEER, nullptr);
-            ssl_ = SSL_new(ctx_);
-            SSL_set_tlsext_host_name(ssl_, url.host.c_str());
-            SSL_set_fd(ssl_, fd_);
-            if (SSL_connect(ssl_) != 1)
-            {
-                const unsigned long code = ERR_get_error();
-                throw std::runtime_error(std::string("TLS handshake failed: ") +
-                                         ERR_error_string(code, nullptr));
-            }
-        }
-#endif
-    }
-
-    // >0 bytes, 0 closed, -1 error, -2 a receive timeout.
-    int read(void* buffer, std::size_t count)
-    {
-#ifdef TOYQUANT_HAVE_OPENSSL
-        if (ssl_ != nullptr)
-        {
-            const int got = SSL_read(ssl_, buffer, static_cast<int>(count));
-            if (got > 0) return got;
-            const int error = SSL_get_error(ssl_, got);
-            if (error == SSL_ERROR_ZERO_RETURN) return 0;
-            if (error == SSL_ERROR_WANT_READ || error == SSL_ERROR_WANT_WRITE) return -2;
-            return -1;
-        }
-#endif
-        const ssize_t got = ::recv(fd_, buffer, count, 0);
-        if (got > 0) return static_cast<int>(got);
-        if (got == 0) return 0;
-        if (errno == EAGAIN || errno == EWOULDBLOCK) return -2;
-        return -1;
-    }
-
-    bool write_all(std::string_view data)
-    {
-        std::size_t done = 0;
-        while (done < data.size())
-        {
-#ifdef TOYQUANT_HAVE_OPENSSL
-            if (ssl_ != nullptr)
-            {
-                const int sent = SSL_write(ssl_, data.data() + done,
-                                           static_cast<int>(data.size() - done));
-                if (sent <= 0) return false;
-                done += static_cast<std::size_t>(sent);
-                continue;
-            }
-#endif
-            const ssize_t sent = ::send(fd_, data.data() + done, data.size() - done, MSG_NOSIGNAL);
-            if (sent <= 0) return false;
-            done += static_cast<std::size_t>(sent);
-        }
-        return true;
-    }
-
-    void close()
-    {
-#ifdef TOYQUANT_HAVE_OPENSSL
-        if (ssl_ != nullptr)
-        {
-            SSL_shutdown(ssl_);
-            SSL_free(ssl_);
-            ssl_ = nullptr;
-        }
-        if (ctx_ != nullptr)
-        {
-            SSL_CTX_free(ctx_);
-            ctx_ = nullptr;
-        }
-#endif
-        if (fd_ >= 0)
-        {
-            ::close(fd_);
-            fd_ = -1;
-        }
-    }
-
-    // Takes over an already-accepted connection, which is how the server side gets a Stream.
-    void adopt(int fd) { fd_ = fd; }
-
-    int fd_{-1};
-#ifdef TOYQUANT_HAVE_OPENSSL
-    SSL* ssl_{nullptr};
-    SSL_CTX* ctx_{nullptr};
-#endif
-};
-
-
-// ------------------------------------------------------------------ frames and handshakes
-
-std::string base64_encode(const unsigned char* data, std::size_t length)
-{
-    static constexpr char kAlphabet[] =
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    std::string out;
-    std::size_t index = 0;
-    while (index + 3 <= length)
-    {
-        const uint32_t triple = (static_cast<uint32_t>(data[index]) << 16) |
-                                (static_cast<uint32_t>(data[index + 1]) << 8) |
-                                static_cast<uint32_t>(data[index + 2]);
-        out.push_back(kAlphabet[(triple >> 18) & 0x3F]);
-        out.push_back(kAlphabet[(triple >> 12) & 0x3F]);
-        out.push_back(kAlphabet[(triple >> 6) & 0x3F]);
-        out.push_back(kAlphabet[triple & 0x3F]);
-        index += 3;
-    }
-    if (index < length)
-    {
-        uint32_t triple = static_cast<uint32_t>(data[index]) << 16;
-        if (index + 1 < length) triple |= static_cast<uint32_t>(data[index + 1]) << 8;
-        out.push_back(kAlphabet[(triple >> 18) & 0x3F]);
-        out.push_back(kAlphabet[(triple >> 12) & 0x3F]);
-        out.push_back(index + 1 < length ? kAlphabet[(triple >> 6) & 0x3F] : '=');
-        out.push_back('=');
-    }
-    return out;
-}
-
-uint32_t next_mask_word()
-{
-    static uint32_t state = static_cast<uint32_t>(now_ms()) ^ 0x9E3779B9u;
-    state ^= state << 13;
-    state ^= state >> 17;
-    state ^= state << 5;
-    return state;
-}
-
-// 1 a frame, 0 closed, -1 error, -2 a receive timeout.
-int read_exact(Stream& stream, void* destination, std::size_t count)
-{
-    auto* out = static_cast<unsigned char*>(destination);
-    std::size_t done = 0;
-    while (done < count)
-    {
-        const int got = stream.read(out + done, count - done);
-        if (got > 0)
-        {
-            done += static_cast<std::size_t>(got);
-            continue;
-        }
-        return got;
-    }
-    return 1;
-}
-
-bool send_frame(Stream& stream, int opcode, std::string_view payload, bool mask)
-{
-    std::string frame;
-    frame.push_back(static_cast<char>(0x80 | opcode));
-    const std::size_t length = payload.size();
-    if (length < 126)
-        frame.push_back(static_cast<char>((mask ? 0x80 : 0) | length));
-    else if (length < 65536)
-    {
-        frame.push_back(static_cast<char>((mask ? 0x80 : 0) | 126));
-        frame.push_back(static_cast<char>(length >> 8));
-        frame.push_back(static_cast<char>(length & 0xFF));
-    }
-    else
-    {
-        frame.push_back(static_cast<char>((mask ? 0x80 : 0) | 127));
-        for (int shift = 56; shift >= 0; shift -= 8)
-            frame.push_back(static_cast<char>((static_cast<uint64_t>(length) >> shift) & 0xFF));
-    }
-    if (mask)
-    {
-        const uint32_t word = next_mask_word();
-        const unsigned char key[4] = {static_cast<unsigned char>(word), static_cast<unsigned char>(word >> 8),
-                                      static_cast<unsigned char>(word >> 16),
-                                      static_cast<unsigned char>(word >> 24)};
-        for (unsigned char byte : key) frame.push_back(static_cast<char>(byte));
-        for (std::size_t index = 0; index < length; ++index)
-            frame.push_back(static_cast<char>(payload[index] ^ key[index & 3]));
-    }
-    else
-    {
-        frame.append(payload);
-    }
-    return stream.write_all(frame);
-}
-
-int read_frame(Stream& stream, std::string& payload, int& opcode, bool& fin)
-{
-    unsigned char header[2];
-    const int head = read_exact(stream, header, 2);
-    if (head != 1) return head;
-    fin = (header[0] & 0x80) != 0;
-    opcode = header[0] & 0x0F;
-    const bool masked = (header[1] & 0x80) != 0;
-    uint64_t length = header[1] & 0x7F;
-    if (length == 126)
-    {
-        unsigned char extended[2];
-        if (read_exact(stream, extended, 2) != 1) return -1;
-        length = (static_cast<uint64_t>(extended[0]) << 8) | extended[1];
-    }
-    else if (length == 127)
-    {
-        unsigned char extended[8];
-        if (read_exact(stream, extended, 8) != 1) return -1;
-        length = 0;
-        for (unsigned char byte : extended) length = (length << 8) | byte;
-    }
-    if (length > (uint64_t{1} << 24)) return -1;
-    unsigned char mask[4] = {0, 0, 0, 0};
-    if (masked && read_exact(stream, mask, 4) != 1) return -1;
-    payload.resize(static_cast<std::size_t>(length));
-    if (length > 0 && read_exact(stream, payload.data(), static_cast<std::size_t>(length)) != 1)
-        return -1;
-    if (masked)
-        for (uint64_t index = 0; index < length; ++index)
-            payload[static_cast<std::size_t>(index)] ^= mask[index & 3];
-    return 1;
-}
-
-
-void client_handshake(Stream& stream, const Url& url)
-{
-    unsigned char key_bytes[16];
-    for (unsigned char& byte : key_bytes) byte = static_cast<unsigned char>(next_mask_word());
-    const std::string key = base64_encode(key_bytes, sizeof(key_bytes));
-    std::string request = "GET " + url.target + " HTTP/1.1\r\nHost: " + url.host + ":" +
-                          std::to_string(url.port) +
-                          "\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: " + key +
-                          "\r\nSec-WebSocket-Version: 13\r\n"
-                          "User-Agent: Mozilla/5.0 toyquant-relay-cpp/1.0\r\n\r\n";
-    if (!stream.write_all(request)) throw std::runtime_error("could not write the handshake");
-    std::string response;
-    char byte = 0;
-    while (response.find("\r\n\r\n") == std::string::npos)
-    {
-        if (stream.read(&byte, 1) != 1)
-            throw std::runtime_error("the venue closed during the handshake");
-        response.push_back(byte);
-        if (response.size() > 16 * 1024) throw std::runtime_error("handshake response too large");
-    }
-    if (response.rfind("HTTP/1.1 101", 0) != 0 && response.rfind("HTTP/1.0 101", 0) != 0)
-        throw std::runtime_error("the venue refused the handshake: " +
-                                 response.substr(0, response.find("\r\n")));
-}
 
 std::string header_value(const std::string& request, const std::string& name)
 {
@@ -585,8 +254,10 @@ std::string header_value(const std::string& request, const std::string& name)
     return {};
 }
 
-// Blocks until the engine connects and completes the handshake, then adopts the connection into `stream`.
-void accept_engine(const std::string& listen, Stream& stream)
+// Blocks until the engine connects and completes the handshake, then adopts the connection into `stream`. `role` names the
+// channel in the line it prints, because a session with both legs runs two of these and the reader has to know which one
+// came up first.
+void accept_engine(const std::string& listen, Stream& stream, std::string_view role = "relay")
 {
     const std::size_t colon = listen.find(':');
     if (colon == std::string::npos || colon == 0)
@@ -615,7 +286,13 @@ void accept_engine(const std::string& listen, Stream& stream)
         ::close(listener);
         throw std::runtime_error("could not listen on " + listen);
     }
-    std::cout << "relay listening on ws://" << listen << ", waiting for the engine ..." << std::endl;
+    // The line prints the port the kernel gave, not the one that was asked for: `--listen=127.0.0.1:0` is how a test or a
+    // wrapper asks for any free port, and a relay that echoed "0" back would leave the caller guessing.
+    sockaddr_in bound{};
+    socklen_t bound_length = sizeof(bound);
+    ::getsockname(listener, reinterpret_cast<sockaddr*>(&bound), &bound_length);
+    std::cout << role << " listening on ws://" << (host.empty() ? "0.0.0.0" : host) << ":"
+              << ntohs(bound.sin_port) << ", waiting for the engine ..." << std::endl;
 
     sockaddr_in peer{};
     socklen_t length = sizeof(peer);
@@ -937,8 +614,91 @@ void stream_engine(Stream& engine, RowQueue& rows)
     send_frame(engine, 0x8, "", false);
 }
 
+// ------------------------------------------------------------------ the order leg
+
+// The engine's end of the order channel: `LiveVenue`'s lines out as text frames and the session's answers back in. The
+// engine is a WebSocket client of this relay exactly as it is of the market leg, so `TcpVenueTransport` cannot tell this
+// route from the simulated one -- which is the property ADR 0005 decision 1 asked for.
+class EngineStreamPort : public venue_order_wire::EnginePort
+{
+   public:
+    explicit EngineStreamPort(Stream& engine) : engine_(engine) {}
+
+    bool write_line(std::string_view line) override
+    {
+        // Written by the venue's reader while the engine's own reader answers a control ping on the same socket, so the
+        // two writes are serialised. A mutex is enough because a frame is written whole or not at all.
+        std::lock_guard<std::mutex> lock(mutex_);
+        return send_frame(engine_, 0x1, line, false);
+    }
+
+   private:
+    Stream& engine_;
+    std::mutex mutex_;
+};
+
+// Serves one engine connection for the order channel: the venue's private session on one side and the engine's line
+// socket on the other. It returns when the engine hangs up -- the Python relay's shape as well -- and the summary is the
+// one that route prints: what crossed, what was refused, and how many times the session had to log in again.
+void serve_order_leg(const RelayConfig& config)
+{
+    // The credentials are read before the socket is accepted: an engine that connected only to be dropped for a missing
+    // variable would meet the failure as a dead wire rather than as the name of the variable to set.
+    const OrderSession::Credentials credentials = venue_order_wire::credentials_from_environment();
+    // The URL is checked here, before the socket is accepted: a typo is an error naming it rather than a listener that
+    // says it is ready and then a loop of failed connections behind it.
+    venue_ws::parse_url(config.order_venue);
+
+    venue_order_wire::WireConfig wire;
+    wire.venue_url = config.order_venue;
+    wire.inst_code = config.order_inst_code;
+    wire.mapping = OrderMapping{.contract_size = config.contract_size,
+                                .quantity_scale = config.quantity_scale,
+                                .tick_size = config.tick_size,
+                                .lot_size = config.lot_size};
+
+    Stream engine;
+    accept_engine(config.order_listen, engine, "order channel");
+    EngineStreamPort port(engine);
+    venue_order_wire::VenueOrderConnection connection(config.instrument, credentials, wire, port);
+    std::thread thread([&connection] { connection.run(); });
+
+    std::string payload;
+    int opcode = 0;
+    bool fin = true;
+    while (true)
+    {
+        const int status = read_frame(engine, payload, opcode, fin);
+        if (status == -2) continue;  // the read timeout is the loop's own clock, not an error
+        if (status != 1) break;
+        if (opcode == 0x8) break;
+        if (opcode == 0x9)
+        {
+            send_frame(engine, 0xA, payload, false);
+            continue;
+        }
+        if (opcode != 0x1 && opcode != 0x0) continue;
+        connection.on_engine_line(payload);
+    }
+
+    connection.stop();
+    thread.join();
+    std::cout << "order channel done: " << connection.counters().to_log_string() << ' '
+              << connection.session().summary();
+    const std::string lost = connection.last_error();
+    if (!lost.empty()) std::cout << " last_error=\"" << lost << '"';
+    std::cout << std::endl;
+}
+
 int run_relay_impl(const RelayConfig& config)
 {
+    if (!config.order_listen.empty())
+    {
+        // The order leg is its own route and returns when the engine hangs up, which is what the Python relay does: a
+        // live session that needs the market leg too runs the other process.
+        serve_order_leg(config);
+        return 0;
+    }
     VenueDecoder decoder(config);
     RelayStats stats;
 
