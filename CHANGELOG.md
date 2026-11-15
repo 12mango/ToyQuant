@@ -7,7 +7,35 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
-## The order session gets its transport, and the relay serves it (2026-11-15)
+## The order leg places over REST, so the engine's route needs no interpreter (2026-11-15)
+
+- **ADR 0006's fourth slice: `RestPlacer`.** This venue answers `50026` to its websocket trade operation and places over
+  REST, so `venue_order_wire` now posts the translator's own `args[0]` as the body of `POST /api/v5/trade/order` and
+  `/api/v5/trade/cancel-order` on the TLS stream the tree already has, signing with
+  `venue_auth::rest_signature` -- whose timestamp is ISO 8601 **milliseconds**, the opposite of the login's epoch seconds.
+  The answer becomes the adapter's lines: `ACK <id> <units>` from the reply's `sz`, `CANCELED <id> user` for a cancel,
+  and `REJECT <id> venue` for a refusal, whose `sCode` and `sMsg` are printed rather than swallowed. A transport failure
+  is a `REJECT` too, so no submission goes unanswered.
+- **One translation, two transports.** `OrderTranslator::request_of` returns the request's two halves -- the operation, the
+  id, and the `args[0]` object as text -- and `encode` joins them for the websocket. `encode`'s output is unchanged, which
+  `venue_order_translator_test` checks, and the REST body is therefore the very object the socket op would have carried.
+- **`venue_relay --order-rest=BASE_URL`** drives it: the private socket still logs in and subscribes the `orders` channel
+  (state comes over it), and placement goes over REST. The summary gained `placed=`, `venue_refusals=` and
+  `transport_failures=` beside the counters it had.
+- **The order leg's engine socket is a line socket, not a WebSocket one.** `TcpVenueTransport` writes one line a frame and
+  splits what comes back on newlines, which is the Python relay's order route too; the market leg's opening handshake had
+  been reused for it and would have been a peer that never introduces itself. The two accept paths now share
+  `listen_on`, and the printed line carries the port the kernel gave.
+- **What is not covered**: the build used for this change has no OpenSSL, so a `wss://` venue is refused by name -- the
+  evidence for this slice is a loopback socket and a line smoke, not a venue. Reaching the demo venue still needs the
+  Python relay on such a host, which is the fallback ADR 0006 recorded.
+- `tests/venue_order_session_test` gained the REST half: a stand-in endpoint that recomputes the signature from the secret
+  it holds over the bytes and timestamp it received, an `ACK 11 100000` from a reply whose `sz` is ten contracts, the
+  exact body pinned as a literal, a `REJECT 12 venue` for a sub-code refusal, `CANCELED 11 user` for a cancel, and the
+  socket's own `FILL 7` still arriving beside it.
+- No recorded number moved; the source counts did.
+
+
 
 - **ADR 0006's third slice is complete.** `src/lines/venue_order_wire.{h,cpp}` is the connection the state machine runs
   beside: it dials the venue, reads on a 200 ms timeout so the session's keepalive is due on its own clock, answers both

@@ -24,6 +24,7 @@ void usage(const char* executable)
               << "  --listen=HOST:PORT      serve the engine here; empty disables serving\n"
               << "  --order-listen=HOST:PORT serve the engine's order leg here; empty disables it\n"
               << "  --order-venue=URL       the venue's private websocket url for that leg (default: its demo endpoint)\n"
+              << "  --order-rest=URL        place over REST at this base url instead of the socket's trade operation\n"
               << "  --order-inst-code=N     the venue's own code for the contract, sent when known; -1 leaves it out\n"
               << "  --tick-size=X           the price step the venue accepts on this instrument (default 0.1)\n"
               << "  --lot-size=N            the size step, in contracts, the venue accepts (default 1)\n"
@@ -104,6 +105,7 @@ int main(int argc, char** argv)
 
         config.order_listen = option(options, "--order-listen", config.order_listen);
         config.order_venue = option(options, "--order-venue", config.order_venue);
+        config.order_rest = option(options, "--order-rest", config.order_rest);
         if (present("--order-inst-code")) config.order_inst_code = std::stoll(options["--order-inst-code"]);
         if (present("--tick-size")) config.tick_size = std::stod(options["--tick-size"]);
         if (present("--lot-size")) config.lot_size = std::stoll(options["--lot-size"]);
@@ -111,7 +113,7 @@ int main(int argc, char** argv)
         {
             // Named rather than accepted and ignored: each of these describes the order leg, and a run without that
             // listener would place nothing while looking configured.
-            for (const char* name : {"--order-venue", "--order-inst-code", "--tick-size", "--lot-size"})
+            for (const char* name : {"--order-venue", "--order-rest", "--order-inst-code", "--tick-size", "--lot-size"})
                 if (present(name))
                 {
                     std::cerr << "Error: " << name << " describes the order leg, which --order-listen serves; "

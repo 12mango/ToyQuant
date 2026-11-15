@@ -254,10 +254,16 @@ std::string header_value(const std::string& request, const std::string& name)
     return {};
 }
 
-// Blocks until the engine connects and completes the handshake, then adopts the connection into `stream`. `role` names the
-// channel in the line it prints, because a session with both legs runs two of these and the reader has to know which one
-// came up first.
-void accept_engine(const std::string& listen, Stream& stream, std::string_view role = "relay")
+// One listening socket, bound and listening, with the address it actually got. The line each caller prints names the port
+// the kernel gave rather than the one that was asked for: `--listen=HOST:0` is how a test or a wrapper asks for any free
+// port, and a relay that echoed "0" back would leave the caller guessing.
+struct Listener
+{
+    int fd{-1};
+    std::string where;
+};
+
+Listener listen_on(const std::string& listen)
 {
     const std::size_t colon = listen.find(':');
     if (colon == std::string::npos || colon == 0)
@@ -265,10 +271,11 @@ void accept_engine(const std::string& listen, Stream& stream, std::string_view r
     const std::string host = listen.substr(0, colon);
     const int port = std::stoi(listen.substr(colon + 1));
 
-    const int listener = ::socket(AF_INET, SOCK_STREAM, 0);
-    if (listener < 0) throw std::runtime_error("could not create the listening socket");
+    Listener listener;
+    listener.fd = ::socket(AF_INET, SOCK_STREAM, 0);
+    if (listener.fd < 0) throw std::runtime_error("could not create the listening socket");
     int one = 1;
-    setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+    setsockopt(listener.fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
     sockaddr_in address{};
     address.sin_family = AF_INET;
     address.sin_port = htons(static_cast<uint16_t>(port));
@@ -276,28 +283,38 @@ void accept_engine(const std::string& listen, Stream& stream, std::string_view r
         address.sin_addr.s_addr = INADDR_ANY;
     else if (inet_pton(AF_INET, host.c_str(), &address.sin_addr) != 1)
         throw std::runtime_error("--listen needs a literal IPv4 address");
-    if (bind(listener, reinterpret_cast<sockaddr*>(&address), sizeof(address)) < 0)
+    if (bind(listener.fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)) < 0)
     {
-        ::close(listener);
+        ::close(listener.fd);
         throw std::runtime_error("could not bind " + listen);
     }
-    if (::listen(listener, 1) < 0)
+    if (::listen(listener.fd, 1) < 0)
     {
-        ::close(listener);
+        ::close(listener.fd);
         throw std::runtime_error("could not listen on " + listen);
     }
-    // The line prints the port the kernel gave, not the one that was asked for: `--listen=127.0.0.1:0` is how a test or a
-    // wrapper asks for any free port, and a relay that echoed "0" back would leave the caller guessing.
     sockaddr_in bound{};
     socklen_t bound_length = sizeof(bound);
-    ::getsockname(listener, reinterpret_cast<sockaddr*>(&bound), &bound_length);
-    std::cout << role << " listening on ws://" << (host.empty() ? "0.0.0.0" : host) << ":"
-              << ntohs(bound.sin_port) << ", waiting for the engine ..." << std::endl;
+    ::getsockname(listener.fd, reinterpret_cast<sockaddr*>(&bound), &bound_length);
+    listener.where = (host.empty() ? std::string("0.0.0.0") : host) + ":" + std::to_string(ntohs(bound.sin_port));
+    return listener;
+}
 
+int accept_one(int listener)
+{
     sockaddr_in peer{};
     socklen_t length = sizeof(peer);
     const int conn = ::accept(listener, reinterpret_cast<sockaddr*>(&peer), &length);
     ::close(listener);
+    return conn;
+}
+
+// Blocks until the engine connects and completes the handshake, then adopts the connection into `stream`.
+void accept_engine(const std::string& listen, Stream& stream, std::string_view role = "relay")
+{
+    const Listener listener = listen_on(listen);
+    std::cout << role << " listening on ws://" << listener.where << ", waiting for the engine ..." << std::endl;
+    const int conn = accept_one(listener.fd);
     if (conn < 0) throw std::runtime_error("the engine connection was not accepted");
 
     std::string request;
@@ -616,24 +633,33 @@ void stream_engine(Stream& engine, RowQueue& rows)
 
 // ------------------------------------------------------------------ the order leg
 
-// The engine's end of the order channel: `LiveVenue`'s lines out as text frames and the session's answers back in. The
-// engine is a WebSocket client of this relay exactly as it is of the market leg, so `TcpVenueTransport` cannot tell this
-// route from the simulated one -- which is the property ADR 0005 decision 1 asked for.
-class EngineStreamPort : public venue_order_wire::EnginePort
+// The engine's end of the order channel. It is the adapter's own protocol -- one frame a line, a newline the message's
+// edge (`src/lines/live_venue.h`) -- and not the market leg's WebSocket: `TcpVenueTransport` writes lines to a plain
+// socket and splits what comes back on newlines, so a handshake here would be a peer that never introduces itself.
+class EngineLinePort : public venue_order_wire::EnginePort
 {
    public:
-    explicit EngineStreamPort(Stream& engine) : engine_(engine) {}
+    explicit EngineLinePort(int fd) : fd_(fd) {}
 
     bool write_line(std::string_view line) override
     {
-        // Written by the venue's reader while the engine's own reader answers a control ping on the same socket, so the
-        // two writes are serialised. A mutex is enough because a frame is written whole or not at all.
+        // Written by the venue's reader while this thread reads the same socket. A mutex is enough because a line is
+        // written whole or not at all.
         std::lock_guard<std::mutex> lock(mutex_);
-        return send_frame(engine_, 0x1, line, false);
+        std::string text(line);
+        text.push_back('\n');
+        std::size_t done = 0;
+        while (done < text.size())
+        {
+            const ssize_t sent = ::send(fd_, text.data() + done, text.size() - done, MSG_NOSIGNAL);
+            if (sent <= 0) return false;
+            done += static_cast<std::size_t>(sent);
+        }
+        return true;
     }
 
    private:
-    Stream& engine_;
+    int fd_;
     std::mutex mutex_;
 };
 
@@ -645,44 +671,58 @@ void serve_order_leg(const RelayConfig& config)
     // The credentials are read before the socket is accepted: an engine that connected only to be dropped for a missing
     // variable would meet the failure as a dead wire rather than as the name of the variable to set.
     const OrderSession::Credentials credentials = venue_order_wire::credentials_from_environment();
-    // The URL is checked here, before the socket is accepted: a typo is an error naming it rather than a listener that
-    // says it is ready and then a loop of failed connections behind it.
+    // Both urls are checked before the socket is accepted: a typo is an error naming it rather than a listener that says
+    // it is ready and then a connection that cannot be made.
     venue_ws::parse_url(config.order_venue);
+    if (!config.order_rest.empty()) venue_ws::parse_url(config.order_rest);
 
     venue_order_wire::WireConfig wire;
     wire.venue_url = config.order_venue;
+    wire.rest_url = config.order_rest;
     wire.inst_code = config.order_inst_code;
     wire.mapping = OrderMapping{.contract_size = config.contract_size,
                                 .quantity_scale = config.quantity_scale,
                                 .tick_size = config.tick_size,
                                 .lot_size = config.lot_size};
 
-    Stream engine;
-    accept_engine(config.order_listen, engine, "order channel");
-    EngineStreamPort port(engine);
+    const Listener listener = listen_on(config.order_listen);
+    std::cout << "order channel listening on " << listener.where << ", waiting for the engine ..." << std::endl;
+    const int engine = accept_one(listener.fd);
+    if (engine < 0) throw std::runtime_error("the engine connection was not accepted");
+    std::cout << "engine connected" << std::endl;
+
+    EngineLinePort port(engine);
     venue_order_wire::VenueOrderConnection connection(config.instrument, credentials, wire, port);
     std::thread thread([&connection] { connection.run(); });
 
-    std::string payload;
-    int opcode = 0;
-    bool fin = true;
+    std::string pending;
     while (true)
     {
-        const int status = read_frame(engine, payload, opcode, fin);
-        if (status == -2) continue;  // the read timeout is the loop's own clock, not an error
-        if (status != 1) break;
-        if (opcode == 0x8) break;
-        if (opcode == 0x9)
+        char buffer[4096];
+        const ssize_t got = ::recv(engine, buffer, sizeof(buffer), 0);
+        if (got == 0) break;  // the engine hung up: the route is over
+        if (got < 0)
         {
-            send_frame(engine, 0xA, payload, false);
-            continue;
+            if (errno == EINTR) continue;
+            break;
         }
-        if (opcode != 0x1 && opcode != 0x0) continue;
-        connection.on_engine_line(payload);
+        pending.append(buffer, static_cast<std::size_t>(got));
+        std::size_t newline = pending.find('\n');
+        while (newline != std::string::npos)
+        {
+            std::string_view line(pending.data(), newline);
+            if (!line.empty() && line.back() == '\r') line.remove_suffix(1);
+            if (!line.empty()) connection.on_engine_line(line);
+            pending.erase(0, newline + 1);
+            newline = pending.find('\n');
+        }
     }
-
+    // The engine's fd is closed after the session thread has joined: a write that lands between the engine hanging up and
+    // the thread noticing would otherwise go to a descriptor number the kernel may already have given to the venue's next
+    // socket, which would put an engine line into the venue's stream.
     connection.stop();
     thread.join();
+    ::close(engine);
     std::cout << "order channel done: " << connection.counters().to_log_string() << ' '
               << connection.session().summary();
     const std::string lost = connection.last_error();

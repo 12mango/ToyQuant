@@ -62,7 +62,13 @@ inline Url parse_url(const std::string& url)
     const std::size_t scheme = url.find("://");
     if (scheme == std::string::npos)
         throw std::runtime_error("a venue url needs a scheme: " + url);
-    parsed.secure = url.substr(0, scheme) == "wss";
+    // The scheme says whether the connection is TLS, and both spellings of each are accepted because the market leg
+    // addresses a websocket and the order leg's placement route addresses an HTTP endpoint: `wss`/`https` are secure,
+    // `ws`/`http` are not, and anything else is not a scheme this client speaks.
+    const std::string name = url.substr(0, scheme);
+    if (name != "ws" && name != "wss" && name != "http" && name != "https")
+        throw std::runtime_error("a venue url's scheme is ws, wss, http or https, not " + name + ": " + url);
+    parsed.secure = name == "wss" || name == "https";
     const std::string rest = url.substr(scheme + 3);
     const std::size_t slash = rest.find('/');
     const std::string host_port = slash == std::string::npos ? rest : rest.substr(0, slash);

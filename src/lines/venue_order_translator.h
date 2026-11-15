@@ -48,6 +48,17 @@ class OrderTranslator
     // naming the field it refused.
     std::string encode(std::string_view line);
 
+    // The same line as the request's halves, for the transport that does not send a frame: the venue's placement route is
+    // HTTP, and its body is exactly the `args[0]` object the websocket op would carry. Splitting the request here is what
+    // keeps one translation across two transports -- ADR 0006's rule is one message, one translator.
+    struct Request
+    {
+        std::string op;           // "order" or "cancel-order"
+        std::string id;           // the engine's order id, which is also the venue's `clOrdId`
+        std::string args_object;  // the `args[0]` object, exactly as the websocket op would carry it
+    };
+    Request request_of(std::string_view line);
+
     // The venue's message as the adapter's lines. Throws `OrderError` for a message it cannot attribute to an order.
     std::vector<std::string> decode(const Json& message);
 

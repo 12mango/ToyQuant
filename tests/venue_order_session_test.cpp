@@ -15,8 +15,10 @@
 
 #include <atomic>
 #include <cassert>
+#include <cctype>
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
@@ -271,6 +273,148 @@ bool wait_for(Predicate predicate)
 }
 
 
+
+// The placement surface on a loopback socket: one HTTP/1.1 request at a time, the venue's own answer shape. It recomputes
+// the signature from the secret it holds -- over the bytes it received and the timestamp header it received -- which is
+// the one check a wrong preimage or a wrong millisecond format cannot pass.
+class StandInRest
+{
+   public:
+    explicit StandInRest(std::string secret) : secret_(std::move(secret)), listener_(::socket(AF_INET, SOCK_STREAM, 0))
+    {
+        if (listener_ < 0) throw std::runtime_error("the stand-in REST endpoint could not create a socket");
+        int one = 1;
+        ::setsockopt(listener_, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+        sockaddr_in address{};
+        address.sin_family = AF_INET;
+        address.sin_port = 0;
+        address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        if (::bind(listener_, reinterpret_cast<sockaddr*>(&address), sizeof(address)) < 0)
+            throw std::runtime_error("the stand-in REST endpoint could not bind 127.0.0.1");
+        socklen_t length = sizeof(address);
+        ::getsockname(listener_, reinterpret_cast<sockaddr*>(&address), &length);
+        port_ = ntohs(address.sin_port);
+        if (::listen(listener_, 4) < 0) throw std::runtime_error("the stand-in REST endpoint could not listen");
+        thread_ = std::thread([this] { serve(); });
+    }
+
+    StandInRest(const StandInRest&) = delete;
+    StandInRest& operator=(const StandInRest&) = delete;
+
+    ~StandInRest()
+    {
+        stop_.store(true);
+        ::shutdown(listener_, SHUT_RDWR);
+        if (thread_.joinable()) thread_.join();
+        ::close(listener_);
+    }
+
+    [[nodiscard]] std::uint16_t port() const { return port_; }
+    [[nodiscard]] bool signature_matched() const { return signed_.load(); }
+    [[nodiscard]] bool carried_the_demo_header() const { return simulated_.load(); }
+    [[nodiscard]] int requests() const { return requests_.load(); }
+    std::string last_body()
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return body_;
+    }
+
+   private:
+    static std::string header_of(const std::string& request, std::string_view name)
+    {
+        std::string lower_request;
+        lower_request.reserve(request.size());
+        for (const char c : request)
+            lower_request.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+        std::string at = "\r\n";
+        at += name;
+        at += ':';
+        const std::size_t found = lower_request.find(at);
+        if (found == std::string::npos) return {};
+        const std::size_t start = found + at.size();
+        const std::size_t end = request.find("\r\n", start);
+        std::string value = request.substr(start, end - start);
+        while (!value.empty() && value.front() == ' ') value.erase(value.begin());
+        return value;
+    }
+
+
+    void serve()
+    {
+        while (!stop_.load())
+        {
+            sockaddr_in peer{};
+            socklen_t length = sizeof(peer);
+            const int fd = ::accept(listener_, reinterpret_cast<sockaddr*>(&peer), &length);
+            if (fd < 0) return;
+            handle(fd);
+            ::close(fd);
+        }
+    }
+
+    void handle(int fd)
+    {
+        std::string request;
+        char byte = 0;
+        while (request.find("\r\n\r\n") == std::string::npos)
+        {
+            const ssize_t got = ::recv(fd, &byte, 1, 0);
+            if (got <= 0) return;
+            request.push_back(byte);
+            if (request.size() > 64 * 1024) return;
+        }
+        // An HTTP body is not line-delimited, so the length header is the only place its edge can be found.
+        const std::size_t length = static_cast<std::size_t>(
+            std::strtoul(header_of(request, "content-length").c_str(), nullptr, 10));
+        std::string body = request.substr(request.find("\r\n\r\n") + 4);
+        while (body.size() < length)
+        {
+            char buffer[1024];
+            const ssize_t got = ::recv(fd, buffer, sizeof(buffer), 0);
+            if (got <= 0) break;
+            body.append(buffer, static_cast<std::size_t>(got));
+        }
+        const std::size_t first = request.find(' ');
+        const std::size_t second = request.find(' ', first + 1);
+        const std::string path = request.substr(first + 1, second - first - 1);
+        const std::string timestamp = header_of(request, "ok-access-timestamp");
+        signed_.store(!timestamp.empty() &&
+                      header_of(request, "ok-access-sign") ==
+                          venue_auth::rest_signature(timestamp, secret_, "POST", path, body));
+        simulated_.store(header_of(request, "x-simulated-trading") == "1");
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            body_ = body;
+        }
+        ++requests_;
+        // The demo venue's two answers, which are the two this route has to read: an accepted placement whose `sz` is in
+        // contracts, and a refusal that is a *sub*-code with the top-level code saying the call itself failed.
+        std::string answer;
+        if (body.find("\"sz\":\"1000\"") != std::string::npos)
+            answer = R"({"code":"1","msg":"All operations failed","data":[{"clOrdId":"12","sCode":"51008",)"
+                     R"("sMsg":"Insufficient balance"}]})";
+        else if (path == "/api/v5/trade/cancel-order")
+            answer = R"({"code":"0","msg":"","data":[{"clOrdId":"11","ordId":"1","sCode":"0","sMsg":""}]})";
+        else
+            answer = R"({"code":"0","msg":"","data":[{"clOrdId":"11","ordId":"1","sCode":"0",)"
+                     R"("sMsg":"Order placed","sz":"10"}]})";
+        const std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " +
+                                     std::to_string(answer.size()) + "\r\nConnection: close\r\n\r\n" + answer;
+        ::send(fd, response.data(), response.size(), MSG_NOSIGNAL);
+    }
+
+    std::string secret_;
+    int listener_{-1};
+    std::uint16_t port_{0};
+    std::atomic<bool> stop_{false};
+    std::atomic<bool> signed_{false};
+    std::atomic<bool> simulated_{false};
+    std::atomic<int> requests_{0};
+    std::mutex mutex_;
+    std::string body_;
+    std::thread thread_;
+};
+
 }  // namespace
 
 int main()
@@ -410,7 +554,53 @@ int main()
     assert(connection.counters().sessions.load() == 2);
     assert(connection.counters().write_failures.load() == 0);
 
+    // ---- slice four: placement over REST, state over the same private channel
+    //
+    // This venue answers `50026` to its websocket trade operation and places over REST, so the order leg is two
+    // connections: this placement surface, and the `orders` subscription above it. The body is the translator's own
+    // `args[0]`, which is what makes the two transports one translation rather than two.
+    StandInVenue state(secret);
+    StandInRest placement(secret);
+    RecordingPort rest_port;
+    venue_order_wire::WireConfig rest_wire;
+    rest_wire.venue_url = "ws://127.0.0.1:" + std::to_string(state.port());
+    rest_wire.rest_url = "http://127.0.0.1:" + std::to_string(placement.port());
+    rest_wire.inst_code = 10459;
+    rest_wire.backoff_seconds = 0.05;
+    venue_order_wire::VenueOrderConnection resting(
+        "BTC-USDT-SWAP", OrderSession::Credentials{.api_key = "key-1", .secret = secret, .passphrase = "pass-1"},
+        rest_wire, rest_port);
+    std::thread rest_runner([&resting] { resting.run(); });
 
+    // The acknowledgement is the venue's own reply, and its `sz` is in contracts: ten of them are 100,000 engine units.
+    resting.on_engine_line("ORDER 11 BTC-USDT-SWAP B 6421.5 100000 Gtc");
+    assert(wait_for([&rest_port] { return rest_port.contains("ACK 11 100000"); }));
+    assert(placement.signature_matched());  // recomputed, over that body and that ISO-millisecond timestamp
+    assert(placement.carried_the_demo_header());
+    assert(placement.last_body() ==
+           R"({"instId":"BTC-USDT-SWAP","tdMode":"cross","side":"buy","ordType":"limit","px":"6421.5",)"
+           R"("sz":"10","clOrdId":"11","instIdCode":10459})");
+    assert(resting.counters().placed.load() == 1);
+
+    // A refusal is a sub-code with the call itself failed, answered as a REJECT rather than as a silence -- and it is the
+    // venue's refusal, not a transport failure.
+    resting.on_engine_line("ORDER 12 BTC-USDT-SWAP B 6421.5 10000000 Gtc");
+    assert(wait_for([&rest_port] { return rest_port.contains("REJECT 12 "); }));
+    assert(resting.counters().venue_refusals.load() == 1);
+    assert(resting.counters().transport_failures.load() == 0);
+
+    // A cancel is the other request the route serves, and its answer is the adapter's own cancel line.
+    resting.on_engine_line("CANCEL 11");
+    assert(wait_for([&rest_port] { return rest_port.contains("CANCELED 11 user"); }));
+
+    // The state half is still the socket: the subscription pushed a fill, which is the half REST cannot carry.
+    assert(wait_for([&state] { return state.fills() >= 1; }));
+    assert(wait_for([&rest_port] { return rest_port.contains("FILL 7 "); }));
+
+    resting.stop();
+    rest_runner.join();
+    assert(placement.requests() == 3);
+    assert(resting.counters().write_failures.load() == 0);
 
     return 0;
 }

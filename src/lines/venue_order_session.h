@@ -60,6 +60,10 @@ class OrderSession
     // A line from the engine, as `LiveVenue` wrote it to its transport.
     void on_engine_line(std::string_view line);
 
+    // The same line as the venue's request without sending it, for the placement route that does not send a frame: the
+    // session keeps one translator, so a REST body and a websocket frame cannot disagree about a size.
+    OrderTranslator::Request request_of(std::string_view line) { return translator_.request_of(line); }
+
     // The connection went away. Counted, and the next `on_connected` logs in and subscribes again.
     void on_disconnected() { ++counters_.reconnects; }
 
@@ -68,6 +72,9 @@ class OrderSession
 
     const Counters& counters() const { return counters_; }
     const OrderTranslator& translator() const { return translator_; }
+    // The three credentials the private channel signs with. The placement route signs with the same three from the same
+    // copy, which is why they are readable here rather than passed to two owners; nothing prints them.
+    const Credentials& credentials() const { return credentials_; }
     // `logins=… subscribes=… reconnects=… messages=…`, the line the relay prints when the engine hangs up.
     std::string summary() const { return counters_.to_log_string(); }
 

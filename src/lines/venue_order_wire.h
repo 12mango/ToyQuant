@@ -4,12 +4,15 @@
 #include <cstdint>
 #include <deque>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "lines/venue_order_session.h"
 #include "lines/venue_order_translator.h"
+#include "lines/venue_ws.h"
 
 namespace venue_ws
 {
@@ -46,6 +49,10 @@ class EnginePort
 struct WireConfig
 {
     std::string venue_url{kDemoVenueUrl};
+    // The placement surface. Empty places over the private socket's `op: order`; a base url places over REST, which is
+    // what this venue requires -- its websocket trade operation answers `50026` -- and the socket then carries only the
+    // `orders` channel, which is where the state changes and the fills arrive.
+    std::string rest_url;
     // The venue's own name for the contract, sent only when it is known: a wrong guess would be an order on the wrong
     // instrument, so it is an operator's reading rather than something derived here.
     std::int64_t inst_code{-1};
@@ -67,12 +74,47 @@ struct WireCounters
     std::atomic<std::uint64_t> write_failures{0};
     // Connections that came up, which is what says a run reconnected rather than lasted.
     std::atomic<std::uint64_t> sessions{0};
+    // The placement route's own counts, when it is REST: what the venue accepted, what it refused, and what never
+    // reached it. Zero on the websocket route, where a placement has no separate answer.
+    std::atomic<std::uint64_t> placed{0};
+    std::atomic<std::uint64_t> venue_refusals{0};
+    std::atomic<std::uint64_t> transport_failures{0};
 
     WireCounters() = default;
     WireCounters(const WireCounters&) = delete;
     WireCounters& operator=(const WireCounters&) = delete;
 
     std::string to_log_string() const;
+};
+
+// The venue's placement surface when it is REST rather than a websocket operation, which the demo venue answers with
+// `50026`. One HTTP/1.1 request per order over `venue_ws.h`'s stream, signed with `venue_auth::rest_signature` -- whose
+// timestamp is ISO 8601 *milliseconds*, the opposite of the login's epoch seconds -- and the venue's answer turned into
+// the same lines the websocket route produces: `ACK <id> <units>`, `CANCELED <id> user`, `REJECT <id> venue`.
+//
+// The body is the translator's own `args[0]`, so there is one translation and two transports. A transport failure is a
+// `REJECT` rather than an exception: every submission is owed an answer, and the venue's own words are printed as they
+// arrive rather than swallowed.
+class RestPlacer
+{
+   public:
+    RestPlacer(std::string base_url, OrderSession::Credentials credentials);
+
+    std::vector<std::string> place(const OrderTranslator::Request& request, const OrderTranslator& translator);
+
+    std::uint64_t placed() const { return placed_; }
+    std::uint64_t refused() const { return refused_; }
+    std::uint64_t transport_failures() const { return failures_; }
+
+   private:
+    std::vector<std::string> lines_for(std::string_view op, const std::string& order_id, const Json& answer,
+                                       const OrderTranslator& translator);
+
+    venue_ws::Url url_;
+    OrderSession::Credentials credentials_;
+    std::uint64_t placed_{0};
+    std::uint64_t refused_{0};
+    std::uint64_t failures_{0};
 };
 
 class VenueOrderConnection : public OrderSession::Sink
@@ -118,11 +160,16 @@ class VenueOrderConnection : public OrderSession::Sink
     // One connection, login to drop. It sets `up_` once the handshake has completed, which is what makes counting a drop
     // honest: a socket that never came up is a failed attempt, not a session that ended.
     void session_once();
+    // A placement, on whichever surface this connection was configured with. Both routes answer the engine with the same
+    // lines, which is why they are one method with a branch rather than two callers.
+    void place(std::string_view line);
 
     WireConfig config_;
     OrderSession session_;
     EnginePort& engine_;
     std::function<std::uint64_t()> clock_;
+    // Present only when the placement route is REST; the socket then carries the `orders` channel alone.
+    std::unique_ptr<RestPlacer> placer_;
     std::mutex session_mutex_;
     std::mutex write_mutex_;
     venue_ws::Stream* stream_{nullptr};

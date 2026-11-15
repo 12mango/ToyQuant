@@ -90,6 +90,12 @@ std::string OrderTranslator::price_on_tick(std::string_view text) const
 
 std::string OrderTranslator::encode(std::string_view line)
 {
+    const Request request = request_of(line);
+    return R"({"id":")" + request.id + R"(","op":")" + request.op + R"(","args":[)" + request.args_object + "]}";
+}
+
+OrderTranslator::Request OrderTranslator::request_of(std::string_view line)
+{
     const std::vector<std::string_view> fields = split_fields(line);
     if (fields.empty()) throw OrderError("the line is empty");
 
@@ -119,14 +125,13 @@ std::string OrderTranslator::encode(std::string_view line)
             Known{.symbol = std::string(fields[2]), .units = units, .contracts = contracts};
         // OKX's shape for a limit order, with both numbers on the venue's grid. The instrument is the relay's, not the
         // engine's: the replay runs on whatever its book came from, and the venue only knows its own name for the thing.
-        std::ostringstream out;
-        out << R"({"id":")" << cl_ord_id << R"(","op":"order","args":[{"instId":")" << instrument_
-            << R"(","tdMode":"cross","side":")" << (side == "B" ? "buy" : "sell")
-            << R"(","ordType":"limit","px":")" << price_on_tick(fields[4]) << R"(","sz":")" << contracts
-            << R"(","clOrdId":")" << cl_ord_id << R"(")";
-        if (inst_code_ >= 0) out << R"(,"instIdCode":)" << inst_code_;
-        out << "}]}";
-        return out.str();
+        std::ostringstream args;
+        args << R"({"instId":")" << instrument_ << R"(","tdMode":"cross","side":")"
+             << (side == "B" ? "buy" : "sell") << R"(","ordType":"limit","px":")" << price_on_tick(fields[4])
+             << R"(","sz":")" << contracts << R"(","clOrdId":")" << cl_ord_id << '"';
+        if (inst_code_ >= 0) args << R"(,"instIdCode":)" << inst_code_;
+        args << '}';
+        return Request{.op = "order", .id = std::string(cl_ord_id), .args_object = args.str()};
     }
 
     if (fields[0] == "CANCEL")
@@ -137,12 +142,11 @@ std::string OrderTranslator::encode(std::string_view line)
         const std::string_view cl_ord_id = fields[1];
         if (!all_digits(cl_ord_id))
             throw OrderError("the order id '" + std::string(cl_ord_id) + "' is not a number");
-        std::ostringstream out;
-        out << R"({"id":")" << cl_ord_id << R"(","op":"cancel-order","args":[{"instId":")" << instrument_
-            << R"(","clOrdId":")" << cl_ord_id << R"(")";
-        if (inst_code_ >= 0) out << R"(,"instIdCode":)" << inst_code_;
-        out << "}]}";
-        return out.str();
+        std::ostringstream args;
+        args << R"({"instId":")" << instrument_ << R"(","clOrdId":")" << cl_ord_id << '"';
+        if (inst_code_ >= 0) args << R"(,"instIdCode":)" << inst_code_;
+        args << '}';
+        return Request{.op = "cancel-order", .id = std::string(cl_ord_id), .args_object = args.str()};
     }
 
     throw OrderError("'" + std::string(fields[0]) + "' is not an order or a cancel");

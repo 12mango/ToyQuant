@@ -50,18 +50,24 @@ The order session moves into the engine, in four slices, each with its own test 
    through the same frames the client writes.*
 4. **REST placement.** An HTTP/1.1 client over the TLS socket the tree already has, because this venue places over REST
    and answers `50026` on the websocket trade operation. The Python relay stays the TLS terminator on a host where
-   OpenSSL's headers are absent, which is the case CMake's comment already allows.
+   OpenSSL's headers are absent, which is the case CMake's comment already allows. *Landed as `RestPlacer` in
+   `src/lines/venue_order_wire.*` and driven by `--order-rest`: the body is the translator's own `args[0]`, so one
+   translation serves both transports, and the answer is read as `ACK`/`CANCELED`/`REJECT`. The host this slice was
+   written on has no OpenSSL, so the evidence is a loopback socket and the venue itself was not reached from here.*
 
 ## Consequences
 
-- **What it forbids**: saying "the live path has no Python in it" before slice four, and translating on both sides — one
-  message, one translator, or the two disagree about a size in a way only a fill would reveal.
+- **What it forbids**: translating on both sides — one message, one translator, or the two disagree about a size in a way
+  only a fill would reveal. Saying "the live path has no Python in it" was forbidden until this slice; what is true now is
+  that the engine's side of the order leg is C++ from the login to the placement, and that a build without OpenSSL still
+  needs the Python relay as its TLS terminator — a property of the build rather than of the design.
 - **What it costs**: a second implementation of the translator until the Python one is retired, and a crypto primitive in
   the tree that has to be right the first time: SHA-256 and HMAC written by hand, as `ws_feed.cpp` already writes SHA-1
   and base64 for the opening handshake, because linking OpenSSL into `toy_lines` would make every build of the engine
   depend on it. The vectors are the guard.
-- **What stays in Python**: the discovery tools — `--self-test`, the stand-in venues, the frame dump. After slice four
-  they are fixtures for a port rather than the client, and retiring them is a separate decision.
+- **What stays in Python**: the discovery tools — `--self-test`, the stand-in venues, the frame dump — and, on a host
+  whose build has no OpenSSL, the TLS terminator's role. After slice four the tools are fixtures for a port rather than
+  the client, and retiring them is a separate decision.
 - **To revisit**: if the venue opened a websocket trade operation, slice four would disappear; if a TLS client in the
   engine were refused, the relay would stay the terminator and slices one to three would still be worth having.
 

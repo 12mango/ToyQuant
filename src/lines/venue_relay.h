@@ -25,6 +25,9 @@ struct RelayConfig
     // the engine hangs up, which is the shape the Python relay has, so a session that needs both legs runs two of these.
     std::string order_listen;
     std::string order_venue{"wss://wspap.okx.com:443/ws/v5/private?brokerId=9999"};
+    // The placement surface, when it is REST rather than the socket's trade operation: this venue answers `50026` to the
+    // websocket op and places over REST, so the two are not a choice of taste. Empty places over the socket.
+    std::string order_rest;
     // The venue's own name for the contract, sent only when it is known (-1 leaves it out).
     int64_t order_inst_code{-1};
     // The two venue grids an order has to land on; the market side reads the venue's prices as they arrive.

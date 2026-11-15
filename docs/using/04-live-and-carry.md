@@ -136,13 +136,20 @@ That channel has two backends and two placement routes; the next fold is the who
 
 /// details | The relay's routes, the sandbox chain, and the venue's error codes
 
-The order half of that relay is on its way into the engine: [ADR 0006](../adr/0006-the-venue-order-session-moves-in.md)
-accepts the move in four slices, and three are landed -- the signatures (`src/lines/venue_auth.*`), the translator
-(`src/lines/venue_order_translator.*`) and the session with its transport (`src/lines/venue_order_session.*`,
-`src/lines/venue_order_wire.*`). The C++ relay serves that session from `--order-listen`, so an order leg no longer needs
-an interpreter. What is still Python is the placement route: this venue answers `50026` on the websocket trade operation
-and places over REST, and the REST client is the fourth slice, so **the commands above still use the Python relay** for a
-run against the demo venue.
+The order half of that relay has moved into the engine: [ADR 0006](../adr/0006-the-venue-order-session-moves-in.md)
+accepted the move in four slices, and all four are landed -- the signatures (`src/lines/venue_auth.*`), the translator
+(`src/lines/venue_order_translator.*`), the session with its transport (`src/lines/venue_order_session.*`,
+`src/lines/venue_order_wire.*`) and the REST placement, `RestPlacer` in that same file. The C++ relay serves the channel
+itself: `venue_relay --order-listen HOST:PORT` places over the socket's `op: order`, and `--order-rest=BASE_URL` places
+over `POST /api/v5/trade/order` with an ISO-millisecond signature while the socket keeps the `orders` channel, which is
+the split this venue forces (`50026` on the websocket trade operation). The engine's side of it is a line socket, one
+frame a line, so `TcpVenueTransport` cannot tell the route from the simulated one.
+
+**The commands above still show the Python relay, and the numbers under them were measured through it.** They can be run
+against the C++ relay instead -- `python3 tools/live/venue_relay.py ...` becoming `./out/build/linux-debug/venue_relay
+--order-listen 127.0.0.1:8766 --order-rest https://www.okx.com --order-inst-code=10459` -- but no run here has taken that
+route to the venue: where the build has no OpenSSL a `wss://` venue is refused by name, and the Python relay stays the TLS
+terminator on such a host.
 
 The order channel that produces a recording is in the relay, answering as a simulated venue: `python3
 tools/live/venue_relay.py --simulate-orders --order-listen 127.0.0.1:8766`, which `tests/relay_order_channel_test` drives
