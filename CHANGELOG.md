@@ -17,8 +17,11 @@ site now points at `ToyQuant`.
 - **Measured on the demo venue**, 120 s, 25 REST calls: `rest_calls=25 rest_connect_ms_avg=94 rest_place_ms_avg=228`
   beside `orders=14 cancels=11 placed=14 venue_refusals=3 transport_failures=0` and `[RECON] status=ok`. So connect plus
   the handshake is about two-fifths of a placement (arithmetic on those two averages), which is the share a pooled
-  connection would have to beat. **No keep-alive is proposed by this change**: the rule is that a performance change
-  needs a counting measurement first, and this is the count.
+  connection would have to beat. **The decision is not to pool it now, and the number that would change it is the
+  stale-cancel share** -- a faster cancel reduces the `51400` refusals a REST round trip produces (62 of 104 cancels in
+  the reconnect run above) -- while a pool is a connection state machine with its own framing, reuse and failure modes,
+  and nothing this line reports needs it today. The count stays in the summary so a later session can re-open the
+  question with a new number rather than an argument.
 - `tests/venue_order_session_test` pins the shape rather than the timing: the summary carries `rest_calls=6` and a
   `rest_connect_ms_avg=` field after its six REST calls, and a placement's total is never less than the connection inside
   it.

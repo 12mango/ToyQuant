@@ -324,7 +324,10 @@ needs a number before it needs a design: the summary carries `rest_calls`, `rest
 `rest_calls=25 rest_connect_ms_avg=94 rest_place_ms_avg=228`, beside `orders=14 cancels=11 placed=14 venue_refusals=3
 transport_failures=0` and `[RECON] status=ok`. Connect plus the TLS handshake is therefore about two-fifths of a
 placement -- arithmetic on those two averages, not a measured keep-alive -- and that is the share a pooled connection
-would have to beat.
+would have to beat. **The decision is not to pool it now**: what a faster cancel would move is the stale-cancel share
+(`venue_refusals=62` of 104 cancels in the reconnect run below), while a pool is a connection state machine with its own
+framing, reuse and failure modes, and nothing this page reports needs it today. `rest_calls` and the two averages stay in
+the summary, so a later session can re-open the question with a number.
 
 The reconnect path was exercised against the venue too, because a healthy session never takes it:
 `--order-drop-after-seconds=N` closes and reopens the private connection every N seconds, and the session has to log in and
