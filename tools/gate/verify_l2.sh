@@ -13,13 +13,12 @@
 #                    broker and its reconciliation, the two-book run, the session and halt paths, the depth
 #                    guards -- plus the source-level checks (every field written, the layering, the eight
 #                    verdicts) and the seven tool self-tests plus the two figure checks
-#   tier 1  docs half (~2-4 min)  every number a document quotes, re-derived; the prose, link and layering lints;
-#                    `mkdocs build --strict` and the site's repository name. The spread is the host: on a quiet one
-#                    the set costs ~110 s, and on a loaded one ~3.5 min, which is why this half is never run in the
-#                    foreground. Almost all of it is two pages' blocks: `docs/performance/history-03-studies.md`
-#                    replays Databento equity windows at about thirty-five seconds a run, and the multi-day check
-#                    replays one snapshot slice a day. A page with no equity block costs about six seconds
-#   tier 1  whole (~4.5 min on a loaded host)  both halves; this is what `fast` runs, so `fast` is backgrounded
+#   tier 1  docs half (~1.5 min here)  every number a document quotes, re-derived; the prose, link and layering
+#                    lints; `mkdocs build --strict` and the site's repository name. It is almost exactly two pages'
+#                    blocks: `docs/performance/history-03-studies.md` at ~65 s and
+#                    `docs/performance/history-04-the-fee-is-not-the-wall.md` at ~44 s, whose eight equity replays are
+#                    about five seconds each. A page with no block of that kind costs about six seconds
+#   tier 1  whole (~1.8 min here)  both halves; this is what `fast` runs, so `fast` is backgrounded
 #   tier 2  (~26 s)  full 1.5 GB stdout hash against a cached reference
 #   tier 3  (~10 s built, 632 s cold)  the same tests (6 s) and one short replay (4 s) under ASan and UBSan
 #

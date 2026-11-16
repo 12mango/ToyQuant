@@ -19,7 +19,7 @@
     },
     {
       "line": "micro E-mini",
-      "source": "docs/performance/history-03-studies.md:546",
+      "source": "docs/performance/history-04-the-fee-is-not-the-wall.md:37",
       "structure": "quote",
       "binding": "fee",
       "bound": "optimistic",
@@ -29,8 +29,8 @@
         "fee_ticks": 0.5
       },
       "also": [
-        "docs/performance/history-03-studies.md:530 -- a contract pays about 0.62 USD of commission against a tick worth 1.25, which is the half tick this divides by",
-        "docs/performance/history-03-studies.md:567 -- a fee a tick can cover is not the same thing as a capture a fee can pay for, and this is where the two came apart"
+        "docs/performance/history-04-the-fee-is-not-the-wall.md:21 -- a contract pays about 0.62 USD of commission against a tick worth 1.25, which is the half tick this divides by",
+        "docs/performance/history-04-the-fee-is-not-the-wall.md:58 -- a fee a tick can cover is not the same thing as a capture a fee can pay for, and this is where the two came apart"
       ]
     },
     {
@@ -45,7 +45,7 @@
         "fee_ticks": 0.35
       },
       "also": [
-        "docs/performance/history-03-studies.md:549 -- the same 0.267855 ticks and the same 799 fills, from the run rather than from the summary",
+        "docs/performance/history-04-the-fee-is-not-the-wall.md:40 -- the same 0.267855 ticks and the same 799 fills, from the run rather than from the summary",
         "docs/RETROSPECTIVE.md:20 -- a second kill, recorded and not turned into a quotient: 1 ms of order latency took +262 USD to +1.89, and 5 ms took it to -1143"
       ]
     },

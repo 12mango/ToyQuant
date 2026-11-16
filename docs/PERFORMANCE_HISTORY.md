@@ -5,14 +5,16 @@ place to read conclusions — [Design Review](DESIGN_REVIEW.md) carries those an
 which markets they closed — but it is the place to find out *how a number was obtained*, and every block marked here is
 re-derived by `tools/gate/check_docs.py` on each gate run.
 
-It is three parts, split by what the measurements were about rather than by date, because that is how a reader arrives:
-with a question about the engine, about the mainline strategy, or about one of the studies.
+It is four parts, split by what the measurements were about rather than by date, because that is how a reader arrives:
+with a question about the engine, about the mainline strategy, about one of the studies, or about a venue that is not a
+crypto perpetual.
 
 | part | what it holds |
 |---|---|
 | [1. The engine and the L1 line](performance/history-01-engine.md) | the workload and host, the pre-queue-model L1 line, quote width against the fee, the levers and the invariant they do not move, and the five-day out-of-sample check |
 | [2. The L2 mainline](performance/history-02-l2.md) | the L2 replay path itself: the workload, the gprof preparation, the paired baseline, the 27-cell strategy regression matrix, the long-window profile, the buffered line reader and the stage timings that decided the container |
-| [3. The studies](performance/history-03-studies.md) | everything the instrument was pointed at after the mainline worked: the queue distribution, funding as an input, the acceptance number, the maker fee each window needed, the decision layer, the market where the fee is not the wall, the instruments that passed the screen, the queue model and the fee floor, the volatility floor and why it is not built, the non-market-making signal, the execution line, the pair trade and the pre-trade controls |
+| [3. The studies](performance/history-03-studies.md) | everything the instrument was pointed at after the mainline worked, on the crypto slice: the queue distribution, funding as an input, the acceptance number, the maker fee each window needed, the decision layer, the queue model and the fee floor, the volatility floor and why it is not built, the non-market-making signal, the execution line, the pair trade and the pre-trade controls |
+| [4. Where the fee is not the wall](performance/history-04-the-fee-is-not-the-wall.md) | the venues outside the perpetuals: the SPY, AAPL and TSLA windows, the latency sweep, the screen that found the symbols, what a fill was worth later, the account's fee schedule, and the MU sweeps that closed the quote-placement axis |
 
 Two things about reading it:
 

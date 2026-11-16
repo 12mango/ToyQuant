@@ -7,6 +7,33 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The equity studies get a page of their own (2026-11-16)
+
+- **`docs/performance/history-04-the-fee-is-not-the-wall.md`.** The eight equity-window runs in part 3 were the whole of
+  the four minutes a `docs` run spent on that page -- about thirty-five seconds each -- so a prose edit there paid for
+  windows it did not touch. The 723 lines that quote them moved unchanged: the two windows, the latency sweep, the screen,
+  the markout, the account's fee schedule and the MU sweeps. Part 3 keeps a `## Where that last step is recorded` pointer,
+  so the narrative still runs from "what this leaves" into the queue-model section.
+- **Measured after the move**: part 3 has 14 check blocks and part 4 has 5, `docs
+  docs/performance/history-03-studies.md` costs 65 s and `docs docs/performance/history-04-...` 44 s, and the whole set
+  107 s -- so a prose edit to part 3 is 65 s instead of 107 s. `fast` is unchanged at about 1 min 50 s, because it runs
+  every page: the saving is per-page, which is the number ADR 0003's "to revisit" asked for before the split was written.
+- **What moved with the text**: six anchors in `docs/archive/studies.md` and `docs/using/06-reading-the-output.md`, four
+  `path:line` citations in `tests/fixtures/verdicts.json` (now part 4's `:21`, `:37`, `:40` and `:58`; the crypto case
+  stays at part 3's `:160`), a nav row, the part-4 row of `docs/PERFORMANCE_HISTORY.md`, and the "of 3" in parts 1 and 2.
+- **The move was a script over line ranges, not a transcription**, because a block lost in a hand move is silent. What
+  proves nothing was lost is `check_docs` re-running all five moved blocks; `check_links.py` proves every anchor in both
+  directions, and `mkdocs build --strict` proves the new page is in the site's tree.
+- **A correction of the previous two entries, and of this one's first version.** The 4 min 22 s and the "four minutes
+  of document half" those entries quote were measured beside another job that was compiling the sanitizer tree, and the
+  same numbers taken alone are **1 min 47 s** for `fast` and 107 s for the whole `docs` set. The per-run cost of an
+  equity window is about five seconds on this host, not the thirty-five the older header carried. Both figures are in
+  `tools/gate/verify_l2.sh`'s header, `docs/DESIGN_REVIEW.md`, `docs/PERFORMANCE.md` and `.clinerules` now, taken with
+  nothing else running.
+- The first attempt ran the same move twice, because the terminal swallowed the commands and `/tmp` lost the script, and
+  the second run truncated part 3 to 522 lines. `git checkout` restored it, and the script now refuses unless the source
+  is 1,890 lines, line 523 is the expected heading, and the destination does not exist.
+
 ## The gate's costs are measured, not remembered (2026-11-16)
 
 - **One set of numbers, in the four places that state a cost.** Measured on eight cores on 2026-11-16: tier 0 is 3 s,

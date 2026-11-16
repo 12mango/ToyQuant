@@ -305,22 +305,22 @@ the checks are split by what they are for:
 | Tier | Command | Cost | Purpose |
 |---|---|---|---|
 | 0 | `ctest --preset linux-debug` (inside `fast`) | ~3 s | The unit tests, because a red test must not be able to pass the gate |
-| 1 | `bash tools/gate/verify_l2.sh fast` | ~4.5 min | The L2 200k and L1 invariants plus the numbers quoted in the documents, on every edit |
+| 1 | `bash tools/gate/verify_l2.sh fast` | ~1 min 50 s | The L2 200k and L1 invariants plus the numbers quoted in the documents, on every edit |
 | 2 | `bash tools/gate/verify_l2.sh full` | ~26 s | The full-file stdout hash against the stored reference, before accepting |
 | 3 | `bash tools/gate/verify_l2.sh asan` | ~10 s built, ~10 min cold | The same tests and one short replay under AddressSanitizer and UndefinedBehaviorSanitizer |
 
-> Measured on 2026-11-16 on eight cores, and the same numbers the header of `tools/gate/verify_l2.sh` carries: tier 0 is
-> 3 s, tier 2 is 26 s, and tier 3 is 6 s of tests plus 4 s of replay on a tree that is already built against 632 s when
-> the sanitizer tree is cold. `code` (tier 0 and the code half) is 26 s, so almost all of a `fast` is its document half,
-> about four minutes. `all` has no row because it is the sum rather than a tier, and quoting it as one number is what made
-> the previous version of this table wrong.
+> Measured on 2026-11-16 on eight cores with nothing else running, and the same numbers the header of
+> `tools/gate/verify_l2.sh` carries: tier 0 is 3 s, tier 2 is 26 s, and tier 3 is 6 s of tests plus 4 s of replay on a
+> tree that is already built, against 632 s when the sanitizer tree is cold. `code` (tier 0 and the code half) is 26 s,
+> so almost all of a `fast` is its document half, about 1.5 min. `all` has no row because it is the sum rather than a
+> tier, and quoting it as one number is what made the previous version of this table wrong.
 >
-> What those four minutes are made of, counted rather than guessed: eight of the thirty-four recorded runs on
-> [`history-03-studies.md`](performance/history-03-studies.md) replay an equity window, and each costs about thirty-five
-> seconds. A split that moved them onto a page of their own would therefore make `docs <that page>` ~6 s for a prose edit,
-> and it would not move `fast` at all, because `fast` runs every page: the saving is per-page, not per-task. That is the
-> measurement ADR 0003's "to revisit" asks for before the split is written, and it is why the split is a page to write
-> later rather than a cheaper gate today.
+> What the document half is made of, measured page by page: the whole set is 107 s, and it is two pages --
+> `history-03-studies.md` at 65 s and `history-04-the-fee-is-not-the-wall.md` at 44 s -- which reconciles with the set
+> within a run-to-run spread of about half a minute. The eight equity replays on part 4 are about five seconds each, not
+> the thirty-five a previous version of this note claimed: that figure came from a slower host. On 2026-11-16 the equity
+> studies moved to part 4 for exactly this reason, and the measured effect is that a prose edit to part 3 costs 65 s
+> rather than 107 s while `fast` is unchanged, because `fast` runs every page.
 
 Tier 1 compares batch counts, order and fill counts, realised PnL and consumed queue position, which is
 what a reader or book change can actually break. Tier 2 is what makes a timing claim defensible,

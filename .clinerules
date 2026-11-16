@@ -82,17 +82,16 @@ compatibility path. Everything below assumes that page.
   | nothing compiles yet | `cmake --build out/build/linux-debug -j4` | ~16 s after one source file |
   | one line changed, does it still run | `bash tools/gate/verify_l2.sh smoke` | ~1 s |
   | a change under `src/` or `tests/` | `bash tools/gate/verify_l2.sh code` | ~26 s |
-  | a change under `docs/` | `bash tools/gate/verify_l2.sh docs <the pages you touched>` | ~6 s a page, ~4 min for the set on this host |
-  | the task is finished, before the commit | `bash tools/gate/verify_l2.sh fast` | **~4.5 min on this host**, once |
+  | a change under `docs/` | `bash tools/gate/verify_l2.sh docs <the pages you touched>` | ~6 s a page, ~107 s for the set on this host |
+  | the task is finished, before the commit | `bash tools/gate/verify_l2.sh fast` | **~1 min 50 s on this host**, once |
   | accepting a change for good | `bash tools/gate/verify_l2.sh full` then `... asan` | ~26 s for the hash, ~10 s for the sanitizers on a built tree and ~10 min for a cold one |
 
-  Measured on 2026-11-16, and these are the numbers the header of `verify_l2.sh` carries: tier 0 is 3 s, `code` 26 s,
-  `full` 26 s, `asan` 6 s of tests plus 4 s of replay once the sanitizer tree exists (632 s when it does not), and `fast`
-  4 min 22 s end to end. The document half is almost all two things -- `docs/performance/history-03-studies.md` replays
-  Databento equity windows at ~35 s a run, and the multi-day check replays one snapshot slice a day -- so the whole set
-  costs ~4 min here while a named page costs seconds. Running `fast` after every edit "to be safe" is the
-  anti-pattern this table exists to stop: four minutes to learn nothing about the line just written, and a log long
-  enough to bury the failure that matters.
+  Measured on 2026-11-16 with nothing else running, and these are the numbers the header of `verify_l2.sh` carries:
+  tier 0 is 3 s, `code` 26 s, `full` 26 s, `asan` 6 s of tests plus 4 s of replay once the sanitizer tree exists (632 s
+  when it does not), and `fast` 1 min 47 s. The document half is almost all two pages -- part 3 of the performance
+  history at 65 s and part 4 at 44 s -- so the whole set costs ~107 s here while a named page costs seconds. Running
+  `fast` after every edit "to be safe" is the anti-pattern this table exists to stop: two minutes to learn nothing about
+  the line just written, and a log long enough to bury the failure that matters.
 - **Batch the edits, then verify.** When a change spans files -- a header, its implementation, the test and the page
   that documents it -- make all of them in one pass and run the checks once at the end of the pass. Verifying between
   every file is how a task spends its budget on gates instead of on the change.

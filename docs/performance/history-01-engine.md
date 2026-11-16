@@ -1,7 +1,8 @@
 # Performance History, part 1: the engine and the L1 line
 
-*Part 1 of 3. The index, and why the notebook is split, is [`../PERFORMANCE_HISTORY.md`](../PERFORMANCE_HISTORY.md);
-part 2 is [the L2 mainline](history-02-l2.md) and part 3 is [the studies](history-03-studies.md).*
+*Part 1 of 4. The index, and why the notebook is split, is [`../PERFORMANCE_HISTORY.md`](../PERFORMANCE_HISTORY.md);
+part 2 is [the L2 mainline](history-02-l2.md), part 3 is [the studies](history-03-studies.md) and part 4 is
+[where the fee is not the wall](history-04-the-fee-is-not-the-wall.md).*
 
 This part covers the workload and the host the numbers come from, the pre-queue-model L1 line, quote width against the
 fee, the levers and the invariant none of them move, and the five-day out-of-sample check that broke the first version of

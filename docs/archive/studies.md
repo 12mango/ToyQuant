@@ -387,7 +387,7 @@ decided venue by venue rather than in general, which is why it is a question for
 plan on.
 
 What that does to the fee arithmetic is in
-[Performance History](../performance/history-03-studies.md#what-the-accounts-fee-schedule-adds) and it is not small. Reading the
+[Performance History](../performance/history-04-the-fee-is-not-the-wall.md#what-the-accounts-fee-schedule-adds) and it is not small. Reading the
 same pages for the terms themselves gives three numbers that matter: the **SEC fee is 0.0000206 of the proceeds of a
 sale**, so in ticks it **scales with the share price** -- 0.685 of a tick on a 332 dollar share and 1.58 on a 765
 dollar one -- and it is the largest single term in an equity fill; the **Nasdaq credit for adding displayed
@@ -669,7 +669,7 @@ commission, so the number understates the economics on that side — and it also
 fees of a few hundredths of a cent a share on the other. **And the window does not survive latency**: one
 millisecond of one-way delay takes it from +262.51 to +1.89 and five milliseconds ends the run holding a position
 marked at -1143.75, which is the sixth gate of phase 2b failing and is recorded in
-[Performance History](../performance/history-03-studies.md#the-latency-that-window-would-have-needed)
+[Performance History](../performance/history-04-the-fee-is-not-the-wall.md#the-latency-that-window-would-have-needed)
 
 ## From a Positive Window to a Running System
 
@@ -760,7 +760,7 @@ hours, for **0.52 USD**, and the two that pass both halves of the gate are **AAP
 which are among the most liquid names in the market rather than away from it: on a single venue their displayed
 books are three to six cents wide where SPY's is two, and 72% of their trades print against those wider quotes.
 The run itself, and what those two symbols then did in the engine, are in
-[Performance History](../performance/history-03-studies.md#the-screen-run-the-first-two-symbols-that-pass-it).
+[Performance History](../performance/history-04-the-fee-is-not-the-wall.md#the-screen-run-the-first-two-symbols-that-pass-it).
 
 ### The activity floor, pre-registered
 
@@ -910,7 +910,7 @@ result rather than a setback, and it is the reason these seven come before any l
 **The sixth gate has now been run, and it returned a failure.** The positive window goes to zero at one
 millisecond each way and gives the price away at five, the tolerance is not a personal account's to control, and
 the reflex fix of quoting more slowly measures worse rather than better. The rows and the mechanism are in
-[Performance History](../performance/history-03-studies.md#the-latency-that-window-would-have-needed) and the sweep that
+[Performance History](../performance/history-04-the-fee-is-not-the-wall.md#the-latency-that-window-would-have-needed) and the sweep that
 reproduces them is `tools/sweep/latency_sweep.sh`. That sweep's own last paragraph says the one cheap test left is a
 symbol whose spread is wide enough to absorb the same delay, and that test is the screen.
 
@@ -941,7 +941,7 @@ window position draw on the order of 3,000 USD against an edge of 37 to 100 make
 3,600 to 26,000 windows, or fifteen years of daily two-hour sessions at the cheap end. Smaller size does not help,
 because both terms are proportional to the volume quoted, which is what makes this a dead end rather than a
 funding problem. The rows are in
-[Performance History](../performance/history-03-studies.md#what-the-accounts-fee-schedule-adds)
+[Performance History](../performance/history-04-the-fee-is-not-the-wall.md#what-the-accounts-fee-schedule-adds)
 
 **The cheap schema was priced as a way around that, and measured against the expensive one instead of assumed.**
 The screen's own downloads are top of book only, under the cached files in `data/v2/screen/`, and an AAPL file for

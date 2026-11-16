@@ -83,6 +83,7 @@ nav:
           - 1. The engine and the L1 line: performance/history-01-engine.md
           - 2. The L2 mainline: performance/history-02-l2.md
           - 3. The studies: performance/history-03-studies.md
+          - 4. Where the fee is not the wall: performance/history-04-the-fee-is-not-the-wall.md
           - Low-Latency Design: performance/design.md
       - Archived studies: archive/studies.md
       - Research notes: archive/research-notes.md

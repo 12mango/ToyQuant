@@ -130,7 +130,7 @@ How large that difference is depends on the venue, not on the strategy:
 | a US share | 0.18 bps | the half spread crossed and the commission are both fractions of a one-cent tick |
 | a perpetual | 5.39 bps | a taker order crosses a 5 bps fee plus half a tick that is worth real basis points |
 
-The pinned example is [the SPY window](../performance/history-03-studies.md#what-the-two-symbols-do-in-the-engine): the mark
+The pinned example is [the SPY window](../performance/history-04-the-fee-is-not-the-wall.md#what-the-two-symbols-do-in-the-engine): the mark
 reads 262.51 and the account after the exit 257.11, with 38 of the 438 shares left unclosed because the touch showed no
 size. Every `net USD` column in these documents that carries a position is a mark until someone runs it with `--close-out`.
 

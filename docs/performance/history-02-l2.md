@@ -1,7 +1,8 @@
 # Performance History, part 2: the L2 mainline
 
-*Part 2 of 3. The index is [`../PERFORMANCE_HISTORY.md`](../PERFORMANCE_HISTORY.md); part 1 is
-[the engine and the L1 line](history-01-engine.md) and part 3 is [the studies](history-03-studies.md).*
+*Part 2 of 4. The index is [`../PERFORMANCE_HISTORY.md`](../PERFORMANCE_HISTORY.md); part 1 is
+[the engine and the L1 line](history-01-engine.md), part 3 is [the studies](history-03-studies.md) and part 4 is
+[where the fee is not the wall](history-04-the-fee-is-not-the-wall.md).*
 
 This part is the L2 replay path itself: the workload it is measured on, the gprof preparation, the paired one-hour
 baseline, the 27-cell strategy regression matrix, the long-window profile, the buffered line reader that halved the

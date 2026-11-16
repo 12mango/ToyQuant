@@ -91,8 +91,8 @@ reader does not have to guess:
 
 - [the L2 history](performance/history-02-l2.md) describes an `adverse_selection` of -0.5 as edge "given back", which is
   the opposite of what the code's sign means for that run;
-- [the studies](performance/history-03-studies.md) calls a positive markout evidence that "the fills were not picked
-  off", which is also inverted.
+- [the studies, part 4](performance/history-04-the-fee-is-not-the-wall.md) calls a positive markout evidence that "the
+  fills were not picked off", which is also inverted.
 
 Neither changes the conclusion it supports -- in the second case the argument is about the position's mark, not the
 fills -- but a reader who follows the prose rather than the formula gets the sign backwards. The code is the authority,
