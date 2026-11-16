@@ -72,6 +72,12 @@ The order session moves into the engine, in four slices, each with its own test 
   against rather than the client, they are kept on purpose, and they are documented as the secondary route: one fold on
   the live page, and the `live/` row of `docs/TOOLS.md`. Retiring them is a separate decision, and the owner's answer to
   the question was "keep them for review".
+- **What is not pinned by the gate, and why that is the right call**: a build without OpenSSL's headers refuses a
+  `wss://` venue by name (`src/lines/venue_ws.h`, `src/lines/venue_relay.cpp`), and nothing in the gate constructs such a
+  build. Pinning it would mean a CMake preset that hides the system OpenSSL plus a full extra compile inside every `all`
+  run -- minutes per acceptance to exercise two defensive throws -- while forgetting `libssl-dev` on a fresh host already
+  fails at configure time with `OPENSSL_SSL_LIBRARY-NOTFOUND`, which is the guard that matters. Closed on 2026-11-16 as an
+  acceptable build property; the scope row is in the [Roadmap](../ROADMAP.md#change-log).
 - **To revisit**: if the venue opened a websocket trade operation, slice four would disappear; if a TLS client in the
   engine were refused, the relay would stay the terminator and slices one to three would still be worth having.
 
