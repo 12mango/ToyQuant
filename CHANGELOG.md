@@ -17,6 +17,13 @@ site now points at `ToyQuant`.
 - **Both directions are closed.** On 2020-04-01 the continuation pays **+6.09 bps** gross at 30 s on BTC and **+6.12** at
   5 s on ETH against a 10 bps taker round trip, so the best net of any horizon, instrument or direction is **-3.88**; the
   fade is worse than nothing at -1.46 to -2.56 gross, because the burst does not come back.
+- **The depth-conditioned version is run too, and it weakens the family rather than rescuing it.** `--condition depth`
+  rebuilds the top of book from the 1.5 GB incremental file and calls a second a vacuum when its two top sizes are at or
+  below 0.2 of their trailing 300 s median. The two conditions barely overlap (26 of 723 vacuum seconds are also P99
+  bursts on BTC, 2 of 788 on ETH), and on the vacuum population the continuation is **smaller**, not larger: +3.40 against
+  +6.09 bps on BTC and +2.54 against +6.12 on ETH, with the best net of any horizon at -6.60. The pass is a command
+  rather than a marked block, for the reason the walk-forward is: it reads 1.5 GB, takes about a minute, and `fast` is the
+  check every edit pays for.
 - **The limits are written beside the record**: one day, two instruments, 26 to 29 ETH fills (below the thirty that
   counts), and trades only -- the 1.5 GB book is there for the depth-conditioned version, which is a separate run.
 - **Two things the same pass settled.** The R_max table over `data/v2/options/*.csv` reproduces the five series' recorded

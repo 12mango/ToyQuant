@@ -1360,6 +1360,32 @@ there for the version of this question that conditions on depth, and that is a s
 of this one. And the entry is a taker at the next print by construction, so it prices the family at the worse of the two
 ways to join it.
 
+### The depth-conditioned version, which weakens the family rather than rescuing it
+
+That separate run is done: `--condition depth` rebuilds the top of book from the incremental file (one level change a row,
+a dict a side and a heap with lazy deletion, the last state of each second kept) and calls a second a vacuum when its two
+top sizes together are at or below **0.2 of their trailing 300 s median**; an event is a vacuum second that also carries a
+trade, entered at the next print like the rest of this section.
+
+| 2020-04-01, vacuum | vacuum seconds | of them also a P99 burst | events | best net bps | the same trade gross |
+|---|---:|---:|---:|---:|---:|
+| BTC, fade | 723 | 26 | 232 | -11.20 | -1.20 |
+| BTC, follow | 723 | 26 | 232 | -6.60 | +3.40 |
+| ETH, fade | 788 | 2 | 52 | -8.94 | +1.06 |
+| ETH, follow | 788 | 2 | 52 | -7.46 | +2.54 |
+
+**The vacuum is not where the move lives.** The two conditions barely overlap -- 26 of 723 seconds on BTC, 2 of 788 on ETH
+-- so this is a different population, and on it the continuation is **weaker** than on the trade burst: +3.40 against
++6.09 bps on BTC, +2.54 against +6.12 on ETH. Both sides of both instruments stay inside the fee, with the best net of any
+horizon at -6.60. A quote resting into a thin book is not an opportunity here; it is the same six-basis-point move with
+less of it.
+
+The command is `python3 tools/study/cascade_probe.py --instrument BTC-PERPETUAL --condition depth` (and `--momentum` for
+the other side), with `data/v2/crypto/deribit_incremental_book_L2_2020-04-01_{BTC,ETH}-PERPETUAL.csv[.gz]` already on disk
+and **no spend**. It is a command rather than a marked block for the reason the walk-forward is: the pass reads 1.5 GB and
+takes about a minute, and `fast` is the check every edit pays for -- a measurement that answers a question when the answer
+is being written does not belong in it.
+
 ### Line 8 executed: the low turnover rule, and the dispersion that replaces the verdict
 
 The rule was fixed before any window was read, because the point of it is to be falsifiable rather than tuned: a one

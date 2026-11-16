@@ -278,7 +278,12 @@ def main():
                         "--emit", "--check", "--out", "--sync", "--since",
                         # `tools/sweep/compare_runs.sh` owns this one: it is what turns a comparison into a table and
                         # the marked block beside it, and the tools page is where it is described.
-                        "--markdown"}:
+                        "--markdown",
+                        # `tools/study/cascade_probe.py` owns the next five: what the burst is (a band of the day's own
+                        # volume distribution), which side of the move the trade takes, whether the condition is the
+                        # trade tape or the book thinning, and the two numbers that condition is stated with. They are
+                        # the study's arguments rather than the engine's knobs, and the studies record names them.
+                        "--condition", "--momentum", "--vacuum-fraction", "--trailing-seconds", "--depth-file"}:
             problems.append(f"{flag} is mentioned in a document and is not a flag the binary accepts")
     for model in sorted(models):
         if model not in text.lower():

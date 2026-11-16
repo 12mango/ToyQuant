@@ -60,7 +60,7 @@ does not.
 | `tools/study/benchmark_replay_windows.py` | the replay benchmark per time window | hand |
 | `tools/study/calibrate_queue_model.py` | how a level decrease splits into trades and cancels | hand |
 | `tools/study/capacity_table.py` | what a book costs to run, by capital, breadth and tier | both |
-| `tools/study/cascade_probe.py` | a forced-flow burst's forward move, on both sides of the fee | hand |
+| `tools/study/cascade_probe.py` | a forced-flow burst's forward move, from the trade tape or from the book thinning | hand |
 | `tools/study/check_okx_book.py` | a rebuilt book against the archive's own snapshots | hand |
 | `tools/study/figure_charge.py` | the quickstart's cost figure as inline SVG | hand |
 | `tools/study/figure_path.py` | the two path figures as inline SVG | both |

@@ -28,6 +28,7 @@ Usage:
 import argparse
 import csv
 import gzip
+import heapq
 import statistics
 import sys
 from pathlib import Path
@@ -49,6 +50,77 @@ def load(symbol, day):
             except (KeyError, TypeError, ValueError):
                 continue
     return trades
+
+
+def depth_file(symbol, day):
+    """The incremental book for the same day, plain or gzipped, or an error naming the path."""
+    for suffix in (".csv", ".csv.gz"):
+        path = ROOT / "data/v2/crypto" / f"deribit_incremental_book_L2_{day}_{symbol}{suffix}"
+        if path.exists():
+            return path
+    raise SystemExit(f"missing input: data/v2/crypto/deribit_incremental_book_L2_{day}_{symbol}.csv[.gz]")
+
+
+def top_of_book_by_second(path):
+    """(bid size, ask size, mid) at the end of every second the book existed for.
+
+    The file carries one level change a row, so the book is a dict a side and the best price comes off a heap with lazy
+    deletion: an amount of zero is a removal, and a heap entry whose price is no longer in the dict is stale. Only the
+    second's last state is kept, because the condition below is a property of a second rather than of a row.
+    """
+    open_file = gzip.open if str(path).endswith(".gz") else open
+    books = {"bid": {}, "ask": {}}
+    heaps = {"bid": [], "ask": []}
+    series = {}
+    with open_file(path, "rt", newline="") as handle:
+        reader = csv.reader(handle)
+        header = next(reader, None)
+        if not header:
+            return series
+        column = {name: index for index, name in enumerate(header)}
+        i_ts, i_side, i_px, i_amt = column["timestamp"], column["side"], column["price"], column["amount"]
+        current = None
+        for row in reader:
+            try:
+                timestamp, side, price, amount = row[i_ts], row[i_side], float(row[i_px]), float(row[i_amt])
+            except (IndexError, TypeError, ValueError):
+                continue
+            second = int(timestamp) // 1_000_000
+            if current is not None and second != current:
+                # The second is over: its state is what the book held at its last row, which is where we are now.
+                record(series, books, heaps, current)
+                current = second
+            elif current is None:
+                current = second
+            if side not in books:
+                continue
+            if amount <= 0.0:
+                books[side].pop(price, None)
+            else:
+                books[side][price] = amount
+                heapq.heappush(heaps[side], -price if side == "bid" else price)
+        if current is not None:
+            record(series, books, heaps, current)
+    return series
+
+
+def record(series, books, heaps, second):
+    """One second's last top of book, if both sides are there and uncrossed."""
+    bid_px = best_price(books["bid"], heaps["bid"], highest=True)
+    ask_px = best_price(books["ask"], heaps["ask"], highest=False)
+    if bid_px is None or ask_px is None or ask_px <= bid_px:
+        return
+    series[second] = (books["bid"][bid_px], books["ask"][ask_px], 0.5 * (bid_px + ask_px))
+
+
+def best_price(book, heap, highest):
+    """The top of one side, popping heap entries whose level has left the book."""
+    while heap:
+        candidate = -heap[0] if highest else heap[0]
+        if candidate in book:
+            return candidate
+        heapq.heappop(heap)
+    return None
 
 
 def percentile_of(values, share):
@@ -82,6 +154,14 @@ def main():
     parser.add_argument("--cooldown-us", type=int, default=30_000_000)
     parser.add_argument("--taker-bps", type=float, default=5.0)
     parser.add_argument("--momentum", action="store_true", help="follow the burst instead of fading it")
+    parser.add_argument("--condition", choices=("trades", "depth"), default="trades",
+                        help="trades: a burst of aggressive volume; depth: the top of book thins out")
+    parser.add_argument("--vacuum-fraction", type=float, default=0.2,
+                        help="depth condition: top size at or below this share of its trailing median")
+    parser.add_argument("--trailing-seconds", type=int, default=300,
+                        help="depth condition: the window the median is taken over")
+    parser.add_argument("--depth-file", default="",
+                        help="the incremental book to read; default is the day's file for this instrument")
     # `check_docs.py` appends `--binary <path>` to a `tool:` line, so a tool a document quotes accepts it. This one reads
     # trades only, so the path is taken and unused rather than a second argument name that the gate would not pass.
     parser.add_argument("--binary", default="", help="accepted for the document gate, which asserts it; unused here")
@@ -96,13 +176,29 @@ def main():
         second = ts // 1_000_000
         buckets[second] = buckets.get(second, 0.0) + (amount if side == "buy" else -amount)
     threshold = percentile_of([abs(net) for net in buckets.values()], args.percentile)
+    burst_seconds = {second for second, net in buckets.items() if threshold > 0.0 and abs(net) >= threshold}
+
+    vacuum_seconds = set()
+    overlap = 0
+    if args.condition == "depth":
+        series = top_of_book_by_second(Path(args.depth_file) if args.depth_file else depth_file(args.instrument, args.day))
+        if not series:
+            raise SystemExit(f"no book in {args.instrument} on {args.day}")
+        for second in sorted(series):
+            window = [series[other][0] + series[other][1]
+                      for other in range(second - args.trailing_seconds, second) if other in series]
+            if len(window) < args.trailing_seconds // 3:
+                continue
+            if series[second][0] + series[second][1] <= args.vacuum_fraction * statistics.median(window):
+                vacuum_seconds.add(second)
+        overlap = len(vacuum_seconds & burst_seconds)
+        candidates = [(second, net) for second, net in sorted(buckets.items()) if second in vacuum_seconds]
+    else:
+        candidates = [(second, buckets[second]) for second in sorted(buckets) if second in burst_seconds]
 
     events = []
     last_entry = -(10**18)
-    for second in sorted(buckets):
-        net = buckets[second]
-        if threshold <= 0.0 or abs(net) < threshold:
-            continue
+    for second, net in candidates:
         entry = first_price_at_or_after(trades, (second + 1) * 1_000_000, args.entry_tolerance_us)
         if entry is None or entry[0] - last_entry < args.cooldown_us:
             continue
@@ -112,8 +208,14 @@ def main():
         events.append((entry, -direction if args.momentum else direction))
 
     label = "momentum" if args.momentum else "contrarian"
-    print(f"### {args.instrument} {args.day}, {label} after a P{args.percentile:.0f} one-second burst: "
-          f"{len(trades)} trades, {len(buckets)} buckets, threshold {threshold:.1f} contracts, {len(events)} bursts")
+    if args.condition == "depth":
+        print(f"### {args.instrument} {args.day}, {label} after a depth vacuum: {len(trades)} trades, "
+              f"{len(vacuum_seconds)} vacuum seconds (top size at or below "
+              f"{args.vacuum_fraction:.2f} x its {args.trailing_seconds} s median, {overlap} of them also P99 bursts), "
+              f"{len(events)} events")
+    else:
+        print(f"### {args.instrument} {args.day}, {label} after a P{args.percentile:.0f} one-second burst: "
+              f"{len(trades)} trades, {len(buckets)} buckets, threshold {threshold:.1f} contracts, {len(events)} bursts")
     print()
     print("| horizon s | fills | mean bps | median bps | share positive | mean at 0 bps |")
     print("|---:|---:|---:|---:|---:|---:|")
@@ -137,10 +239,13 @@ def main():
               f"{sum(1 for value in nets if value > 0) / len(nets):.2f} | {statistics.mean(gross):.2f} |")
     print()
     if best is None:
-        print(f"[CASCADE] instrument={args.instrument} mode={label} bursts={len(events)} best_net_bps=n/a")
+        print(f"[CASCADE] instrument={args.instrument} mode={label} condition={args.condition} "
+              f"events={len(events)} best_net_bps=n/a")
         return 0
-    print(f"[CASCADE] instrument={args.instrument} mode={label} bursts={len(events)} "
-          f"best_net_bps={best[0]:.4f} best_horizon_s={best[1]:g} gross_at_best_bps={best[2]:.4f} fills={best[3]}")
+    extra = f" vacuum_seconds={len(vacuum_seconds)} overlap_p99={overlap}" if args.condition == "depth" else ""
+    print(f"[CASCADE] instrument={args.instrument} mode={label} condition={args.condition} "
+          f"bursts={len(events)} best_net_bps={best[0]:.4f} best_horizon_s={best[1]:g} "
+          f"gross_at_best_bps={best[2]:.4f} fills={best[3]}{extra}")
     return 0
 
 
