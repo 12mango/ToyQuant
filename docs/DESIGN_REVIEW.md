@@ -424,7 +424,7 @@ One script, four tiers, run on every change. `tools/gate/verify_l2.sh all`:
 | Tier | Time | What it checks |
 |---|---|---|
 | 0 | ~3 s | CTest: 38 unit-test binaries |
-| 1 | ~4.5 min | pinned invariants on an L2 and an L1 run, every number quoted in the documents, the prose lints, the site build, and the IEX and futures registries' own checks -- the code half is 26 s and the document half is the rest |
+| 1 | ~1 min 50 s | pinned invariants on an L2 and an L1 run, every number quoted in the documents, the prose lints, the site build, and the IEX and futures registries' own checks -- the code half is 26 s and the document half is the rest |
 | 2 | ~26 s | the SHA-256 of the full 1.5 GB standard output against `tests/fixtures/l2_full_ref.sha256`, taken with the mode line filtered out so the reference describes the code rather than one checkout's absolute paths |
 | 3 | ~10 s built, 632 s cold | the same 38 test binaries and one 200k-row replay under AddressSanitizer and UndefinedBehaviorSanitizer, with leak detection on -- 6 s of tests and 4 s of replay once the sanitizer tree exists |
 
