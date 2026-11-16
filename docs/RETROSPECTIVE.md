@@ -87,14 +87,21 @@ own payoff rather than on a cost.
 
 ## What is open, and how each would be verified
 
-* **Whether a US options venue pays a retail account for adding liquidity.** Read the exchange fee schedules and the
-  broker's pass-through rather than a summary page; this document cites no source for it yet.
+* ~~Whether a US options venue pays a retail account for adding liquidity.~~ **Measured and closed**, and not on the
+  fee: the exchange schedule was read rather than summarised -- a market maker adding liquidity against non-customer flow
+  is credited 0.25 USD a contract, a customer order under 100 contracts is free on some routes, and the account's own
+  schedule is 0.65 a contract with a 1.00 floor an order -- so the fee axis passed for the first time in this project.
+  What closed the venue is the number of times a monthly series trades: 5 to 246 prints in two hours against its own price
+  moving tens of dollars a contract, best R_max 56 against the reference of 71
+  ([the studies](archive/studies.md#test-a-executed-the-high-flow-names-at-20-to-45-days-which-closes-the-options-line)).
 * **Whether a crypto venue offers a zero or rebate maker fee at a retail tier.** The recorded venues charge 0.0002,
   which is positive, so a claim of a negative fee needs a named venue, tier and pair before it is used.
 * **Which instrument explains an inventory's move at the horizon it is held.** The MES measurement above is one row
   of that table, and a same industry instrument (SMH or SOXX for a memory name, MU options for MU) is the next.
-* **Whether an options book can be read by this engine at all.** The readers take aggregated price levels and an
-  options chain is many instruments on one underlying, which is a data contract question before a strategy question.
+* ~~Whether an options book can be read by this engine at all.~~ **Answered while the venue line was being closed**: a
+  single series fits the readers, a chain does not -- it is thousands of instruments on one underlying, and the readers
+  take one file at a time. That is a data-contract answer, and it is why the venue closed on activity before anyone
+  argued about architecture.
 
 ## What this cleanup did not delete, and why
 

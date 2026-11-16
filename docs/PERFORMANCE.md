@@ -305,7 +305,7 @@ the checks are split by what they are for:
 | Tier | Command | Cost | Purpose |
 |---|---|---|---|
 | 0 | `ctest --preset linux-debug` (inside `fast`) | ~3 s | The unit tests, because a red test must not be able to pass the gate |
-| 1 | `bash tools/gate/verify_l2.sh fast` | ~1 min 50 s | The L2 200k and L1 invariants plus the numbers quoted in the documents, on every edit |
+| 1 | `bash tools/gate/verify_l2.sh fast` | ~1-2 min | The L2 200k and L1 invariants plus the numbers quoted in the documents, on every edit |
 | 2 | `bash tools/gate/verify_l2.sh full` | ~26 s | The full-file stdout hash against the stored reference, before accepting |
 | 3 | `bash tools/gate/verify_l2.sh asan` | ~10 s built, ~10 min cold | The same tests and one short replay under AddressSanitizer and UndefinedBehaviorSanitizer |
 
@@ -313,7 +313,9 @@ the checks are split by what they are for:
 > `tools/gate/verify_l2.sh` carries: tier 0 is 3 s, tier 2 is 26 s, and tier 3 is 6 s of tests plus 4 s of replay on a
 > tree that is already built, against 632 s when the sanitizer tree is cold. `code` (tier 0 and the code half) is 26 s,
 > so almost all of a `fast` is its document half, about 1.5 min. `all` has no row because it is the sum rather than a
-> tier, and quoting it as one number is what made the previous version of this table wrong.
+> tier, and quoting it as one number is what made the previous version of this table wrong. **A single number would be
+> wrong for `fast` too**: five runs on this host gave 70 s and 1 min 47 s, so the table says 1-2 min and the spread is
+> stated rather than averaged away.
 >
 > What the document half is made of, measured page by page: the whole set is 107 s, and it is two pages --
 > `history-03-studies.md` at 65 s and `history-04-the-fee-is-not-the-wall.md` at 44 s -- which reconciles with the set

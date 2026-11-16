@@ -18,7 +18,7 @@
 #                    blocks: `docs/performance/history-03-studies.md` at ~65 s and
 #                    `docs/performance/history-04-the-fee-is-not-the-wall.md` at ~44 s, whose eight equity replays are
 #                    about five seconds each. A page with no block of that kind costs about six seconds
-#   tier 1  whole (~1.8 min here)  both halves; this is what `fast` runs, so `fast` is backgrounded
+#   tier 1  whole (~1-2 min here)  both halves; this is what `fast` runs, so `fast` is backgrounded
 #   tier 2  (~26 s)  full 1.5 GB stdout hash against a cached reference
 #   tier 3  (~10 s built, 632 s cold)  the same tests (6 s) and one short replay (4 s) under ASan and UBSan
 #

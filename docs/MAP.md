@@ -98,7 +98,7 @@ the guide and the module reference -- and a part is split into smaller pages whe
 `adr/` holds one file per decision. Nothing in tier 3 is unfinished or disowned -- it is the material that made the
 closures in tier 1 possible, kept because a reason that is not written down is a reason nobody can check.
 
-| [Performance History](PERFORMANCE_HISTORY.md) | 3 | the measurements in the order they were taken, superseded ones included: one index and three parts | the current conclusions | every marked block re-run on every gate run |
+| [Performance History](PERFORMANCE_HISTORY.md) | 3 | the measurements in the order they were taken, superseded ones included: one index and four parts | the current conclusions | every marked block re-run on every gate run |
 | [Low-Latency Design](performance/design.md) | 3 | why each low-latency change is faster: the problem, the mechanism, the designs that were rejected | the numbers themselves, or the line's narrative | prose linted |
 | [The studies](archive/studies.md) | 3 | the research record: the phases, the venues, the carry gates, the options line, the plan from a positive window to a running system | what is still open | prose linted |
 | [Research Notes](archive/research-notes.md) | 3 | external cases of individual quantitative trading, and what a personal account can do about the fee | any measurement of this repository, or a plan | every external claim carries a `[read]`, `[reported]` or `[not verified]` mark |
