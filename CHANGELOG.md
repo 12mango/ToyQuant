@@ -7,6 +7,26 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The forced-flow family is probed, and both sides sit inside the fee (2026-11-16)
+
+- **`tools/study/cascade_probe.py`.** The one family never measured here was the trade people describe: after a forced
+  sell, buy the vacuum. The rule is registered in the tool rather than in a paragraph -- a one-second bucket at or above
+  the day's own 99th percentile of net aggressive volume is a burst, entry at the first trade after it, exits at 1, 5, 30
+  and 60 seconds, 5 bps a side, a 30 s cooldown -- and the same events run in both directions, because a negative gross
+  for the fade is a positive gross for the continuation.
+- **Both directions are closed.** On 2020-04-01 the continuation pays **+6.09 bps** gross at 30 s on BTC and **+6.12** at
+  5 s on ETH against a 10 bps taker round trip, so the best net of any horizon, instrument or direction is **-3.88**; the
+  fade is worse than nothing at -1.46 to -2.56 gross, because the burst does not come back.
+- **The limits are written beside the record**: one day, two instruments, 26 to 29 ETH fills (below the thirty that
+  counts), and trades only -- the 1.5 GB book is there for the depth-conditioned version, which is a separate run.
+- **Two things the same pass settled.** The R_max table over `data/v2/options/*.csv` reproduces the five series' recorded
+  numbers exactly -- 56, 46, 41, 24 and 9 against the reference of 71 -- so the options line closes on the same quotient
+  twice rather than once on prose and once on a memory. And the same screen over `data/v2/screen/*.csv` puts 33 of 60
+  equities above the 71 reference at a 100-share clip, which reopens nothing: that table is an upper bound that charges the
+  median spread at every fill, while the equity lines were closed on realised capture after the queue and adverse
+  selection.
+- The record is in `docs/archive/studies.md` with the marked block that re-derives it, and `docs/TOOLS.md` lists the tool.
+
 ## The equity studies get a page of their own (2026-11-16)
 
 - **`docs/performance/history-04-the-fee-is-not-the-wall.md`.** The eight equity-window runs in part 3 were the whole of

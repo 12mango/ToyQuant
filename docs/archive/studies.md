@@ -1324,6 +1324,42 @@ prints, the median spreads, the sigmas and the R_max of every row, which is what
 -- **but the number of times a monthly series trades**, which is a few times a minute at best, against its own price
 moving tens of dollars a contract over the same two hours. Spend on this venue to date: **1.27 USD**.
 
+### The forced-flow family: the last unmeasured one, probed on both sides of the fee
+
+Eight venues and families are closed above, and the one never tried was the trade everyone describes: after a forced
+sell, buy the vacuum and wait for the print to come back. It costs nothing to ask here, because the trades are already on
+disk, so the rule went down before the run and it is in `tools/study/cascade_probe.py` rather than in this paragraph: a
+one-second bucket whose net aggressive volume is at or above the day's own 99th percentile is a burst, the entry is the
+first trade at or after that bucket, the exits are 1, 5, 30 and 60 seconds later, the fee is the venue's 5 bps a side, and
+the cooldown is 30 s so two entries cannot share one reversion. The tool runs the same events in both directions, because
+a negative gross for the fade is a positive gross for the continuation, and only the fee chooses between them.
+
+| one day, 2020-04-01 | fills | best net bps | at | the same trade gross | reading |
+|---|---:|---:|---:|---:|---|
+| BTC-PERPETUAL, fade | 80 | -12.56 | 1 s | -2.56 | the burst does not come back |
+| BTC-PERPETUAL, follow | 80 | -3.91 | 30 s | +6.09 | it continues, by less than the toll |
+| ETH-PERPETUAL, fade | 28 | -11.46 | 60 s | -1.46 | the same |
+| ETH-PERPETUAL, follow | 26 | -3.88 | 5 s | +6.12 | the same |
+
+<!-- toyquant:check
+tool: tools/study/cascade_probe.py --instrument BTC-PERPETUAL --momentum
+then: bursts=80 best_net_bps=-3.9088 gross_at_best_bps=6.0912
+tool: tools/study/cascade_probe.py --instrument ETH-PERPETUAL --momentum
+then: bursts=29 best_net_bps=-3.8848
+-->
+
+**Both sides are inside the fee, and that is what closes the family.** The continuation is real -- +6.1 bps gross on
+both instruments, at 30 seconds on BTC and 5 on ETH -- and a taker round trip is 10 bps, so a follower is about four
+basis points short before anything else is paid; the fade is worse than nothing: -1.5 to -2.6 bps gross, on a price that
+never came back. No horizon on either instrument produces a positive net for either direction.
+
+**What this does not say, and why it is a probe rather than a line.** It is one day and two instruments; ETH contributes
+26 to 29 fills, below the thirty this repository treats as a conclusion. It conditions on the trade tape alone, so
+"liquidity vacuum" is a burst of aggressive volume and not a measured withdrawal of depth -- the 1.5 GB book file is
+there for the version of this question that conditions on depth, and that is a separate run rather than a better reading
+of this one. And the entry is a taker at the next print by construction, so it prices the family at the worse of the two
+ways to join it.
+
 ### Line 8 executed: the low turnover rule, and the dispersion that replaces the verdict
 
 The rule was fixed before any window was read, because the point of it is to be falsifiable rather than tuned: a one
