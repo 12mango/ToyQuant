@@ -105,12 +105,12 @@ client state a resumed process does not have.
 **The account's opening balance.** `--starting-cash=USD` sets the portfolio's opening cash, the exposure ceiling
 `[EXECUTION]` reports, and the number a live run's venue-equity `[RECON]` compares the venue against -- at the start
 and again at the end. The default 1000 is the replay account. A funded demo account is why the flag exists: measured
-2026-11-17, a fresh run against an account whose `totalEq` was 80,076.9 USD reported `equity_break_usd=79077.1` against
-the 1,000 default; a second run seeded at 80,076.7 found the venue at 80,001 and reported `-75.6537`, so the flag has to
-be the venue's current balance and the `at=start` line is what says whether it is. A venue that holds a position the
-ledger did not open is a break, not a tolerance to widen -- a flat account or a `--snapshot-in` is the clean start. A
-resumed run takes its opening cash from the snapshot instead, so `--snapshot-in` wins over the flag; the start line then
-marks the restored positions at the snapshot's own prices.
+2026-11-17, its `totalEq` was 80,031.54 but its **USDT equity** was 4,981.77 -- the rest is 1 BTC and 100 OKB in spot
+-- so the flag takes the USDT equity, not the total. A flat account opened at `--starting-cash=4981.77` printed
+`at=start venue_equity_usd=4981.77 ledger_equity_usd=4981.77 equity_break_usd=0.004472 status=ok`. A venue that holds a
+position the ledger did not open is a break, not a tolerance to widen -- a flat account or a `--snapshot-in` is the
+clean start. A resumed run takes its opening cash from the snapshot instead, so `--snapshot-in` wins over the flag; the
+start line then marks the restored positions at the snapshot's own prices.
 
 **The order leg.** `--record-orders=PREFIX` writes `<prefix>_orders.csv`: one row per submission, per cancel and per
 execution report, in the order they happened, with every field a report carries and a price written as the shortest

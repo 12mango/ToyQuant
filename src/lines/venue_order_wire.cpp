@@ -766,14 +766,27 @@ std::optional<double> RestPlacer::balance_usd()
     const Json* code = answer.find("code");
     const Json* data = answer.find("data");
     const Json* first = data != nullptr && !data->items.empty() ? &data->items.front() : nullptr;
-    if (code != nullptr && code->as_text() == "0" && first != nullptr)
+    // The USDT equity, not the account-wide `totalEq`. A USD-margined strategy's ledger holds one currency, and an
+    // account can carry spot holdings in others: the demo account's 1 BTC and 100 OKB are 73,000 of its 80,000
+    // totalEq, and their prices move a number the strategy never traded. Measured 2026-11-17: totalEq 80,086.85
+    // against a USDT equity of 4,986.73. `eq` includes the currency's unrealized PnL, which is what an equity is;
+    // `cashBal` is the fallback when `eq` is empty.
+    const Json* details = first != nullptr ? first->find("details") : nullptr;
+    if (code != nullptr && code->as_text() == "0" && details != nullptr)
     {
-        const Json* total = first->find("totalEq");
-        if (total != nullptr)
+        for (const Json& detail : details->items)
         {
+            const Json* ccy = detail.find("ccy");
+            if (ccy == nullptr || ccy->as_text() != "USDT") continue;
+            const Json* eq = detail.find("eq");
+            const Json* cash = detail.find("cashBal");
+            const Json* value = nullptr;
+            if (eq != nullptr && !eq->as_text().empty()) value = eq;
+            else if (cash != nullptr) value = cash;
+            if (value == nullptr) continue;
             try
             {
-                return total->as_double();
+                return value->as_double();
             }
             catch (const std::exception&)
             {
@@ -784,7 +797,7 @@ std::optional<double> RestPlacer::balance_usd()
     ++refused_;
     const Json* message = first != nullptr ? first->find("sMsg") : nullptr;
     if (message == nullptr) message = answer.find("msg");
-    std::cerr << "the venue did not report an account equity: code="
+    std::cerr << "the venue did not report a USDT equity: code="
               << (code != nullptr ? code->as_text() : std::string()) << ' '
               << (message != nullptr ? message->as_text() : std::string()) << std::endl;
     return std::nullopt;

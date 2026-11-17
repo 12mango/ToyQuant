@@ -7,6 +7,25 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The venue equity is the USDT balance, not the account's total (2026-11-17)
+
+- **`RestPlacer::balance_usd` now reads `details[ccy=USDT].eq`** (falling back to `cashBal`), not `totalEq`. A
+  USD-margined strategy's ledger holds one currency; the demo account's 1 BTC and 100 OKB spot are about 73,000 of its
+  80,000 `totalEq`, and their prices move a number the strategy never traded. Measured 2026-11-17, flat: `totalEq`
+  80,031.54 against a USDT equity of 4,981.77. The stand-in's answer now carries `totalEq` 80,086.85 and USDT 4,986.73,
+  so reading the wrong field fails the test rather than passing silently.
+- **The earlier 80k figures were that `totalEq`.** Seeding `--starting-cash` with 80k measured the demo's spot holdings
+  as if they were the strategy's cash: the -75.65 and -22.15 breaks and the +4.12 `ok` were totalEq movements, not the
+  ledger's accounting. On the USDT basis a flat account opened `--starting-cash=4981.77` at `at=start
+  venue_equity_usd=4981.77 ledger_equity_usd=4981.77 equity_break_usd=0.004472 tolerance_usd=0.498177 status=ok`.
+- **The single controlled run's end is a position, not an accounting break.** It held one contract, `[WIND-DOWN]`
+  closed none (`no_liquidity=1`) on the demo's thin book, and `at=end` measured `venue_equity_usd=4980.19
+  ledger_equity_usd=4981.52 equity_break_usd=-1.32221 status=break` -- the venue's mark against the run's last
+  midpoint. The account was flattened afterwards with the venue's `close-position`. A venue-side close at the end is the
+  next iteration.
+- No replay or gate number moved; the USDT basis is live-only, and `venue_order_session_test` pins it.
+
+
 ## The live recovery is measured, and a placement's ACK no longer says zero (2026-11-17)
 
 - **The recovery pair on the demo venue.** A replay with `--live-orders` wrote `[SNAPSHOT] orders=1`; the next run with

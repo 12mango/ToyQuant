@@ -323,43 +323,38 @@ the account; neither side is the venue's own balance, so a fee the venue booked 
 another instrument under the same key -- leaves both statements equal while the money is not. A live run prints the
 venue-equity `[RECON]` line at `at=start`, before it quotes, and again at `at=end`, after the final mark, from
 `GET /api/v5/account/balance`:
-`venue_equity_usd=… ledger_equity_usd=… equity_break_usd=… tolerance_usd=… status=ok|break`. The break is signed
-(venue minus ledger) and the tolerance is printed -- the larger of 0.05 USD and one basis point of the account, because
-the venue marks a position at its own price and the ledger at the last midpoint, while a missing fee is around a basis
-point of a small account -- which lets the reader see the width of the claim rather than only its verdict. A venue that
-cannot answer -- the socket-only placement route, a refused call -- prints `n/a` and `status=unknown`; a ledger with an
-unmarked position prints `ledger_equity_usd=n/a` for the same reason. **Neither is `ok`**: a check that could not be
-made must not read like one that passed.
+`venue_equity_usd=… ledger_equity_usd=… equity_break_usd=… tolerance_usd=… status=ok|break`. **The venue's number is its
+USDT equity -- `details[ccy=USDT].eq` -- not the account-wide `totalEq`.** A USD-margined strategy's ledger holds one
+currency, and an account can carry spot holdings in others: the demo account's 1 BTC and 100 OKB are about 73,000 of an
+80,000 `totalEq`, and their prices move a number the strategy never traded. Measured on 2026-11-17, flat: `totalEq`
+80,031.54 against a USDT equity of 4,981.77. The break is signed (venue minus ledger) and the tolerance is printed --
+the larger of 0.05 USD and one basis point of the USDT equity, because the venue marks a position at its own price and
+the ledger at the last midpoint, while a missing fee is around a basis point of a small account -- which lets the
+reader see the width of the claim rather than only its verdict. A venue that cannot answer -- the socket-only placement
+route, a refused call -- prints `n/a` and `status=unknown`; a ledger with an unmarked position prints
+`ledger_equity_usd=n/a` for the same reason. **Neither is `ok`**: a check that could not be made must not read like one
+that passed.
 
 **The opening balance is a flag, and the start line is its check.** `--starting-cash=USD` sets the cash the portfolio
 opens with, which is also the exposure ceiling and the `[EXECUTION] starting_cash_usd` field. The default 1000 is the
-replay account; a funded venue is why the flag exists. A live run compares the venue's `totalEq` with that number in
-`[RECON] at=start` before it quotes, and again in `at=end` after the final mark. Measured on 2026-11-17 with the demo
-account: without the flag the first 60-second run printed `venue_equity_usd=80076.9 ledger_equity_usd=999.816
-equity_break_usd=79077.1 tolerance_usd=0.999816 status=break`; with `--starting-cash=80076.7` the next run printed
-`at=start venue_equity_usd=80001 ledger_equity_usd=80076.7 equity_break_usd=-75.6537 tolerance_usd=80.0767 status=ok`
-and `at=end venue_equity_usd=80012.4 ledger_equity_usd=80076.7 equity_break_usd=-64.2924 tolerance_usd=80.0767
-status=ok`. The flag is the venue's balance, not the previous run's: the 75.65 gap is the demo account holding a position
-the ledger does not, and the start line is what says so. A resumed run takes its cash and positions from the snapshot
-instead (`--snapshot-in` wins over the flag), and marks the restored positions at the snapshot's prices before the first
-comparison.
+replay account; a funded venue is why the flag exists. Pass the venue's **USDT equity**, not its `totalEq`. Measured on
+2026-11-17 with the account flat: `--starting-cash=4981.77` opened `at=start venue_equity_usd=4981.77
+ledger_equity_usd=4981.77 equity_break_usd=0.004472 tolerance_usd=0.498177 status=ok`. A run that ends flat keeps the
+same comparison; a position left open makes the venue's mark the other side's price, which is the width the tolerance
+covers. A resumed run takes its cash and positions from the snapshot instead (`--snapshot-in` wins over the flag), and
+marks the restored positions at the snapshot's prices before the first comparison.
 
-A third run on the final build, seeded at 80,012.4, measured `at=start venue_equity_usd=79990.3 ledger_equity_usd=80012.4
-equity_break_usd=-22.1486 tolerance_usd=8.00124 status=break` and `at=end venue_equity_usd=79995.2
-ledger_equity_usd=80011.8 equity_break_usd=-16.6734 status=break`, while the strategy's own broker reconciliation was
-`status=ok` over three fills. The demo account held a position this ledger did not open -- another session, or the
-demo's own state -- so the account-wide check is a break while the strategy's fills reconcile. **That is the
-precondition, not a tolerance to widen**: a flat account, or a `--snapshot-in` that adopts the position, is the clean
-start.
-
-A probe run taken while the account happened to sit 4.12 USD from the ledger's base printed `status=ok` on both lines
-(`venue_equity_usd=80093.3` against `ledger_equity_usd=80089.2`); the next was 42.42 USD away and broke. The line is
-doing its job on an account whose own position moves.
-
-The tolerance is the larger of 0.05 USD and one basis point of the account, printed on the line. Ten basis points was
-the first choice and the demo run is why it moved: 75.65 was inside 80.0767 and read `ok`, while the ledger and the
-account were 64 to 76 USD apart. At one basis point the same gap is 8.0012, and the third run above measured
-`tolerance_usd=8.00124 status=break` on a 22.15 gap -- the account's position moving between runs.
+**The earlier 80k figures on this page were the account's `totalEq`.** Seeding the ledger with 80k measured the demo's
+spot BTC/OKB as if they were the strategy's cash: a run at `--starting-cash=80076.7` read `-75.65`, another `-22.15`,
+and a probe that happened to sit 4.12 USD away read `ok`; those are totalEq movements, not the ledger's accounting.
+The strategy's USDT equity is the number that belongs in the flag, and it is about 4,982 here. A run that ends with a
+position compares the venue's mark with the ledger's last midpoint; on the demo's thin book the close-out can leave a
+residual (`[WIND-DOWN] … no_liquidity=1`), and the end line then breaks by the mark difference -- a position valued
+twice, not a missing fill. The single controlled run on that basis opened `ok` and ended `at=end
+venue_equity_usd=4980.19 ledger_equity_usd=4981.52 equity_break_usd=-1.32221 status=break`: one contract remained,
+`[WIND-DOWN]` closed none (`no_liquidity=1`), and the venue's mark against the run's last midpoint is the 1.32
+difference. The account was flattened afterwards with the venue's `close-position`; a venue-side close at the end is
+the next step for a live end.
 
 The route itself was exercised in those runs: `--venue-demo` delivered `frames=3713 messages=3713 trades=657
 depth_updates=3054` in the first 60 seconds, and the order leg placed 20 orders and read 60 reports; the second run's two

@@ -155,8 +155,10 @@ class RestPlacer
     // two must not look alike to a recovery: one means every inherited order is gone, the other means nobody asked.
     std::optional<std::vector<std::uint64_t>> pending_orders();
 
-    // What the venue says the account is worth, in USD (`totalEq`). `nullopt` when the venue did not answer or its
-    // answer carried no equity, and the caller prints `n/a` rather than zero.
+    // What the venue says the account's USDT equity is (`details[ccy=USDT].eq`, `cashBal` when `eq` is empty), not
+    // the account-wide `totalEq`: a USD-margined strategy's ledger trades one currency, and a demo account's spot
+    // BTC/OKB would otherwise move this number with a market the strategy never touched. `nullopt` when the venue did
+    // not answer or reported no USDT, and the caller prints `n/a` rather than zero.
     std::optional<double> balance_usd();
 
     std::uint64_t placed() const { return placed_; }

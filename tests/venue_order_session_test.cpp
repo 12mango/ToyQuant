@@ -418,8 +418,8 @@ class StandInRest
                 answer = R"({"code":"0","msg":"","data":[{"clOrdId":"11","instId":"BTC-USDT-SWAP",)"
                          R"("state":"live"},{"clOrdId":"12","instId":"BTC-USDT-SWAP","state":"live"}]})";
             else if (path.rfind("/api/v5/account/balance", 0) == 0)
-                answer = R"({"code":"0","msg":"","data":[{"totalEq":"998.5",)"
-                         R"("details":[{"ccy":"USDT","eq":"998.5"}]}]})";
+                answer = R"({"code":"0","msg":"","data":[{"totalEq":"80086.85",)"
+                         R"("details":[{"ccy":"USDT","eq":"4986.73"},{"ccy":"BTC","eq":"1.0"}]}]})";
             else
                 answer = R"({"code":"404","msg":"unknown path","data":[]})";
             const std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " +
@@ -731,7 +731,10 @@ int main()
     assert(wait_for([&rest_port] { return rest_port.contains("PENDING 2 11 12"); }));
     assert(placement.signature_matched());
     resting.on_engine_line("EQUITY");
-    assert(wait_for([&rest_port] { return rest_port.contains("EQUITY 998.5"); }));
+    // The USDT equity, not the account-wide totalEq: the stand-in's answer carries 80,086.85 there and 4,986.73 for
+    // USDT, which is the currency the strategy trades. Reading `totalEq` would pass 80,086.85 through and hide the
+    // spot holdings the ledger does not own.
+    assert(wait_for([&rest_port] { return rest_port.contains("EQUITY 4986.73"); }));
     assert(placement.signature_matched());
     assert(resting.counters().pending_queries.load() == 1);
     assert(resting.counters().equity_queries.load() == 1);
