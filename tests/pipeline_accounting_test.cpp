@@ -497,6 +497,47 @@ int main()
         assert(end_portfolio.metrics().taker_fees > 0.0);
     }
 
+    // A band puts the closing IOC through the book instead of at the touch. The in-process engine still fills at its
+    // own bid, so the closed quantity is the same; what changes is what the summary reports -- the band is the ceiling
+    // a live venue's book may cost, not the price the fill gets.
+    {
+        test_support::TempFile band_orders_file("pipeline_close_out_band_orders.csv");
+        test_support::TempFile band_trades_file("pipeline_close_out_band_trades.csv");
+        std::ofstream band_orders = band_orders_file.open();
+        std::ofstream band_trades = band_trades_file.open();
+        L2MarketMakerBase band_strategy(L2MarketMakerBaseConfig{.order_size = 10,
+                                                                .base_spread = 0.5,
+                                                                .inventory_limit = 100,
+                                                                .tick_size = 1.0,
+                                                                .signal_mode = L2SignalMode::Baseline});
+        MatchingEngine band_engine(1.0, FeeSchedule{.maker_rate = 0.0002,
+                                                    .taker_rate = 0.0005,
+                                                    .quantity_scale = 1,
+                                                    .unit_notional_usd = 10.0});
+        Portfolio band_portfolio(1, 1000.0, 10.0);
+        Pipeline band_pipeline(band_orders, band_trades, band_strategy, band_engine, band_portfolio, 1.0);
+        band_pipeline.set_collateral(1000.0, 10.0, 1, 1.0);
+        band_pipeline.set_close_out_cross_bps(50.0);
+        band_pipeline.process_l2_market_view(L2MarketView{.symbol = "BAND",
+                                                          .ts = 10,
+                                                          .top = TopOfBook{100.0, 100, 101.0, 100},
+                                                          .micro_price = 100.5});
+        band_pipeline.process_l2_market_trade(MarketTrade{11, "BAND", 100.0, 200, Side::Sell, 1, "deribit"});
+        const auto* band_open = band_portfolio.find_position("BAND");
+        assert(band_open != nullptr && band_open->quantity == 10);
+        band_pipeline.process_l2_market_view(L2MarketView{.symbol = "BAND",
+                                                          .ts = 12,
+                                                          .top = TopOfBook{100.0, 100, 101.0, 100},
+                                                          .micro_price = 100.5});
+        const WindDownSummary banded = band_pipeline.close_out(13);
+        assert(banded.attempted());
+        assert(banded.closed_quantity == 10);
+        assert(banded.residual == 0);
+        assert(std::abs(banded.spread_bps - 50.0) < 1e-9);
+        const auto* band_flat = band_portfolio.find_position("BAND");
+        assert(band_flat != nullptr && band_flat->quantity == 0);
+    }
+
     // A close the venue cannot finish says so. The exit is an IOC, so it takes what the touch displays and leaves the
     // rest: reporting a partial close as a finished one would be the same lie as marking it.
     {

@@ -59,7 +59,7 @@ watch a position build names both: `--order-size=10 --inventory-limit=100`.
 | fees | `--maker-fee-rate`, `--fee-schedule` | a schedule names `min`, `regulatory`, `clearing`, `audit`, `rebate`, `commission`; every term is zero unless named |
 | gates | `--markout-cover`, `--flatten-band`, `--markout-horizon` | `--markout-cover` needs `active_l2`; `--markout-horizon` moves the cycle count behind the markout itself |
 | output | `--metrics`, `--trace-order`, `--record` | each adds a line or a file and changes no number |
-| the one that does change a number | `--close-out` | flattens the carried position at the touch and prints `[WIND-DOWN]`, so `[PNL]` becomes realisable instead of a mark |
+| the one that does change a number | `--close-out`, `--close-out-cross-bps` | flattens the carried position at the touch and prints `[WIND-DOWN]`, so `[PNL]` becomes realisable instead of a mark; the band puts the closing IOC through the midpoint for a live venue whose book is not the market leg's last snapshot |
 | session | `--snapshot-out`, `--snapshot-in` | see below: the account comes back, the strategy's own state does not |
 | order leg | `--record-orders`, `--replay-orders` | see below: one file per venue, the reader that replays it, and the clock it replays on |
 | live order leg | `--live-orders`, `--venue-endpoint`, `--venue-max-orders` | see below: the venue becomes the relay's order channel; the three are required together and only `l2_replay` and `ws` take them |
@@ -72,6 +72,14 @@ watch a position build names both: `--order-size=10 --inventory-limit=100`.
 
 `--close-out` is the one flag that changes a number rather than a line: it is in the table above, and what it does to
 `[PNL]` is in [what a run's numbers leave out](using/06-reading-the-output.md#what-a-number-in-that-line-leaves-out).
+Its companion `--close-out-cross-bps=N` puts the closing IOC N basis points through the midpoint; 0, the default, is the
+touch every recorded run uses. A live venue needs the band because its book is not the market leg's last snapshot: a
+touch from a second ago can be on the wrong side of the venue's best price, and the IOC then closes nothing
+(`no_liquidity=1`). The band has an upper bound the venue enforces: the closing sell must stay above the venue's price
+floor, which is 0.5% under its mark. The demo's 2026-11-17 40 bps run crossed that bound -- the market leg's mid 64,250.9
+against a mark of 64,368.86 put a 40 bps sell at 63,993, under the 64,047 floor, and the venue refused it; 20 bps sits at
+64,122. The fill is still the venue's own best price, so the band is the ceiling `spread_bps` reports, not the price the
+exit gets.
 
 ## The eight whose semantics need more than a line
 

@@ -571,17 +571,23 @@ WindDownSummary Pipeline::send_close_order(uint64_t ts)
     const double units = quantity / static_cast<double>(std::max<uint64_t>(1, quantity_scale_));
     const double notional = units * unit_notional_at(unit_notional_usd_, multiplier_, mid);
     const double touch = position > 0 ? quote.bid_price : quote.ask_price;
+    // A live venue's book is not the market leg's last snapshot, so a close at the touch can be on the wrong side of
+    // the venue's best price and fill nothing. The band puts the limit through the book; the venue fills at its own
+    // best price, and the band is the ceiling this summary reports rather than the fill.
+    const double cross = close_out_cross_bps_ > 0.0 ? close_out_cross_bps_ / 10'000.0 : 0.0;
+    const double exit_price = cross > 0.0 ? (position > 0 ? mid * (1.0 - cross) : mid * (1.0 + cross)) : touch;
 
     summary.symbol = symbol;
     summary.position = position;
     summary.notional_usd = notional;
     // The exit is priced against the mark, so the number is what the mark was optimistic by: a long is sold at the
-    // bid, and the distance from the midpoint is exactly the half spread the account was pretending not to pay.
-    summary.spread_bps = mid > 0.0 ? std::abs(touch - mid) / mid * 10'000.0 : 0.0;
+    // bid (or through it by the band), and the distance from the midpoint is what the account was pretending not to
+    // pay -- the half spread at 0, the band's ceiling otherwise.
+    summary.spread_bps = mid > 0.0 ? std::abs(exit_price - mid) / mid * 10'000.0 : 0.0;
 
     // An IOC that crosses the touch: it takes what the venue displays and cancels the rest, because a closing order
     // that rests has not closed anything.
-    StrategyOrder order(position > 0 ? Side::Sell : Side::Buy, symbol, touch,
+    StrategyOrder order(position > 0 ? Side::Sell : Side::Buy, symbol, exit_price,
                         static_cast<uint64_t>(std::llabs(position)), 0);
     order.time_in_force = TimeInForce::Ioc;
     const uint64_t submitted_before = submitted_orders_;

@@ -102,6 +102,9 @@ struct AppConfig
     // Close the position at the end of the input: stop with something on the book and the run has marked it at the
     // midpoint rather than closed it. Off, the default, leaves every recorded number exactly where it was.
     bool close_out = false;
+    // How far through the touch the closing IOC may cross, in basis points of the midpoint. 0 is the touch, which is
+    // the in-process book; a live run passes a band because the venue's book is not the market leg's last snapshot.
+    double close_out_cross_bps = 0.0;
     // The non-market-making signal. A run that does not name --trend-params leaves `set` false and the
     // strategy's own defaults in force.
     TrendParams trend{};

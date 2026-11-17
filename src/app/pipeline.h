@@ -102,6 +102,13 @@ class Pipeline
     // of the notional. It runs after the feed has finished and before the final mark, so the account it reports is a
     // closed one.
     WindDownSummary close_out(uint64_t ts);
+
+    // How far through the touch a close may cross, in basis points of the midpoint. 0, the default, sends the IOC at
+    // the touch, which is the in-process engine's own book and the number every recorded run uses. A live venue's book
+    // is not the market leg's last snapshot: a touch from a second ago can be on the wrong side of the venue's best
+    // price, and the IOC then closes nothing (`no_liquidity=1`). A small band puts the limit through the venue's book;
+    // the fill is still the venue's own best price, so the band is the ceiling the summary reports, not the price.
+    void set_close_out_cross_bps(double bps) { close_out_cross_bps_ = bps; }
     uint64_t filtered_market_trades() const
     {
         return filtered_market_trades_;
@@ -364,6 +371,7 @@ class Pipeline
     uint64_t last_buy_queue_ahead_consumed_{0};
     uint64_t last_sell_queue_ahead_consumed_{0};
     uint64_t filtered_market_trades_{0};
+    double close_out_cross_bps_{0.0};
     ExecutionQualityMetrics execution_quality_;
     uint64_t quote_cycle_{0};
     // The pre-trade controls in one object, so the order path and the summary read the same counters and

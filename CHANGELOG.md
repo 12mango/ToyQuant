@@ -7,6 +7,23 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The close-out has a crossing band, and the demo's price floor bounds it (2026-11-17)
+
+- **`--close-out-cross-bps=N` puts the closing IOC N basis points through the midpoint.** 0, the default, is the touch
+  every recorded number uses; the flag is the live path's, where the venue's book is not the market leg's last snapshot
+  and a touch from a second ago can close nothing. The pipeline prices the order at `mid * (1 -/+ N/10000)` and reports
+  that distance as `spread_bps`, so the line says the ceiling the run accepted rather than the price the venue filled.
+  `pipeline_accounting_test` pins a 50 bps close: the in-process engine fills at its own bid and the summary reads 50.
+- **The demo's 40 bps close was refused, and the reason is the venue's floor, not an empty book.** On 2026-11-17 the
+  market leg's last mid was 64,250.9 and the venue's mark 64,368.86; the venue's 0.5% floor was 64,047, and a 40 bps
+  sell was 63,993 -- 54 under it -- so the venue refused the order. `[WIND-DOWN] position=10000 closed=0 residual=10000
+  notional_usd=642.509 spread_bps=40 fees_usd=0 fees_bps=0 total_bps=40 no_liquidity=1` is that miss. 20 bps puts the
+  same sell at 64,122, inside the floor and below the venue's 64,36x bid; the run that proves the fill is next, and the
+  account was flattened with `close-position` after this one.
+- **The same run's `[RECON] at=start` and `at=end` read `venue_equity_usd=n/a status=unknown`.** The relay's `EQUITY`
+  answer did not land in that run (the balance itself read 4,979.99 through the Python probe before it), so the two
+  comparisons are open alongside the close. No replay or gate number moved: the flag's default is the touch.
+
 ## The venue equity is the USDT balance, not the account's total (2026-11-17)
 
 - **`RestPlacer::balance_usd` now reads `details[ccy=USDT].eq`** (falling back to `cashBal`), not `totalEq`. A

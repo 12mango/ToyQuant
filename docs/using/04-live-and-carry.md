@@ -353,8 +353,16 @@ residual (`[WIND-DOWN] … no_liquidity=1`), and the end line then breaks by the
 twice, not a missing fill. The single controlled run on that basis opened `ok` and ended `at=end
 venue_equity_usd=4980.19 ledger_equity_usd=4981.52 equity_break_usd=-1.32221 status=break`: one contract remained,
 `[WIND-DOWN]` closed none (`no_liquidity=1`), and the venue's mark against the run's last midpoint is the 1.32
-difference. The account was flattened afterwards with the venue's `close-position`; a venue-side close at the end is
-the next step for a live end.
+difference. The account was flattened afterwards with the venue's `close-position`.
+
+**A limit close on the demo has a floor it must stay above.** `--close-out-cross-bps=N` puts the closing IOC N basis
+points through the midpoint, because a live venue's book is not the market leg's last snapshot. The band also has an
+upper bound: the venue refuses a sell below its own price floor. The 2026-11-17 40 bps run is the measurement of that
+bound. The market leg's last mid was 64,250.9 and the venue's mark 64,368.86, so the floor was 64,047; 40 bps put the
+sell at 63,993, below it, and the venue refused the order -- `[WIND-DOWN] position=10000 closed=0 residual=10000
+spread_bps=40 fees_bps=0 total_bps=40 no_liquidity=1`. The same arithmetic with 20 bps puts the limit at 64,122, inside
+the floor and below the venue's 64,36x bid: that is the next run, and the account was flattened with `close-position`
+after this one. The band is a ceiling in `spread_bps`; the fill is still the venue's own price.
 
 The route itself was exercised in those runs: `--venue-demo` delivered `frames=3713 messages=3713 trades=657
 depth_updates=3054` in the first 60 seconds, and the order leg placed 20 orders and read 60 reports; the second run's two

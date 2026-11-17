@@ -79,6 +79,9 @@ constexpr std::string_view kPostOnlyFlag = "--post-only";
 // default: a run that stops with a position has marked it rather than closed it, and that is what the recorded
 // numbers describe.
 constexpr std::string_view kCloseOutFlag = "--close-out";
+// How far through the touch a live close may cross. 0 is the in-process touch; a live venue needs a band because its
+// book is not the market leg's last snapshot.
+constexpr std::string_view kCloseOutCrossPrefix = "--close-out-cross-bps=";
 constexpr std::string_view kTrendParamsPrefix = "--trend-params=";
 constexpr std::string_view kBaseSpreadPrefix = "--base-spread-ticks=";
 constexpr std::string_view kInventoryShiftPrefix = "--inventory-shift-ticks=";
@@ -205,7 +208,9 @@ void print_usage(const char* executable)
         std::cerr << "   end of session: --close-out flattens whatever the run is holding at the end of the input, "
                      "at the touch, and prints [WIND-DOWN] with the half spread and the taker fee the exit cost in "
                      "basis points. Without it a run that stops with a position has marked it at the last midpoint "
-                     "rather than closed it, and its [PNL] is that mark\n";
+                     "rather than closed it, and its [PNL] is that mark. --close-out-cross-bps=N puts the closing IOC "
+                     "N basis points through the midpoint, which a live venue needs because its book is not the "
+                     "market leg's last snapshot\n";
         std::cerr << "   order leg: --record-orders=PREFIX writes <prefix>_orders.csv -- every submission, cancel and "
                      "execution report of the session, in order -- which `RecordedVenue` replays as the venue; "
                      "without it nothing is written and no number moves\n";
@@ -981,6 +986,17 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                 cfg.post_only = true;
             else if (flag == kCloseOutFlag)
                 cfg.close_out = true;
+            else if (flag.compare(0, kCloseOutCrossPrefix.size(), kCloseOutCrossPrefix) == 0)
+            {
+                double bps = 0.0;
+                std::istringstream stream(flag.substr(kCloseOutCrossPrefix.size()));
+                if (!(stream >> bps) || bps < 0.0)
+                {
+                    error = "--close-out-cross-bps must be a non-negative number of basis points";
+                    return false;
+                }
+                cfg.close_out_cross_bps = bps;
+            }
             else if (flag.compare(0, kTrendParamsPrefix.size(), kTrendParamsPrefix) == 0)
             {
                 const std::string text = flag.substr(kTrendParamsPrefix.size());
@@ -1295,6 +1311,11 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                         "history per leg, which is a shape the flag does not have yet";
                 return false;
             }
+        }
+        if (cfg.close_out_cross_bps > 0.0 && !cfg.close_out)
+        {
+            error = "--close-out-cross-bps needs --close-out: there is no exit to price without it";
+            return false;
         }
         if (cfg.fast_validation && !is_l2_family)
         {

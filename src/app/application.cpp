@@ -780,6 +780,7 @@ void Application::run_l2_session_mode() const
     // enforced. 0, the default, reports the ceiling without blocking anything.
     pipeline.set_collateral(cfg_.starting_cash_usd, instrument.unit_notional_usd, instrument.quantity_scale,
                             instrument.multiplier);
+    pipeline.set_close_out_cross_bps(cfg_.close_out_cross_bps);
     pipeline.set_profiler(profiler);
     apply_pipeline_limits(pipeline);
     // The broker's own commission and its floor, which are the only schedule terms the fee model needs at order
@@ -1203,6 +1204,7 @@ void Application::run_multi_book_mode() const
         // same cash rather than the two together measuring against it.
         leg.pipeline->set_collateral(cfg_.starting_cash_usd, leg.instrument.unit_notional_usd,
                                      leg.instrument.quantity_scale, leg.instrument.multiplier);
+        leg.pipeline->set_close_out_cross_bps(cfg_.close_out_cross_bps);
         leg.pipeline->set_profiler(profiler);
         apply_pipeline_limits(*leg.pipeline);
         leg.pipeline->set_schedule_terms(leg.instrument.fee_per_share,
