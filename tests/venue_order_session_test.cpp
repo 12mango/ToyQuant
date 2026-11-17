@@ -441,6 +441,18 @@ class StandInRest
         }
         // Three answer shapes a loopback with one fixed reply never produces, chosen by the order id so one stand-in can
         // pin all of the client's paths: a chunked body, a body that is not JSON, and a connection closed with no answer.
+        // A placement whose reply is the venue's real shape: an order id and a status, with no `sz`. The client has
+        // to acknowledge the size it sent rather than a missing field, which is what the live route did before this
+        // branch existed.
+        if (body.find("\"clOrdId\":\"25\"") != std::string::npos)
+        {
+            const std::string answer =
+                R"({"code":"0","msg":"","data":[{"clOrdId":"25","ordId":"3","sCode":"0","sMsg":"Order placed"}]})";
+            const std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " +
+                                         std::to_string(answer.size()) + "\r\nConnection: close\r\n\r\n" + answer;
+            ::send(fd, response.data(), response.size(), MSG_NOSIGNAL);
+            return;
+        }
         if (body.find("\"clOrdId\":\"21\"") != std::string::npos)
         {
             const std::string answer = R"({"code":"0","msg":"","data":[{"clOrdId":"21","ordId":"2",)"
@@ -732,6 +744,12 @@ int main()
     assert(placement.rate_limit_hits() == 2);
     assert(resting.counters().rest_429.load() == 2);
 
+    // A venue's placement reply carries no `sz` (the demo's is `ordId`, `clOrdId`, `sCode`, `sMsg`), so the
+    // acknowledgement has to be the size this client sent. Reading the missing field gave `ACK 25 0` against the live
+    // venue; the stand-in's answer here is that shape.
+    resting.on_engine_line("ORDER 25 BTC-USDT-SWAP B 6421.5 100000 Gtc");
+    assert(wait_for([&rest_port] { return rest_port.contains("ACK 25 100000"); }));
+
     // The state half is still the socket: the subscription pushed a fill, which is the half REST cannot carry.
     assert(wait_for([&state] { return state.fills() >= 1; }));
     assert(wait_for([&rest_port] { return rest_port.contains("FILL 7 "); }));
@@ -741,7 +759,7 @@ int main()
 
     resting.stop();
     rest_runner.join();
-    assert(placement.requests() == 11);  // nine POSTs (the rate-limited one is three), two GETs
+    assert(placement.requests() == 12);  // ten POSTs (the rate-limited one is three), two GETs
     assert(resting.counters().write_failures.load() == 0);
     // The scheduled drop ran: every session it closed was a new login at the venue, which is the reconnect path a live
     // run takes when the venue drops the private channel.
@@ -752,7 +770,7 @@ int main()
     // call. The timing itself cannot be asserted here -- the stand-in answers in microseconds -- but the relationship can:
     // a placement contains its connection, and the summary states both averages beside the count.
     const std::string wire_summary = resting.counters().to_log_string();
-    assert(wire_summary.find("rest_calls=11") != std::string::npos);
+    assert(wire_summary.find("rest_calls=12") != std::string::npos);
     assert(wire_summary.find("rest_429=2") != std::string::npos);
     assert(wire_summary.find("pending_queries=1") != std::string::npos);
     assert(wire_summary.find("equity_queries=1") != std::string::npos);

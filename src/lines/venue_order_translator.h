@@ -56,6 +56,9 @@ class OrderTranslator
         std::string op;           // "order" or "cancel-order"
         std::string id;           // the engine's order id, which is also the venue's `clOrdId`
         std::string args_object;  // the `args[0]` object, exactly as the websocket op would carry it
+        // The size sent, in the venue's contracts. The placement reply names the order but carries no `sz`, so an
+        // acknowledgement has to be the size this client asked for rather than a zero the venue never said.
+        double contracts{0.0};
     };
     Request request_of(std::string_view line);
 

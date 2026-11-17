@@ -352,6 +352,10 @@ demo's own state -- so the account-wide check is a break while the strategy's fi
 precondition, not a tolerance to widen**: a flat account, or a `--snapshot-in` that adopts the position, is the clean
 start.
 
+A probe run taken while the account happened to sit 4.12 USD from the ledger's base printed `status=ok` on both lines
+(`venue_equity_usd=80093.3` against `ledger_equity_usd=80089.2`); the next was 42.42 USD away and broke. The line is
+doing its job on an account whose own position moves.
+
 The tolerance is the larger of 0.05 USD and one basis point of the account, printed on the line. Ten basis points was
 the first choice and the demo run is why it moved: 75.65 was inside 80.0767 and read `ok`, while the ledger and the
 account were 64 to 76 USD apart. At one basis point the same gap is 8.0012, and the third run above measured
@@ -367,6 +371,14 @@ the recovery asks and again after each cancel (`settle_queries`), because a venu
 connection. The rule is the simulator's: a working order is cancelled, a forgotten one is counted, and `[RESUME]` prints
 both. If the venue does not answer the first query the run refuses to resume, naming the relay's `--order-rest`,
 because assuming "none working" would leave every inherited order alive.
+
+**The recovery pair, measured on 2026-11-17.** A replay with `--live-orders` wrote `[SNAPSHOT] orders=1`; the
+`--snapshot-in` run printed `[RESUME] orders=1 live=0 gone=1 cancelled=0` -- the venue had already let the order go, so
+the recovery counted it rather than assuming a fill or a cancel. A controlled order placed through the relay's line
+protocol and still working at the snapshot produced `[RESUME] orders=1 live=1 gone=0 cancelled=1` with `[VENUE]
+cancels=1`: query, cancel, settle and query again all against the venue. The placement reply carries no `sz`, so the
+ACK used to read that missing field and say `ACK <id> 0`; it is now the size sent (`ACK 907654 10000`). The two queries
+also answer outside a session: `PENDING 0`, `EQUITY 80089.191`.
 
 **The budget is per endpoint.** A token bucket in the REST placer allows ten calls a second per path -- well under the
 venue's quota -- and an HTTP 429 is retried twice before it becomes a `REJECT`. The two facts are counted separately:

@@ -7,6 +7,25 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The live recovery is measured, and a placement's ACK no longer says zero (2026-11-17)
+
+- **The recovery pair on the demo venue.** A replay with `--live-orders` wrote `[SNAPSHOT] orders=1`; the next run with
+  `--snapshot-in` printed `[RESUME] orders=1 live=0 gone=1 cancelled=0` -- the venue had already let the order go, so the
+  recovery counted it instead of assuming a fill or a cancel. A controlled order placed through the relay's line
+  protocol and still working when the snapshot was taken produced `[RESUME] orders=1 live=1 gone=0 cancelled=1` with
+  `[VENUE] cancels=1`: the pending query, the cancel, the settle and the second query all ran against the venue.
+- **The placement reply carries no `sz`, and the ACK was reading it.** `RestPlacer::lines_for` built `ACK <id> <units>`
+  from the reply's `sz`; OKX's `POST /trade/order` answer is `ordId`/`clOrdId`/`sCode`/`sMsg` with no size, so every
+  live placement was acknowledged `ACK <id> 0`. The translator's `Request` now carries the contracts it sent, and the
+  ACK falls back to it; the live line read `ACK 907654 10000` after the fix, and the stand-in's no-`sz` case pins it.
+  The earlier live numbers were wire acceptances and are not re-quoted as strategy results: the zero acknowledgement
+  could have changed the strategy's pacing.
+- **The two queries work outside a session too:** a line client on the relay's order leg printed `PENDING 0` and
+  `EQUITY 80089.191`, and the relay summed `pending_queries=1 equity_queries=1 rest_429=0 query_failures=0`.
+- No replay or gate number moved; the fix is on the live placement route, and the gate's `venue_order_session_test`
+  pins it.
+
+
 ## A live account's opening balance is a flag, checked before the first quote (2026-11-17)
 
 - **`--starting-cash=USD`.** The opening cash -- and so the exposure ceiling and `[EXECUTION] starting_cash_usd` -- was

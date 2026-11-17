@@ -172,7 +172,7 @@ class RestPlacer
 
    private:
     std::vector<std::string> lines_for(std::string_view op, const std::string& order_id, const Json& answer,
-                                       const OrderTranslator& translator);
+                                       const OrderTranslator& translator, double sent_contracts);
     // One signed call, with the endpoint's budget waited for and a 429 retried. `method` is POST for the two order
     // endpoints and GET for the two queries, and the signature is over the method and the path as sent.
     HttpResponse request(std::string_view method, std::string_view path, std::string_view body,

@@ -131,7 +131,8 @@ OrderTranslator::Request OrderTranslator::request_of(std::string_view line)
              << R"(","sz":")" << contracts << R"(","clOrdId":")" << cl_ord_id << '"';
         if (inst_code_ >= 0) args << R"(,"instIdCode":)" << inst_code_;
         args << '}';
-        return Request{.op = "order", .id = std::string(cl_ord_id), .args_object = args.str()};
+        return Request{.op = "order", .id = std::string(cl_ord_id), .args_object = args.str(),
+                       .contracts = static_cast<double>(contracts)};
     }
 
     if (fields[0] == "CANCEL")

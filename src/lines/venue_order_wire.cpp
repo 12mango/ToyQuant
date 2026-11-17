@@ -690,7 +690,7 @@ std::vector<std::string> RestPlacer::place(const OrderTranslator::Request& reque
                   << response.body.substr(0, 160) << std::endl;
         return {"REJECT " + request.id + " venue"};
     }
-    return lines_for(request.op, request.id, answer, translator);
+    return lines_for(request.op, request.id, answer, translator, request.contracts);
 }
 
 std::optional<std::vector<std::uint64_t>> RestPlacer::pending_orders()
@@ -791,7 +791,8 @@ std::optional<double> RestPlacer::balance_usd()
 }
 
 std::vector<std::string> RestPlacer::lines_for(std::string_view op, const std::string& order_id,
-                                               const Json& answer, const OrderTranslator& translator)
+                                               const Json& answer, const OrderTranslator& translator,
+                                               double sent_contracts)
 {
     const Json* code = answer.find("code");
     const Json* data = answer.find("data");
@@ -804,10 +805,13 @@ std::vector<std::string> RestPlacer::lines_for(std::string_view op, const std::s
         if (op == "order")
         {
             ++placed_;
-            // The venue's `sz` is in contracts and the engine's acknowledgement is in its own units: the same conversion
-            // the websocket route does, which is why an engine cannot tell which surface answered.
+            // The reply names the order (`ordId`, `clOrdId`, `sCode`) and carries no `sz`, so the size in the
+            // acknowledgement is the one this client sent; reading a missing field gave every live placement
+            // `ACK <id> 0`, measured against the demo venue on 2026-11-17. When a venue does report `sz`, its number
+            // wins, because that is what the venue actually accepted.
             const Json* sz = first != nullptr ? first->find("sz") : nullptr;
-            const double contracts = sz != nullptr ? sz->as_double() : 0.0;
+            double contracts = sz != nullptr ? sz->as_double() : 0.0;
+            if (!(contracts > 0.0)) contracts = sent_contracts;
             return {"ACK " + order_id + " " + std::to_string(translator.units_of(contracts))};
         }
         return {"CANCELED " + order_id + " user"};
