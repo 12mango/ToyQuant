@@ -147,6 +147,9 @@ The live close also pulls the strategy's working orders first: `--close-out` can
 same bounded second, and sizes the exit against what is left, because a quote that fills while the exit works is a
 position on the other side. The order leg is drained once more after the feed stops -- a quote cancelled at the last
 moment can fill at the venue a moment later -- so `[WIND-DOWN]` and `[PNL]` price the position the venue actually holds.
+The live exit itself is a reduce-only market order, so its `spread_bps` is the cash the fill moved against the
+position's notional rather than a band, and a fractional position is closed by the whole-contract round-up the venue
+caps at the position.
 
 ///
 

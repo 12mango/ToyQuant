@@ -675,6 +675,11 @@ int main()
         assert(pull_pipeline.summary().cancel_requests == cancels_before + working);
         assert(pull_pipeline.summary().working_orders == 0);
         assert(pumped == 0);
+        // The live exit is a reduce-only market order, so its `spread_bps` is the cash the fill moved against the
+        // position's notional. This instrument's notional is a fixed ten dollars, so the price it filled at does not
+        // move that cash: the spread is zero here by construction, and the fee is the taker rate on the notional.
+        assert(pulled.spread_bps < 1e-6);
+        assert(std::abs(pulled.fees_bps - 5.0) < 1e-9);
     }
 
     // A latched kill switch closes what the run is holding. Two things had to be true for this to work and neither

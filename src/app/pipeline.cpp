@@ -612,11 +612,16 @@ WindDownSummary Pipeline::send_close_order(uint64_t ts)
     summary.spread_bps = mid > 0.0 ? std::abs(exit_price - mid) / mid * 10'000.0 : 0.0;
 
     // An IOC that crosses the touch: it takes what the venue displays and cancels the rest, because a closing order
-    // that rests has not closed anything.
+    // that rests has not closed anything. On a live run it is a reduce-only market order instead: the venue's size is
+    // the whole-contract round-up of the position and `reduceOnly` caps it, so a fractional position is closed and a
+    // wide book cannot refuse the exit for its price. The replay keeps the limit order every recorded number was
+    // taken with.
     StrategyOrder order(position > 0 ? Side::Sell : Side::Buy, symbol, exit_price,
                         static_cast<uint64_t>(std::llabs(position)), 0);
     order.time_in_force = TimeInForce::Ioc;
+    order.reduce_only = venue_pump_ != nullptr;
     const uint64_t submitted_before = submitted_orders_;
+    const double cash_before = portfolio_.metrics().cash;
     const double fees_before = portfolio_.metrics().fees_paid;
     submit_order(order, ts, &quote);
     if (submitted_orders_ == submitted_before)
@@ -650,6 +655,18 @@ WindDownSummary Pipeline::send_close_order(uint64_t ts)
     // Both costs against the notional that was actually closed, so a partial close is not credited with the fee of a
     // full one and the two numbers stay comparable with every other basis-point figure in this project.
     summary.fees_bps = closed_notional > 0.0 ? summary.fees_usd / closed_notional * 10'000.0 : 0.0;
+    if (order.reduce_only && closed_notional > 0.0)
+    {
+        // A market order has no band to report. What it paid is the cash it moved, net of the fee the ledger already
+        // charged: for a long exit that is the proceeds, for a short exit the cost, and the distance from the
+        // position's mark is the slippage the exit actually paid. A fill better than the mark is not a negative cost
+        // in this line -- `spread_bps` is what the exit gave up -- so it floors at zero.
+        const double cash_delta = portfolio_.metrics().cash - cash_before;
+        const double realized = position > 0 ? cash_delta + summary.fees_usd : -(cash_delta + summary.fees_usd);
+        const double signed_bps = position > 0 ? (closed_notional - realized) / closed_notional
+                                               : (realized - closed_notional) / closed_notional;
+        summary.spread_bps = std::max(0.0, signed_bps * 10'000.0);
+    }
     summary.total_bps = summary.spread_bps + summary.fees_bps;
     // A close that sent an order and got nothing back within its wait is the venue showing no size, not a refusal and
     // not a fill: saying which of the three happened is the difference between a report and a rumour.

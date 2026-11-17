@@ -700,6 +700,13 @@ int main()
            R"("sz":"10","clOrdId":"11","instIdCode":10459})");
     assert(resting.counters().placed.load() == 1);
 
+    // A close goes over the same placement route as a market reduce-only request, and its acknowledgement is the
+    // units the engine asked to close -- 9,500, the fractional position -- not the venue's rounded-up contract.
+    resting.on_engine_line("CLOSE 26 BTC-USDT-SWAP S 9500");
+    assert(wait_for([&rest_port] { return rest_port.contains("ACK 26 9500"); }));
+    assert(placement.last_body() ==
+           R"({"instId":"BTC-USDT-SWAP","tdMode":"cross","side":"sell","ordType":"market","sz":"1","reduceOnly":true,"clOrdId":"26","instIdCode":10459})");
+
     // A refusal is a sub-code with the call itself failed, answered as a REJECT rather than as a silence -- and it is the
     // venue's refusal, not a transport failure.
     resting.on_engine_line("ORDER 12 BTC-USDT-SWAP B 6421.5 10000000 Gtc");

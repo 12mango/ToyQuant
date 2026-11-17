@@ -419,7 +419,7 @@ void VenueOrderConnection::on_engine_line(std::string_view line)
         answer_equity();
         return;
     }
-    const bool is_order = line.rfind("ORDER", 0) == 0;
+    const bool is_order = line.rfind("ORDER", 0) == 0 || line.rfind("CLOSE", 0) == 0;
     std::lock_guard<std::mutex> lock(session_mutex_);
     try
     {
@@ -690,7 +690,8 @@ std::vector<std::string> RestPlacer::place(const OrderTranslator::Request& reque
                   << response.body.substr(0, 160) << std::endl;
         return {"REJECT " + request.id + " venue"};
     }
-    return lines_for(request.op, request.id, answer, translator, request.contracts);
+    return lines_for(request.op, request.id, answer, translator, request.contracts,
+                     request.reduce_only ? request.units : 0);
 }
 
 std::optional<std::vector<std::uint64_t>> RestPlacer::pending_orders()
@@ -805,7 +806,7 @@ std::optional<double> RestPlacer::balance_usd()
 
 std::vector<std::string> RestPlacer::lines_for(std::string_view op, const std::string& order_id,
                                                const Json& answer, const OrderTranslator& translator,
-                                               double sent_contracts)
+                                               double sent_contracts, std::uint64_t sent_units)
 {
     const Json* code = answer.find("code");
     const Json* data = answer.find("data");
@@ -825,7 +826,10 @@ std::vector<std::string> RestPlacer::lines_for(std::string_view op, const std::s
             const Json* sz = first != nullptr ? first->find("sz") : nullptr;
             double contracts = sz != nullptr ? sz->as_double() : 0.0;
             if (!(contracts > 0.0)) contracts = sent_contracts;
-            return {"ACK " + order_id + " " + std::to_string(translator.units_of(contracts))};
+            // A close's acknowledgement is the units the engine asked to close: the venue's size was rounded up to
+            // its grid, so `units_of(contracts)` would report a size the engine never sent.
+            const std::uint64_t units = sent_units != 0 ? sent_units : translator.units_of(contracts);
+            return {"ACK " + order_id + " " + std::to_string(units)};
         }
         return {"CANCELED " + order_id + " user"};
     }

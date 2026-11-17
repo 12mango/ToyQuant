@@ -82,11 +82,15 @@ struct LiveVenueCounters
 // transport and leaves this file alone.
 //
 //     out:  ORDER <id> <symbol> <B|S> <price> <qty> <Gtc|Ioc|Fok>      CANCEL <id>
-//           PENDING                                                    EQUITY
+//           CLOSE <id> <symbol> <B|S> <qty>      PENDING               EQUITY
 //     in:   ACK <id> <remaining>   FILL <id> <price> <qty> [<fee_usd>]
 //           CANCELED <id> <reason>  REJECT <id> <reason>
 //           PENDING <n> <id>...     PENDING unavailable
 //           EQUITY <usd>            EQUITY unavailable
+//
+// `CLOSE` is the end-of-session exit on a live run: a market order with `reduceOnly`, whose units the relay rounds up
+// to the venue's contract grid, so a fractional position (0.95 of a contract) is closed by one contract and the venue
+// caps it at the position instead of flipping it. It carries no price; the venue's book decides the fill.
 //
 // The last four are the two questions a long-lived process cannot answer from its own table: which orders the
 // venue still holds (`PENDING`, the venue's `orders-pending` list) and what the venue says the account is worth

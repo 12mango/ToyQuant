@@ -50,6 +50,20 @@ int main()
     assert(translator.encode("CANCEL 7") ==
            R"({"id":"7","op":"cancel-order","args":[{"instId":"BTC-USDT-SWAP","clOrdId":"7","instIdCode":10459}]})");
 
+    // A close is a market order whose size rounds UP to the venue's grid and carries `reduceOnly`: a fractional
+    // position (9,500 engine units = 0.95 of a contract) is closed by one contract, and the venue caps the order at
+    // the position instead of flipping it. The request keeps the units so the acknowledgement can name the size the
+    // engine asked to close rather than the venue's grid size.
+    const auto close = translator.request_of("CLOSE 12 BTC-USDT-SWAP S 9500");
+    assert(close.op == "order");
+    assert(close.args_object ==
+           R"({"instId":"BTC-USDT-SWAP","tdMode":"cross","side":"sell","ordType":"market","sz":"1","reduceOnly":true,"clOrdId":"12","instIdCode":10459})");
+    assert(close.units == 9500);
+    assert(close.reduce_only);
+    assert(translator.contracts_to_close(9500) == 1);
+    assert(translator.contracts_to_close(10000) == 1);
+    assert(translator.contracts_to_close(10001) == 2);
+
     // A size below one contract is refused here with both numbers, not at the venue as a rejection: one contract is
     // 0.01 of the coin and the scale is a million units to the coin, so ten thousand units is one contract.
     try

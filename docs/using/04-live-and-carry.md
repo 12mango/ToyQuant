@@ -384,7 +384,17 @@ venue are the signal -- so every replay's close keeps its synchronous read and n
 Measured on 2026-11-17 with a fresh 60 s run: `[WIND-DOWN] position=10000 closed=0 residual=10000 notional_usd=650.005
 spread_bps=20 fees_usd=0 fees_bps=0 total_bps=20 no_liquidity=1`, and the venue's probe afterwards read `pos: "1"` --
 the engine's 10,000 units are one contract, so the two sides agree. The close did not fill because the venue's bid was
-below the 20 bps sell; the reduce-only market exit that crosses whatever the venue shows is the next step.
+below the 20 bps sell.
+
+The live close is a reduce-only market order instead: `CLOSE <id> <symbol> <side> <qty>` becomes the venue's
+`ordType: market` with `reduceOnly: true`, the size rounded up to the contract grid, so a fractional position (0.95 of
+a contract) is closed by one contract and the venue caps it at the position. A reduce-only order is also exempt from
+the adapter's order count: the passive session placed 65 orders against a cap of 20, and the cap refused the exit
+before the wire -- the one order it must not stop. The replay's close is still the limit IOC. That session then showed
+a deeper finding: the engine ended long 10,000 units against the venue's short one contract, with four
+`buy_fill_count` against one sell, so the fills' sides disagree. The next instrument is the order leg's frame dump
+(`--order-dump`): the ORDER and FILL frames' sides are the only place that can say whether the adapter attributed a
+fill to the wrong order or the venue filled the opposite side.
 
 **The end-of-run balance was asked twice in the earlier run and answered once; the fixed run answered twice.** The 20 bps
 demo7 run sent 17 frames (9 orders, 6 cancels, 2 `EQUITY`) and received 23 (22 order reports and one answer):

@@ -24,6 +24,11 @@ struct StrategyOrder
     // a run may impose it on every order the way `--time-in-force` does; false is the behaviour every recorded run
     // had.
     bool post_only{false};
+    // A close rather than a quote: the venue's size is rounded up to its contract grid and the request carries
+    // `reduceOnly`, so a fractional position (0.95 of a contract) is closed by one contract and the venue caps the
+    // order at the position instead of flipping it. The end-of-session close sets this on a live run only; a replay's
+    // close keeps the limit behaviour every recorded number was taken with.
+    bool reduce_only{false};
 
     StrategyOrder() = default;
 

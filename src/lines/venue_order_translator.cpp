@@ -72,6 +72,22 @@ std::uint64_t OrderTranslator::contracts_for(std::uint64_t units) const
     return static_cast<std::uint64_t>(contracts);
 }
 
+std::uint64_t OrderTranslator::contracts_to_close(std::uint64_t units) const
+{
+    // Rounded up, unlike `contracts_for`: a close has to cover the position it is closing, and a fractional position
+    // (9,500 units = 0.95 of a contract) has no whole-contract size below it. One contract with `reduceOnly` is the
+    // smallest order the venue accepts, and the venue caps it at the position, so the round-up cannot open a new one.
+    const double per_contract = mapping_.contract_size * static_cast<double>(mapping_.quantity_scale);
+    if (units == 0 || !(per_contract > 0.0)) return 0;
+    auto contracts = static_cast<std::uint64_t>(std::ceil(static_cast<double>(units) / per_contract));
+    if (mapping_.lot_size > 1)
+    {
+        const auto lot = static_cast<std::uint64_t>(mapping_.lot_size);
+        contracts = ((contracts + lot - 1) / lot) * lot;
+    }
+    return contracts;
+}
+
 std::string OrderTranslator::price_on_tick(std::string_view text) const
 {
     // The engine's double can carry digits the venue's grid does not have, and a price one step off it is refused
@@ -133,6 +149,40 @@ OrderTranslator::Request OrderTranslator::request_of(std::string_view line)
         args << '}';
         return Request{.op = "order", .id = std::string(cl_ord_id), .args_object = args.str(),
                        .contracts = static_cast<double>(contracts)};
+    }
+
+    if (fields[0] == "CLOSE")
+    {
+        if (fields.size() != 5)
+            throw OrderError("a close line has five fields and this one has " +
+                             std::to_string(fields.size()));
+        const std::string_view cl_ord_id = fields[1];
+        const std::string_view side = fields[3];
+        const std::string_view quantity = fields[4];
+        if (!all_digits(cl_ord_id))
+            throw OrderError("the order id '" + std::string(cl_ord_id) + "' is not a number");
+        if (side != "B" && side != "S")
+            throw OrderError("side '" + std::string(side) + "' is not B or S");
+        if (!all_digits(quantity) || std::strtoull(std::string(quantity).c_str(), nullptr, 10) == 0)
+            throw OrderError("quantity '" + std::string(quantity) + "' is not a positive integer");
+
+        const auto units = static_cast<std::uint64_t>(std::strtoull(std::string(quantity).c_str(), nullptr, 10));
+        const std::uint64_t contracts = contracts_to_close(units);
+        if (contracts == 0) throw OrderError("a close of " + std::string(quantity) + " units has no contract");
+        orders_[std::string(cl_ord_id)] = Known{.symbol = std::string(fields[2]),
+                                                .units = units,
+                                                .contracts = contracts,
+                                                .close = true};
+        // A market order with `reduceOnly` and no price: the venue's book decides the fill, and the flag caps the
+        // whole-contract size at the position so the round-up cannot flip a fractional one.
+        std::ostringstream args;
+        args << R"({"instId":")" << instrument_ << R"(","tdMode":"cross","side":")"
+             << (side == "B" ? "buy" : "sell") << R"(","ordType":"market","sz":")" << contracts
+             << R"(","reduceOnly":true,"clOrdId":")" << cl_ord_id << '"';
+        if (inst_code_ >= 0) args << R"(,"instIdCode":)" << inst_code_;
+        args << '}';
+        return Request{.op = "order", .id = std::string(cl_ord_id), .args_object = args.str(),
+                       .contracts = static_cast<double>(contracts), .units = units, .reduce_only = true};
     }
 
     if (fields[0] == "CANCEL")
@@ -206,8 +256,12 @@ std::vector<std::string> OrderTranslator::decode(const Json& message)
             // that follows reports the same counter, and that is where the fill is booked, once.
             const Json* already = entry.find("accFillSz");
             const double filled = already != nullptr ? already->as_double() : 0.0;
-            lines.push_back("ACK " + cl_ord_id + " " +
-                            std::to_string(units_of(std::max(placed - filled, 0.0))));
+            // A close's acknowledgement is the units the engine asked to close -- the venue's size was rounded up to
+            // its grid -- while a normal order's is the venue's own placement, as before.
+            const std::uint64_t remaining = known.close
+                ? (known.units > units_of(filled) ? known.units - units_of(filled) : 0)
+                : units_of(std::max(placed - filled, 0.0));
+            lines.push_back("ACK " + cl_ord_id + " " + std::to_string(remaining));
             continue;
         }
 

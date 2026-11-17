@@ -71,6 +71,19 @@ int main()
         assert(wire.frames[0] == "ORDER 8 BTC-PERPETUAL S 99.5 3 Ioc");
     }
 
+    // A reduce-only order is a close: the frame carries no price, because the venue's book decides the fill, and the
+    // round-up to a whole contract and the `reduceOnly` flag are the relay's translation rather than this adapter's.
+    {
+        RecordingTransport wire;
+        LiveVenue venue(wire);
+        exchange::Order close = make_order(11, exchange::Side::Sell, 0.0, 9500);
+        close.reduce_only = true;
+        venue.send_order(close);
+        assert(wire.frames.size() == 1);
+        assert(wire.frames[0] == "CLOSE 11 BTC-PERPETUAL S 9500");
+        assert(venue.counters().orders_sent == 1);
+    }
+
     // A cancel is one frame and its own counter: a cancel the venue never received and an order that was never
     // sent are different failures, and a single counter would hide one behind the other.
     {
@@ -91,6 +104,14 @@ int main()
         venue.send_order(make_order(2, exchange::Side::Buy, 10.0, 1));
         assert(wire.frames.size() == 1);
         assert(venue.counters().orders_sent == 1);
+        assert(venue.counters().refused_by_adapter == 1);
+        // A close is not refused by the count cap: it is the exit, and a refused exit leaves the position open.
+        exchange::Order close = make_order(3, exchange::Side::Buy, 0.0, 10);
+        close.reduce_only = true;
+        venue.send_order(close);
+        assert(wire.frames.size() == 2);
+        assert(wire.frames.back() == "CLOSE 3 BTC-PERPETUAL B 10");
+        assert(venue.counters().orders_sent == 2);
         assert(venue.counters().refused_by_adapter == 1);
     }
 
@@ -283,6 +304,26 @@ int main()
         assert(reports[1].fee == -0.01);
         assert(reports[2].fee == 0.0);
         assert(!venue.on_frame("FILL 10 6421.5 4 not-a-fee"));
+        assert(venue.counters().frames_dropped == 1);
+    }
+
+    // A fill can arrive after the cancel that raced it: the venue fills what it can at the moment it cancels the
+    // remainder, and that report still has to be booked in the order's own side. The entry is kept through the
+    // cancel for exactly this, and a fill for an order the adapter never sent is dropped rather than booked with the
+    // report's defaults -- which is how a short venue position was booked as a long one.
+    {
+        RecordingTransport wire;
+        LiveVenue venue(wire);
+        std::vector<ExecutionReport> reports;
+        venue.set_report_callback([&reports](const ExecutionReport& report) { reports.push_back(report); });
+        venue.send_order(make_order(40, exchange::Side::Sell, 6421.5, 10));
+        assert(venue.on_frame("CANCELED 40 user"));
+        assert(venue.on_frame("FILL 40 6421.5 10"));
+        assert(reports.size() == 2);
+        assert(reports[1].exec_type == ExecType::Trade);
+        assert(reports[1].side == exchange::Side::Sell);
+        assert(reports[1].symbol == "BTC-PERPETUAL");
+        assert(!venue.on_frame("FILL 41 6421.5 10"));
         assert(venue.counters().frames_dropped == 1);
     }
 

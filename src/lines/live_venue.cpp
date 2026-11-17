@@ -74,8 +74,12 @@ CancelReason cancel_reason_of(std::string_view text)
 void LiveVenue::send_order(const exchange::Order& order)
 {
     // The adapter's own bound, checked before anything is written. The pipeline's caps are about what the
-    // strategy may ask for; this one is about what this adapter is willing to put on a real wire.
-    if (config_.max_orders != 0 && counters_.orders_sent >= config_.max_orders)
+    // strategy may ask for; this one is about what this adapter is willing to put on a real wire. A close is the one
+    // order it must not refuse: it reduces the position the run is carrying, and a refused exit leaves that position
+    // open -- the demo's passive session hit this at 65 orders against a cap of 20, and the exit never reached the
+    // venue. The size caps below still apply, because a close's size is the position and an oversized one is an
+    // operator's configuration.
+    if (!order.reduce_only && config_.max_orders != 0 && counters_.orders_sent >= config_.max_orders)
     {
         ++counters_.refused_by_adapter;
         return;
@@ -97,8 +101,19 @@ void LiveVenue::send_order(const exchange::Order& order)
     }
 
     std::ostringstream frame;
-    frame << "ORDER " << order.id << ' ' << order.symbol << ' ' << side_token(order.side) << ' '
-          << order.price << ' ' << order.qty << ' ' << tif_token(order.time_in_force);
+    if (order.reduce_only)
+    {
+        // A close is a market order: the venue's book decides the price, and `reduceOnly` caps the size at the
+        // position, so the engine's units (which may be a fraction of a contract) are sent as a whole-contract close
+        // by the relay rather than as a limit that a wide book would refuse.
+        frame << "CLOSE " << order.id << ' ' << order.symbol << ' ' << side_token(order.side) << ' '
+              << order.qty;
+    }
+    else
+    {
+        frame << "ORDER " << order.id << ' ' << order.symbol << ' ' << side_token(order.side) << ' '
+              << order.price << ' ' << order.qty << ' ' << tif_token(order.time_in_force);
+    }
     if (!transport_.send(frame.str()))
     {
         ++counters_.transport_failures;
@@ -231,6 +246,14 @@ bool LiveVenue::on_frame(std::string_view frame)
     }
     else if (kind == "FILL" && fields.size() >= 4)
     {
+        // A fill for an order this adapter never sent cannot be attributed: its owner, side and symbol are the
+        // order's, and booking it with the report's defaults is how the demo's session came back long on a position
+        // the venue held short. Dropped and counted rather than guessed.
+        if (sent == sent_.end())
+        {
+            ++counters_.frames_dropped;
+            return false;
+        }
         double price = 0.0;
         uint64_t quantity = 0;
         if (!parse_price(fields[2], price) || !parse_u64(fields[3], quantity))
@@ -273,10 +296,13 @@ bool LiveVenue::on_frame(std::string_view frame)
     }
 
     // An order that has ended will not be reported again, so its owner is no longer needed; a fill keeps it,
-    // because an order can fill more than once.
+    // because an order can fill more than once. A cancel is not the end of its reports: the venue fills what it can
+    // at the moment it cancels the remainder, and that fill arrives after this line -- the demo's passive session
+    // ended with the engine long and the venue short because the entry was erased here first. A reject has no fill
+    // and its entry goes; a cancelled order's entry stays, bounded by the orders a session places.
     if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Rejected)
     {
-        sent_.erase(order_id);
+        if (report.exec_type == ExecType::Rejected) sent_.erase(order_id);
         // The venue has said the order is over, so the working set drops it without waiting for a new query.
         std::lock_guard<std::mutex> lock(query_mutex_);
         pending_.erase(order_id);

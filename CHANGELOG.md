@@ -7,6 +7,27 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The exit is a reduce-only market close, a close is exempt from the order cap, and a fill keeps its side (2026-11-17)
+
+- **A fill that arrives after its cancel is booked in the order's side.** `LiveVenue` erased the order's entry when
+  the venue said `CANCELED`, but the demo's venue fills what it can at the moment it cancels the remainder, so that
+  report arrived with no entry and took the report's defaults. `live_venue_test` pins the kept entry (a sell's fill
+  after a cancel is a sell), and a fill for an order the adapter never sent is now dropped and counted rather than
+  guessed.
+- **The live exit is a reduce-only market order.** `CLOSE <id> <symbol> <side> <qty>` becomes
+  `{"ordType":"market","reduceOnly":true,"sz":"<ceil contracts>"}`; `contracts_to_close` rounds up, so a fractional
+  position is closed by one contract and the venue caps it at the position, and the acknowledgement stays the units the
+  engine asked to close. `[WIND-DOWN]`'s `spread_bps` for the market exit is the cash the fill moved against the
+  position's notional. The replay's close is still the limit IOC.
+- **The adapter's order-count cap exempts a reduce-only close.** The passive session placed 65 orders against
+  `--venue-max-orders=20` and the cap refused the exit before the wire; a close reduces the position, so it is the one
+  order the cap must not stop. The size caps still apply.
+- **Measured on the demo (2026-11-17, 60 s):** the close's line read `[WIND-DOWN] position=10000 closed=0
+  residual=10000 notional_usd=639.119 spread_bps=40 fees_usd=0 fees_bps=0 total_bps=40 no_liquidity=1`, and the
+  venue's probe afterwards read `pos: "-1"` against the engine's `+10000` units; `[VENUE] orders=20` and
+  `submitted_orders=39` say the close did not reach the venue. The next instrument is `--order-dump`: the ORDER and
+  FILL frames' sides are the only place that can separate a wrong attribution from a venue that filled the other side.
+
 ## A live close pulls the working quotes, and a session settles the venue's late fills (2026-11-17)
 
 - **`--close-out` cancels the strategy's working orders before it sends the exit.** The demo's run ended short one

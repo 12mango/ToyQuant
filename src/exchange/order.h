@@ -27,6 +27,9 @@ struct Order {
     // quote was priced against a market that had already moved through it. Off by default, so every recorded run
     // keeps the behaviour it had.
     bool post_only{false};
+    // A reduce-only order: the venue closes at most the position it holds, so an exit sized up to the contract grid
+    // cannot flip the book. Only the live end-of-session close sets it; the in-process matcher ignores it.
+    bool reduce_only{false};
 };
 
 }  // namespace exchange

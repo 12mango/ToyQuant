@@ -62,7 +62,7 @@ exchange::Order OrderLedger::to_exchange_order(const StrategyOrder& strategy_ord
     order.id = strategy_order.order_id;
     order.symbol = strategy_order.symbol;
     order.side = strategy_order.side == Side::Buy ? exchange::Side::Buy : exchange::Side::Sell;
-    order.type = exchange::OrderType::Limit;
+    order.type = strategy_order.reduce_only ? exchange::OrderType::Market : exchange::OrderType::Limit;
     order.price = strategy_order.price;
     order.qty = strategy_order.quantity;
     order.remaining = strategy_order.quantity;
@@ -70,6 +70,7 @@ exchange::Order OrderLedger::to_exchange_order(const StrategyOrder& strategy_ord
     order.owner = owner;
     order.time_in_force = strategy_order.time_in_force;
     order.post_only = strategy_order.post_only;
+    order.reduce_only = strategy_order.reduce_only;
     return order;
 }
 

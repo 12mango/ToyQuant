@@ -59,6 +59,11 @@ class OrderTranslator
         // The size sent, in the venue's contracts. The placement reply names the order but carries no `sz`, so an
         // acknowledgement has to be the size this client asked for rather than a zero the venue never said.
         double contracts{0.0};
+        // The engine units the line carried. A close is sent as whole contracts rounded up, so its acknowledgement has
+        // to be the units the engine asked to close rather than the venue's grid size.
+        std::uint64_t units{0};
+        // True when the request came from a CLOSE line: a market order with `reduceOnly` that closes the position.
+        bool reduce_only{false};
     };
     Request request_of(std::string_view line);
 
@@ -72,6 +77,9 @@ class OrderTranslator
 
     std::uint64_t units_of(double contracts) const;
     std::uint64_t contracts_for(std::uint64_t units) const;
+    // The same conversion for a close, rounded up: a fractional position (0.95 of a contract) is closed by one
+    // contract, and the venue's `reduceOnly` caps it at the position instead of flipping it.
+    std::uint64_t contracts_to_close(std::uint64_t units) const;
     std::string price_on_tick(std::string_view text) const;
 
     // Messages that repeated a fill the engine had already been told about. A reconnect re-sends every live order's
@@ -87,6 +95,8 @@ class OrderTranslator
         std::uint64_t contracts{0};
         double filled{0.0};
         bool terminal{false};
+        // A close's acknowledgement is the engine's units, not the venue's rounded-up contract count.
+        bool close{false};
     };
 
     std::string instrument_;
