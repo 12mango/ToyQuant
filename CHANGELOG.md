@@ -7,6 +7,26 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## A live close pulls the working quotes, and a session settles the venue's late fills (2026-11-17)
+
+- **`--close-out` cancels the strategy's working orders before it sends the exit.** The demo's run ended short one
+  contract because a quote the engine still counted filled at the venue while the exit was working, and its report did
+  not reach the ledger: the venue's probe read `pos: -1` against the engine's `+2000` units. `send_close_order` now
+  cancels every order in the ledger, drains the cancels (and any fill they raced) for the same bounded second, re-reads
+  the position and sizes the exit against what is left. It is live-only -- the pump is the signal -- so a replay's close
+  keeps its synchronous read and no recorded number moved. `pipeline_accounting_test` pins it: a resting quote is
+  cancelled before the exit, the exit still fills the carried position, and the summary's working set is empty.
+- **A live session drains the order leg after the feed stops.** A quote cancelled at the last moment can fill at the
+  venue a few milliseconds later, and the engine used to stop reading when its market clock did: the demo's session
+  ended with the engine believing it was flat and the venue short `0.44` contracts, so the close never ran. The app now
+  drains the order leg until the venue is quiet -- bounded at one second, ended early by 100 ms of no frames -- before
+  the summary and the close, and both then price the position the venue actually holds.
+- **Measured on the demo (2026-11-17, 60 s, 20 bps):** `[WIND-DOWN] position=10000 closed=0 residual=10000
+  notional_usd=650.005 spread_bps=20 fees_usd=0 fees_bps=0 total_bps=20 no_liquidity=1`, and the venue's probe after the
+  run read `pos: "1"` -- the engine's 10,000 units are one contract, so the two sides agree; the earlier run's `pos: -1`
+  against `+2000` is gone. The close itself did not fill: the venue's bid was below the 20 bps sell. The reduce-only
+  market exit -- which crosses whatever the venue shows and cannot flip the position -- is the next step.
+
 ## A live close waits for the venue's fill, and a lost balance query retries (2026-11-17)
 
 - **The close's fill is a report, and the pipeline was reading the position before it arrived.** `--close-out` on the

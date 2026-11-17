@@ -629,6 +629,54 @@ int main()
         assert(wait_left != nullptr && wait_left->quantity == 10);
     }
 
+    // A live close pulls the strategy's quotes before it sends the exit: a quote that fills while the exit works is a
+    // position on the other side, which is how the demo's last run ended short one contract. The in-process cancels are
+    // synchronous, so the pump is never needed here; the cancels, the working set and the flat result are what this
+    // pins.
+    {
+        test_support::TempFile pull_orders_file("pipeline_close_out_pull_orders.csv");
+        test_support::TempFile pull_trades_file("pipeline_close_out_pull_trades.csv");
+        std::ofstream pull_orders = pull_orders_file.open();
+        std::ofstream pull_trades = pull_trades_file.open();
+        L2MarketMakerBase pull_strategy(L2MarketMakerBaseConfig{.order_size = 10,
+                                                                .base_spread = 0.5,
+                                                                .inventory_limit = 100,
+                                                                .tick_size = 1.0,
+                                                                .signal_mode = L2SignalMode::Baseline});
+        MatchingEngine pull_engine(1.0, FeeSchedule{.maker_rate = 0.0002,
+                                                    .taker_rate = 0.0005,
+                                                    .quantity_scale = 1,
+                                                    .unit_notional_usd = 10.0});
+        Portfolio pull_portfolio(1, 1000.0, 10.0);
+        Pipeline pull_pipeline(pull_orders, pull_trades, pull_strategy, pull_engine, pull_portfolio, 1.0);
+        pull_pipeline.set_collateral(1000.0, 10.0, 1, 1.0);
+        pull_pipeline.process_l2_market_view(L2MarketView{.symbol = "PULL",
+                                                          .ts = 10,
+                                                          .top = TopOfBook{100.0, 100, 101.0, 100},
+                                                          .micro_price = 100.5});
+        pull_pipeline.process_l2_market_trade(MarketTrade{11, "PULL", 100.0, 200, Side::Sell, 1, "deribit"});
+        const auto* pull_open = pull_portfolio.find_position("PULL");
+        assert(pull_open != nullptr && pull_open->quantity == 10);
+        pull_pipeline.process_l2_market_view(L2MarketView{.symbol = "PULL",
+                                                          .ts = 12,
+                                                          .top = TopOfBook{100.0, 100, 101.0, 100},
+                                                          .micro_price = 100.5});
+        const uint64_t working = pull_pipeline.summary().working_orders;
+        const uint64_t cancels_before = pull_pipeline.summary().cancel_requests;
+        assert(working >= 1);
+        int pumped = 0;
+        pull_pipeline.set_venue_pump([&pumped] { ++pumped; });
+        const WindDownSummary pulled = pull_pipeline.close_out(13);
+        assert(pulled.attempted());
+        assert(pulled.closed_quantity == 10);
+        assert(pulled.residual == 0);
+        // Every working order was cancelled before the exit, and the in-process engine confirmed each cancel inside
+        // the call, so the pump never had to run.
+        assert(pull_pipeline.summary().cancel_requests == cancels_before + working);
+        assert(pull_pipeline.summary().working_orders == 0);
+        assert(pumped == 0);
+    }
+
     // A latched kill switch closes what the run is holding. Two things had to be true for this to work and neither
     // was: the switch refused *every* order, including the one that would take the position down, and the account was
     // never marked during a run, so the loss it reads carried the position in `unrealized_pnl`, which stayed at zero.

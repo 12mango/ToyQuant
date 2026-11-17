@@ -562,11 +562,35 @@ WindDownSummary Pipeline::close_out(uint64_t ts)
 WindDownSummary Pipeline::send_close_order(uint64_t ts)
 {
     WindDownSummary summary;
-    const int64_t position = fill_accounting_.position();
+    int64_t position = fill_accounting_.position();
     if (position == 0 || latest_quotes_.empty()) return summary;
     const BboQuote& quote = latest_quotes_.begin()->second;
     const std::string& symbol = quote.symbol.str();
     if (quote.bid_price <= 0.0 || quote.ask_price <= 0.0) return summary;
+
+    const int wait_ms = std::max(0, close_out_wait_ms_);
+    // A live close pulls the strategy's quotes before it sends the exit. A quote that fills while the exit is working
+    // is a position on the other side -- the demo's last run ended short one contract exactly that way -- so the
+    // cancels go first and the exit is sized against the position left after them and after any fill they raced. A
+    // replay has no pump and no working quote to pull here, and its exit keeps the synchronous read the recorded
+    // numbers were taken with.
+    if (venue_pump_)
+    {
+        for (const SessionOrder& working : ledger_.working_orders())
+        {
+            if (!ledger_.begin_cancel(working.id, engine_)) continue;
+            ++cancel_requests_;
+            engine_.cancel_order(working.id);
+        }
+        for (int waited = 0; waited < wait_ms && !ledger_.working_orders().empty(); waited += 10)
+        {
+            venue_pump_();
+            if (ledger_.working_orders().empty()) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        position = fill_accounting_.position();
+        if (position == 0) return summary;
+    }
 
     const double mid = 0.5 * (quote.bid_price + quote.ask_price);
     const double quantity = static_cast<double>(std::llabs(position));
@@ -608,7 +632,6 @@ WindDownSummary Pipeline::send_close_order(uint64_t ts)
     // acknowledged, and only the caller's drain books it: without this wait a close that filled at the venue would be
     // reported `closed=0 no_liquidity=1`, and its position left on the ledger. The budget is bounded because a book with
     // no size must still return the residual it kept, and it is live-only because a replay's fill is synchronous.
-    const int wait_ms = std::max(0, close_out_wait_ms_);
     for (int waited = 0; venue_pump_ && fill_accounting_.position() == position && waited < wait_ms; waited += 10)
     {
         venue_pump_();

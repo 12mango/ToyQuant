@@ -373,14 +373,18 @@ acknowledged and the reports arrived after it. `Pipeline::close_out` now gives a
 wait is skipped, which is why no recorded number moved, and a book with no size still returns its residual and
 `no_liquidity=1` after the wait.
 
-What the wait does not fix is visible in the same run. The venue's position probe, read straight afterwards, printed
-`pos: -1` where the engine's book held `+2000` units, and the account was flattened with `close-position`. The booked
-taker fills are five of the exit's fills; one working order the engine still counted (`working_orders=1`) was not in the
-venue's pending list, so a fill's report did not reach the engine before the run stopped draining. Two things follow and
-neither is in yet: the close must cancel the strategy's working quotes **before** it sends the exit, because a quote
-that fills while the exit works is a position on the other side; and the session must keep draining until the venue's
-position is flat rather than until its own clock stops. Until then the equity line can read `ok` with the positions
-disagreeing, because the venue side is cash and the ledger's equity includes its own residual's mark.
+What the wait does not fix was visible in the next run, and two more changes followed. The venue's position probe read
+`pos: -1` where the engine's book held `+2000` units, and `close-position` flattened it: a working quote the engine still
+counted had filled at the venue after the session's clock had stopped. `send_close_order` now cancels every working
+order before it sends the exit, drains the cancels (and any fill they raced) for the same bounded second, and sizes the
+exit against the position that is left; and the app drains the order leg until the venue is quiet (one second, ended
+early by 100 ms of no frames) before it prices the summary and the close. Both are live-only -- the pump and the live
+venue are the signal -- so every replay's close keeps its synchronous read and no recorded number moved.
+
+Measured on 2026-11-17 with a fresh 60 s run: `[WIND-DOWN] position=10000 closed=0 residual=10000 notional_usd=650.005
+spread_bps=20 fees_usd=0 fees_bps=0 total_bps=20 no_liquidity=1`, and the venue's probe afterwards read `pos: "1"` --
+the engine's 10,000 units are one contract, so the two sides agree. The close did not fill because the venue's bid was
+below the 20 bps sell; the reduce-only market exit that crosses whatever the venue shows is the next step.
 
 **The end-of-run balance was asked twice in the earlier run and answered once; the fixed run answered twice.** The 20 bps
 demo7 run sent 17 frames (9 orders, 6 cancels, 2 `EQUITY`) and received 23 (22 order reports and one answer):

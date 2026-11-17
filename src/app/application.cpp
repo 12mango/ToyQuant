@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <filesystem>
 #include <immintrin.h>
@@ -11,6 +12,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <type_traits>
 #include <vector>
 
@@ -633,15 +635,16 @@ void Application::run_l2_session_mode() const
     // The live leg's replies are applied here, on the consuming thread, at the point the run is about to look at
     // the market: a fill that arrived between two events is seen before the next decision and never from the
     // transport's own thread.
-    const auto drain_venue = [&]()
+    const auto drain_venue = [&]() -> std::size_t
     {
-        if (!live_venue) return;
+        if (!live_venue) return 0;
         std::vector<std::string> lines;
         {
             std::lock_guard<std::mutex> guard(venue_lines_mutex);
             lines.swap(venue_lines);
         }
         for (const std::string& line : lines) live_venue->on_frame(line);
+        return lines.size();
     };
     // The queries' answers share the socket with the reports, and a query can be asked before the pipeline exists (a
     // resume) or while a caller is inside its own walk (the gateway's timeout sweep). So the pump applies the two
@@ -950,6 +953,22 @@ void Application::run_l2_session_mode() const
     {
         feed->set_profiler(profiler);
         feed->run();
+    }
+    // The venue's fills do not stop when the feed does. A quote cancelled at the last moment can fill at the venue a
+    // few milliseconds later, and that report is still queued on the order leg: the demo's session ended short 0.44
+    // contracts with the engine believing it was flat, so the close never ran. Drain until the venue is quiet -- bounded,
+    // because a venue that keeps talking must not hold the run open -- and then price the end against what is booked.
+    if (live_venue)
+    {
+        const auto quiet_deadline =
+            std::chrono::steady_clock::now() + std::chrono::milliseconds(1000);
+        int quiet_polls = 0;
+        while (std::chrono::steady_clock::now() < quiet_deadline && quiet_polls < 10)
+        {
+            if (drain_venue() == 0) ++quiet_polls;
+            else quiet_polls = 0;
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
     }
     const PacingSummary& pacing_summary =
         threaded_feed ? threaded_feed->pacing_summary() : feed->pacing_summary();

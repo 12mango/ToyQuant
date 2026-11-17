@@ -143,5 +143,10 @@ before it reads what is left. An in-process engine fills inside the call and the
 recorded run's `[WIND-DOWN]` is unchanged. On a live run `closed=0 no_liquidity=1` therefore means the venue filled
 nothing inside that second, not that the order was never sent.
 
+The live close also pulls the strategy's working orders first: `--close-out` cancels them, drains the cancels for the
+same bounded second, and sizes the exit against what is left, because a quote that fills while the exit works is a
+position on the other side. The order leg is drained once more after the feed stops -- a quote cancelled at the last
+moment can fill at the venue a moment later -- so `[WIND-DOWN]` and `[PNL]` price the position the venue actually holds.
+
 ///
 
