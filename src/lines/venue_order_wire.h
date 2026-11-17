@@ -7,8 +7,10 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include "lines/venue_order_session.h"
@@ -47,6 +49,16 @@ class EnginePort
     virtual bool write_line(std::string_view line) = 0;
 };
 
+// One endpoint's request budget, as a token bucket: `requests_per_window` calls in `window_ms`, per path. The venue
+// publishes a quota per endpoint and answers a request over it with HTTP 429, which this client used to count as a
+// venue refusal -- so a strategy that placed faster than the venue allows looked like one whose orders were bad. 0
+// disables the bucket, which is what a test of something else uses.
+struct RestLimits
+{
+    std::uint64_t requests_per_window{10};
+    std::int64_t window_ms{1000};
+};
+
 struct WireConfig
 {
     std::string venue_url{kDemoVenueUrl};
@@ -54,6 +66,8 @@ struct WireConfig
     // what this venue requires -- its websocket trade operation answers `50026` -- and the socket then carries only the
     // `orders` channel, which is where the state changes and the fills arrive.
     std::string rest_url;
+    // The REST route's own budget, per endpoint. Only read when `rest_url` is set.
+    RestLimits rest_limits{};
     // The venue's own name for the contract, sent only when it is known: a wrong guess would be an order on the wrong
     // instrument, so it is an operator's reading rather than something derived here.
     std::int64_t inst_code{-1};
@@ -94,12 +108,31 @@ struct WireCounters
     std::atomic<std::uint64_t> rest_calls{0};
     std::atomic<std::uint64_t> rest_connect_ms{0};
     std::atomic<std::uint64_t> rest_place_ms{0};
+    // What the venue answered with HTTP 429. Counted beside the refusals rather than folded into them: a rate limit
+    // is this client's budget, and a refusal is the venue's judgment of the order.
+    std::atomic<std::uint64_t> rest_429{0};
+    // The two queries the engine can ask over the same route: which orders the venue still holds, and what it says
+    // the account is worth. `query_failures` is a query the venue did not answer, which is a different fact from a
+    // query that answered "nothing".
+    std::atomic<std::uint64_t> pending_queries{0};
+    std::atomic<std::uint64_t> equity_queries{0};
+    std::atomic<std::uint64_t> query_failures{0};
 
     WireCounters() = default;
     WireCounters(const WireCounters&) = delete;
     WireCounters& operator=(const WireCounters&) = delete;
 
     std::string to_log_string() const;
+};
+
+// One HTTP/1.1 answer, kept beside the placer because the placer is the only thing in the tree that reads one. The
+// status is not interpreted as success or failure: this venue reports a refusal in its own `code`/`sCode`, and a proxy
+// in front of it still carries that JSON in the body of a 4xx. 429 is the one status the placer does interpret, because
+// it is about this client's budget rather than the order's.
+struct HttpResponse
+{
+    int status{0};
+    std::string body;
 };
 
 // The venue's placement surface when it is REST rather than a websocket operation, which the demo venue answers with
@@ -113,9 +146,18 @@ struct WireCounters
 class RestPlacer
 {
    public:
-    RestPlacer(std::string base_url, OrderSession::Credentials credentials);
+    RestPlacer(std::string base_url, OrderSession::Credentials credentials, RestLimits limits = {});
 
     std::vector<std::string> place(const OrderTranslator::Request& request, const OrderTranslator& translator);
+
+    // The venue's own list of orders it still holds, in this client's ids (`clOrdId`, which the translator sets from
+    // the engine's id). An empty vector is an answer -- nothing is working -- and `nullopt` is a failure, because the
+    // two must not look alike to a recovery: one means every inherited order is gone, the other means nobody asked.
+    std::optional<std::vector<std::uint64_t>> pending_orders();
+
+    // What the venue says the account is worth, in USD (`totalEq`). `nullopt` when the venue did not answer or its
+    // answer carried no equity, and the caller prints `n/a` rather than zero.
+    std::optional<double> balance_usd();
 
     std::uint64_t placed() const { return placed_; }
     std::uint64_t refused() const { return refused_; }
@@ -125,19 +167,38 @@ class RestPlacer
     std::uint64_t calls() const { return calls_; }
     std::uint64_t connect_ms() const { return connect_ms_; }
     std::uint64_t place_ms() const { return place_ms_; }
+    // HTTP 429 answers from the venue, including the ones a retry recovered from.
+    std::uint64_t rate_limited() const { return rate_limited_; }
 
    private:
     std::vector<std::string> lines_for(std::string_view op, const std::string& order_id, const Json& answer,
                                        const OrderTranslator& translator);
+    // One signed call, with the endpoint's budget waited for and a 429 retried. `method` is POST for the two order
+    // endpoints and GET for the two queries, and the signature is over the method and the path as sent.
+    HttpResponse request(std::string_view method, std::string_view path, std::string_view body,
+                         std::string& failure, std::int64_t& connect_ms);
+    // Blocks until this path has a token. Sleeps outside the lock, so two endpoints do not wait on each other.
+    void acquire(std::string_view path);
+
+    struct Bucket
+    {
+        double tokens{0.0};
+        std::int64_t last_ms{0};
+        bool started{false};
+    };
 
     venue_ws::Url url_;
     OrderSession::Credentials credentials_;
+    RestLimits limits_;
+    std::mutex bucket_mutex_;
+    std::unordered_map<std::string, Bucket> buckets_;
     std::uint64_t placed_{0};
     std::uint64_t refused_{0};
     std::uint64_t failures_{0};
     std::uint64_t calls_{0};
     std::uint64_t connect_ms_{0};
     std::uint64_t place_ms_{0};
+    std::uint64_t rate_limited_{0};
 };
 
 class VenueOrderConnection : public OrderSession::Sink
@@ -189,6 +250,13 @@ class VenueOrderConnection : public OrderSession::Sink
     // A placement, on whichever surface this connection was configured with. Both routes answer the engine with the same
     // lines, which is why they are one method with a branch rather than two callers.
     void place(std::string_view line);
+    // The two queries the engine can ask over this route. Both answer `unavailable` when the placement surface is the
+    // socket rather than REST, because a simulated venue has neither list and a silence would be read as an empty one.
+    void answer_pending();
+    void answer_equity();
+    // Copies the placer's own counters into the summary after any REST call, so the line a run prints and the object
+    // that paid for the calls state the same numbers.
+    void publish_rest_counters();
 
     WireConfig config_;
     OrderSession session_;

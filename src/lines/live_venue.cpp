@@ -1,7 +1,9 @@
 #include "lines/live_venue.h"
 
 #include <charconv>
+#include <chrono>
 #include <sstream>
+#include <thread>
 #include <vector>
 
 namespace
@@ -122,6 +124,68 @@ void LiveVenue::cancel_order(uint64_t order_id)
 bool LiveVenue::on_frame(std::string_view frame)
 {
     const std::vector<std::string_view> fields = fields_of(frame);
+    // The two query answers are about the account rather than about an order, so they carry no id and produce no
+    // report. They are read before the order-id parse for exactly that reason.
+    if (!fields.empty() && (fields[0] == "PENDING" || fields[0] == "EQUITY"))
+    {
+        const bool pending = fields[0] == "PENDING";
+        if (fields.size() == 2 && fields[1] == "unavailable")
+        {
+            std::lock_guard<std::mutex> lock(query_mutex_);
+            // An answer that cannot be given is still an answer: the generation moves so a wait stops, and the
+            // previous list is kept but marked stale -- a recovery must not read "could not ask" as "none working".
+            if (pending)
+            {
+                pending_available_ = false;
+                ++pending_generation_;
+            }
+            else
+            {
+                venue_equity_usd_.reset();
+                ++equity_generation_;
+            }
+            return true;
+        }
+        if (pending)
+        {
+            uint64_t count = 0;
+            if (fields.size() < 2 || !parse_u64(fields[1], count) || fields.size() != count + 2)
+            {
+                ++counters_.frames_dropped;
+                return false;
+            }
+            std::unordered_set<uint64_t> ids;
+            ids.reserve(static_cast<std::size_t>(count));
+            for (std::size_t index = 2; index < fields.size(); ++index)
+            {
+                uint64_t order_id = 0;
+                if (!parse_u64(fields[index], order_id))
+                {
+                    ++counters_.frames_dropped;
+                    return false;
+                }
+                ids.insert(order_id);
+            }
+            std::lock_guard<std::mutex> lock(query_mutex_);
+            pending_ = std::move(ids);
+            pending_complete_ = true;
+            pending_available_ = true;
+            ++pending_generation_;
+            ++counters_.pending_answers;
+            return true;
+        }
+        double equity = 0.0;
+        if (fields.size() != 2 || !parse_price(fields[1], equity))
+        {
+            ++counters_.frames_dropped;
+            return false;
+        }
+        std::lock_guard<std::mutex> lock(query_mutex_);
+        venue_equity_usd_ = equity;
+        ++equity_generation_;
+        ++counters_.equity_answers;
+        return true;
+    }
     if (fields.size() < 2)
     {
         ++counters_.frames_dropped;
@@ -160,6 +224,10 @@ bool LiveVenue::on_frame(std::string_view frame)
         }
         report.exec_type = ExecType::Resting;
         report.quantity = remaining;
+        // An acknowledgement is the venue saying the order is working now, so a complete set gains it without a
+        // new query; a set that was never complete stays incomplete.
+        std::lock_guard<std::mutex> lock(query_mutex_);
+        if (pending_complete_) pending_.insert(order_id);
     }
     else if (kind == "FILL" && fields.size() >= 4)
     {
@@ -207,7 +275,12 @@ bool LiveVenue::on_frame(std::string_view frame)
     // An order that has ended will not be reported again, so its owner is no longer needed; a fill keeps it,
     // because an order can fill more than once.
     if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Rejected)
+    {
         sent_.erase(order_id);
+        // The venue has said the order is over, so the working set drops it without waiting for a new query.
+        std::lock_guard<std::mutex> lock(query_mutex_);
+        pending_.erase(order_id);
+    }
     // The frame carries no time, so the report is stamped here with the clock the run is on. Without it a
     // recorded live session's answers are all due at zero: `--replay-orders` then releases every one of them
     // at the first event, and a session that had an answer between two quotes replays as one that did not --
@@ -216,4 +289,92 @@ bool LiveVenue::on_frame(std::string_view frame)
     ++counters_.reports_decoded;
     if (callback_) callback_(report);
     return true;
+}
+
+bool LiveVenue::refresh_pending()
+{
+    uint64_t generation = 0;
+    {
+        std::lock_guard<std::mutex> lock(query_mutex_);
+        generation = pending_generation_;
+    }
+    ++counters_.pending_queries;
+    if (!transport_.send("PENDING"))
+    {
+        ++counters_.transport_failures;
+        ++counters_.pending_failures;
+        return false;
+    }
+    if (config_.query_timeout_ms > 0)
+    {
+        const auto deadline = std::chrono::steady_clock::now() +
+                              std::chrono::milliseconds(config_.query_timeout_ms);
+        while (std::chrono::steady_clock::now() < deadline)
+        {
+            if (query_pump_) query_pump_();
+            {
+                std::lock_guard<std::mutex> lock(query_mutex_);
+                if (pending_generation_ != generation)
+                {
+                    // A list replaces the set; an `unavailable` answer leaves the previous one in place and says
+                    // so through `pending_available_` and the return value.
+                    if (pending_available_) return true;
+                    ++counters_.pending_failures;
+                    return false;
+                }
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    }
+    ++counters_.pending_failures;
+    return false;
+}
+
+bool LiveVenue::refresh_equity()
+{
+    uint64_t generation = 0;
+    {
+        std::lock_guard<std::mutex> lock(query_mutex_);
+        generation = equity_generation_;
+    }
+    ++counters_.equity_queries;
+    if (!transport_.send("EQUITY"))
+    {
+        ++counters_.transport_failures;
+        ++counters_.equity_failures;
+        return false;
+    }
+    if (config_.query_timeout_ms > 0)
+    {
+        const auto deadline = std::chrono::steady_clock::now() +
+                              std::chrono::milliseconds(config_.query_timeout_ms);
+        while (std::chrono::steady_clock::now() < deadline)
+        {
+            if (query_pump_) query_pump_();
+            {
+                std::lock_guard<std::mutex> lock(query_mutex_);
+                if (equity_generation_ != generation)
+                {
+                    if (venue_equity_usd_) return true;
+                    ++counters_.equity_failures;
+                    return false;
+                }
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    }
+    ++counters_.equity_failures;
+    return false;
+}
+
+std::optional<double> LiveVenue::venue_equity_usd() const
+{
+    std::lock_guard<std::mutex> lock(query_mutex_);
+    return venue_equity_usd_;
+}
+
+OrderQuery LiveVenue::query_order(uint64_t order_id) const
+{
+    std::lock_guard<std::mutex> lock(query_mutex_);
+    return pending_complete_ && pending_.count(order_id) != 0 ? OrderQuery::Working : OrderQuery::Unknown;
 }

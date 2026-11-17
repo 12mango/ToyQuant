@@ -309,6 +309,48 @@ would have to beat. **The decision is not to pool it now**: what a faster cancel
 framing, reuse and failure modes, and nothing this page reports needs it today. `rest_calls` and the two averages stay in
 the summary, so a later session can re-open the question with a number.
 
+### What a long session asks the venue that a short one does not
+
+| question | where it is answered | the number or line |
+|---|---|---|
+| what does the venue say the account is worth? | the second `[RECON]` line | `venue_equity_usd`, `equity_break_usd`, `status=ok\|break\|unknown` |
+| which of the snapshot's orders are still working? | `--snapshot-in` with `--live-orders` | `[RESUME] orders=… live=… gone=… cancelled=…` |
+| is this client inside the venue's budget? | the relay's REST route | `rest_429` in the order channel's summary |
+| which stream belongs to the demo account? | `--venue-demo` on the relay | the demo public endpoint, not the live one |
+
+**The balance is a second question, not a second opinion.** `[RECON]` already compares the broker's statement with
+the account; neither side is the venue's own balance, so a fee the venue booked but never reported -- or a fill on
+another instrument under the same key -- leaves both statements equal while the money is not. A live run now prints a
+second `[RECON]` line, after the final mark, from `GET /api/v5/account/balance`:
+`venue_equity_usd=… ledger_equity_usd=… equity_break_usd=… tolerance_usd=… status=ok|break`. The break is signed
+(venue minus ledger) and the tolerance is printed -- the larger of 0.05 USD and ten basis points of the account, because
+the venue marks a position at its own price and the ledger at the last midpoint, so a few cents is two marks rather
+than two accounts -- which lets the reader see the width of the claim rather than only its verdict. A venue that cannot
+answer -- the socket-only placement route, a refused call -- prints `n/a` and `status=unknown`; a ledger with an
+unmarked position prints `ledger_equity_usd=n/a` for the same reason. **Neither is `ok`**: a check that could not be
+made must not read like one that passed.
+
+**A restart asks the venue rather than believing its own file.** `--snapshot-in` lists the orders the previous process
+had, and `LiveVenue::query_order` answers from the venue's `GET /api/v5/trade/orders-pending` list -- refreshed before
+the recovery asks and again after each cancel (`settle_queries`), because a venue answers a cancel on its own
+connection. The rule is the simulator's: a working order is cancelled, a forgotten one is counted, and `[RESUME]` prints
+both. If the venue does not answer the first query the run refuses to resume, naming the relay's `--order-rest`,
+because assuming "none working" would leave every inherited order alive.
+
+**The budget is per endpoint.** A token bucket in the REST placer allows ten calls a second per path -- well under the
+venue's quota -- and an HTTP 429 is retried twice before it becomes a `REJECT`. The two facts are counted separately:
+`rest_429` is this client's budget, `venue_refusals` is the venue's judgment of the order.
+
+**The demo's streams are a different endpoint.** `venue_relay --venue-demo` points the market leg at
+`wss://wspap.okx.com:8443/ws/v5/public`, the public stream that belongs to the demo account's instrument ids; the order
+leg already defaults to the demo private channel. A run that mixes them is a run whose prices and contracts are from
+two different venues.
+
+Three differences remain, and they are properties of the environment rather than defects: the demo fee schedule is not
+the live one, so `fees_paid` from a demo run is not a live conclusion; `x-simulated-trading: 1` is hard-coded in the
+REST placer on purpose, and a live key needs that changed to a flag first; and the demo's book is thinner, so `51400`
+on a cancel -- the order had already filled -- is more common here than it will be in production.
+
 A session that hears nothing can be asked what crossed: `--order-dump=FILE` appends every frame both ways, one JSON
 object a line, with the login's key, passphrase and signature replaced by `***` -- the file exists to explain a silent
 run, so it must not be the copy of the key that leaked. The Python route has had this since its first sandbox order,

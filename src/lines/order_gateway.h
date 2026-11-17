@@ -113,6 +113,8 @@ class OrderGateway : public IMatchingEngine
     {
         return venue_.query_order(order_id);
     }
+    // The venue's asynchronous answers are the underlying venue's to settle, not this table's.
+    void settle_queries() override { venue_.settle_queries(); }
 
     uint64_t queue_ahead_consumed() const override
     {

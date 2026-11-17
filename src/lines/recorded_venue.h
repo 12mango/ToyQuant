@@ -43,6 +43,11 @@ class RecordingEngine : public IMatchingEngine
 
     void set_report_callback(ReportCallback cb) override;
 
+    // Forwarded for the same reason the two market calls are: this decorator can sit around a live venue, and a
+    // recovery that asked a recording instead of the venue would find no order and leave every inherited one alive.
+    OrderQuery query_order(uint64_t order_id) const override { return venue_.query_order(order_id); }
+    void settle_queries() override { venue_.settle_queries(); }
+
     OrderRecorder& recorder() { return recorder_; }
 
    private:

@@ -398,6 +398,9 @@ std::vector<ResumeSummary> resume_session(
             }
             ++summary.orders_live;
             venue.cancel_order(order.id);
+            // A live venue answers a cancel on its own connection, so the second query is meaningless until that
+            // answer has been applied; the in-process engine's is a no-op and its state is already new.
+            venue.settle_queries();
             // The order is asked about again, because a cancel that did not take is a recovery that did not finish:
             // `cancelled` is the count that says so, and it can be smaller than `live`.
             if (venue.query_order(order.id) != OrderQuery::Working) ++summary.cancelled;

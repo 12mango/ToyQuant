@@ -3,6 +3,8 @@
 #include <fstream>
 #include <memory>
 #include <string>
+#include <unordered_set>
+#include <vector>
 
 #include "accounting/portfolio.h"
 #include "app/pipeline.h"
@@ -56,6 +58,33 @@ L2MarketView view(uint64_t ts)
                         .top = TopOfBook{6400.0, 100, 6401.0, 100},
                         .micro_price = 6400.5};
 }
+
+// A venue whose answer to a cancel arrives on its own connection rather than inside `cancel_order`, which is the
+// live leg's shape. `settle_queries` is where that answer is applied, so a recovery that skipped it would ask the
+// old question and report `cancelled=0` for two orders the venue no longer holds.
+class AsyncVenue : public IMatchingEngine
+{
+   public:
+    void send_order(const exchange::Order&) override {}
+    void cancel_order(uint64_t order_id) override { cancel_requests_.insert(order_id); }
+    void process_bbo(const BboQuote&) override {}
+    void process_market_trade(const MarketTrade&) override {}
+    void set_report_callback(ReportCallback) override {}
+    OrderQuery query_order(uint64_t order_id) const override
+    {
+        return working_.count(order_id) != 0 ? OrderQuery::Working : OrderQuery::Unknown;
+    }
+    void settle_queries() override
+    {
+        ++settles_;
+        for (const uint64_t order_id : cancel_requests_) working_.erase(order_id);
+        cancel_requests_.clear();
+    }
+
+    std::unordered_set<uint64_t> working_{1, 2};
+    std::unordered_set<uint64_t> cancel_requests_;
+    int settles_{0};
+};
 }  // namespace
 
 int main()
@@ -288,6 +317,31 @@ int main()
             refused_partial = true;
         }
         assert(refused_partial);
+    }
+
+    // A venue that answers on its own connection: the recovery sends the cancel, settles, and only then asks. The
+    // settle is what makes the second query a statement about the venue; without it the recovery would read the set
+    // from before the cancel and report `cancelled=0` for two orders that are gone.
+    {
+        AsyncVenue venue;
+        SessionSnapshot snapshot;
+        snapshot.account.cash = 1000.0;
+        SessionBook book;
+        book.symbol = "BTC-PERPETUAL";
+        book.last_ts = 12;
+        book.next_order_id = 3;
+        book.working_orders = {{.id = 1, .symbol = "BTC-PERPETUAL"},
+                               {.id = 2, .symbol = "BTC-PERPETUAL"}};
+        snapshot.books.push_back(book);
+        Portfolio account(1, 1000.0, 10.0);
+        const std::vector<ResumeSummary> summaries =
+            resume_session(snapshot, account, {{"BTC-PERPETUAL", &venue}});
+        assert(summaries.size() == 1);
+        assert(summaries[0].orders == 2 && summaries[0].orders_live == 2);
+        assert(summaries[0].orders_gone == 0);
+        assert(summaries[0].cancelled == 2);
+        assert(venue.settles_ == 2);  // once after each cancel, before the second query
+        assert(venue.working_.empty());
     }
 
     // The single-book format this project wrote first is still read, because a restart reads a file an older build

@@ -18,7 +18,9 @@ kind of tool a file is:
 
 > The relay exists twice. `tools/live/venue_relay.py` is the implementation the engine's order session was ported from
 > (ADR 0006) and stays in the tree as the reference a reader can diff the port against -- kept for review, not the route a
-> run uses; `src/lines/venue_relay_main.cpp` is the one a session runs.
+> run uses; `src/lines/venue_relay_main.cpp` is the one a session runs. The C++ relay's order leg also serves the two
+> questions the engine cannot answer alone -- the venue's working orders and the account's balance -- over the same engine
+> socket (`PENDING`, `EQUITY`), and `--venue-demo` points its market leg at the demo public stream.
 
 Two things a reader can rely on, because both are counted rather than promised. A tool the gate does not run is quoted
 only through a marked block that `check_docs.py` re-runs, so its arithmetic has a witness even when nobody runs it by

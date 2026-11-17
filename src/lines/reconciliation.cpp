@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <sstream>
 #include <unordered_map>
 
 namespace
@@ -81,4 +82,38 @@ ReconciliationSummary reconcile_positions(const BrokerStatement& statement, cons
     const double scale = std::max(1.0, std::abs(statement.fees));
     summary.fees_match = std::abs(summary.fee_difference) <= 1e-9 * scale;
     return summary;
+}
+
+std::string VenueEquityCheck::to_log_string() const
+{
+    std::ostringstream stream;
+    stream << "venue_equity_usd=";
+    if (venue_known) stream << venue_equity_usd;
+    else stream << "n/a";
+    stream << " ledger_equity_usd=";
+    if (ledger_known) stream << ledger_equity_usd;
+    else stream << "n/a";
+    stream << " equity_break_usd=";
+    if (venue_known && ledger_known) stream << equity_break_usd;
+    else stream << "n/a";
+    stream << " tolerance_usd=" << tolerance_usd << " status="
+           << (!venue_known || !ledger_known ? "unknown" : broken() ? "break" : "ok");
+    return stream.str();
+}
+
+VenueEquityCheck reconcile_equity(const std::optional<double>& venue_equity_usd,
+                                  const std::optional<double>& ledger_equity_usd,
+                                  double tolerance_usd)
+{
+    VenueEquityCheck check;
+    check.tolerance_usd = tolerance_usd;
+    check.venue_known = venue_equity_usd.has_value();
+    check.ledger_known = ledger_equity_usd.has_value();
+    if (check.venue_known) check.venue_equity_usd = *venue_equity_usd;
+    if (check.ledger_known) check.ledger_equity_usd = *ledger_equity_usd;
+    // Signed: a positive break is the venue holding more than the ledger booked, which is the direction a fee or
+    // a fill the ledger never saw takes.
+    if (check.venue_known && check.ledger_known)
+        check.equity_break_usd = check.venue_equity_usd - check.ledger_equity_usd;
+    return check;
 }

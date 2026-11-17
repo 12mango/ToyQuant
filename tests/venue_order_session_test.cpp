@@ -331,6 +331,7 @@ class StandInRest
     [[nodiscard]] bool signature_matched() const { return signed_.load(); }
     [[nodiscard]] bool carried_the_demo_header() const { return simulated_.load(); }
     [[nodiscard]] int requests() const { return requests_.load(); }
+    [[nodiscard]] int rate_limit_hits() const { return rate_limit_hits_.load(); }
     std::string last_body()
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -394,17 +395,50 @@ class StandInRest
         }
         const std::size_t first = request.find(' ');
         const std::size_t second = request.find(' ', first + 1);
+        const std::string method = request.substr(0, first);
         const std::string path = request.substr(first + 1, second - first - 1);
         const std::string timestamp = header_of(request, "ok-access-timestamp");
+        // The method and the path as sent are part of the preimage: a GET's query string is signed with it, and a client
+        // that signed a bare path would be refused by the venue rather than by this stand-in.
         signed_.store(!timestamp.empty() &&
                       header_of(request, "ok-access-sign") ==
-                          venue_auth::rest_signature(timestamp, secret_, "POST", path, body));
+                          venue_auth::rest_signature(timestamp, secret_, method, path, body));
         simulated_.store(header_of(request, "x-simulated-trading") == "1");
         {
             std::lock_guard<std::mutex> lock(mutex_);
             body_ = body;
         }
         ++requests_;
+        // The two queries, answered from the shapes the venue's own documentation gives: a pending list keyed by
+        // `clOrdId`, and a balance whose `totalEq` is the account's equity in USD.
+        if (method == "GET")
+        {
+            std::string answer;
+            if (path.rfind("/api/v5/trade/orders-pending", 0) == 0)
+                answer = R"({"code":"0","msg":"","data":[{"clOrdId":"11","instId":"BTC-USDT-SWAP",)"
+                         R"("state":"live"},{"clOrdId":"12","instId":"BTC-USDT-SWAP","state":"live"}]})";
+            else if (path.rfind("/api/v5/account/balance", 0) == 0)
+                answer = R"({"code":"0","msg":"","data":[{"totalEq":"998.5",)"
+                         R"("details":[{"ccy":"USDT","eq":"998.5"}]}]})";
+            else
+                answer = R"({"code":"404","msg":"unknown path","data":[]})";
+            const std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " +
+                                         std::to_string(answer.size()) + "\r\nConnection: close\r\n\r\n" + answer;
+            ::send(fd, response.data(), response.size(), MSG_NOSIGNAL);
+            return;
+        }
+        // One rate-limited order, so the client's retry path is exercised rather than assumed: two 429s and then the
+        // ordinary acknowledgement.
+        if (body.find("\"clOrdId\":\"24\"") != std::string::npos && rate_limit_hits_.load() < 2)
+        {
+            ++rate_limit_hits_;
+            const std::string answer = R"({"code":"50011","msg":"Rate limit reached","data":[]})";
+            const std::string response =
+                "HTTP/1.1 429 Too Many Requests\r\nContent-Type: application/json\r\nContent-Length: " +
+                std::to_string(answer.size()) + "\r\nConnection: close\r\n\r\n" + answer;
+            ::send(fd, response.data(), response.size(), MSG_NOSIGNAL);
+            return;
+        }
         // Three answer shapes a loopback with one fixed reply never produces, chosen by the order id so one stand-in can
         // pin all of the client's paths: a chunked body, a body that is not JSON, and a connection closed with no answer.
         if (body.find("\"clOrdId\":\"21\"") != std::string::npos)
@@ -461,6 +495,7 @@ class StandInRest
     std::atomic<bool> signed_{false};
     std::atomic<bool> simulated_{false};
     std::atomic<int> requests_{0};
+    std::atomic<int> rate_limit_hits_{0};
     std::mutex mutex_;
     std::string body_;
     std::thread thread_;
@@ -676,6 +711,27 @@ int main()
     assert(resting.counters().transport_failures.load() == 2);
     assert(resting.counters().placed.load() == 2);  // the two accepted placements and no more
 
+    // The two queries a long-lived session needs: which orders the venue still holds, and what it says the account is
+    // worth. Both are GETs on a signed path, and the stand-in recomputes the signature over the method and the query
+    // string it received -- so `signature_matched` after each one is the check that the preimage is what the venue
+    // verifies, not what this client hoped it was.
+    resting.on_engine_line("PENDING");
+    assert(wait_for([&rest_port] { return rest_port.contains("PENDING 2 11 12"); }));
+    assert(placement.signature_matched());
+    resting.on_engine_line("EQUITY");
+    assert(wait_for([&rest_port] { return rest_port.contains("EQUITY 998.5"); }));
+    assert(placement.signature_matched());
+    assert(resting.counters().pending_queries.load() == 1);
+    assert(resting.counters().equity_queries.load() == 1);
+    assert(resting.counters().query_failures.load() == 0);
+
+    // A 429 is this client's budget rather than the venue's judgment of the order, so it is retried and counted
+    // separately: two refusals, then the same acknowledgement the other orders got.
+    resting.on_engine_line("ORDER 24 BTC-USDT-SWAP B 6421.5 100000 Gtc");
+    assert(wait_for([&rest_port] { return rest_port.contains("ACK 24 100000"); }));
+    assert(placement.rate_limit_hits() == 2);
+    assert(resting.counters().rest_429.load() == 2);
+
     // The state half is still the socket: the subscription pushed a fill, which is the half REST cannot carry.
     assert(wait_for([&state] { return state.fills() >= 1; }));
     assert(wait_for([&rest_port] { return rest_port.contains("FILL 7 "); }));
@@ -685,7 +741,7 @@ int main()
 
     resting.stop();
     rest_runner.join();
-    assert(placement.requests() == 6);
+    assert(placement.requests() == 11);  // nine POSTs (the rate-limited one is three), two GETs
     assert(resting.counters().write_failures.load() == 0);
     // The scheduled drop ran: every session it closed was a new login at the venue, which is the reconnect path a live
     // run takes when the venue drops the private channel.
@@ -696,9 +752,41 @@ int main()
     // call. The timing itself cannot be asserted here -- the stand-in answers in microseconds -- but the relationship can:
     // a placement contains its connection, and the summary states both averages beside the count.
     const std::string wire_summary = resting.counters().to_log_string();
-    assert(wire_summary.find("rest_calls=6") != std::string::npos);
+    assert(wire_summary.find("rest_calls=11") != std::string::npos);
+    assert(wire_summary.find("rest_429=2") != std::string::npos);
+    assert(wire_summary.find("pending_queries=1") != std::string::npos);
+    assert(wire_summary.find("equity_queries=1") != std::string::npos);
     assert(wire_summary.find("rest_connect_ms_avg=") != std::string::npos);
     assert(resting.counters().rest_place_ms.load() >= resting.counters().rest_connect_ms.load());
+
+    // The per-endpoint budget: one request per hundred milliseconds, so the second placement waits for a token rather
+    // than reaching the venue. The bucket is per path, which is why this is one endpoint and not a global rate.
+    {
+        StandInRest limited(secret);
+        RecordingPort limited_port;
+        venue_order_wire::WireConfig limited_wire;
+        limited_wire.venue_url = "ws://127.0.0.1:" + std::to_string(state.port());
+        limited_wire.rest_url = "http://127.0.0.1:" + std::to_string(limited.port());
+        limited_wire.inst_code = 10459;
+        limited_wire.backoff_seconds = 0.05;
+        limited_wire.rest_limits = venue_order_wire::RestLimits{.requests_per_window = 1, .window_ms = 100};
+        venue_order_wire::VenueOrderConnection throttled(
+            "BTC-USDT-SWAP", OrderSession::Credentials{.api_key = "key-1", .secret = secret, .passphrase = "pass-1"},
+            limited_wire, limited_port);
+        std::thread throttled_runner([&throttled] { throttled.run(); });
+        const auto started = std::chrono::steady_clock::now();
+        throttled.on_engine_line("ORDER 31 BTC-USDT-SWAP B 6421.5 100000 Gtc");
+        assert(wait_for([&limited_port] { return limited_port.contains("ACK 31 "); }));
+        throttled.on_engine_line("ORDER 32 BTC-USDT-SWAP B 6421.5 100000 Gtc");
+        assert(wait_for([&limited_port] { return limited_port.contains("ACK 32 "); }));
+        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                 std::chrono::steady_clock::now() - started)
+                                 .count();
+        assert(elapsed >= 80);
+        assert(limited.requests() == 2);  // the venue never saw the wait
+        throttled.stop();
+        throttled_runner.join();
+    }
 
     return 0;
 }

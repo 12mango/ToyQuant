@@ -7,6 +7,39 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## A long demo session can now check its account, ask about its orders, and stay inside a quota (2026-11-17)
+
+- **The venue's balance is compared with the ledger, not with the broker's statement.** A live run now prints a second
+  `[RECON]` line after the final mark: `venue_equity_usd` from `GET /api/v5/account/balance`, `ledger_equity_usd` from
+  the account's own mark, the signed `equity_break_usd` and the `tolerance_usd` the verdict uses (the larger of 0.05 USD
+  and ten basis points of the account, because the two sides mark a position at different prices). The status
+  is `ok`, `break`, or `unknown` when either side is `n/a` -- a check that could not be made does not read like one that
+  passed. The first `[RECON]` line is unchanged, so every recorded brokered line keeps its fields.
+- **`--snapshot-in` now asks a live venue which of its orders survived.** `RestPlacer::pending_orders` GETs
+  `/api/v5/trade/orders-pending?instType=SWAP`, with the query string in the signed path, and `LiveVenue::query_order`
+  answers from that list. The list is refreshed before the recovery asks and again after each cancel
+  (`IMatchingEngine::settle_queries`, a no-op on the in-process engine), so the second query is a question about the
+  venue now rather than about the state before the cancel. The engine refuses to resume if the first query goes
+  unanswered, naming the relay's `--order-rest`, because "could not ask" must not be read as "nothing is working".
+  The simulator's rule is unchanged; it is the live path that used to answer `Unknown` for everything. The decorators
+  forward the query, including `RecordingEngine`'s, so `--record-orders` no longer hides a live venue's work.
+- **The REST route has a budget.** `RestPlacer` keeps a token bucket per endpoint (ten calls a second by default), and
+  an HTTP 429 is retried twice with a longer wait before it becomes a `REJECT`. `rest_429` is counted beside
+  `venue_refusals`, because a rate limit is this client's budget and a refusal is the venue's judgment of the order.
+  `WireConfig::rest_limits` is what a test sets to prove the wait rather than assume it.
+- **`venue_relay --venue-demo`** points the market leg at `wss://wspap.okx.com:8443/ws/v5/public`, the public stream
+  that belongs to the demo account's instrument ids. Giving both `--venue` and `--venue-demo` is refused rather than
+  resolved by argument order.
+- **The evidence is loopback and unit tests, not a venue run.** `tests/venue_order_session_test` drives a stand-in that
+  recomputes the signature over the method and the query string (`PENDING 2 11 12`, `EQUITY 998.5`, two 429s then
+  `ACK 24`), and pins `rest_calls=11 rest_429=2 pending_queries=1 equity_queries=1` in the summary; a second connection
+  with a one-per-hundred-milliseconds bucket measures the wait. `tests/live_venue_test` pins the four new frames and the
+  stale-set rules; `tests/paper_broker_test` pins the three equity outcomes. No demo session was run for this change, so
+  no live number moved, and the demo's fee schedule and thin book still make its `fees_paid` a statement about the demo.
+- Three environment facts are documented on the live page rather than hidden: the demo fee schedule is not the live one,
+  `x-simulated-trading: 1` stays hard-coded on purpose, and a thin demo book produces more `51400` cancels.
+
+
 ## The forced-flow family is probed, and both sides sit inside the fee (2026-11-16)
 
 - **`tools/study/cascade_probe.py`.** The one family never measured here was the trade people describe: after a forced

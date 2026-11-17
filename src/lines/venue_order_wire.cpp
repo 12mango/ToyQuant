@@ -1,12 +1,16 @@
 #include "lines/venue_order_wire.h"
 
 #include <algorithm>
+#include <charconv>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
 #include <iostream>
+#include <sstream>
 #include <stdexcept>
+#include <thread>
 #include <utility>
 
 #include "lines/venue_auth.h"
@@ -72,7 +76,10 @@ std::string WireCounters::to_log_string() const
            " venue_refusals=" + std::to_string(venue_refusals.load()) +
            " transport_failures=" + std::to_string(transport_failures.load()) +
            " rest_calls=" + std::to_string(calls) + " rest_connect_ms_avg=" + connect_avg +
-           " rest_place_ms_avg=" + place_avg;
+           " rest_place_ms_avg=" + place_avg + " rest_429=" + std::to_string(rest_429.load()) +
+           " pending_queries=" + std::to_string(pending_queries.load()) +
+           " equity_queries=" + std::to_string(equity_queries.load()) +
+           " query_failures=" + std::to_string(query_failures.load());
 }
 
 OrderSession::Credentials credentials_from_environment()
@@ -137,14 +144,6 @@ std::string dechunk(std::string_view text)
     return out;
 }
 
-// One HTTP/1.1 answer. The status is not interpreted: this venue reports a refusal in its own `code`/`sCode`, and a proxy
-// in front of it still carries that JSON in the body of a 4xx.
-struct HttpResponse
-{
-    int status{0};
-    std::string body;
-};
-
 bool answered(std::string_view answer)
 {
     const std::size_t split = answer.find("\r\n\r\n");
@@ -174,17 +173,21 @@ HttpResponse parse_answer(const std::string& answer)
     return parsed;
 }
 
-// One POST on its own connection, which is what the venue's endpoint expects: the Python relay's placer makes one call
+// One call on its own connection, which is what the venue's endpoint expects: the Python relay's placer makes one call
 // per order too, and a kept-alive connection would need a pool this line has no reason to own yet -- `connect_ms` is the
-// number that decides whether it should, filled with the time spent in connect plus the TLS handshake.
-HttpResponse post_json(const venue_ws::Url& url, std::string_view path, std::string_view headers, std::string_view body,
-                       std::int64_t& connect_ms)
+// number that decides whether it should, filled with the time spent in connect plus the TLS handshake. `method` is POST
+// for the order endpoints and GET for the two queries; a GET carries no body and the same `Content-Length: 0`, so the
+// one reader below ends either answer on a header rather than on the venue closing the socket.
+HttpResponse http_json(std::string_view method, const venue_ws::Url& url, std::string_view path,
+                       std::string_view headers, std::string_view body, std::int64_t& connect_ms)
 {
     venue_ws::Stream stream;
     const std::int64_t started = venue_ws::now_ms();
     stream.connect(url);
     connect_ms = venue_ws::now_ms() - started;
-    std::string request = "POST ";
+    std::string request;
+    request += method;
+    request += ' ';
     request += path;
     request += " HTTP/1.1\r\nHost: ";
     request += url.host;
@@ -274,7 +277,7 @@ VenueOrderConnection::VenueOrderConnection(std::string instrument, OrderSession:
                    : std::function<std::uint64_t()>([] { return venue_ws::now_seconds(); }))
 {
     if (!config_.rest_url.empty())
-        placer_ = std::make_unique<RestPlacer>(config_.rest_url, session_.credentials());
+        placer_ = std::make_unique<RestPlacer>(config_.rest_url, session_.credentials(), config_.rest_limits);
     if (!config_.dump_path.empty())
     {
         // Appended rather than truncated: a run that reconnects writes several sessions into one file, and the order they
@@ -405,6 +408,17 @@ void VenueOrderConnection::session_once()
 
 void VenueOrderConnection::on_engine_line(std::string_view line)
 {
+    // The two queries are not orders and carry no id: they are read first so `place` never has to know them.
+    if (line == "PENDING")
+    {
+        answer_pending();
+        return;
+    }
+    if (line == "EQUITY")
+    {
+        answer_equity();
+        return;
+    }
     const bool is_order = line.rfind("ORDER", 0) == 0;
     std::lock_guard<std::mutex> lock(session_mutex_);
     try
@@ -441,12 +455,68 @@ void VenueOrderConnection::place(std::string_view line)
     {
         if (engine_.write_line(reply)) ++counters_.replies;
     }
+    publish_rest_counters();
+}
+
+void VenueOrderConnection::publish_rest_counters()
+{
+    if (placer_ == nullptr) return;
     counters_.placed.store(placer_->placed());
     counters_.venue_refusals.store(placer_->refused());
     counters_.transport_failures.store(placer_->transport_failures());
     counters_.rest_calls.store(placer_->calls());
     counters_.rest_connect_ms.store(placer_->connect_ms());
     counters_.rest_place_ms.store(placer_->place_ms());
+    counters_.rest_429.store(placer_->rate_limited());
+}
+
+void VenueOrderConnection::answer_pending()
+{
+    std::lock_guard<std::mutex> lock(session_mutex_);
+    ++counters_.pending_queries;
+    if (placer_ == nullptr)
+    {
+        // The socket route has no query endpoint in this client: saying so is the answer, because an empty list would
+        // tell a recovery that no order is working and leave every inherited one alive.
+        engine_.write_line("PENDING unavailable");
+        ++counters_.query_failures;
+        return;
+    }
+    const std::optional<std::vector<std::uint64_t>> ids = placer_->pending_orders();
+    publish_rest_counters();
+    if (!ids)
+    {
+        engine_.write_line("PENDING unavailable");
+        ++counters_.query_failures;
+        return;
+    }
+    std::string answer = "PENDING " + std::to_string(ids->size());
+    for (const std::uint64_t id : *ids) answer += ' ' + std::to_string(id);
+    if (engine_.write_line(answer)) ++counters_.replies;
+}
+
+void VenueOrderConnection::answer_equity()
+{
+    std::lock_guard<std::mutex> lock(session_mutex_);
+    ++counters_.equity_queries;
+    if (placer_ == nullptr)
+    {
+        engine_.write_line("EQUITY unavailable");
+        ++counters_.query_failures;
+        return;
+    }
+    const std::optional<double> equity = placer_->balance_usd();
+    publish_rest_counters();
+    if (!equity)
+    {
+        engine_.write_line("EQUITY unavailable");
+        ++counters_.query_failures;
+        return;
+    }
+    std::ostringstream answer;
+    answer.precision(10);
+    answer << "EQUITY " << *equity;
+    if (engine_.write_line(answer.str())) ++counters_.replies;
 }
 
 void VenueOrderConnection::to_venue(std::string_view frame)
@@ -493,12 +563,103 @@ std::string VenueOrderConnection::last_error() const
 
 // ------------------------------------------------------------------ the placement route
 
-RestPlacer::RestPlacer(std::string base_url, OrderSession::Credentials credentials)
-    : url_(venue_ws::parse_url(base_url)), credentials_(std::move(credentials))
+RestPlacer::RestPlacer(std::string base_url, OrderSession::Credentials credentials, RestLimits limits)
+    : url_(venue_ws::parse_url(base_url)), credentials_(std::move(credentials)), limits_(limits)
 {
     // The path is the venue's, not the base url's, so a base url carrying one would be silently dropped: refused instead.
     if (url_.target != "/")
         throw std::runtime_error("the REST placement's base url is a host and a port, not a path: " + base_url);
+}
+
+void RestPlacer::acquire(std::string_view path)
+{
+    if (limits_.requests_per_window == 0 || limits_.window_ms <= 0) return;
+    const double capacity = static_cast<double>(limits_.requests_per_window);
+    const double rate_per_ms = capacity / static_cast<double>(limits_.window_ms);
+    while (true)
+    {
+        std::int64_t wait_ms = 0;
+        {
+            std::lock_guard<std::mutex> lock(bucket_mutex_);
+            const std::int64_t now = venue_ws::now_ms();
+            Bucket& bucket = buckets_[std::string(path)];
+            if (!bucket.started)
+            {
+                bucket.started = true;
+                bucket.last_ms = now;
+                bucket.tokens = capacity;
+            }
+            else
+            {
+                bucket.tokens = std::min(capacity, bucket.tokens +
+                                                        static_cast<double>(now - bucket.last_ms) * rate_per_ms);
+                bucket.last_ms = now;
+            }
+            if (bucket.tokens >= 1.0)
+            {
+                bucket.tokens -= 1.0;
+                return;
+            }
+            // Rounded up so a wake-up never arrives a fraction of a millisecond early and loops.
+            wait_ms = static_cast<std::int64_t>(std::ceil((1.0 - bucket.tokens) / rate_per_ms));
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(std::max<std::int64_t>(wait_ms, 1)));
+    }
+}
+
+HttpResponse RestPlacer::request(std::string_view method, std::string_view path, std::string_view body,
+                                 std::string& failure, std::int64_t& connect_ms)
+{
+    // The timestamp and the signature are one decision -- the signature is over this exact string -- so they are made
+    // here together rather than by two calls that could straddle a millisecond.
+    const std::string timestamp = rest_timestamp();
+    std::string headers;
+    headers += "Content-Type: application/json\r\n";
+    // The proxy in front of the venue answers a default agent with a 403 whose body is `error code: 1010`, which reads
+    // like a venue refusal and is not one.
+    headers += "User-Agent: curl/8.5.0\r\n";
+    headers += "OK-ACCESS-KEY: " + credentials_.api_key + "\r\n";
+    headers += "OK-ACCESS-SIGN: " +
+               venue_auth::rest_signature(timestamp, credentials_.secret, method, path, body) + "\r\n";
+    headers += "OK-ACCESS-TIMESTAMP: " + timestamp + "\r\n";
+    headers += "OK-ACCESS-PASSPHRASE: " + credentials_.passphrase + "\r\n";
+    // The demo environment is the only one this tree has a key for, and it refuses a placement without this header; a
+    // live placement is refused with it, which is the direction a tree with no live key should fail in.
+    headers += "x-simulated-trading: 1\r\n";
+
+    // Two retries, each after a longer wait. The bucket is what keeps a run under the venue's quota; this is what keeps
+    // one 429 from becoming an order the strategy never hears about.
+    static constexpr int kRateLimitRetries = 2;
+    HttpResponse response;
+    connect_ms = 0;
+    for (int attempt = 0; attempt <= kRateLimitRetries; ++attempt)
+    {
+        acquire(path);
+        const std::int64_t started = venue_ws::now_ms();
+        ++calls_;
+        std::int64_t call_connect_ms = 0;
+        try
+        {
+            response = http_json(method, url_, path, headers, body, call_connect_ms);
+        }
+        catch (const std::exception& error_text)
+        {
+            ++failures_;
+            connect_ms += call_connect_ms;
+            place_ms_ += static_cast<std::uint64_t>(venue_ws::now_ms() - started);
+            failure = std::string("the REST call could not reach the venue (") + error_text.what() + ")";
+            return response;
+        }
+        // Counted on every path, because a call whose answer never arrived paid for its handshake too -- and those are
+        // exactly the calls a kept-alive connection would have saved.
+        connect_ms += call_connect_ms;
+        place_ms_ += static_cast<std::uint64_t>(venue_ws::now_ms() - started);
+        if (response.status != 429) return response;
+        ++rate_limited_;
+        if (attempt == kRateLimitRetries) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(250 * (attempt + 1)));
+    }
+    return response;
 }
 
 std::vector<std::string> RestPlacer::place(const OrderTranslator::Request& request,
@@ -512,54 +673,121 @@ std::vector<std::string> RestPlacer::place(const OrderTranslator::Request& reque
     else
         throw OrderError("'" + request.op + "' is not a request the placement route sends");
 
-    // The timestamp and the signature are one decision -- the signature is over this exact string -- so they are made
-    // here together rather than by two calls that could straddle a millisecond.
-    const std::string timestamp = rest_timestamp();
-    std::string headers;
-    headers += "Content-Type: application/json\r\n";
-    // The proxy in front of the venue answers a default agent with a 403 whose body is `error code: 1010`, which reads
-    // like a venue refusal and is not one.
-    headers += "User-Agent: curl/8.5.0\r\n";
-    headers += "OK-ACCESS-KEY: " + credentials_.api_key + "\r\n";
-    headers += "OK-ACCESS-SIGN: " +
-               venue_auth::rest_signature(timestamp, credentials_.secret, "POST", path, request.args_object) + "\r\n";
-    headers += "OK-ACCESS-TIMESTAMP: " + timestamp + "\r\n";
-    headers += "OK-ACCESS-PASSPHRASE: " + credentials_.passphrase + "\r\n";
-    // The demo environment is the only one this tree has a key for, and it refuses a placement without this header; a
-    // live placement is refused with it, which is the direction a tree with no live key should fail in.
-    headers += "x-simulated-trading: 1\r\n";
-
-    Json answer;
-    std::string error;
-    std::int64_t connect_ms = 0;
-    const std::int64_t started = venue_ws::now_ms();
-    ++calls_;
-    bool parsed = true;
     std::string failure;
-    try
-    {
-        const HttpResponse response = post_json(url_, path, headers, request.args_object, connect_ms);
-        JsonParser parser(response.body);
-        parsed = parser.parse(answer, error);
-        if (!parsed)
-            failure = "the venue answered a placement with something that is not JSON (" + error + "): " +
-                      response.body.substr(0, 160);
-    }
-    catch (const std::exception& error_text)
-    {
-        failure = std::string("the REST placement could not reach the venue (") + error_text.what() + ")";
-    }
-    // Counted on every path, because a call whose answer never arrived paid for its handshake too -- and those are
-    // exactly the calls a kept-alive connection would have saved.
-    connect_ms_ += static_cast<std::uint64_t>(connect_ms);
-    place_ms_ += static_cast<std::uint64_t>(venue_ws::now_ms() - started);
+    std::int64_t connect_ms = 0;
+    const HttpResponse response = this->request("POST", path, request.args_object, failure, connect_ms);
     if (!failure.empty())
     {
-        ++failures_;
         std::cerr << failure << std::endl;
         return {"REJECT " + request.id + " venue"};
     }
+    Json answer;
+    std::string error;
+    if (!JsonParser(response.body).parse(answer, error))
+    {
+        ++failures_;
+        std::cerr << "the venue answered a placement with something that is not JSON (" << error << "): "
+                  << response.body.substr(0, 160) << std::endl;
+        return {"REJECT " + request.id + " venue"};
+    }
     return lines_for(request.op, request.id, answer, translator);
+}
+
+std::optional<std::vector<std::uint64_t>> RestPlacer::pending_orders()
+{
+    // `instType=SWAP` is part of the signed path, not a filter applied here: the venue signs the request path as sent,
+    // and a query string added after signing is a different request to it.
+    static constexpr std::string_view kPath = "/api/v5/trade/orders-pending?instType=SWAP";
+    std::string failure;
+    std::int64_t connect_ms = 0;
+    const HttpResponse response = request("GET", kPath, "", failure, connect_ms);
+    if (!failure.empty())
+    {
+        std::cerr << failure << std::endl;
+        return std::nullopt;
+    }
+    Json answer;
+    std::string error;
+    if (!JsonParser(response.body).parse(answer, error))
+    {
+        ++failures_;
+        std::cerr << "the venue answered the pending-orders query with something that is not JSON (" << error
+                  << "): " << response.body.substr(0, 160) << std::endl;
+        return std::nullopt;
+    }
+    const Json* code = answer.find("code");
+    if (code == nullptr || code->as_text() != "0")
+    {
+        ++refused_;
+        const Json* message = answer.find("msg");
+        std::cerr << "the venue refused the pending-orders query: code="
+                  << (code != nullptr ? code->as_text() : std::string()) << ' '
+                  << (message != nullptr ? message->as_text() : std::string()) << std::endl;
+        return std::nullopt;
+    }
+    const Json* data = answer.find("data");
+    if (data == nullptr) return std::nullopt;
+    std::vector<std::uint64_t> ids;
+    for (const Json& item : data->items)
+    {
+        const Json* id = item.find("clOrdId");
+        if (id == nullptr) continue;
+        const std::string text = id->as_text();
+        std::uint64_t value = 0;
+        const auto parsed = std::from_chars(text.data(), text.data() + text.size(), value);
+        // A client id that is not this client's numbering belongs to another tool on the same account: it is left
+        // out rather than guessed at, and the engine can only query ids it wrote down anyway.
+        if (parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size() && value != 0)
+            ids.push_back(value);
+    }
+    return ids;
+}
+
+std::optional<double> RestPlacer::balance_usd()
+{
+    static constexpr std::string_view kPath = "/api/v5/account/balance";
+    std::string failure;
+    std::int64_t connect_ms = 0;
+    const HttpResponse response = request("GET", kPath, "", failure, connect_ms);
+    if (!failure.empty())
+    {
+        std::cerr << failure << std::endl;
+        return std::nullopt;
+    }
+    Json answer;
+    std::string error;
+    if (!JsonParser(response.body).parse(answer, error))
+    {
+        ++failures_;
+        std::cerr << "the venue answered the balance query with something that is not JSON (" << error << "): "
+                  << response.body.substr(0, 160) << std::endl;
+        return std::nullopt;
+    }
+    const Json* code = answer.find("code");
+    const Json* data = answer.find("data");
+    const Json* first = data != nullptr && !data->items.empty() ? &data->items.front() : nullptr;
+    if (code != nullptr && code->as_text() == "0" && first != nullptr)
+    {
+        const Json* total = first->find("totalEq");
+        if (total != nullptr)
+        {
+            try
+            {
+                return total->as_double();
+            }
+            catch (const std::exception&)
+            {
+                // A number the reader cannot convert is not an equity, and zero would read as a flat account.
+            }
+        }
+    }
+    ++refused_;
+    const Json* message = first != nullptr ? first->find("sMsg") : nullptr;
+    if (message == nullptr) message = answer.find("msg");
+    std::cerr << "the venue did not report an account equity: code="
+              << (code != nullptr ? code->as_text() : std::string()) << ' '
+              << (message != nullptr ? message->as_text() : std::string()) << std::endl;
+    return std::nullopt;
 }
 
 std::vector<std::string> RestPlacer::lines_for(std::string_view op, const std::string& order_id,

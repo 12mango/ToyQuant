@@ -1,6 +1,8 @@
 #include "app/application.h"
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <filesystem>
 #include <immintrin.h>
 #include <iostream>
@@ -641,6 +643,33 @@ void Application::run_l2_session_mode() const
         }
         for (const std::string& line : lines) live_venue->on_frame(line);
     };
+    // The queries' answers share the socket with the reports, and a query can be asked before the pipeline exists (a
+    // resume) or while a caller is inside its own walk (the gateway's timeout sweep). So the pump applies the two
+    // query frames and leaves everything else queued, in order, for the drain the pipeline already performs: a fill
+    // delivered at a query would otherwise be applied with no callback to book it.
+    const auto drain_query_answers = [&]()
+    {
+        std::vector<std::string> lines;
+        {
+            std::lock_guard<std::mutex> guard(venue_lines_mutex);
+            lines.swap(venue_lines);
+        }
+        std::vector<std::string> reports;
+        for (const std::string& line : lines)
+        {
+            const bool answer = line.rfind("PENDING", 0) == 0 || line.rfind("EQUITY", 0) == 0;
+            if (answer) live_venue->on_frame(line);
+            else reports.push_back(line);
+        }
+        if (!reports.empty())
+        {
+            // Put them back at the front, because they arrived before whatever the reader queued meanwhile.
+            std::lock_guard<std::mutex> guard(venue_lines_mutex);
+            reports.insert(reports.end(), venue_lines.begin(), venue_lines.end());
+            venue_lines.swap(reports);
+        }
+    };
+    if (live_venue) live_venue->set_query_pump([&drain_query_answers] { drain_query_answers(); });
     // The order leg's recording, innermost of the decorators on purpose: it records what the venue itself was
     // asked and what the venue itself answered. Outside the gateway it would record a retry as an order the venue
     // never received, and outside the broker it would miss the refusals the broker invents. Off unless asked for,
@@ -681,6 +710,12 @@ void Application::run_l2_session_mode() const
                                                                 : snapshot.books.front().symbol) +
                                         ", not " + instrument.symbol);
         }
+        // A live resume asks the venue which orders it still holds before it resolves one, and refuses to start if
+        // the venue will not answer: a recovery that assumed "none working" would leave every inherited order alive.
+        if (live_venue && !live_venue->refresh_pending())
+            throw std::runtime_error(
+                "--snapshot-in against a live venue needs the venue's pending-orders query: run the relay's order "
+                "leg with --order-rest (a simulated venue has no list to ask)");
         for (const ResumeSummary& summary : resume_session(snapshot, portfolio, {{instrument.symbol, venue}}))
             logger.log("[RESUME] ", summary.to_log_string());
         resumed = std::move(snapshot);
@@ -982,6 +1017,16 @@ void Application::run_l2_session_mode() const
         // describe the same moment. Its own label, because ADR 0005 decision 6 keeps a venue round trip out of
         // [LATENCY]: the fields here count frames and refusals, and this run measures no latency at all.
         drain_venue();
+        // The account's own half, asked after the last event and the final mark so both sides describe the same
+        // moment. A venue that cannot answer prints `n/a` and `status=unknown` rather than a zero that reads like
+        // agreement; a position the ledger could not mark makes the ledger side `n/a` for the same reason.
+        const std::optional<double> venue_equity =
+            live_venue->refresh_equity() ? live_venue->venue_equity_usd() : std::nullopt;
+        // A report that arrived while the balance was asked for is still the account's, and the comparison below
+        // has to be made after it. The query pump leaves reports queued for exactly this drain, and the mark is
+        // refreshed because a fill moves cash and a position and `metrics()` reads the mark it was last given.
+        drain_venue();
+        if (final_mid > 0.0) portfolio.mark_to_market({{cfg_.symbol, final_mid}});
         const auto& counters = live_venue->counters();
         logger.log("[VENUE] endpoint=", cfg_.venue_endpoint, " connected=",
                    live_transport->connected() ? "yes" : "no", " frames_sent=",
@@ -992,6 +1037,14 @@ void Application::run_l2_session_mode() const
                    " reports=", counters.reports_decoded, " dropped=", counters.frames_dropped,
                    " max_orders=", cfg_.venue_max_orders,
                    " max_notional_usd=", cfg_.venue_max_notional_usd);
+        const PortfolioMetrics account = portfolio.metrics();
+        std::optional<double> ledger_equity;
+        if (account.marks_complete) ledger_equity = account.equity;
+        // The venue marks the position at its own price and the ledger at the last midpoint, so a few cents of
+        // difference is two marks rather than two accounts. Ten basis points of the account is the width a real
+        // accounting break has to exceed; the floor keeps a nearly empty account from reporting every cent.
+        const double tolerance = ledger_equity ? std::max(0.05, 0.001 * std::abs(*ledger_equity)) : 0.05;
+        logger.log("[RECON] ", reconcile_equity(venue_equity, ledger_equity, tolerance).to_log_string());
         live_transport->disconnect();
     }
     if (order_log)

@@ -260,6 +260,13 @@ def main():
                         # The placement surface the demo venue actually accepts, and the base url it lives at:
                         # its websocket trade operation answers 50026 and its REST endpoint places the order.
                         "--order-rest",
+                        # The demo public stream, named once instead of typed as a URL. A flag of the relay's market
+                        # leg, and the live page is where a run that mixes it with the live stream is refused.
+                        "--venue-demo",
+                        # The market leg's endpoint itself, which the relay owns and the live page names beside
+                        # `--venue-demo`: one of the two says where the market leg dials, and the shorthand says
+                        # which venue that is for a demo account.
+                        "--venue",
                         # The order leg's grid and the engine's scale. The relay owns them for the same reason it owns
                         # `--instrument`: the engine's units are not the venue's contracts, and only the venue layer
                         # knows how many of one make the other.

@@ -328,5 +328,32 @@ int main()
         assert(broker.summary().cancels_while_held == 1);
     }
 
+    // 8. The venue's balance against the ledger. This is the half `reconcile_positions` cannot reach: a fee the
+    //    venue booked but never reported, or a fill on another instrument, leaves the two statements equal while
+    //    the money is not. An absent side is `n/a` and `status=unknown`, never a zero that reads like agreement.
+    {
+        const VenueEquityCheck agree = reconcile_equity(998.5, 998.45);
+        assert(agree.venue_known && agree.ledger_known);
+        assert(!agree.broken());
+        assert(agree.to_log_string().find("venue_equity_usd=998.5 ") != std::string::npos);
+        assert(agree.to_log_string().find("status=ok") != std::string::npos);
+
+        const VenueEquityCheck broke = reconcile_equity(1000.0, 998.5);
+        assert(broke.broken());
+        assert(broke.equity_break_usd == 1.5);
+        assert(broke.to_log_string().find("status=break") != std::string::npos);
+
+        const VenueEquityCheck no_venue = reconcile_equity(std::nullopt, 998.5);
+        assert(!no_venue.broken());
+        assert(no_venue.to_log_string().find("venue_equity_usd=n/a") != std::string::npos);
+        assert(no_venue.to_log_string().find("equity_break_usd=n/a") != std::string::npos);
+        assert(no_venue.to_log_string().find("status=unknown") != std::string::npos);
+
+        const VenueEquityCheck unmarked = reconcile_equity(1000.0, std::nullopt);
+        assert(!unmarked.broken());
+        assert(unmarked.to_log_string().find("ledger_equity_usd=n/a") != std::string::npos);
+        assert(unmarked.to_log_string().find("status=unknown") != std::string::npos);
+    }
+
     return 0;
 }

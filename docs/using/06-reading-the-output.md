@@ -10,12 +10,14 @@ mechanical rather than a matter of taste:
 | `[PNL]` | `breakeven_maker_rate` | negative: no fee schedule makes the window flat |
 | `[EXECUTION]` | `fill_rate`, `queue_ahead_consumed` | `fills=0` with a live book, or `strategy_position_mismatches>0` |
 | `[RISK]` | `fat_finger_rejections`, `rate_limited_orders` | any, unless the run was meant to trip that control |
-| `[RECON]` | `status` | `break`: the statement and the account disagree |
+| `[RECON]` | `status` | `break`: the statement and the account disagree; `unknown` on a live line: the venue did not answer |
 | `[VENUE]` | `reports`, `dropped` | `dropped>0`, or `orders>0` with `reports=0` |
 
 > `[RISK]` prints only when `--fat-finger-bps` or `--max-orders-per-second` is named, and `[VENUE]` only on a run with a
-> venue leg. `[LATENCY]`, `[LIVE]` and `[PERFORMANCE]` answer the same question about timing and equity and are read the
-> same way: one number, one red flag. The field-by-field reference is in
+> venue leg. A live venue prints **two** `[RECON]` lines on the same run: the first compares the broker's statement with
+> the account, and the second compares the venue's balance with the same account (`venue_equity_usd`,
+> `ledger_equity_usd`, `equity_break_usd`). `[LATENCY]`, `[LIVE]` and `[PERFORMANCE]` answer the same question about
+> timing and equity and are read the same way: one number, one red flag. The field-by-field reference is in
 > [the learning path](../LEARNING.md#field-reference).
 
 ## How sure a number is

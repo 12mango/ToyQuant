@@ -97,6 +97,10 @@ restored**: the new process starts with the account and no memory of its own quo
 reports as `strategy_position_mismatches` instead of hiding. `--snapshot-in` refuses `--order-gateway`, whose table is
 client state a resumed process does not have.
 
+> On a live venue the question is `GET /api/v5/trade/orders-pending` through the relay, so the order leg needs
+> `--order-rest`; a venue that cannot answer refuses the resume instead of assuming the orders are gone. The live page
+> has the rule and the `[RESUME]` line it prints.
+
 **The order leg.** `--record-orders=PREFIX` writes `<prefix>_orders.csv`: one row per submission, per cancel and per
 execution report, in the order they happened, with every field a report carries and a price written as the shortest
 decimal that parses back to the same double. It is off unless named, which is what every recorded run is, and it changes

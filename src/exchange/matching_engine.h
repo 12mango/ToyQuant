@@ -174,6 +174,12 @@ class IMatchingEngine
         (void)order_id;
         return OrderQuery::Unknown;
     }
+
+    // What a venue with an asynchronous answer has to settle before the next question means anything: a REST
+    // cancel's confirmation, or a bulk query's reply, arrives on the same socket as the reports. The in-process
+    // engine answers inside `cancel_order`, so this is empty and a recovery's second query reads the new state
+    // without a wait. A live venue overrides it to drain its own answer.
+    virtual void settle_queries() {}
 };
 
 // The engine keys every per-symbol map by this id rather than by the symbol string. A run touches

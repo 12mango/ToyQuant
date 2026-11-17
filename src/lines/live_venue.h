@@ -1,9 +1,12 @@
 #pragma once
 #include <cstdint>
 #include <functional>
+#include <mutex>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "exchange/execution_report.h"
 #include "exchange/matching_engine.h"
@@ -41,6 +44,11 @@ struct LiveVenueConfig
     uint64_t quantity_scale{1};
     double unit_notional_usd{0.0};
     double multiplier{1.0};
+    // How long `query_order` waits for the relay's answer to its `PENDING` request, in milliseconds. The query is
+    // the one blocking call this adapter makes, and it exists for a session that has to ask the venue rather than
+    // trust its own table: `--snapshot-in` on a live venue. 0 answers from what the channel has already said, which
+    // is what a test uses and what a venue with no query endpoint gets.
+    uint64_t query_timeout_ms{1500};
 };
 
 struct LiveVenueCounters
@@ -54,6 +62,15 @@ struct LiveVenueCounters
     // A frame the decoder did not understand. Counted rather than ignored, because a venue's new field must
     // not look like a venue that said nothing.
     uint64_t frames_dropped{0};
+    // The two queries a recovery and a reconciliation need. `queries` counts what was sent, `answers` what came
+    // back, so a queue with no answer is a failure rather than a silence: `pending_failures` and `equity_failures`
+    // are the runs that ended without the number they asked for.
+    uint64_t pending_queries{0};
+    uint64_t pending_answers{0};
+    uint64_t pending_failures{0};
+    uint64_t equity_queries{0};
+    uint64_t equity_answers{0};
+    uint64_t equity_failures{0};
 };
 
 // A venue on the other end of a wire. The same decorator shape as `PaperBroker` and `OrderGateway`: the
@@ -65,8 +82,17 @@ struct LiveVenueCounters
 // transport and leaves this file alone.
 //
 //     out:  ORDER <id> <symbol> <B|S> <price> <qty> <Gtc|Ioc|Fok>      CANCEL <id>
+//           PENDING                                                    EQUITY
 //     in:   ACK <id> <remaining>   FILL <id> <price> <qty> [<fee_usd>]
 //           CANCELED <id> <reason>  REJECT <id> <reason>
+//           PENDING <n> <id>...     PENDING unavailable
+//           EQUITY <usd>            EQUITY unavailable
+//
+// The last four are the two questions a long-lived process cannot answer from its own table: which orders the
+// venue still holds (`PENDING`, the venue's `orders-pending` list) and what the venue says the account is worth
+// (`EQUITY`, its `totalEq`). A `PENDING` answer replaces the set rather than adding to it, so an order that filled
+// while nobody was listening leaves it. `unavailable` is an answer and not a silence: the relay's placement
+// surface is REST, and a simulated venue has neither list.
 //
 // The fee on a fill is the venue's own, in USD, positive when the venue took money: the relay reads it from the
 // venue's `fillFee` and negates it. Absent, the report carries zero -- a venue that reports no fee is not one this
@@ -102,6 +128,33 @@ class LiveVenue : public IMatchingEngine
     // One frame from the venue. Returns false when it was not understood, so the caller can count it.
     bool on_frame(std::string_view frame);
 
+    // Asks the venue which of this adapter's orders are still working, and waits for the answer up to
+    // `config_.query_timeout_ms`. The answer is what `query_order` reads, and a failure leaves the previous
+    // answer in place rather than replacing a list with nothing: a recovery that cannot ask must not conclude
+    // that the venue holds no orders.
+    bool refresh_pending();
+
+    // The same for the account's equity, in USD. False when the venue did not answer; the value is then left as
+    // it was, which is why a caller makes this call for its answer rather than for its return value alone.
+    bool refresh_equity();
+    std::optional<double> venue_equity_usd() const;
+
+    // Where the wait pumps the transport: the receive thread queues a line rather than applying it, so a caller
+    // that blocks has to hand the adapter a way to drain it. The application's pump applies only `PENDING`/`EQUITY`
+    // answers and leaves reports queued for the pipeline's own drain, so a query asked before the pipeline exists
+    // (a resume) cannot book a fill with no callback.
+    void set_query_pump(std::function<void()> pump) { query_pump_ = std::move(pump); }
+
+    // A query, not a report: it says whether the venue still holds the order. The answer comes from the last
+    // complete `PENDING` answer, which `refresh_pending` replaces; this call never touches the wire, because a
+    // caller may be inside the gateway's own walk over its in-flight table and a report arriving there would erase
+    // from it. A recovery that has just sent a cancel calls `settle_queries()` before asking again.
+    OrderQuery query_order(uint64_t order_id) const override;
+
+    // A venue answers a cancel on its own connection, so a recovery that wants the new state has to wait for it.
+    // The in-process engine has nothing to settle, which is why the interface's default is empty.
+    void settle_queries() override { (void)refresh_pending(); }
+
     const LiveVenueCounters& counters() const { return counters_; }
 
   private:
@@ -123,4 +176,19 @@ class LiveVenue : public IMatchingEngine
     };
     std::unordered_map<uint64_t, SentOrder> sent_;
     std::function<uint64_t()> report_clock_;
+    // The venue's own working-order set, and whether it is a complete answer rather than what the channel has
+    // happened to say. `complete_` is set only by a `PENDING` list; a submission or a cancel changes the set at the
+    // venue, and the recovery refreshes it before the next question.
+    mutable std::mutex query_mutex_;
+    std::unordered_set<uint64_t> pending_;
+    bool pending_complete_{false};
+    // Whether the last `PENDING` answer was a list rather than `unavailable`: a refresh returns this, while
+    // `query_order` keeps reading the last complete list, because "could not ask" must not mean "none working".
+    bool pending_available_{false};
+    // Each answer bumps its generation, so a wait can tell a fresh answer from the one it already had. `unavailable`
+    // bumps it too: it is an answer, and the caller should stop waiting for one that will not come.
+    uint64_t pending_generation_{0};
+    uint64_t equity_generation_{0};
+    std::optional<double> venue_equity_usd_;
+    std::function<void()> query_pump_;
 };

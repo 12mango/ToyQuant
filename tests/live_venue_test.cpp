@@ -286,5 +286,53 @@ int main()
         assert(venue.counters().frames_dropped == 1);
     }
 
+    // The venue's own working-order set: `PENDING` replaces it, an acknowledgement adds to it, a cancel marks it stale
+    // and an end-of-order removes one. `query_order` reads that set, and the second query after a cancel is a question
+    // about the venue now -- which is what `[RESUME]`'s `cancelled` count needs on a live venue.
+    {
+        RecordingTransport wire;
+        LiveVenue venue(wire, LiveVenueConfig{.query_timeout_ms = 0});
+        // No snapshot yet: the answer is the venue's last word, which is nothing, and asking does not go to the
+        // wire -- a caller may be inside the gateway's own walk over its in-flight table.
+        assert(venue.query_order(7) == OrderQuery::Unknown);
+        assert(wire.frames.empty());
+        assert(venue.on_frame("PENDING 2 7 9"));
+        assert(venue.counters().pending_answers == 1);
+        assert(venue.query_order(7) == OrderQuery::Working);
+        assert(venue.query_order(8) == OrderQuery::Unknown);
+        // A cancel changes the set at the venue, and only a new query can confirm it: until then the last complete
+        // list is what `query_order` has.
+        venue.cancel_order(7);
+        assert(wire.frames.back() == "CANCEL 7");
+        assert(venue.query_order(7) == OrderQuery::Working);
+        venue.settle_queries();
+        assert(wire.frames.back() == "PENDING");
+        assert(venue.on_frame("PENDING 1 9"));
+        // The venue's own end-of-order removes it without waiting for a query.
+        assert(venue.on_frame("CANCELED 7 user"));
+        assert(venue.on_frame("PENDING 1 9"));
+        assert(venue.query_order(7) == OrderQuery::Unknown);
+        assert(venue.query_order(9) == OrderQuery::Working);
+    }
+
+    // An answer that cannot be given is not an empty set, and a malformed query answer is dropped rather than read as
+    // one: `PENDING unavailable` leaves the previous list in place and marks it stale.
+    {
+        RecordingTransport wire;
+        LiveVenue venue(wire, LiveVenueConfig{.query_timeout_ms = 0});
+        assert(venue.on_frame("PENDING 1 7"));
+        assert(venue.on_frame("PENDING unavailable"));
+        assert(!venue.on_frame("PENDING 3 7"));
+        assert(!venue.on_frame("PENDING 1 not-a-number"));
+        assert(venue.counters().frames_dropped == 2);
+        assert(venue.on_frame("EQUITY unavailable"));
+        assert(!venue.venue_equity_usd().has_value());
+        assert(venue.on_frame("EQUITY 998.5"));
+        assert(venue.venue_equity_usd().has_value() && *venue.venue_equity_usd() == 998.5);
+        assert(venue.counters().equity_answers == 1);
+        // The balance answer's value is an order-less frame: it must not become a report about order 998.
+        assert(venue.counters().reports_decoded == 0);
+    }
+
     return 0;
 }

@@ -16,6 +16,7 @@ void usage(const char* executable)
 {
     std::cerr << "Usage: " << executable << " [options]\n"
               << "  --venue=URL             the venue's websocket url (default OKX public)\n"
+              << "  --venue-demo            the demo venue's public stream (wss://wspap.okx.com:8443/ws/v5/public)\n"
               << "  --instrument=SYM        the instrument to subscribe (default BTC-USDT-SWAP)\n"
               << "  --books-channel=CH      books | books5 | bbo-tbt (default books)\n"
               << "  --levels=N              levels kept from a snapshot, 0 keeps all (default 25)\n"
@@ -52,12 +53,21 @@ int main(int argc, char** argv)
     RelayConfig config;
     std::map<std::string, std::string> options;
     bool self_test = false;
+    bool venue_demo = false;
     for (int index = 1; index < argc; ++index)
     {
         const std::string argument = argv[index];
         if (argument == "--self-test")
         {
             self_test = true;
+            continue;
+        }
+        // A shorthand rather than a value: the demo venue's public stream, which is the one the demo account's own
+        // instrument ids belong to. `--venue` and this name the same endpoint, so giving both is refused below rather
+        // than resolved by argument order.
+        if (argument == "--venue-demo")
+        {
+            venue_demo = true;
             continue;
         }
         if (argument == "--help" || argument == "-h")
@@ -88,7 +98,13 @@ int main(int argc, char** argv)
 
     try
     {
-        config.venue = option(options, "--venue", config.venue);
+        if (venue_demo && options.count("--venue") != 0)
+        {
+            std::cerr << "Error: --venue and --venue-demo name the same endpoint; give one\n";
+            return 1;
+        }
+        config.venue = venue_demo ? std::string("wss://wspap.okx.com:8443/ws/v5/public")
+                                  : option(options, "--venue", config.venue);
         config.instrument = option(options, "--instrument", config.instrument);
         config.books_channel = option(options, "--books-channel", config.books_channel);
         config.listen = option(options, "--listen", config.listen);
@@ -131,13 +147,19 @@ int main(int argc, char** argv)
         {
             // The market leg's flags are refused from the other side for the same reason: this route serves the order
             // channel and returns, so a run that also named a market listener would look like both legs and be one.
-            for (const char* name : {"--listen", "--capture", "--record", "--replay"})
+            for (const char* name : {"--listen", "--capture", "--record", "--replay", "--venue"})
                 if (present(name))
                 {
                     std::cerr << "Error: " << name << " is the market leg's; --order-listen serves the order channel "
                               << "and returns, so the market leg is a second process\n";
                     return 1;
                 }
+            if (venue_demo)
+            {
+                std::cerr << "Error: --venue-demo is the market leg's; --order-listen serves the order channel "
+                          << "and returns, so the market leg is a second process\n";
+                return 1;
+            }
         }
 
         return self_test ? relay_self_test() : run_relay(config);

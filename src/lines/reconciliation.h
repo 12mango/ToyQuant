@@ -1,6 +1,8 @@
 #pragma once
 
+#include <cmath>
 #include <cstdint>
+#include <optional>
 #include <string>
 
 #include "accounting/portfolio.h"
@@ -56,3 +58,43 @@ struct ReconciliationSummary
 };
 
 ReconciliationSummary reconcile_positions(const BrokerStatement& statement, const Portfolio& books);
+
+/*
+-------------------------------------------
+ reconcile_equity
+-------------------------------------------
+
+What the venue says the account is worth against what the ledger says, which is the half of Stage B that
+`reconcile_positions` cannot reach: the statement there is built from the venue's reports, so a fee the venue
+booked but never reported, a funding payment, or a fill on another instrument leaves the two accounts equal
+while the balances are not.
+
+Both sides are optional because both can be absent for an honest reason: the venue may not answer a balance
+query (a socket-only route, a refused call), and the ledger may have a position it could not mark. An absent
+side is `n/a` and `status=unknown`, never a zero that reads like agreement. The tolerance is in USD and is
+stated in the line, so the reader can see the width of the claim rather than only its verdict.
+-------------------------------------------
+*/
+
+struct VenueEquityCheck
+{
+    bool venue_known{false};
+    bool ledger_known{false};
+    double venue_equity_usd{0.0};
+    double ledger_equity_usd{0.0};
+    double equity_break_usd{0.0};
+    double tolerance_usd{0.05};
+
+    // A break is a difference the tolerance does not cover. Unknown is not ok: a check that could not be made
+    // must not read like one that passed.
+    bool broken() const
+    {
+        return venue_known && ledger_known && std::abs(equity_break_usd) > tolerance_usd;
+    }
+
+    std::string to_log_string() const;
+};
+
+VenueEquityCheck reconcile_equity(const std::optional<double>& venue_equity_usd,
+                                  const std::optional<double>& ledger_equity_usd,
+                                  double tolerance_usd = 0.05);
