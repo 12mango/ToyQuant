@@ -1,4 +1,19 @@
 {
     "cmake.useCMakePresets": "always",
-    "cmake.configureOnOpen": true
+    "cmake.configureOnOpen": true,
+    // The tool's terminal is this shell. VS Code's own bash profile, not the oh-my-zsh zsh: no prompt subshells to
+    // fork on a large repository and no `[Y/n]` prompt to eat a keystroke. The profile is left as VS Code defines it
+    // because shell integration is injected into bash through it; a custom `--norc` profile skipped the injection and
+    // every command then waited for a completion marker that never came. A terminal opened before this change keeps
+    // the shell it started with until it is closed.
+    "terminal.integrated.defaultProfile.linux": "bash",
+    "terminal.integrated.shellIntegration.enabled": true,
+    // A reload must not restore a wedged pty: that is how the pre-restart zsh came back with its queue.
+    "terminal.integrated.enablePersistentSessions": false,
+    "terminal.integrated.scrollback": 5000,
+    "terminal.integrated.env.linux": {
+        "SHELL": "/bin/bash",
+        "GIT_PAGER": "cat",
+        "PAGER": "cat"
+    }
 }

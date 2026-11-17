@@ -137,11 +137,14 @@ compatibility path. Everything below assumes that page.
   still alive when `ps` was read hours later. Before retyping anything, look for the child with
   `bash .run.sh sh 'ps -eo pid,ppid,stat,tty,cmd | grep -E "less|git|run.sh" | grep -v grep'`, kill the stray, and read
   the artifacts; sending the command again into a pty that already has a reader is how one hang becomes two.
-- **The zsh prompt eats the first character.** oh-my-zsh asks `[Y/n]` before a command and takes the first keystroke,
-  so `pgrep` ran as `grep`. Prefix every command with one space: the prompt swallows it and the command runs.
-- **The terminal is several shells on several ptys, and nothing is typed into it.** Measured 2026-11-17: four
-  `zsh -i` and a `-zsh` on `pts/1,5,6,8,10`, and the tool writes into whichever it chose -- the earlier "two shells"
-  figure was an undercount. Everything therefore goes through the ignored root runner (`bash .run.sh <verb>`; verbs
+- **The tool's terminal is one bash, and shell integration is what makes a command's end visible.**
+  `.vscode/settings.json` makes VS Code's own bash the default Linux profile, so its `--init-file` injection (shell
+  integration) is present and a command's completion is observable; it also disables persistent sessions, so a reload
+  cannot restore a wedged pty, and sets `SHELL=/bin/bash`, `GIT_PAGER=cat` and `PAGER=cat` on the terminal. The failure
+  this replaced was a zsh session restored from before the change: oh-my-zsh's prompt forks subshells and its `[Y/n]`
+  prompt took the first keystroke, so `pgrep` ran as `grep`; the "prefix every command with a space" workaround went
+  with it.
+- **Everything goes through the ignored root runner** (`bash .run.sh <verb>`; verbs
   `status build smoke code docs fast lint full asan sh sync push commit tail`), or, for an inspection no verb covers,
   `bash .run.sh sh '<command>'`. That verb is not a convenience: it is the only path that cannot leave a pager holding
   the terminal. **No pager, ever**: `git --no-pager` on every git command, and the runner exports
