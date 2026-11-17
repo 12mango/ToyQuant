@@ -355,7 +355,7 @@ void Application::run_legacy_csv_mode() const
     Portfolio portfolio;
     Pipeline pipeline(output_files.orders, output_files.trades, *strategy, engine, portfolio);
     legacy::TickPipeline tick_pipeline(pipeline, order_book, order_book, engine);
-    pipeline.set_collateral(1000.0, 0.0);
+    pipeline.set_collateral(cfg_.starting_cash_usd, 0.0);
     apply_pipeline_limits(pipeline);
     CsvFeed feed(
         csv_file, [&](const legacy::Tick& tick) { tick_pipeline.process(tick); }, cfg_.delay,
@@ -419,13 +419,13 @@ void Application::run_replay_mode() const
                                           .post_timeout_us = cfg_.algo_post_timeout_seconds * 1'000}});
     MatchingEngine engine(instrument.tick_size, fee_schedule_of(instrument),
                           engine_config(instrument));
-    Portfolio portfolio(instrument.quantity_scale, 1000.0, instrument.unit_notional_usd,
+    Portfolio portfolio(instrument.quantity_scale, cfg_.starting_cash_usd, instrument.unit_notional_usd,
                         instrument.multiplier);
     Pipeline pipeline(output_files.orders, output_files.trades, *strategy, engine, portfolio,
                       instrument.tick_size);
     // The replay path reports the same collateral and quantity scale as the L2 path, so its exposure
     // and edge figures are in dollars rather than in raw instrument units.
-    pipeline.set_collateral(1000.0, instrument.unit_notional_usd, instrument.quantity_scale,
+    pipeline.set_collateral(cfg_.starting_cash_usd, instrument.unit_notional_usd, instrument.quantity_scale,
                             instrument.multiplier);
     pipeline.set_metrics(cfg_.metrics);
     pipeline.set_markout_horizon(cfg_.markout_horizon);
@@ -691,7 +691,7 @@ void Application::run_l2_session_mode() const
                                   .retry_on_timeout = cfg_.gateway_retry_on_timeout});
         venue = gateway.get();
     }
-    Portfolio portfolio(instrument.quantity_scale, 1000.0, instrument.unit_notional_usd,
+    Portfolio portfolio(instrument.quantity_scale, cfg_.starting_cash_usd, instrument.unit_notional_usd,
                         instrument.multiplier);
     // A resumed session puts the account back where the previous process left it and resolves every order that
     // snapshot listed against the venue, before this process quotes anything. The venue is asked rather than
@@ -719,6 +719,28 @@ void Application::run_l2_session_mode() const
         for (const ResumeSummary& summary : resume_session(snapshot, portfolio, {{instrument.symbol, venue}}))
             logger.log("[RESUME] ", summary.to_log_string());
         resumed = std::move(snapshot);
+    }
+    // The venue's account against the ledger's opening balance, before anything is quoted. A fresh run opens at
+    // `--starting-cash`; a resumed one opens at the snapshot, marked at the prices it recorded. Printing this at the
+    // start rather than only at the end is the difference between a run that reports a wrong base after an hour and
+    // one that says so in its first second.
+    if (resumed && !resumed->marks.empty()) portfolio.mark_to_market(resumed->marks);
+    if (live_venue)
+    {
+        const bool answered = live_venue->refresh_equity();
+        const std::optional<double> venue_equity =
+            answered ? live_venue->venue_equity_usd() : std::nullopt;
+        const PortfolioMetrics opening = portfolio.metrics();
+        std::optional<double> ledger_equity;
+        if (opening.marks_complete) ledger_equity = opening.equity;
+        const double reference = ledger_equity.value_or(cfg_.starting_cash_usd);
+        // One basis point of the account with a cent floor: a venue mark and the run's midpoint differ by about a
+        // basis point of the position, while a missing fee is around a basis point of a small account -- so this is
+        // the width at which a real accounting break is not hidden by the mark. Ten basis points was tried first and
+        // a 64 to 76 USD gap on an 80k demo account read `ok`.
+        const double tolerance = std::max(0.05, 0.0001 * std::abs(reference));
+        logger.log("[RECON] at=start ",
+                   reconcile_equity(venue_equity, ledger_equity, tolerance).to_log_string());
     }
     Pipeline pipeline(output_files.orders, output_files.trades, *strategy, *venue, portfolio,
                       instrument.tick_size);
@@ -756,7 +778,7 @@ void Application::run_l2_session_mode() const
     // The documented model is cash only and no margin, so the cash the run starts with is the
     // exposure ceiling the summary measures against, and --max-position decides whether it is
     // enforced. 0, the default, reports the ceiling without blocking anything.
-    pipeline.set_collateral(1000.0, instrument.unit_notional_usd, instrument.quantity_scale,
+    pipeline.set_collateral(cfg_.starting_cash_usd, instrument.unit_notional_usd, instrument.quantity_scale,
                             instrument.multiplier);
     pipeline.set_profiler(profiler);
     apply_pipeline_limits(pipeline);
@@ -1040,11 +1062,11 @@ void Application::run_l2_session_mode() const
         const PortfolioMetrics account = portfolio.metrics();
         std::optional<double> ledger_equity;
         if (account.marks_complete) ledger_equity = account.equity;
-        // The venue marks the position at its own price and the ledger at the last midpoint, so a few cents of
-        // difference is two marks rather than two accounts. Ten basis points of the account is the width a real
-        // accounting break has to exceed; the floor keeps a nearly empty account from reporting every cent.
-        const double tolerance = ledger_equity ? std::max(0.05, 0.001 * std::abs(*ledger_equity)) : 0.05;
-        logger.log("[RECON] ", reconcile_equity(venue_equity, ledger_equity, tolerance).to_log_string());
+        // The venue marks the position at its own price and the ledger at the last midpoint, so a mark differs by
+        // about a basis point of the position, not of the account; one basis point of the account with a cent floor
+        // is the width a real accounting break has to exceed, and it is what caught the demo's stale base.
+        const double tolerance = ledger_equity ? std::max(0.05, 0.0001 * std::abs(*ledger_equity)) : 0.05;
+        logger.log("[RECON] at=end ", reconcile_equity(venue_equity, ledger_equity, tolerance).to_log_string());
         live_transport->disconnect();
     }
     if (order_log)
@@ -1119,8 +1141,8 @@ void Application::run_multi_book_mode() const
     // interchangeable: a BTC perpetual has a ten dollar face value and an ETH perpetual a one dollar face, and
     // an account holding both with one face value prices the other leg ten times too large.
     const InstrumentSpec first_instrument = instrument_for(sources[0].symbol);
-    Portfolio portfolio(first_instrument.quantity_scale, 1000.0, first_instrument.unit_notional_usd,
-                        first_instrument.multiplier);
+    Portfolio portfolio(first_instrument.quantity_scale, cfg_.starting_cash_usd,
+                        first_instrument.unit_notional_usd, first_instrument.multiplier);
     portfolio.set_instrument(first_instrument);
 
     const std::string source = "deribit;symbols=" + sources[0].symbol + "," + sources[1].symbol +
@@ -1179,7 +1201,7 @@ void Application::run_multi_book_mode() const
         // The same settings the single-book path applies, applied to the book they belong to. The exposure
         // ceiling is in dollars and lives on the pipeline, so each book measures its own exposure against the
         // same cash rather than the two together measuring against it.
-        leg.pipeline->set_collateral(1000.0, leg.instrument.unit_notional_usd,
+        leg.pipeline->set_collateral(cfg_.starting_cash_usd, leg.instrument.unit_notional_usd,
                                      leg.instrument.quantity_scale, leg.instrument.multiplier);
         leg.pipeline->set_profiler(profiler);
         apply_pipeline_limits(*leg.pipeline);
@@ -1337,7 +1359,7 @@ void Application::run_legacy_udp_mode() const
     Portfolio portfolio;
     Pipeline pipeline(output_files.orders, output_files.trades, *strategy, engine, portfolio);
     legacy::TickPipeline tick_pipeline(pipeline, order_book, order_book, engine);
-    pipeline.set_collateral(1000.0, 0.0);
+    pipeline.set_collateral(cfg_.starting_cash_usd, 0.0);
     apply_pipeline_limits(pipeline);
     UdpFeed feed(port);
     feed.start();

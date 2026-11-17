@@ -313,22 +313,53 @@ the summary, so a later session can re-open the question with a number.
 
 | question | where it is answered | the number or line |
 |---|---|---|
-| what does the venue say the account is worth? | the second `[RECON]` line | `venue_equity_usd`, `equity_break_usd`, `status=ok\|break\|unknown` |
+| what does the venue say the account is worth? | the venue-equity `[RECON]` lines (`at=start`, `at=end`) | `venue_equity_usd`, `equity_break_usd`, `status=ok\|break\|unknown` |
 | which of the snapshot's orders are still working? | `--snapshot-in` with `--live-orders` | `[RESUME] orders=… live=… gone=… cancelled=…` |
 | is this client inside the venue's budget? | the relay's REST route | `rest_429` in the order channel's summary |
 | which stream belongs to the demo account? | `--venue-demo` on the relay | the demo public endpoint, not the live one |
 
 **The balance is a second question, not a second opinion.** `[RECON]` already compares the broker's statement with
 the account; neither side is the venue's own balance, so a fee the venue booked but never reported -- or a fill on
-another instrument under the same key -- leaves both statements equal while the money is not. A live run now prints a
-second `[RECON]` line, after the final mark, from `GET /api/v5/account/balance`:
+another instrument under the same key -- leaves both statements equal while the money is not. A live run prints the
+venue-equity `[RECON]` line at `at=start`, before it quotes, and again at `at=end`, after the final mark, from
+`GET /api/v5/account/balance`:
 `venue_equity_usd=… ledger_equity_usd=… equity_break_usd=… tolerance_usd=… status=ok|break`. The break is signed
-(venue minus ledger) and the tolerance is printed -- the larger of 0.05 USD and ten basis points of the account, because
-the venue marks a position at its own price and the ledger at the last midpoint, so a few cents is two marks rather
-than two accounts -- which lets the reader see the width of the claim rather than only its verdict. A venue that cannot
-answer -- the socket-only placement route, a refused call -- prints `n/a` and `status=unknown`; a ledger with an
+(venue minus ledger) and the tolerance is printed -- the larger of 0.05 USD and one basis point of the account, because
+the venue marks a position at its own price and the ledger at the last midpoint, while a missing fee is around a basis
+point of a small account -- which lets the reader see the width of the claim rather than only its verdict. A venue that
+cannot answer -- the socket-only placement route, a refused call -- prints `n/a` and `status=unknown`; a ledger with an
 unmarked position prints `ledger_equity_usd=n/a` for the same reason. **Neither is `ok`**: a check that could not be
 made must not read like one that passed.
+
+**The opening balance is a flag, and the start line is its check.** `--starting-cash=USD` sets the cash the portfolio
+opens with, which is also the exposure ceiling and the `[EXECUTION] starting_cash_usd` field. The default 1000 is the
+replay account; a funded venue is why the flag exists. A live run compares the venue's `totalEq` with that number in
+`[RECON] at=start` before it quotes, and again in `at=end` after the final mark. Measured on 2026-11-17 with the demo
+account: without the flag the first 60-second run printed `venue_equity_usd=80076.9 ledger_equity_usd=999.816
+equity_break_usd=79077.1 tolerance_usd=0.999816 status=break`; with `--starting-cash=80076.7` the next run printed
+`at=start venue_equity_usd=80001 ledger_equity_usd=80076.7 equity_break_usd=-75.6537 tolerance_usd=80.0767 status=ok`
+and `at=end venue_equity_usd=80012.4 ledger_equity_usd=80076.7 equity_break_usd=-64.2924 tolerance_usd=80.0767
+status=ok`. The flag is the venue's balance, not the previous run's: the 75.65 gap is the demo account holding a position
+the ledger does not, and the start line is what says so. A resumed run takes its cash and positions from the snapshot
+instead (`--snapshot-in` wins over the flag), and marks the restored positions at the snapshot's prices before the first
+comparison.
+
+A third run on the final build, seeded at 80,012.4, measured `at=start venue_equity_usd=79990.3 ledger_equity_usd=80012.4
+equity_break_usd=-22.1486 tolerance_usd=8.00124 status=break` and `at=end venue_equity_usd=79995.2
+ledger_equity_usd=80011.8 equity_break_usd=-16.6734 status=break`, while the strategy's own broker reconciliation was
+`status=ok` over three fills. The demo account held a position this ledger did not open -- another session, or the
+demo's own state -- so the account-wide check is a break while the strategy's fills reconcile. **That is the
+precondition, not a tolerance to widen**: a flat account, or a `--snapshot-in` that adopts the position, is the clean
+start.
+
+The tolerance is the larger of 0.05 USD and one basis point of the account, printed on the line. Ten basis points was
+the first choice and the demo run is why it moved: 75.65 was inside 80.0767 and read `ok`, while the ledger and the
+account were 64 to 76 USD apart. At one basis point the same gap is 8.0012, and the third run above measured
+`tolerance_usd=8.00124 status=break` on a 22.15 gap -- the account's position moving between runs.
+
+The route itself was exercised in those runs: `--venue-demo` delivered `frames=3713 messages=3713 trades=657
+depth_updates=3054` in the first 60 seconds, and the order leg placed 20 orders and read 60 reports; the second run's two
+quotes were both cancelled on the demo's thin book.
 
 **A restart asks the venue rather than believing its own file.** `--snapshot-in` lists the orders the previous process
 had, and `LiveVenue::query_order` answers from the venue's `GET /api/v5/trade/orders-pending` list -- refreshed before

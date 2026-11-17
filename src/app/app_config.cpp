@@ -61,6 +61,10 @@ constexpr std::string_view kOrderSizePrefix = "--order-size=";
 constexpr std::string_view kInventoryLimitPrefix = "--inventory-limit=";
 constexpr std::string_view kMaxPositionPrefix = "--max-position=";
 constexpr std::string_view kMaxExposurePrefix = "--max-exposure-usd=";
+// The cash the account starts with. It is also the exposure ceiling and the baseline the live venue-equity
+// [RECON] compares against, which is why a live run against an account that already holds a balance has to
+// pass that balance here: the replay default of 1000 is an assumption, not the venue's number.
+constexpr std::string_view kStartingCashPrefix = "--starting-cash=";
 constexpr std::string_view kKillSwitchPrefix = "--kill-switch-loss-usd=";
 constexpr std::string_view kFatFingerPrefix = "--fat-finger-bps=";
 constexpr std::string_view kMaxOrdersPerSecondPrefix = "--max-orders-per-second=";
@@ -227,7 +231,9 @@ void print_usage(const char* executable)
         std::cerr << "   limits: --max-exposure-usd=N is the exposure ceiling the summary measures the run "
                      "against, enforced rather than reported once it is named, and --kill-switch-loss-usd=N "
                      "latches when the loss reaches N dollars, closes the position it was holding at the "
-                     "touch and refuses every order after that\n";
+                     "touch and refuses every order after that. --starting-cash=USD is the cash the account "
+                     "starts with (default 1000), which is also that ceiling and the baseline the live "
+                     "venue-equity [RECON] compares against\n";
         std::cerr << "   risk: --fat-finger-bps=X refuses an order priced more than X basis points from the "
                      "current midpoint, and --max-orders-per-second=X with --order-burst=N caps submissions "
                      "with a token bucket; 0 leaves each of them off\n";
@@ -896,6 +902,17 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                     return false;
                 }
                 cfg.max_exposure_usd = exposure;
+            }
+            else if (flag.compare(0, kStartingCashPrefix.size(), kStartingCashPrefix) == 0)
+            {
+                double cash = 0.0;
+                std::istringstream stream(flag.substr(kStartingCashPrefix.size()));
+                if (!(stream >> cash) || !(cash > 0.0))
+                {
+                    error = "--starting-cash must be a positive number of US dollars";
+                    return false;
+                }
+                cfg.starting_cash_usd = cash;
             }
             else if (flag.compare(0, kKillSwitchPrefix.size(), kKillSwitchPrefix) == 0)
             {

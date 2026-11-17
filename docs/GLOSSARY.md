@@ -63,7 +63,7 @@ The one place where a run leaves the process. The terms are small but they are t
 | `liquidity_role` | what the **venue** says the fill was, `maker` or `taker`, which picks the fee rate; the engine's own queue model does not set it | `ExecutionReport::liquidity_role` |
 | `ctVal` | a contract's size in the underlying -- `0.01` BTC for `BTC-USDT-SWAP` -- so a venue-unit quantity is not a coin quantity | the venue's instrument list |
 | reconciliation | the ledger's statement against the venue's own reports; `status=break` means the two disagree, and no number from that run is quoted | `[RECON]` |
-| venue equity | the venue's own `totalEq` against the ledger's marked equity, on a second `[RECON]` line: `equity_break_usd` is signed and `status=unknown` says one side was `n/a` | `[RECON]`, `GET /api/v5/account/balance` |
+| venue equity | the venue's own `totalEq` against the ledger's marked equity, on the `at=start` and `at=end` `[RECON]` lines: `equity_break_usd` is signed and `status=unknown` says one side was `n/a` | `[RECON]`, `GET /api/v5/account/balance` |
 | working set | the orders the venue still holds (`orders-pending`), which a recovery queries before it cancels or counts anything | `LiveVenue::query_order` |
 
 ## Statistics, when a set of runs is quoted

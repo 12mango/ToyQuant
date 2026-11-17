@@ -7,6 +7,32 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## A live account's opening balance is a flag, checked before the first quote (2026-11-17)
+
+- **`--starting-cash=USD`.** The opening cash -- and so the exposure ceiling and `[EXECUTION] starting_cash_usd` -- was
+  hard-coded at 1000, which is the documented replay account and a wrong base for a funded venue. The flag sets it; the
+  default keeps every replay unchanged, and `--snapshot-in` still wins for a resumed run.
+- **The venue-equity `[RECON]` line prints before the first quote and after the last one**, as `at=start` and `at=end`.
+  The first live run through the route measured `venue_equity_usd=80076.9 ledger_equity_usd=999.816
+  equity_break_usd=79077.1 status=break`, which is the gap the flag closes.
+- **The tolerance moved from ten basis points of the account to one, and the demo run is why.** With
+  `--starting-cash=80076.7` the next run found the venue at 80,001: `equity_break_usd=-75.6537`; at ten basis points the
+  printed tolerance was 80.0767 and the line read `ok`, while the ledger and the account were 64 to 76 USD apart. At one
+  basis point (8.00124 for that balance) the same gap reads `break`. A third run on the final build, seeded at the
+  previous end 80,012.4, measured `at=start venue_equity_usd=79990.3 ledger_equity_usd=80012.4 equity_break_usd=-22.1486
+  tolerance_usd=8.00124 status=break` and `at=end venue_equity_usd=79995.2 ledger_equity_usd=80011.8
+  equity_break_usd=-16.6734`, with the strategy's own broker reconciliation `status=ok` over three fills. The demo
+  account held a position this ledger did not open, so the account-wide check is a break while the strategy's fills
+  reconcile -- the precondition for a clean start is a flat account or a `--snapshot-in` that adopts the position, not a
+  wider tolerance.
+- **The route itself was exercised.** `--venue-demo` delivered 3,713 market frames (657 trades, 3,054 depth updates) in
+  the first 60-second run, and the order leg placed 20 orders and read 60 reports; the second run's two quotes were
+  cancelled on a thin book. The first run's `[PORTFOLIO]` was 999.816 with `[PNL] net_pnl_usd=-0.183602` over two fills;
+  its venue-equity break is the base, not the strategy.
+- **No recorded replay number moved:** the flag's default is 1000, the recorded runs omit it, and the equity lines print
+  only on a live leg.
+
+
 ## A long demo session can now check its account, ask about its orders, and stay inside a quota (2026-11-17)
 
 - **The venue's balance is compared with the ledger, not with the broker's statement.** A live run now prints a second

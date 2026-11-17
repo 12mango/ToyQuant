@@ -53,6 +53,7 @@ watch a position build names both: `--order-size=10 --inventory-limit=100`.
 | quiet | `--no-output` | suppresses the per-event lines, not the summary |
 | quoting | `--base-spread-ticks`, `--refresh-price-ticks`, `--inventory-shift-ticks`, `--edge-cover-ticks`, `--min-spread-ticks` | `0` leaves each at the strategy's own setting; `--base-spread-ticks=1` quotes at the touch |
 | risk | `--max-position`, `--max-exposure-usd`, `--kill-switch-loss-usd`, `--fat-finger-bps`, `--max-orders-per-second` with `--order-burst` | `--max-exposure-usd` is enforced once named and reported either way |
+| account | `--starting-cash` | the cash the account opens with (default 1000), which is also the exposure ceiling; a live run against a funded account passes the venue's balance or its `[RECON]` reports the break |
 | fills | `--participation-limit`, `--time-in-force`, `--post-only`, `--arrival-share`, `--queue-chunks`, `--queue-seed` | the queue model is the seventh positional argument, not a flag |
 | latency | `--order-latency-us`, `--cancel-latency-us` | holds the order or the cancel for N microseconds of the market's own clock |
 | fees | `--maker-fee-rate`, `--fee-schedule` | a schedule names `min`, `regulatory`, `clearing`, `audit`, `rebate`, `commission`; every term is zero unless named |
@@ -100,6 +101,16 @@ client state a resumed process does not have.
 > On a live venue the question is `GET /api/v5/trade/orders-pending` through the relay, so the order leg needs
 > `--order-rest`; a venue that cannot answer refuses the resume instead of assuming the orders are gone. The live page
 > has the rule and the `[RESUME]` line it prints.
+
+**The account's opening balance.** `--starting-cash=USD` sets the portfolio's opening cash, the exposure ceiling
+`[EXECUTION]` reports, and the number a live run's venue-equity `[RECON]` compares the venue against -- at the start
+and again at the end. The default 1000 is the replay account. A funded demo account is why the flag exists: measured
+2026-11-17, a fresh run against an account whose `totalEq` was 80,076.9 USD reported `equity_break_usd=79077.1` against
+the 1,000 default; a second run seeded at 80,076.7 found the venue at 80,001 and reported `-75.6537`, so the flag has to
+be the venue's current balance and the `at=start` line is what says whether it is. A venue that holds a position the
+ledger did not open is a break, not a tolerance to widen -- a flat account or a `--snapshot-in` is the clean start. A
+resumed run takes its opening cash from the snapshot instead, so `--snapshot-in` wins over the flag; the start line then
+marks the restored positions at the snapshot's own prices.
 
 **The order leg.** `--record-orders=PREFIX` writes `<prefix>_orders.csv`: one row per submission, per cancel and per
 execution report, in the order they happened, with every field a report carries and a price written as the shortest

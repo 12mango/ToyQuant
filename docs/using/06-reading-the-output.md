@@ -14,9 +14,9 @@ mechanical rather than a matter of taste:
 | `[VENUE]` | `reports`, `dropped` | `dropped>0`, or `orders>0` with `reports=0` |
 
 > `[RISK]` prints only when `--fat-finger-bps` or `--max-orders-per-second` is named, and `[VENUE]` only on a run with a
-> venue leg. A live venue prints **two** `[RECON]` lines on the same run: the first compares the broker's statement with
-> the account, and the second compares the venue's balance with the same account (`venue_equity_usd`,
-> `ledger_equity_usd`, `equity_break_usd`). `[LATENCY]`, `[LIVE]` and `[PERFORMANCE]` answer the same question about
+> venue leg. A live venue prints up to **three** `[RECON]` lines on the same run: the broker's statement against the
+> account, then the venue-equity line at `at=start` and at `at=end` (`venue_equity_usd`, `ledger_equity_usd`,
+> `equity_break_usd`, `tolerance_usd`). `[LATENCY]`, `[LIVE]` and `[PERFORMANCE]` answer the same question about
 > timing and equity and are read the same way: one number, one red flag. The field-by-field reference is in
 > [the learning path](../LEARNING.md#field-reference).
 

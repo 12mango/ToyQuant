@@ -79,6 +79,10 @@ struct AppConfig
     // measured window, fee plus half a tick -- and that price is reported beside the halt.
     double max_exposure_usd = 0.0;
     double kill_switch_loss_usd = 0.0;
+    // The cash the account starts with. It is the exposure ceiling as well as the opening balance, and a live
+    // run's venue-equity [RECON] compares the venue against it: 1000 is the documented replay account, and a
+    // live account that already holds a balance has to pass that balance here or the line reports the break.
+    double starting_cash_usd = 1000.0;
     // The pre-trade band and the submission bucket. Both off at 0: a fat-finger band of 0 does not look at
     // the price, and a rate of 0 does not look at the clock, which is what keeps every existing run's order
     // flow and output unchanged.
