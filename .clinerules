@@ -115,13 +115,15 @@ compatibility path. Everything below assumes that page.
   worked example).
 - **Deleting a tool breaks a document, not the program.** Before removing anything, grep the documents and the gate for
   it; if nothing names it, say so in the commit message.
-- **A long command is started detached, and "is it done" is a file.** The terminal here loses completion signals, and a
-  foreground command that outlives the tool's budget is killed when the next one is typed -- that is how a post-commit
-  sync was cut between its manifest and its copy, and how a reviewer was left an empty `diff.patch`. So:
-  `tools/gate/detach.sh <name> [seconds] -- <command>` starts it, writes `/tmp/<name>.log`, and drops
-  `/tmp/<name>.exit` with the status (124 when the timeout fired) when it is over. Read the exit file to learn
-  *whether*, the log to learn *what*. Nothing waits in the foreground: a `sleep` over ~30 s belongs in a detached
-  script, and `fast`, `all` and any run over the 1.5 GB depth file always go through the runner.
+- **A long command is started detached, and "is it done" is a file.** The invoking tool waits for the pty it handed the
+  command to be free, and a background child that inherits the terminal's descriptors keeps it open: measured
+  2026-11-17, a `build` that finished in 16 s was reported "still running" for the tool's 300 s budget, and a bare
+  `git log` was still in `less` hours later, holding `pts/10`. So `bash .run.sh <verb>` starts the verb with `setsid`
+  and every descriptor on `/dev/null`, writes `/tmp/tq/<verb>.out`, and drops `/tmp/tq/<verb>.exit` with the status
+  when it is over; `tools/gate/detach.sh <name> [seconds] -- <command>` is the same shape for anything outside the
+  verbs. Read the exit file to learn *whether*, the log to learn *what*. Nothing waits in the foreground: a `sleep`
+  over ~30 s belongs in a detached script, and `fast`, `all` and any run over the 1.5 GB depth file always go
+  through the runner.
 - **Polling is a file read, and never the same file twice in a row.** A reader that asks the same unchanged path five
   times is taken for a loop and the session stops -- that happened on a gate log. Check `/tmp/<name>.exit` first
   (absent = still running), then do a real piece of work -- the next page to edit, the diff to read -- before looking
@@ -130,19 +132,24 @@ compatibility path. Everything below assumes that page.
   killed by it. After launching a detached command, ask the shell nothing until its exit file appears. A shell that
   cannot answer `echo` is wedged; recovery is closing the terminal tab, and the state that counts afterwards is what
   `git` says, not what the wedged shell said.
+- **A command whose completion is not reported is a stray child, not a lost command.** Measured 2026-11-17: the first
+  command of a session (`git log --oneline -5`) opened `less`, the tool waited its full 300 s budget, and the pager was
+  still alive when `ps` was read hours later. Before retyping anything, look for the child with
+  `bash .run.sh sh 'ps -eo pid,ppid,stat,tty,cmd | grep -E "less|git|run.sh" | grep -v grep'`, kill the stray, and read
+  the artifacts; sending the command again into a pty that already has a reader is how one hang becomes two.
 - **The zsh prompt eats the first character.** oh-my-zsh asks `[Y/n]` before a command and takes the first keystroke,
   so `pgrep` ran as `grep`. Prefix every command with one space: the prompt swallows it and the command runs.
-- **One foreground command per terminal, and on this host that is none.** Two interactive shells are attached to one
-  pseudo-terminal (measured 2026-11-15: two `zsh -i`, one foreground `Ss+` and one `Ss`, and the tool writes into the
-  second), so a command run in the foreground is sometimes not delivered at all and its completion is never reported --
-  `grep` on one file sat for five minutes. Everything therefore goes through `bash .run.sh <verb>` (an ignored root file;
-  verbs `status build smoke code docs fast lint full asan sync push commit tail`): it starts the verb detached, writes
-  `/tmp/tq/<verb>.out` and `/tmp/tq/<verb>.exit`, and returns at once. Read the exit file (absent = running), then the
-  log; a `tail` verb prints both. `full` and `asan` are the acceptance tiers `all` is made of, so the gate this section
-  calls the commit-time cost is reachable with the same one word. **One verb at a time**: the runner refuses a second
-  start of a verb whose pid is alive, because two gates in one tree write the same `/tmp` slices and the same `out/lat`
-  recordings -- on 2026-11-15 that collision produced a `recorder: replaying the recording did not reproduce the run`
-  MISMATCH in one log and a plain `code OK` in the other, which reads exactly like a real regression.
+- **The terminal is several shells on several ptys, and nothing is typed into it.** Measured 2026-11-17: four
+  `zsh -i` and a `-zsh` on `pts/1,5,6,8,10`, and the tool writes into whichever it chose -- the earlier "two shells"
+  figure was an undercount. Everything therefore goes through the ignored root runner (`bash .run.sh <verb>`; verbs
+  `status build smoke code docs fast lint full asan sh sync push commit tail`), or, for an inspection no verb covers,
+  `bash .run.sh sh '<command>'`. That verb is not a convenience: it is the only path that cannot leave a pager holding
+  the terminal. **No pager, ever**: `git --no-pager` on every git command, and the runner exports
+  `GIT_PAGER=cat PAGER=cat GIT_TERMINAL_PROMPT=0` as the backstop. Read `/tmp/tq/<verb>.exit` (absent = running), then
+  the log; `bash .run.sh tail <verb>` prints both. **One verb at a time**: the runner refuses a second start of a verb
+  whose pid is alive, because two gates in one tree write the same `/tmp` slices and the same `out/lat` recordings --
+  on 2026-11-15 that collision produced a `recorder: replaying the recording did not reproduce the run` MISMATCH in one
+  log and a plain `code OK` in the other, which reads exactly like a real regression.
 - **Anything that crosses into Windows gets a `timeout`** (`powershell.exe`, `wslpath`), because WSL interop can block
   indefinitely and it is the call most likely to hang.
 - **A commit is not finished when `git commit` returns** -- section 6 has the three things that have to agree.
