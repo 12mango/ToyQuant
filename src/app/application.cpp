@@ -982,7 +982,11 @@ void Application::run_l2_session_mode() const
     // result rather than a mark, and pricing the exit is the only way to say what the mark was optimistic by.
     if (cfg_.close_out)
     {
+        // A live venue's fill is a report, not a return value: the close needs the same drain the run uses, for a
+        // bounded moment, or a filled exit is reported as `no_liquidity=1` and its position stays on the ledger.
+        if (live_venue) pipeline.set_venue_pump([&drain_venue] { drain_venue(); });
         const WindDownSummary wind_down = pipeline.close_out(pipeline.last_event_ts());
+        if (live_venue) pipeline.set_venue_pump(nullptr);
         if (wind_down.attempted()) logger.log("[WIND-DOWN] ", wind_down.to_log_string());
     }
     if (final_mid > 0.0)

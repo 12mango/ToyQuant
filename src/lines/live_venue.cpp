@@ -332,22 +332,26 @@ bool LiveVenue::refresh_pending()
 
 bool LiveVenue::refresh_equity()
 {
-    uint64_t generation = 0;
-    {
-        std::lock_guard<std::mutex> lock(query_mutex_);
-        generation = equity_generation_;
-    }
     ++counters_.equity_queries;
-    if (!transport_.send("EQUITY"))
+    // A lost request or answer is not a venue that cannot answer. The end of a run asks once, after the feed, and that
+    // answer is the whole comparison, so the budget buys two attempts rather than one.
+    const int attempts = config_.query_timeout_ms > 0 ? 2 : 1;
+    const auto per_attempt = std::chrono::milliseconds(config_.query_timeout_ms / attempts);
+    for (int attempt = 0; attempt < attempts; ++attempt)
     {
-        ++counters_.transport_failures;
-        ++counters_.equity_failures;
-        return false;
-    }
-    if (config_.query_timeout_ms > 0)
-    {
-        const auto deadline = std::chrono::steady_clock::now() +
-                              std::chrono::milliseconds(config_.query_timeout_ms);
+        uint64_t generation = 0;
+        {
+            std::lock_guard<std::mutex> lock(query_mutex_);
+            generation = equity_generation_;
+        }
+        if (!transport_.send("EQUITY"))
+        {
+            ++counters_.transport_failures;
+            ++counters_.equity_failures;
+            return false;
+        }
+        if (config_.query_timeout_ms == 0) continue;
+        const auto deadline = std::chrono::steady_clock::now() + per_attempt;
         while (std::chrono::steady_clock::now() < deadline)
         {
             if (query_pump_) query_pump_();

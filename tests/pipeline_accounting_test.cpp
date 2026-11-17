@@ -474,7 +474,12 @@ int main()
                                                          .ts = 12,
                                                          .top = TopOfBook{100.0, 100, 101.0, 100},
                                                          .micro_price = 100.5});
+        // The in-process engine fills inside the call, so the close must not wait: a pump set for a live venue is
+        // skipped when the position already moved, which is what keeps every recorded run's timing unchanged.
+        int pump_calls = 0;
+        end_pipeline.set_venue_pump([&pump_calls] { ++pump_calls; });
         const WindDownSummary wind_down = end_pipeline.close_out(13);
+        assert(pump_calls == 0);
         assert(wind_down.attempted());
         assert(wind_down.position == 10);
         assert(wind_down.closed_quantity == 10);
@@ -574,6 +579,54 @@ int main()
         assert(partial.residual == 5);
         const auto* left = thin_portfolio.find_position("THIN");
         assert(left != nullptr && left->quantity == 5);
+    }
+
+    // A live close's fill is a report that arrives after the placement, so the close pumps the caller's drain instead
+    // of reading the position once. The wait is bounded and it changes no decision: a venue that shows nothing inside
+    // the budget still returns its residual and says `no_liquidity`, which is the one case the pump exists to tell
+    // apart from a fill.
+    {
+        test_support::TempFile wait_orders_file("pipeline_close_out_wait_orders.csv");
+        test_support::TempFile wait_trades_file("pipeline_close_out_wait_trades.csv");
+        std::ofstream wait_orders = wait_orders_file.open();
+        std::ofstream wait_trades = wait_trades_file.open();
+        L2MarketMakerBase wait_strategy(L2MarketMakerBaseConfig{.order_size = 10,
+                                                                .base_spread = 0.5,
+                                                                .inventory_limit = 100,
+                                                                .tick_size = 1.0,
+                                                                .signal_mode = L2SignalMode::Baseline});
+        MatchingEngine wait_engine(1.0, FeeSchedule{.maker_rate = 0.0002,
+                                                    .taker_rate = 0.0005,
+                                                    .quantity_scale = 1,
+                                                    .unit_notional_usd = 10.0});
+        Portfolio wait_portfolio(1, 1000.0, 10.0);
+        Pipeline wait_pipeline(wait_orders, wait_trades, wait_strategy, wait_engine, wait_portfolio, 1.0);
+        wait_pipeline.set_collateral(1000.0, 10.0, 1, 1.0);
+        wait_pipeline.process_l2_market_view(L2MarketView{.symbol = "WAIT",
+                                                          .ts = 10,
+                                                          .top = TopOfBook{100.0, 100, 101.0, 100},
+                                                          .micro_price = 100.5});
+        wait_pipeline.process_l2_market_trade(MarketTrade{11, "WAIT", 100.0, 200, Side::Sell, 1, "deribit"});
+        const auto* wait_open = wait_portfolio.find_position("WAIT");
+        assert(wait_open != nullptr && wait_open->quantity == 10);
+        // The book empties before the close: the venue has nothing to sell into, so the close waits, finds no fill,
+        // and reports the ten contracts it kept rather than a fill the engine imagined.
+        wait_pipeline.process_l2_market_view(L2MarketView{.symbol = "WAIT",
+                                                          .ts = 12,
+                                                          .top = TopOfBook{100.0, 0, 101.0, 0},
+                                                          .micro_price = 100.5});
+        int pumped = 0;
+        wait_pipeline.set_venue_pump([&pumped] { ++pumped; });
+        wait_pipeline.set_close_out_wait_ms(30);
+        const WindDownSummary waited = wait_pipeline.close_out(13);
+        assert(pumped >= 1);
+        assert(waited.attempted());
+        assert(waited.closed_quantity == 0);
+        assert(waited.residual == 10);
+        assert(waited.no_liquidity);
+        assert(!waited.refused);
+        const auto* wait_left = wait_portfolio.find_position("WAIT");
+        assert(wait_left != nullptr && wait_left->quantity == 10);
     }
 
     // A latched kill switch closes what the run is holding. Two things had to be true for this to work and neither

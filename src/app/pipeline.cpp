@@ -1,7 +1,9 @@
 #include "pipeline.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <thread>
 
 #include "backtest/performance.h"
 #include "exchange/execution_report.h"
@@ -602,6 +604,18 @@ WindDownSummary Pipeline::send_close_order(uint64_t ts)
         return summary;
     }
 
+    // In-process the fill is already on the book. On a live venue it is a report that arrives after the placement is
+    // acknowledged, and only the caller's drain books it: without this wait a close that filled at the venue would be
+    // reported `closed=0 no_liquidity=1`, and its position left on the ledger. The budget is bounded because a book with
+    // no size must still return the residual it kept, and it is live-only because a replay's fill is synchronous.
+    const int wait_ms = std::max(0, close_out_wait_ms_);
+    for (int waited = 0; venue_pump_ && fill_accounting_.position() == position && waited < wait_ms; waited += 10)
+    {
+        venue_pump_();
+        if (fill_accounting_.position() != position) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
     const int64_t after = fill_accounting_.position();
     const int64_t closed = std::llabs(position) - std::llabs(after);
     summary.closed_quantity = closed > 0 ? static_cast<uint64_t>(closed) : 0;
@@ -614,8 +628,8 @@ WindDownSummary Pipeline::send_close_order(uint64_t ts)
     // full one and the two numbers stay comparable with every other basis-point figure in this project.
     summary.fees_bps = closed_notional > 0.0 ? summary.fees_usd / closed_notional * 10'000.0 : 0.0;
     summary.total_bps = summary.spread_bps + summary.fees_bps;
-    // A close that sent an order and got nothing back is the touch showing no size, not a refusal and not a fill:
-    // saying which of the three happened is the difference between a report and a rumour.
+    // A close that sent an order and got nothing back within its wait is the venue showing no size, not a refusal and
+    // not a fill: saying which of the three happened is the difference between a report and a rumour.
     if (summary.closed_quantity == 0) summary.no_liquidity = true;
     return summary;
 }

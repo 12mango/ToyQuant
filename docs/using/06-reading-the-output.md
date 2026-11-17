@@ -137,5 +137,11 @@ The pinned example is [the SPY window](../performance/history-04-the-fee-is-not-
 reads 262.51 and the account after the exit 257.11, with 38 of the 438 shares left unclosed because the touch showed no
 size. Every `net USD` column in these documents that carries a position is a mark until someone runs it with `--close-out`.
 
+A live venue answers asynchronously. The fill is a report that arrives after the placement is acknowledged, not a return
+value, so `--close-out` gives a live venue a bounded wait -- one second -- to deliver it through the run's own drain
+before it reads what is left. An in-process engine fills inside the call and the wait is skipped, which is why every
+recorded run's `[WIND-DOWN]` is unchanged. On a live run `closed=0 no_liquidity=1` therefore means the venue filled
+nothing inside that second, not that the order was never sent.
+
 ///
 

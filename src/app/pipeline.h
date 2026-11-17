@@ -96,6 +96,16 @@ class Pipeline
         account_marks_ = std::move(provider);
     }
 
+    // A live venue fills asynchronously: its report reaches the ledger through the caller's drain, so a close that
+    // read the position straight after submitting the order would call a filled exit empty and leave the position on
+    // the ledger. The pump is that drain; the close-out uses it for a bounded wait. Unset -- every replay -- leaves the
+    // synchronous read exactly as it was.
+    void set_venue_pump(std::function<void()> pump) { venue_pump_ = std::move(pump); }
+
+    // How long the close waits for that report, in milliseconds. 1000 is the live default; a test shortens it, so the
+    // bound is a measured property rather than a sleep in a test.
+    void set_close_out_wait_ms(int ms) { close_out_wait_ms_ = ms; }
+
     // The session's end, priced. A run that stops with a position on the book has marked it at the last midpoint and
     // called the difference PnL; nobody can close at the midpoint, so this sends the position out as an IOC at the
     // touch and reports what the exit cost -- the half spread it gave up and the taker fee it paid, in basis points
@@ -372,6 +382,8 @@ class Pipeline
     uint64_t last_sell_queue_ahead_consumed_{0};
     uint64_t filtered_market_trades_{0};
     double close_out_cross_bps_{0.0};
+    std::function<void()> venue_pump_;
+    int close_out_wait_ms_{1000};
     ExecutionQualityMetrics execution_quality_;
     uint64_t quote_cycle_{0};
     // The pre-trade controls in one object, so the order path and the summary read the same counters and

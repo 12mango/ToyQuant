@@ -360,9 +360,37 @@ points through the midpoint, because a live venue's book is not the market leg's
 upper bound: the venue refuses a sell below its own price floor. The 2026-11-17 40 bps run is the measurement of that
 bound. The market leg's last mid was 64,250.9 and the venue's mark 64,368.86, so the floor was 64,047; 40 bps put the
 sell at 63,993, below it, and the venue refused the order -- `[WIND-DOWN] position=10000 closed=0 residual=10000
-spread_bps=40 fees_bps=0 total_bps=40 no_liquidity=1`. The same arithmetic with 20 bps puts the limit at 64,122, inside
-the floor and below the venue's 64,36x bid: that is the next run, and the account was flattened with `close-position`
-after this one. The band is a ceiling in `spread_bps`; the fill is still the venue's own price.
+spread_bps=40 fees_bps=0 total_bps=40 no_liquidity=1`. The band is a ceiling in `spread_bps`; the fill is still the
+venue's own price.
+
+**The 20 bps band cleared the floor, and the close now books what the venue filled -- but the venue still ends ahead of
+the engine.** The 2026-11-17 run with `--close-out-cross-bps=20` put the sell at 64,122, inside the floor.
+`[WIND-DOWN] position=10000 closed=8000 residual=2000 notional_usd=643.442 spread_bps=20 fees_usd=0.257375
+fees_bps=4.99995 total_bps=25` is that exit priced: 8,000 units in five taker fills and 2,000 left. The demo7 run
+printed `closed=0` for a close the venue had filled, because the position was read as soon as the placement was
+acknowledged and the reports arrived after it. `Pipeline::close_out` now gives a live venue a bounded wait -- 1000 ms
+-- to deliver the fill through the caller's drain before reading what is left; a replay's fill is synchronous and the
+wait is skipped, which is why no recorded number moved, and a book with no size still returns its residual and
+`no_liquidity=1` after the wait.
+
+What the wait does not fix is visible in the same run. The venue's position probe, read straight afterwards, printed
+`pos: -1` where the engine's book held `+2000` units, and the account was flattened with `close-position`. The booked
+taker fills are five of the exit's fills; one working order the engine still counted (`working_orders=1`) was not in the
+venue's pending list, so a fill's report did not reach the engine before the run stopped draining. Two things follow and
+neither is in yet: the close must cancel the strategy's working quotes **before** it sends the exit, because a quote
+that fills while the exit works is a position on the other side; and the session must keep draining until the venue's
+position is flat rather than until its own clock stops. Until then the equity line can read `ok` with the positions
+disagreeing, because the venue side is cash and the ledger's equity includes its own residual's mark.
+
+**The end-of-run balance was asked twice in the earlier run and answered once; the fixed run answered twice.** The 20 bps
+demo7 run sent 17 frames (9 orders, 6 cancels, 2 `EQUITY`) and received 23 (22 order reports and one answer):
+`at=start` read `venue_equity_usd=4977.92 ledger_equity_usd=4977.92 equity_break_usd=4.28026e-07 status=ok`, `at=end`
+read `venue_equity_usd=n/a status=unknown`. `LiveVenue::refresh_equity` now splits its timeout into two attempts, so a
+lost request or answer is retried inside the same budget; a venue that answers `unavailable` is not retried, because
+that is its word rather than a lost frame. The fixed run's `at=start` read `equity_break_usd=-2.46474e-07 status=ok` and
+`at=end venue_equity_usd=4976.7 ledger_equity_usd=4976.62 equity_break_usd=0.0802475 tolerance_usd=0.497662 status=ok`,
+with 20 frames sent and 34 received -- both answers landed on the first send, so the retry was exercised by the stand-in
+that ignores the first send rather than by the venue.
 
 The route itself was exercised in those runs: `--venue-demo` delivered `frames=3713 messages=3713 trades=657
 depth_updates=3054` in the first 60 seconds, and the order leg placed 20 orders and read 60 reports; the second run's two

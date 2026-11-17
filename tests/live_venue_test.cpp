@@ -334,5 +334,24 @@ int main()
         assert(venue.counters().reports_decoded == 0);
     }
 
+    // A lost equity request is retried inside the budget: a run asks at the start and at the end, and the end's one
+    // answer is the whole comparison, so a single send is not enough evidence that the venue cannot answer. An answer
+    // that says `unavailable` is not retried -- that one is the venue's word, not a lost frame.
+    {
+        RecordingTransport wire;
+        LiveVenue venue(wire, LiveVenueConfig{.query_timeout_ms = 40});
+        venue.set_query_pump([&venue, &wire]
+        {
+            if (wire.frames.size() < 2 || venue.venue_equity_usd().has_value()) return;
+            venue.on_frame("EQUITY 998.5");
+        });
+        assert(venue.refresh_equity());
+        assert(venue.venue_equity_usd().has_value() && *venue.venue_equity_usd() == 998.5);
+        assert(wire.frames.size() == 2);
+        assert(wire.frames[0] == "EQUITY" && wire.frames[1] == "EQUITY");
+        assert(venue.counters().equity_queries == 1);
+        assert(venue.counters().equity_failures == 0);
+    }
+
     return 0;
 }

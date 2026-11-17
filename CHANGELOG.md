@@ -7,6 +7,34 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## A live close waits for the venue's fill, and a lost balance query retries (2026-11-17)
+
+- **The close's fill is a report, and the pipeline was reading the position before it arrived.** `--close-out` on the
+  demo at 20 bps placed the order and printed `[WIND-DOWN] position=10000 closed=0 residual=10000 spread_bps=20
+  fees_bps=0 total_bps=20 no_liquidity=1`; the position probe run straight after the run found the account `before:
+  flat`, and the close was the only sell the run sent. The venue had filled the exit; the engine's line was stale,
+  because the fill report arrives after the placement is acknowledged and only the run's own drain books it.
+  `Pipeline::set_venue_pump` is that drain, and `send_close_order` now gives it a bounded wait -- 1000 ms by default,
+  `set_close_out_wait_ms` for a test -- before it reads `closed`/`residual`. The wait is live-only: an in-process fill
+  is on the book when the call returns and the pump is skipped, so `pipeline_accounting_test` pins both directions (a
+  synchronous close pumps zero times; a book with no size pumps, returns its residual and `no_liquidity=1`), and no
+  recorded number moved. The fixed run's line is `[WIND-DOWN] position=10000 closed=8000 residual=2000
+  notional_usd=643.442 spread_bps=20 fees_usd=0.257375 fees_bps=4.99995 total_bps=25`: the five taker fills are booked,
+  and the exit is priced.
+- **The same run leaves a position the engine does not see.** The venue's probe read `pos: -1` where the engine's book
+  held `+2000` units, and `close-position` flattened it. One working order the engine still counted was not in the
+  venue's pending list, so a fill's report did not arrive before the run stopped draining; the exit's booked 8,000 units
+  are also five parts of its contract. The next step is a close that cancels the strategy's working quotes before it
+  sends the exit and settles until the venue's position is flat, because the equity line is cash against a marked
+  remainder and can read `ok` while the positions disagree.
+- **The second `EQUITY` answer was lost, so the query retries inside its budget.** The demo7 run sent 17 frames (9
+  orders, 6 cancels, 2 `EQUITY`) and received 23 (22 order reports and one answer): `[RECON] at=start ...
+  equity_break_usd=4.28026e-07 status=ok`, `at=end venue_equity_usd=n/a status=unknown`. `LiveVenue::refresh_equity`
+  now splits `query_timeout_ms` into two attempts, which covers a lost request or answer; a venue that answers
+  `unavailable` is not retried. The fixed run sent 20 frames and received 34, with both ends `status=ok` (`at=end
+  equity_break_usd=0.0802475 tolerance_usd=0.497662`), so the retry is pinned by a transport that ignores the first send
+  and answers the second, not by the venue.
+
 ## The close-out has a crossing band, and the demo's price floor bounds it (2026-11-17)
 
 - **`--close-out-cross-bps=N` puts the closing IOC N basis points through the midpoint.** 0, the default, is the touch
