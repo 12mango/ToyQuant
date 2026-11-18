@@ -462,6 +462,16 @@ them as often as one whose orders are refused. Both runs end with `strategy_net_
 and `[RECON] at=end status=ok`; a session's activity varies with the market, so the numbers to read are the ratio of
 refusals to placements and whether the run is still quoting at the last second, not the fill count of one window.
 
+**A cancel the venue refuses is counted as a rejection.** When the venue answers a cancel with `51400` -- the order has
+been filled, cancelled or does not exist -- the relay passes that answer on as `REJECT` and the order ends as rejected,
+so `audited_rejected_orders` includes those orders in a run that had them. The fills such an order carried arrive after
+the ending and are `late_fill_reports`, which is how a run keeps the two apart. Measured on 2026-11-18, 60 s, passive_l2:
+`audited_orders=57 audited_filled_orders=10 audited_cancelled_orders=31 audited_rejected_orders=16`, where the 16 are the
+ten rate refusals (`rate_limited=10`) and six refused cancels, and `cancels=37` with `duplicates=31` accounts for the
+thirty-one cancels the venue answered twice. Every refusal the demo sent that day was `51400`; a venue that refuses a
+cancel for an order it still holds would answer differently, and the relay would still print the code and the venue's
+own words.
+
 **An order that fills completely ends as filled.** The venue's `orders` channel says `state: filled` and neither relay
 turns that state into a line, so until now the only thing that closed a filled order was a cancel for it being refused:
 `[EXECUTION]` read `audited_filled_orders=0` on every live run and those orders were counted as cancelled or rejected.
