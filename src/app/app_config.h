@@ -264,6 +264,10 @@ struct AppConfig
     bool live_orders = false;
     std::string venue_endpoint;
     uint64_t venue_max_orders = 0;
+    // The adapter's rate bound, in orders per second; 0 is off. The cap above bounds a whole session, which a
+    // strategy that replaces its quotes reaches in seconds; this bounds the rate, which is the risk that scales with
+    // how wrong the strategy is. A close is exempt from both.
+    uint64_t venue_orders_per_second = 0;
     // The adapter's notional cap, in USD, computed by the same helper the accounting uses. 0 is off, which is the
     // default: the count cap above is the one required with the flag, because it is the one that needs no
     // instrument to check. A run that wants a priced cap names one.

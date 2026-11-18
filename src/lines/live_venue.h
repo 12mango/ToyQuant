@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <mutex>
 #include <optional>
@@ -49,6 +50,12 @@ struct LiveVenueConfig
     // trust its own table: `--snapshot-in` on a live venue. 0 answers from what the channel has already said, which
     // is what a test uses and what a venue with no query endpoint gets.
     uint64_t query_timeout_ms{1500};
+    // How many orders this adapter may place in any one second; 0, the default, is off. The session cap above bounds
+    // what a whole run may place, which is the wrong shape for a strategy that replaces its quotes: a maker reaches
+    // a twenty-order session cap in seconds and then spends the rest of the run being refused -- 383 quotes and 362
+    // refusals in one 60 s demo session, whose exposure was whatever those twenty filled. The rate bounds the risk
+    // that matters (orders per second) without ending the session's quoting. A close is exempt, like the session cap.
+    uint64_t max_orders_per_second{0};
 };
 
 struct LiveVenueCounters
@@ -57,6 +64,10 @@ struct LiveVenueCounters
     uint64_t cancels_sent{0};
     // Refused by this adapter rather than by the pipeline: a cap, or a transport that would not take it.
     uint64_t refused_by_adapter{0};
+    // The subset of those the rate bound refused, kept apart because it says something different: the order was
+    // well-formed and the venue reachable, it was too soon after the last one. A session cap exhausted says the run
+    // is over; a rate refusal says the next window is.
+    uint64_t rate_limited{0};
     uint64_t transport_failures{0};
     uint64_t reports_decoded{0};
     // An ending the adapter had already reported for that order. The relay answers a cancel over REST and the
@@ -141,6 +152,11 @@ class LiveVenue : public IMatchingEngine
     // stays zero as it did before the stamp existed.
     void set_report_clock(std::function<uint64_t()> clock) { report_clock_ = std::move(clock); }
 
+    // The adapter's own clock for the rate window, in microseconds. It is a second clock on purpose: the one above
+    // is the market's, and this one measures how fast this adapter is placing. A test sets it instead of sleeping a
+    // second, which is what makes the bound measurable rather than timing-dependent.
+    void set_order_clock(std::function<uint64_t()> clock) { order_clock_ = std::move(clock); }
+
     // One frame from the venue. Returns false when it was not understood, so the caller can count it.
     bool on_frame(std::string_view frame);
 
@@ -195,6 +211,10 @@ class LiveVenue : public IMatchingEngine
     };
     std::unordered_map<uint64_t, SentOrder> sent_;
     std::function<uint64_t()> report_clock_;
+    // The times of the orders this adapter placed in the last second, for the rate bound. At most
+    // `max_orders_per_second` entries, so it is bounded by the configuration rather than by the session.
+    std::deque<uint64_t> recent_orders_;
+    std::function<uint64_t()> order_clock_;
     // The venue's own working-order set, and whether it is a complete answer rather than what the channel has
     // happened to say. `complete_` is set only by a `PENDING` list; a submission or a cancel changes the set at the
     // venue, and the recovery refreshes it before the next question.

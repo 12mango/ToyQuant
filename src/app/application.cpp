@@ -599,7 +599,8 @@ void Application::run_l2_session_mode() const
                             .max_order_notional_usd = cfg_.venue_max_notional_usd,
                             .quantity_scale = instrument.quantity_scale,
                             .unit_notional_usd = instrument.unit_notional_usd,
-                            .multiplier = instrument.multiplier});
+                            .multiplier = instrument.multiplier,
+                            .max_orders_per_second = cfg_.venue_orders_per_second});
         // The transport's receive thread only queues a line; the adapter sees it on the consuming thread, so
         // every accounting mutation happens where the replay already mutates it.
         live_transport->set_line_handler(
@@ -1083,7 +1084,9 @@ void Application::run_l2_session_mode() const
                    " reports=", counters.reports_decoded, " dropped=", counters.frames_dropped,
                    " duplicates=", counters.duplicate_reports,
                    " max_orders=", cfg_.venue_max_orders,
-                   " max_notional_usd=", cfg_.venue_max_notional_usd);
+                   " max_notional_usd=", cfg_.venue_max_notional_usd,
+                   " orders_per_second=", cfg_.venue_orders_per_second,
+                   " rate_limited=", counters.rate_limited);
         const PortfolioMetrics account = portfolio.metrics();
         std::optional<double> ledger_equity;
         if (account.marks_complete) ledger_equity = account.equity;

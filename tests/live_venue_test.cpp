@@ -181,6 +181,37 @@ int main()
         assert(venue.counters().refused_by_adapter == 2);
     }
 
+    // The rate bound, which is the shape of the risk a maker carries: the session cap bounds a whole run, so a
+    // strategy that replaces its quotes meets it in seconds and is refused for the rest of the session -- 383 quotes
+    // against a 20-order cap in one 60 s demo run. The window is one second, read from the adapter's own clock so the
+    // bound is measurable rather than timing-dependent, and a close is exempt from it as it is from the session cap.
+    {
+        RecordingTransport wire;
+        LiveVenue venue(wire, LiveVenueConfig{.max_orders_per_second = 2});
+        uint64_t now_us = 1'000'000;
+        venue.set_order_clock([&now_us] { return now_us; });
+        venue.send_order(make_order(70, exchange::Side::Buy, 10.0, 1));
+        venue.send_order(make_order(71, exchange::Side::Buy, 10.0, 1));
+        assert(wire.frames.size() == 2);
+        assert(venue.rejected_orders() == 0);
+        venue.send_order(make_order(72, exchange::Side::Buy, 10.0, 1));
+        assert(wire.frames.size() == 2);
+        assert(venue.counters().rate_limited == 1);
+        assert(venue.rejected_orders() == 1);
+        // A second later the window has moved on and the next order goes out.
+        now_us += 1'000'000;
+        venue.send_order(make_order(73, exchange::Side::Buy, 10.0, 1));
+        assert(wire.frames.size() == 3);
+        assert(venue.counters().rate_limited == 1);
+        // A close is the one order the bound must not throttle.
+        exchange::Order close = make_order(74, exchange::Side::Sell, 10.0, 1);
+        close.reduce_only = true;
+        venue.send_order(close);
+        assert(wire.frames.size() == 4);
+        assert(venue.counters().rate_limited == 1);
+        assert(venue.rejected_orders() == 1);
+    }
+
     // The four replies a venue can send, mapped onto the reports the pipeline already consumes.
     {
         RecordingTransport wire;

@@ -192,10 +192,14 @@ statement reconciled against the account. The three flags are one decision:
 | `--live-orders` | nothing | makes the venue the relay's order channel, not the matcher |
 | `--venue-endpoint` | `HOST:PORT` | names the relay's listener; there is no default |
 | `--venue-max-orders` | integer | the adapter's own cap, below the pipeline's limits |
+| `--venue-orders-per-second` | integer | optional: how fast the session may place, if the session cap alone would stop a quoting maker |
 | `--venue-max-notional` | USD | optional: one order's notional, priced the way the ledger prices it |
 
 > They are required together: an endpoint without the opt-in reaches nothing, and a live leg with no cap of its own is
-> what ADR 0005 decision 4 forbids. They are refused outside `l2_replay` and `ws`, and on a two-book run.
+> what ADR 0005 decision 4 forbids. They are refused outside `l2_replay` and `ws`, and on a two-book run. The rate is a
+> second bound rather than a replacement: the cap counts what a whole run sends, and a maker that replaces its quotes
+> spends that budget in seconds and is then refused for the rest of the session, so the rate is what keeps the session
+> quoting while still bounding how fast it can spend.
 
 Two things about that channel are the relay's own work rather than the venue's, and `venue_relay.py --self-test`
 checks both. **The engine's numbers are not the venue's**: a quantity is divided by `--quantity-scale` and by the
@@ -440,6 +444,25 @@ believing it is working, so 383 quotes met a 20-order cap and 362 were refused. 
 rate, so a maker that re-quotes spends the rest of the run being refused; that is the cap behaving as specified and the
 run saying so, and whether the bound should be a rate is a scope question rather than a defect.
 
+**The live order leg has a rate bound beside its session cap.** `--venue-max-orders` counts the orders a whole run
+sends, and with the adapter's refusals visible to the strategy a maker that replaces its quotes spends that budget in
+seconds: the 2026-11-18 run met a twenty-order cap with 383 quotes and 362 refusals, and its exposure was whatever those
+twenty filled. `--venue-orders-per-second=N` bounds how fast the session places instead -- a one-second window on the
+adapter's own clock, a close exempt like the session cap, and its refusals counted apart as `rate_limited` because the
+next window will take the order. Measured on 2026-11-18, 60 s, passive_l2, back to back on the same book: with the cap
+alone, `[VENUE] frames_sent=43 frames_received=74 orders=21 cancels=20 refused_by_adapter=186 reports=61 dropped=0
+duplicates=11 max_orders=20 orders_per_second=0 rate_limited=0` and `[EXECUTION] submitted_orders=207 trade_reports=20`;
+with `--venue-max-orders=200 --venue-orders-per-second=2`, `[VENUE] frames_sent=97 frames_received=154 orders=48
+cancels=47 refused_by_adapter=19 reports=118 dropped=0 duplicates=34 max_orders=200 orders_per_second=2
+rate_limited=19`, `[EXECUTION] submitted_orders=67 trade_reports=23 trade_report_quantity=141200 orders_that_filled=7
+late_fill_reports=13 late_fill_quantity=70600`, and `[WIND-DOWN] position=7600 closed=7600 residual=0 notional_usd=486.631
+spread_bps=0.671555 fees_bps=4.99966 total_bps=5.67122`. The rate run placed more than twice as many orders, was refused
+a tenth as often, and its own attempt count fell by two thirds: a strategy whose orders rest does not need to replace
+them as often as one whose orders are refused. Both runs end with `strategy_net_position=0`, the venue's probe `pos=0`
+and `[RECON] at=end status=ok`; a session's activity varies with the market, so the numbers to read are the ratio of
+refusals to placements and whether the run is still quoting at the last second, not the fill count of one window.
+
+**The end-of-run balance was asked twice in the earlier run and answered once; the fixed run answered twice.** The 20 bps
 demo7 run sent 17 frames (9 orders, 6 cancels, 2 `EQUITY`) and received 23 (22 order reports and one answer):
 `at=start` read `venue_equity_usd=4977.92 ledger_equity_usd=4977.92 equity_break_usd=4.28026e-07 status=ok`, `at=end`
 read `venue_equity_usd=n/a status=unknown`. `LiveVenue::refresh_equity` now splits its timeout into two attempts, so a

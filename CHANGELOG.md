@@ -7,7 +7,23 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
-## The adapter's refusals reach the pipeline, and one ending is reported once (2026-11-18)
+## A rate bound beside the live order leg's session cap (2026-11-18)
+
+- **The cap was the wrong shape once refusals reached the strategy.** `--venue-max-orders` counts the orders a whole
+  run sends; a maker that replaces its quotes spends that budget in seconds and is refused for the rest of the session
+  (383 quotes, 362 refusals, and an exposure that was whatever the twenty placed orders filled).
+  `--venue-orders-per-second=N` bounds how fast the session places, on a one-second window read from the adapter's own
+  clock, exempting a close as the session cap does and counting its refusals apart (`rate_limited`), because an
+  exhausted session says the run is over while a rate refusal says the next window is. It is a scope decision: the cap
+  is unchanged, and a run that does not set the rate keeps every recorded number.
+- **Measured on the demo, 2026-11-18, 60 s, passive_l2, back to back:** with the cap alone, `[VENUE] orders=21
+  cancels=20 refused_by_adapter=186 reports=61 dropped=0 duplicates=11 orders_per_second=0 rate_limited=0` with
+  `[EXECUTION] submitted_orders=207 trade_reports=20`; with `--venue-max-orders=200 --venue-orders-per-second=2`,
+  `[VENUE] orders=48 cancels=47 refused_by_adapter=19 reports=118 dropped=0 duplicates=34 rate_limited=19` with
+  `[EXECUTION] submitted_orders=67 trade_reports=23 orders_that_filled=7 late_fill_reports=13 late_fill_quantity=70600`.
+  Both end with `strategy_net_position=0`, the venue's probe `pos=0` and `[RECON] at=end status=ok`; the second closes
+  7,600 units to `residual=0` at `total_bps=5.67122`.
+
 
 - **A refusal before the wire was silent.** `LiveVenue` counted its own caps in `refused_by_adapter` and emitted no
   report, and it did not override `rejected_orders`, so the pipeline could not tell a refused order from a resting one.

@@ -84,6 +84,26 @@ void LiveVenue::send_order(const exchange::Order& order)
         ++counters_.refused_by_adapter;
         return;
     }
+    // The session cap above bounds what a whole run may place; this bounds how fast, which is the shape of the risk a
+    // quoting strategy carries. Both are exempt for a close, and for the same reason: the exit must reach the venue.
+    if (!order.reduce_only && config_.max_orders_per_second != 0)
+    {
+        const uint64_t now = order_clock_
+                                 ? order_clock_()
+                                 : static_cast<uint64_t>(
+                                       std::chrono::duration_cast<std::chrono::microseconds>(
+                                           std::chrono::steady_clock::now().time_since_epoch())
+                                           .count());
+        while (!recent_orders_.empty() && now >= recent_orders_.front() + 1'000'000)
+            recent_orders_.pop_front();
+        if (recent_orders_.size() >= config_.max_orders_per_second)
+        {
+            ++counters_.refused_by_adapter;
+            ++counters_.rate_limited;
+            return;
+        }
+        recent_orders_.push_back(now);
+    }
     if (config_.max_order_quantity != 0 && order.qty > config_.max_order_quantity)
     {
         ++counters_.refused_by_adapter;

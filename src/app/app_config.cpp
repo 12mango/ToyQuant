@@ -115,6 +115,9 @@ constexpr std::string_view kLiveOrdersFlag = "--live-orders";
 constexpr std::string_view kVenueEndpointPrefix = "--venue-endpoint=";
 constexpr std::string_view kVenueMaxOrdersPrefix = "--venue-max-orders=";
 constexpr std::string_view kVenueMaxNotionalPrefix = "--venue-max-notional=";
+// The adapter's rate bound, beside its session cap: the cap bounds what a run may place, this bounds how fast,
+// which is the shape of the risk a strategy that replaces its quotes actually carries.
+constexpr std::string_view kVenueOrdersPerSecondPrefix = "--venue-orders-per-second=";
 constexpr std::string_view kNotionalPrefix = "--notional-usd=";
 constexpr std::string_view kLongPrefix = "--long=";
 constexpr std::string_view kMakerFeePrefix = "--maker-fee-rate=";
@@ -221,7 +224,9 @@ void print_usage(const char* executable)
                      "the relay's order channel instead of the in-process matcher (l2_replay and ws only); the three "
                      "are required together, and the cap is the adapter's own, below the strategy's limits. "
                      "--venue-max-notional=USD adds the cap a reader can price: one order's notional, computed with "
-                     "the accounting's own helper\n";
+                     "the accounting's own helper. --venue-orders-per-second=N bounds how fast the session places: "
+                     "the session cap alone leaves a maker that replaces its quotes refused for the rest of the run, "
+                     "and a rate is the shape of that risk. A close is exempt from both caps\n";
         std::cerr << "   optional flags: --no-output | --fast-validation (l2_replay only) | "
                      "--profile-stages[=N] prints sampled per-stage timings (l2_replay only, default interval 64) | "
                      "--order-size=N, --inventory-limit=N, and --max-position=N override the "
@@ -507,6 +512,16 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                     cfg.venue_max_orders == 0)
                 {
                     error = "--venue-max-orders must be a positive number of orders";
+                    return false;
+                }
+            }
+            else if (flag.compare(0, kVenueOrdersPerSecondPrefix.size(), kVenueOrdersPerSecondPrefix) == 0)
+            {
+                if (!parse_unsigned(flag.substr(kVenueOrdersPerSecondPrefix.size()),
+                                    cfg.venue_orders_per_second) ||
+                    cfg.venue_orders_per_second == 0)
+                {
+                    error = "--venue-orders-per-second must be a positive number of orders";
                     return false;
                 }
             }
@@ -1378,10 +1393,12 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                 return false;
             }
         }
-        else if (!cfg.venue_endpoint.empty() || cfg.venue_max_orders != 0 || cfg.venue_max_notional_usd != 0.0)
+        else if (!cfg.venue_endpoint.empty() || cfg.venue_max_orders != 0 ||
+                 cfg.venue_orders_per_second != 0 || cfg.venue_max_notional_usd != 0.0)
         {
-            error = "--venue-endpoint, --venue-max-orders and --venue-max-notional are part of --live-orders: without "
-                    "it the venue is the in-process matcher, and an endpoint that reaches nothing is worse than no flag";
+            error = "--venue-endpoint, --venue-max-orders, --venue-orders-per-second and --venue-max-notional are "
+                    "part of --live-orders: without it the venue is the in-process matcher, and an endpoint that "
+                    "reaches nothing is worse than no flag";
             return false;
         }
         if (!cfg.order_log_path.empty())

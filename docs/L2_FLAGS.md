@@ -141,7 +141,11 @@ replay whose market data ends first releases the rest at the end and counts them
 with `LiveVenue` over `TcpVenueTransport`, so the venue is the relay's order channel rather than a simulation; the run
 prints `[VENUE]` with the frames sent, the frames received and the reports decoded. The three flags are required
 together -- an endpoint without the opt-in reaches nothing, and a live leg with no cap of its own is the case ADR 0005
-decision 4 forbids -- and both are refused outside `l2_replay` and `ws`, and on a two-book run. `--venue-max-notional=USD`
+decision 4 forbids -- and both are refused outside `l2_replay` and `ws`, and on a two-book run. `--venue-orders-per-second=N`
+adds a rate beside the session cap: the cap counts the orders a whole run sends, which a maker that replaces its quotes
+spends in seconds, so the rest of the session is refused -- 383 quotes and 362 refusals against a twenty-order cap in
+one 60 s demo run -- while a rate bounds how fast the risk accumulates without ending the quoting, and a close is exempt
+from both. `--venue-max-notional=USD`
 adds the cap a reader can price: one order's notional, computed with `fill_notional_usd`, the same helper the ledger
 books with, so the number refused is the number the accounting would have recorded. What the venue echoes back is only
 an order id, so the adapter stamps the owner, the side and the liquidity role from the order it sent: a report with no
