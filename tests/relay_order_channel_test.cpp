@@ -143,7 +143,8 @@ int main()
     if (reports[2].order_id != 8 || reports[2].exec_type != ExecType::Rejected)
         throw std::runtime_error("an order above the sandbox cap was not refused");
 
-    // A cancel of the order that is still resting.
+    // A cancel of the order that is still resting. The answer is the channel's state change, not the REST reply: a
+    // request accepted is not the order ending, so the relay writes one line for one cancel.
     venue.cancel_order(7);
     if (!wait_for([&reports] { return reports.size() >= 4; }))
         throw std::runtime_error("the sandbox venue never answered the cancel");
@@ -151,8 +152,9 @@ int main()
         reports[3].cancel_reason != CancelReason::User)
         throw std::runtime_error("the cancel did not come back as a user cancel");
 
-    // What crossed: three frames out (two orders and a cancel) and four lines in. The adapter's counters and the
-    // transport's have to agree, because a frame counted twice is a protocol that would double a position.
+    // What crossed: three frames out (two orders and a cancel) and four lines in -- two answers to the orders, the
+    // refusal and the channel's cancellation. The adapter's counters and the transport's have to agree, because a
+    // frame counted twice is a protocol that would double a position.
     if (transport.frames_sent() != 3) throw std::runtime_error("the transport sent a different number of frames");
     if (transport.frames_received() != 4)
         throw std::runtime_error("the transport received a different number of lines");

@@ -1213,7 +1213,11 @@ class RestPlacer:
                 self.placed += 1
                 placed = int(data.get("sz", "0") or 0)
                 return [f"ACK {order_id} {self.translator.units_of(placed)}"]
-            return [f"CANCELED {order_id} user"]
+            # A cancel's success is the request being accepted, not the order ending: the private `orders` channel
+            # reports `state: canceled`, and that is the line the engine takes. Answering here too is one ending
+            # twice -- measured 2026-11-18, 31 of a 60 s session's 37 cancels reached the adapter twice and every
+            # second one was dropped as a duplicate.
+            return []
         self.refused += 1
         reason = data.get("sMsg") or answer.get("msg", "")
         print(f"the venue refused request {order_id}: code={code} sCode={sub} {reason}".strip(), flush=True)
@@ -1667,10 +1671,9 @@ class LocalPrivateVenue(threading.Thread):
 
     def cancel_replies(self, message):
         cl_ord_id = str(((message.get("args") or [{}])[0]).get("clOrdId", ""))
-        return [
-            {"op": "cancel-order", "data": [{"clOrdId": cl_ord_id, "sCode": "0"}]},
-            {"arg": {"channel": "orders"}, "data": [{"clOrdId": cl_ord_id, "state": "canceled"}]},
-        ]
+        # One answer: the channel's state change, which is the line the engine takes. The request-shaped reply is
+        # dropped for the same reason the REST placer's is -- an accepted cancel is not a second ending.
+        return [{"arg": {"channel": "orders"}, "data": [{"clOrdId": cl_ord_id, "state": "canceled"}]}]
 
 
 def self_test():
@@ -1935,7 +1938,7 @@ def self_test():
     assert placer.lines_for("order", "7", {"code": "0", "msg": "", "data": [{"sCode": "0", "ordId": "1",
                                                                            "sz": "10"}]}) == ["ACK 7 100000"]
     assert placer.lines_for("cancel-order", "7", {"code": "0", "data": [{"sCode": "0",
-                                                                        "ordId": "1"}]}) == ["CANCELED 7 user"]
+                                                                        "ordId": "1"}]}) == []
     assert placer.lines_for("order", "7", {"code": "1", "msg": "All operations failed",
                                            "data": [{"sCode": "51010",
                                                      "sMsg": "You can't complete this request under your current "

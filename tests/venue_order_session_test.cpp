@@ -126,6 +126,14 @@ class StandInVenue
     [[nodiscard]] bool login_signature_matched() const { return signed_login_.load(); }
     [[nodiscard]] bool subscribed() const { return subscribed_.load(); }
 
+    // The cancellation the channel reports, pushed on the next pass of the session loop: the REST answer to a cancel
+    // is the request being accepted, and the venue's own state change is what ends the order.
+    void push_cancel(const std::string& order_id)
+    {
+        std::lock_guard<std::mutex> lock(cancel_mutex_);
+        cancel_push_ = order_id;
+    }
+
    private:
     std::unique_ptr<venue_ws::Stream> accept()
     {
@@ -172,6 +180,17 @@ class StandInVenue
         while (!stop_.load())
         {
             if (may_drop && drop_.load()) return;  // a drop the client has to answer with a new login
+            std::string cancel_id;
+            {
+                std::lock_guard<std::mutex> lock(cancel_mutex_);
+                cancel_id.swap(cancel_push_);
+            }
+            if (!cancel_id.empty())
+            {
+                send(stream, std::string(R"({"arg":{"channel":"orders"},"data":[{"clOrdId":")") + cancel_id +
+                                  R"(","state":"canceled"}]})");
+                continue;
+            }
             const int status = venue_ws::read_frame(stream, payload, opcode, fin);
             if (status == -2) continue;
             if (status != 1 || opcode == 0x8) return;
@@ -238,6 +257,8 @@ class StandInVenue
     std::atomic<int> subscribes_{0};
     std::atomic<int> fills_{0};
     std::atomic<int> orders_{0};
+    std::mutex cancel_mutex_;
+    std::string cancel_push_;
     std::thread thread_;
 };
 
@@ -714,8 +735,15 @@ int main()
     assert(resting.counters().venue_refusals.load() == 1);
     assert(resting.counters().transport_failures.load() == 0);
 
-    // A cancel is the other request the route serves, and its answer is the adapter's own cancel line.
+    // A cancel is the other request the route serves, and its REST answer is the request being accepted rather than a
+    // second ending: the line reaches the engine from the venue's own state change on the channel, and the route
+    // writes nothing. Measured 2026-11-18: 31 of a 60 s session's 37 cancels arrived twice before this.
     resting.on_engine_line("CANCEL 11");
+    assert(wait_for([&placement]
+                    { return placement.last_body().find("\"clOrdId\":\"11\"") != std::string::npos; }));
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    assert(!rest_port.contains("CANCELED 11 user"));
+    state.push_cancel("11");
     assert(wait_for([&rest_port] { return rest_port.contains("CANCELED 11 user"); }));
 
     // Three answer shapes only a venue or a proxy in front of one produces. A chunked body has to be read as the

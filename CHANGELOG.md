@@ -7,7 +7,29 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
-## A filled order ends as filled (2026-11-18)
+## A cancel is answered once, by the venue's state (2026-11-18)
+
+- **The relay reported an accepted cancel twice.** The REST reply's `CANCELED <id> user` and the venue's `state: canceled`
+  on the private `orders` channel are the same ending, so every successful cancellation reached the adapter as two and
+  the second was dropped as a duplicate -- 31 of a 60 s session's 37 cancels on 2026-11-18, a quarter of its receive
+  traffic spent on repeats. A cancel's success is the request being accepted, not the order ending: both relays answer it
+  with nothing, the sandbox venue's cancel reply is the channel's state change alone, and a *refused* cancel still ends
+  the order, because the channel has nothing to say about an order the venue refused to cancel.
+- **Measured on the demo, 2026-11-18, 60 s, passive_l2, cap 200 rate 2:** `[VENUE] frames_sent=135 frames_received=172
+  orders=73 cancels=60 refused_by_adapter=36 reports=183 dropped=0 duplicates=0`, `[EXECUTION] audited_orders=109
+  audited_filled_orders=13 audited_cancelled_orders=55 audited_rejected_orders=41 late_fill_reports=14
+  late_fill_quantity=50000 strategy_net_position=0 strategy_position_mismatches=0`, `[WIND-DOWN] position=10500
+  closed=10500 residual=0 notional_usd=665.05 total_bps=5.00003`, the venue's probe `pos=0` and `[RECON] at=end
+  equity_break_usd=0.00282702 status=ok`. The run before it read `duplicates=1`; the session before the change, 31.
+- **What the same runs found, and it stays open:** one of them ended with `[WIND-DOWN] position=200 closed=0
+  residual=-900 no_liquidity=1` and `working_orders=1` while the venue's probe read `pos=0` -- the exit had filled and its
+  report arrived after the close's one-second wait -- and `[RECON] at=end` read `status=ok` because it compares equity,
+  not quantity. A positions query on the balance's REST surface, reported as a quantity break beside the equity break, is
+  the next measurement.
+- **Pinned by `venue_order_session_test`:** a `CANCEL` leaves the REST route silent and the line reaches the engine only
+  when the channel reports the cancellation. `relay_order_channel_test` still reads four lines for the sandbox session,
+  which never produced a duplicate of its own.
+
 
 - **The adapter never ended an order that filled.** The venue reports `state: filled` on its `orders` channel and
   neither relay maps that state to a line, so the only thing that ever closed a filled order was a cancel for it being

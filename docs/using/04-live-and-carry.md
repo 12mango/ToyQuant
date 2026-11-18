@@ -472,6 +472,27 @@ thirty-one cancels the venue answered twice. Every refusal the demo sent that da
 cancel for an order it still holds would answer differently, and the relay would still print the code and the venue's
 own words.
 
+**A cancel is answered once, by the venue's state.** The relay used to report an accepted cancel twice -- the REST
+reply's `CANCELED <id> user` and the venue's own `state: canceled` from the `orders` channel -- so every successful
+cancellation reached the adapter as two endings and the second was dropped as a duplicate: 31 of a 60 s session's 37
+cancels on 2026-11-18. A cancel's success is the request being accepted, not the order ending, so both relays answer it
+with nothing and the channel's state change is the line. Measured on 2026-11-18, 60 s, passive_l2, cap 200 rate 2:
+`[VENUE] frames_sent=135 frames_received=172 orders=73 cancels=60 refused_by_adapter=36 reports=183 dropped=0
+duplicates=0`, `[EXECUTION] audited_orders=109 audited_filled_orders=13 audited_cancelled_orders=55
+audited_rejected_orders=41 late_fill_reports=14 late_fill_quantity=50000 strategy_net_position=0
+strategy_position_mismatches=0`, `[WIND-DOWN] position=10500 closed=10500 residual=0 notional_usd=665.05
+total_bps=5.00003`, the venue's probe `pos=0` and `[RECON] at=end equity_break_usd=0.00282702 status=ok`; the run
+before it read `duplicates=1`, and the session before the change `duplicates=31`. A refused cancel is untouched: it
+still ends the order, because the channel has nothing to say about an order the venue refused to cancel.
+
+**Equity is not quantity, and a run can end holding what the venue already closed.** One of those two sessions ended
+with `[WIND-DOWN] position=200 closed=0 residual=-900 no_liquidity=1` and `[EXECUTION] working_orders=1` while the
+venue's own probe read `pos=0`: the exit had filled and its report arrived after the close's one-second wait. The
+`[RECON] at=end` line still read `status=ok`, because it compares the venue's **equity** against the ledger's -- the
+account was worth the same either way -- and nothing compares the venue's **quantity** against the ledger's. That is the
+next measurement: a positions query on the REST surface the balance already uses, reported as a quantity break beside
+the equity break.
+
 **An order that fills completely ends as filled.** The venue's `orders` channel says `state: filled` and neither relay
 turns that state into a line, so until now the only thing that closed a filled order was a cancel for it being refused:
 `[EXECUTION]` read `audited_filled_orders=0` on every live run and those orders were counted as cancelled or rejected.

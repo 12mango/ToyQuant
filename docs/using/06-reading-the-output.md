@@ -17,9 +17,9 @@ mechanical rather than a matter of taste:
 > venue leg. A live venue prints up to **three** `[RECON]` lines on the same run: the broker's statement against the
 > account, then the venue-equity line at `at=start` and at `at=end` (`venue_equity_usd` is the venue's **USDT equity**,
 > `details[ccy=USDT].eq`, not its account-wide `totalEq`; `ledger_equity_usd`, `equity_break_usd`, `tolerance_usd`).
-> `[VENUE]` also carries `duplicates`, an ending the adapter had already reported for that order (the relay's REST
-> answer and the channel's event for one cancel), `rate_limited`, the part of `refused_by_adapter` the rate bound took,
-> and `orders_per_second`, the configured rate.
+> `[VENUE]` also carries `duplicates`, an ending the adapter had already reported for that order -- the venue repeated
+> it, which a normal run never does, because the relay answers a cancel once, with the channel's state -- `rate_limited`,
+> the part of `refused_by_adapter` the rate bound took, and `orders_per_second`, the configured rate.
 > `[LATENCY]`, `[LIVE]` and `[PERFORMANCE]` answer the same question about
 > timing and equity and are read the same way: one number, one red flag. The field-by-field reference is in
 > [the learning path](../LEARNING.md#field-reference).

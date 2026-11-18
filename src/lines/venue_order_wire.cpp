@@ -831,7 +831,10 @@ std::vector<std::string> RestPlacer::lines_for(std::string_view op, const std::s
             const std::uint64_t units = sent_units != 0 ? sent_units : translator.units_of(contracts);
             return {"ACK " + order_id + " " + std::to_string(units)};
         }
-        return {"CANCELED " + order_id + " user"};
+        // A cancel's success is the request being accepted, not the order ending: the private `orders` channel
+        // reports `state: canceled`, and that is the line the engine takes. Answering here too is one ending twice --
+        // measured 2026-11-18, 31 of a 60 s session's 37 cancels reached the adapter twice.
+        return {};
     }
     ++refused_;
     // The venue's own words, printed rather than swallowed: `sMsg` is the sub-code's reason and `msg` the top-level one.
