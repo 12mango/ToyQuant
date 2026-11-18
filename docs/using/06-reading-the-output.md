@@ -87,9 +87,12 @@ appears only when a flag asks for it. It is folded because a run that did not as
   false unless `--kill-switch-loss-usd=...` names a loss;
 - `fat_finger_rejections`, `rate_limited_orders` — printed in the `[RISK]` line that appears only when `--fat-finger-bps`
   or `--max-orders-per-second` is named;
-- `audited_rejected_orders`, `invalid_order_transitions`, `orphan_order_reports`,
+- `audited_rejected_orders`, `invalid_order_transitions`, `orphan_order_reports`, `late_fill_reports`/`late_fill_quantity`,
   `cancelled_after_fill_orders`/`cancelled_before_fill_orders`, `orders_that_filled`, `filled_orders_by_size` — the order
-  lifecycle and state-machine health counters, appended to `[EXECUTION]` only when non-zero. `filled_orders_by_size` is a
+  lifecycle and state-machine health counters, appended to `[EXECUTION]` only when non-zero. A late fill is a fill that
+  arrived after the report that ended its order (a live venue answers a cancel for an order it already filled before it
+  sends the fill), so it is counted as what it is and `orphan_order_reports` is left for a report the ledger could not
+  attribute at all. `filled_orders_by_size` is a
   histogram as `count/quantity` per bucket with the buckets `<=50, 51-99, 100-199, 200-499, 500-999, 1000+`: the bounds at
   100 and 200 are where the two share schedules this repository has read stop charging a minimum per order, so a
   commission under either convention is computable from it exactly;

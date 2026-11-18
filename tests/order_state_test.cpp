@@ -3,6 +3,7 @@
 // The second submission is the assertion that matters: with a position limit of ten, a leaked reservation
 // from the first (rejected) order would make the second order project twenty and be refused by the gate.
 #include <cassert>
+#include <cmath>
 #include <cstdint>
 #include <fstream>
 #include <string>
@@ -183,6 +184,51 @@ int main()
     // The audit is closed, so the same terminal report again is an orphan, not a second transition.
     ledger.on_report(filled, 0, quality, 1, 0.0, 0.0);
     assert(quality.orphan_order_reports == 1);
+
+    // A fill for an order this process placed, arriving after the report that ended it: the live venue's
+    // `sCode 51400` sequence, where the cancel is answered and the fill that made the order unfillable follows. It
+    // is a real fill, so it is booked -- counted with its quantity -- and it is not the state-machine count. It
+    // owes the ledger nothing: its fee arrived on the report and the account took it, and the order's queue
+    // profile and commission floor were settled when the order ended.
+    ledger.open_order(101, 0, quality);
+    const ExecutionReport cancelled_101{.order_id = 101,
+                                        .side = exchange::Side::Sell,
+                                        .exec_type = ExecType::Cancelled,
+                                        .symbol = "TEST",
+                                        .price = 100.0,
+                                        .quantity = 10,
+                                        .ts = 4,
+                                        .owner = "MarketMaker",
+                                        .cancel_reason = CancelReason::Venue};
+    ledger.on_report(cancelled_101, 0, quality, 1, 0.0, 0.0);
+    assert(!ledger.order_state(101).has_value());
+    const ExecutionReport late_fill{.order_id = 101,
+                                    .side = exchange::Side::Sell,
+                                    .exec_type = ExecType::Trade,
+                                    .symbol = "TEST",
+                                    .price = 100.0,
+                                    .quantity = 10,
+                                    .ts = 5,
+                                    .owner = "MarketMaker"};
+    assert(std::abs(ledger.on_report(late_fill, 0, quality, 1, 0.5, 1.0)) < 1e-12);
+    assert(quality.late_fill_reports == 1);
+    assert(quality.late_fill_quantity == 10);
+    assert(quality.orphan_order_reports == 1);
+
+    // A fill for an id this process never placed stays the state-machine count: that is a resumed session's
+    // restored order, which the ledger has no audit or commission schedule for.
+    const ExecutionReport foreign_fill{.order_id = 999,
+                                       .side = exchange::Side::Buy,
+                                       .exec_type = ExecType::Trade,
+                                       .symbol = "TEST",
+                                       .price = 100.0,
+                                       .quantity = 10,
+                                       .ts = 6,
+                                       .owner = "MarketMaker"};
+    assert(std::abs(ledger.on_report(foreign_fill, 0, quality, 1, 0.5, 0.0)) < 1e-12);
+    assert(quality.orphan_order_reports == 2);
+    assert(quality.late_fill_reports == 1);
+    assert(quality.late_fill_quantity == 10);
 
     // Add-liquidity-only reaches the venue through the pipeline. This probe sends a buy at the ask, which is a
     // crossing order: without the flag it trades as a taker, and with it the venue cancels the order instead and the

@@ -190,6 +190,7 @@ bool OrderLedger::transition(OrderState& state, OrderState next, ExecutionQualit
 
 void OrderLedger::open_order(uint64_t order_id, uint64_t start_cycle, ExecutionQualityMetrics& quality)
 {
+    placed_order_ids_.insert(order_id);
     order_start_cycles_.insert_or_assign(order_id, start_cycle);
     order_audit_.insert_or_assign(order_id, OrderAudit{.start_cycle = start_cycle});
     ++quality.audited_orders;
@@ -370,10 +371,22 @@ double OrderLedger::on_report(const ExecutionReport& report, uint64_t quote_cycl
     }
     else if (report.owner == "MarketMaker")
     {
-        // A report for one of our orders whose audit is already closed: a duplicate terminal report, a
-        // late fill after a cancel, or a report the state machine never saw an open order for. It is
-        // counted rather than applied, because applying it would invent an order that is not open.
-        ++quality.orphan_order_reports;
+        // A report for one of our orders whose audit is already closed. A fill is a real one -- a live venue
+        // answers a cancel for an order it has already filled with `sCode 51400` and sends the fill afterwards, so
+        // the entry was closed by a reply that only looked terminal -- and it is booked here: counted with its
+        // quantity, and nothing owed. Its fee is the venue's on the report, which the account has already taken,
+        // and the order's own queue profile and its commission floor are order-instance measurements settled when
+        // the order ended, so they are not re-opened. A duplicate terminal report, or a report for an order this
+        // process never placed (a resumed session), could not be applied at all and is the state-machine count.
+        if (report.exec_type == ExecType::Trade && placed_order_ids_.count(report.order_id) != 0)
+        {
+            ++quality.late_fill_reports;
+            quality.late_fill_quantity += report.executed_quantity();
+        }
+        else
+        {
+            ++quality.orphan_order_reports;
+        }
     }
 
     if (report.exec_type == ExecType::Trade && report.owner == "MarketMaker")

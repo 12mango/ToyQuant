@@ -936,6 +936,13 @@ int main()
         assert(late_flat != nullptr && late_flat->quantity == 0);
         assert(late_summary.strategy_net_position == 0);
         assert(late_summary.strategy_position_mismatches == 0);
+        // The fill that followed the venue's refusal is the run's own fill, not a state-machine fault: it is
+        // counted apart with its quantity, and the health counter stays zero because nothing was unattributable.
+        assert(late_summary.execution_quality.late_fill_reports == 1);
+        assert(late_summary.execution_quality.late_fill_quantity == 10);
+        assert(late_summary.execution_quality.orphan_order_reports == 0);
+        assert(late_summary.to_log_string().find("late_fill_reports=1 late_fill_quantity=10") !=
+               std::string::npos);
     }
 
 }

@@ -104,8 +104,10 @@ while a venue, self-trade or timeout cancel is treated like a rejection by `tren
 of re-quoting immediately. Inside the ledger an order moves Pending -> Resting -> PartiallyFilled ->
 Filled/Cancelled/Rejected; a transition that would move it backwards is counted in
 `invalid_order_transitions` instead of being applied, and a report for an order whose audit is already
-closed is counted in `orphan_order_reports`. Both counts are zero in a normal run and are printed only when
-non-zero.
+closed is counted apart: a fill of an order this process placed is `late_fill_reports` (the venue's
+cancel reply for an order it already filled precedes the fill), while a duplicate terminal report or a
+report for an order the process never placed is `orphan_order_reports`. Those counts are zero in a
+normal run and are printed only when non-zero.
 
 An order's entry outlives the report that ends it. The working set is not the attribution: a live venue answers a
 cancel for an order it has already filled with `sCode 51400` (a `Rejected` here) and sends the fill afterwards, so
@@ -156,7 +158,8 @@ stateDiagram-v2
 | PartiallyFilled | `Filled` | Filled | the remaining quantity completed |
 | PartiallyFilled | `Cancelled` | Cancelled | the remainder was pulled |
 | PartiallyFilled | `Rejected` | Rejected | the remainder was refused |
-| Filled / Cancelled / Rejected | any further report | no state | counted in `orphan_order_reports` |
+| Filled / Cancelled / Rejected | a `Trade` for an id this process placed | no state | `late_fill_reports`: the venue answered the cancel before it sent the fill |
+| Filled / Cancelled / Rejected | any other report | no state | counted in `orphan_order_reports` |
 | any open state | a backwards event, e.g. `Resting` after a fill | no state | counted in `invalid_order_transitions` |
 
 The three terminal states all run the same cleanup: release the quantity the position gate reserved, close

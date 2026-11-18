@@ -227,6 +227,12 @@ class OrderLedger
     static bool transition(OrderState& state, OrderState next, ExecutionQualityMetrics& quality);
 
     std::unordered_map<uint64_t, OrderAudit> order_audit_;
+    // Every id this process placed, kept for the session: a fill can arrive after the report that ended its order
+    // (a live venue answers a cancel for an order it has already filled with `sCode 51400` and sends the fill
+    // afterwards), and the id is what makes that fill ours rather than an unattributable report. `forget_order`
+    // erases the audit and not this, because the order was placed either way. The bound is one id per order a
+    // session places, the same bound the live adapter keeps for its own attribution.
+    std::unordered_set<uint64_t> placed_order_ids_;
     std::unordered_map<uint64_t, uint64_t> order_start_cycles_;
     std::unordered_set<uint64_t> pending_cancel_orders_;
     // One entry per order that rested and died, holding the two ratios worth aggregating: how close the

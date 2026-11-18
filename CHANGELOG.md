@@ -7,7 +7,23 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
-## A late fill is the strategy's own inventory (2026-11-18)
+## A fill after its order's ending report is counted as one (2026-11-18)
+
+- **`orphan_order_reports` was carrying two different things.** A live venue answers a cancel for an order it has
+  already filled with `sCode 51400` and sends the fill afterwards, so the ledger's per-order audit had already closed
+  when the fill arrived. The fill was booked by the account and attributed to the strategy (`e4c6a1a`), but the ledger
+  counted it beside a report it could not attribute at all. It keeps the ids it placed for the session now and splits
+  the two: `late_fill_reports`/`late_fill_quantity` for a fill of one of its own orders, and `orphan_order_reports` for
+  a duplicate terminal report or a fill of an order this process never placed (a resumed session). Both are printed in
+  `[EXECUTION]` only when non-zero.
+- **Measured by the same case:** `pipeline_accounting_test`'s venue answers a sell quote's cancel with the refusal and
+  then the fill; the run reads `late_fill_reports=1 late_fill_quantity=10` with `orphan_order_reports=0`, where it read
+  `orphan_order_reports=1` before, and `order_state_test` pins a duplicate terminal report and a foreign fill as the two
+  things that stay in the orphan counter. Reverting the split for one rebuild failed both cases at the late-fill count.
+- **What a late fill does not re-open:** the order's queue profile, its size bucket and its minimum-commission floor are
+  settled at the report that ends the order, and the fill's own fee arrived on the report and was taken by the account.
+  A run therefore reports the late fill's count and quantity, not a second measurement of the order.
+
 
 - **A fill that arrives after the report that ended its order still moves the strategy's position.** The venue
   answers a cancel for an order it has already filled with `sCode 51400`, which the relay reports as a `Rejected`,

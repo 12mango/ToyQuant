@@ -60,6 +60,15 @@ struct ExecutionQualityMetrics
     // out-of-order report is a visible count rather than a silent rewrite of an order's state.
     uint64_t invalid_order_transitions{0};
     uint64_t orphan_order_reports{0};
+    // Reports that arrived after the report that ended their order, for an order this process placed: a live venue
+    // answers a cancel for an order it has already filled with `sCode 51400` and sends the fill afterwards. The
+    // fill is booked -- its quantity here and its per-unit commission charged -- and the order's own
+    // measurements stay as they were settled when it ended, because a queue profile and a per-order floor belong
+    // to the order instance rather than to the fill. Kept apart from `orphan_order_reports`, which is a report
+    // that could not be attributed at all: a duplicate terminal one, or one for an order this process never
+    // placed (a resumed session).
+    uint64_t late_fill_reports{0};
+    uint64_t late_fill_quantity{0};
     uint64_t cancelled_after_fill_orders{0};
     uint64_t cancelled_before_fill_orders{0};
     // The same orders again, but by how much each of them filled. A commission's minimum per order is a
@@ -665,6 +674,9 @@ struct RunSummary
             stream << " invalid_order_transitions=" << execution_quality.invalid_order_transitions;
         if (execution_quality.orphan_order_reports > 0)
             stream << " orphan_order_reports=" << execution_quality.orphan_order_reports;
+        if (execution_quality.late_fill_reports > 0)
+            stream << " late_fill_reports=" << execution_quality.late_fill_reports
+                   << " late_fill_quantity=" << execution_quality.late_fill_quantity;
         // A book's own [PNL], printed only for a named book: the account's line cannot say which leg lost the money,
         // and that is the question a two-leg run is asking. A book that saw no quote has nothing to mark, so the
         // line is omitted rather than printed as zero.

@@ -410,10 +410,14 @@ it submitted for the whole session (`SubmittedOrders`), so a fill is attributed 
 non-zero for a fill of an order the process never submitted, which is what a resumed session (`--snapshot-in`) looks
 like, and the 20000/10 line above is kept as the measurement of the defect rather than as a property of the metric.
 
-**The ledger's own audit still closes at the ending report.** `[EXECUTION]` counts a fill whose order ended before it
-arrived in `orphan_order_reports`: the fill is booked in the account and now attributed to the strategy, but its
-quantity is not in the order's queue profile or its minimum-commission bucket, and the new test case reads
-`orphan_order_reports=1` for its one late fill. Keeping that entry open through a late fill is the next change.
+**A fill after its order's ending report is counted as a late fill, not as a fault.** The ledger closes an order's
+audit at the report that ends it -- that is when its queue profile, its size bucket and its commission floor are
+settled, and a late fill cannot re-open them -- so such a fill used to be counted in `orphan_order_reports` beside a
+report that could not be attributed at all. The ledger now keeps the ids it placed for the session and reports the two
+apart: a fill for one of them is `late_fill_reports`/`late_fill_quantity`, and `orphan_order_reports` is left for a
+duplicate terminal report or a fill of an order the process never placed, which is what `--snapshot-in` restores. The
+`pipeline_accounting_test` case reads `late_fill_reports=1 late_fill_quantity=10` and `orphan_order_reports=0` for its
+one late fill; before this change it read `orphan_order_reports=1`.
 
 **The end-of-run balance was asked twice in the earlier run and answered once; the fixed run answered twice.** The 20 bps
 demo7 run sent 17 frames (9 orders, 6 cancels, 2 `EQUITY`) and received 23 (22 order reports and one answer):
