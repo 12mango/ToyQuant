@@ -419,7 +419,27 @@ duplicate terminal report or a fill of an order the process never placed, which 
 `pipeline_accounting_test` case reads `late_fill_reports=1 late_fill_quantity=10` and `orphan_order_reports=0` for its
 one late fill; before this change it read `orphan_order_reports=1`.
 
-**The end-of-run balance was asked twice in the earlier run and answered once; the fixed run answered twice.** The 20 bps
+**The adapter's own refusals now reach the pipeline, and an ending is reported once.** Two gaps in the seam between
+`LiveVenue` and the pipeline showed up in the 2026-11-18 run. A refusal at the adapter's caps emits no report, and the
+adapter did not override `rejected_orders`, so the pipeline could not tell a refused order from a resting one: 37 of the
+session's 58 orders were refused, the strategy kept quoting against all of them, and the venue received a cancel for
+each of the 37 orders it had never seen. And the relay answers a cancel on its REST path while the private `orders`
+channel reports the same cancellation, so one ending arrived twice: the ledger counted the second as
+`orphan_order_reports` and the order's pending quantity was released a second time. `LiveVenue::rejected_orders` is that
+counter now, and a second terminal report for an order the adapter has already ended is dropped and counted as
+`duplicates` in `[VENUE]`. Measured on 2026-11-18 (60 s, passive_l2, `--venue-max-orders=20`): before, `[VENUE] orders=21
+cancels=57 refused_by_adapter=37 reports=100 dropped=0` with `[EXECUTION] audited_rejected_orders=44
+orphan_order_reports=13`; after, `[VENUE] frames_sent=43 frames_received=70 orders=21 cancels=20 refused_by_adapter=362
+reports=54 dropped=0 duplicates=14` with `[EXECUTION] submitted_orders=383 audited_rejected_orders=368 ...
+late_fill_reports=8 late_fill_quantity=40400`, `strategy_net_position=0` with `strategy_position_mismatches=0`,
+`[WIND-DOWN] position=-400 closed=400 residual=0 notional_usd=25.606 spread_bps=0 fees_bps=4.99964 total_bps=4.99964`,
+the venue's probe `pos=0`, and `[RECON] at=end venue_equity_usd=4952.84 ledger_equity_usd=4952.85
+equity_break_usd=-0.00457172 status=ok`. The orphan count is not printed at all, because it is zero. The submission
+count is the other half of the same fact: with the refusals visible, the strategy quotes again after each one instead of
+believing it is working, so 383 quotes met a 20-order cap and 362 were refused. The cap bounds a session rather than a
+rate, so a maker that re-quotes spends the rest of the run being refused; that is the cap behaving as specified and the
+run saying so, and whether the bound should be a rate is a scope question rather than a defect.
+
 demo7 run sent 17 frames (9 orders, 6 cancels, 2 `EQUITY`) and received 23 (22 order reports and one answer):
 `at=start` read `venue_equity_usd=4977.92 ledger_equity_usd=4977.92 equity_break_usd=4.28026e-07 status=ok`, `at=end`
 read `venue_equity_usd=n/a status=unknown`. `LiveVenue::refresh_equity` now splits its timeout into two attempts, so a
@@ -478,7 +498,8 @@ transport_failures=0 logins=6 subscribes=6 reconnects=5 messages=151 unreadable=
 gap rather than the four an earlier 180-second run happened to collect: a gap costs a re-subscription, not a fill, because
 the channel re-sends a live order's cumulative state when it comes back. The `venue_refusals=62` are `51400` on the
 cancels, which a REST round trip makes routine, and `refused_by_adapter=56` of 116 submissions is the 60-order cap still
-binding -- the strategy replaces faster than the cap allows.
+binding -- the strategy replaces faster than the cap allows. Those refusals were silent to the pipeline until
+2026-11-18 (`LiveVenue::rejected_orders`); the paragraph above measures what making them visible changed.
 
 **A run that ends on an empty book says so.** Two guards protect the figure that went wrong first: the closing mark is the
 last *positive* midpoint, so an empty book's zero cannot overwrite it, and where no mark exists at all the run prints

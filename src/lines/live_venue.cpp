@@ -300,8 +300,20 @@ bool LiveVenue::on_frame(std::string_view frame)
     // after it: erasing on the cancel made the demo drop sixteen fills and end the session four contracts from the
     // venue. A reject from a placement is the same shape, so neither erases; the map is bounded by the orders a
     // session places, and no report is ever guessed from a missing entry (a fill without one is dropped and counted).
-    if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Rejected)
+    const bool terminal = report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Rejected;
+    if (terminal && sent != sent_.end() && sent->second.ended)
     {
+        // The same ending, twice. The relay answers a cancel over its REST path and the private `orders` channel
+        // reports the cancellation as well, so one cancel reached this adapter as two terminal frames; a run's
+        // ledger counted the second as a report for an already-closed order, and its pending quantity was released
+        // twice. The first report is the ending, the second is a duplicate, and a fill after the end is still
+        // forwarded because that is the order's quantity rather than another ending.
+        ++counters_.duplicate_reports;
+        return true;
+    }
+    if (terminal && sent != sent_.end())
+    {
+        sent->second.ended = true;
         // The venue has said the order is over, so the working set drops it without waiting for a new query.
         std::lock_guard<std::mutex> lock(query_mutex_);
         pending_.erase(order_id);

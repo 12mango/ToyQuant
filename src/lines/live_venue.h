@@ -59,6 +59,11 @@ struct LiveVenueCounters
     uint64_t refused_by_adapter{0};
     uint64_t transport_failures{0};
     uint64_t reports_decoded{0};
+    // An ending the adapter had already reported for that order. The relay answers a cancel over REST and the
+    // private `orders` channel reports the same cancellation, so the engine heard one end twice; the second is
+    // dropped here rather than counted as a state-machine fault downstream, where it would also release the
+    // order's pending quantity a second time.
+    uint64_t duplicate_reports{0};
     // A frame the decoder did not understand. Counted rather than ignored, because a venue's new field must
     // not look like a venue that said nothing.
     uint64_t frames_dropped{0};
@@ -120,6 +125,13 @@ class LiveVenue : public IMatchingEngine
 
     void set_report_callback(ReportCallback cb) override { callback_ = std::move(cb); }
 
+    // A refusal before the wire emits no report, so without this count the pipeline cannot tell a refused order
+    // from a resting one: the demo's 60 s session had 37 of its 58 orders refused by `--venue-max-orders`, the
+    // strategy went on quoting against all of them, and the venue received a cancel for every one. The pipeline
+    // watches this number across a submission and turns the change into a terminal rejection, which is what
+    // `IMatchingEngine::rejected_orders` is for.
+    uint64_t rejected_orders() const override { return counters_.refused_by_adapter; }
+
     // The clock a report is stamped with when the frame carries no time, which is every frame: a venue
     // answers on its own clock and the wire has no field for the run's. A session recorded through this
     // adapter needs the stamp, because `RecordedVenue` releases each answer once the replay's clock passes
@@ -177,6 +189,9 @@ class LiveVenue : public IMatchingEngine
         std::string symbol;
         exchange::Side side{exchange::Side::Buy};
         TimeInForce time_in_force{TimeInForce::Gtc};
+        // Whether an ending has already been reported for this order. The entry itself is kept to the end of the
+        // session -- a fill can follow the report that ended the order -- but the ending is only reported once.
+        bool ended{false};
     };
     std::unordered_map<uint64_t, SentOrder> sent_;
     std::function<uint64_t()> report_clock_;

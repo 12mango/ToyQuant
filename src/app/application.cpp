@@ -1081,6 +1081,7 @@ void Application::run_l2_session_mode() const
                    " cancels=", counters.cancels_sent, " refused_by_adapter=",
                    counters.refused_by_adapter, " write_failures=", counters.transport_failures,
                    " reports=", counters.reports_decoded, " dropped=", counters.frames_dropped,
+                   " duplicates=", counters.duplicate_reports,
                    " max_orders=", cfg_.venue_max_orders,
                    " max_notional_usd=", cfg_.venue_max_notional_usd);
         const PortfolioMetrics account = portfolio.metrics();

@@ -7,7 +7,30 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
-## A fill after its order's ending report is counted as one (2026-11-18)
+## The adapter's refusals reach the pipeline, and one ending is reported once (2026-11-18)
+
+- **A refusal before the wire was silent.** `LiveVenue` counted its own caps in `refused_by_adapter` and emitted no
+  report, and it did not override `rejected_orders`, so the pipeline could not tell a refused order from a resting one.
+  In the 60 s session below, 37 of 58 orders were refused at `--venue-max-orders=20`, the strategy went on quoting
+  against all of them, and the venue was sent a cancel for every one -- 57 cancels for 21 placements. `rejected_orders`
+  is that counter now, so a refusal becomes a terminal rejection: the audit closes, the strategy drops the order and the
+  position gate's reservation goes back.
+- **One ending, two reports.** The relay answers a cancel on its REST path and the private `orders` channel reports the
+  same cancellation, so one order ended twice; the ledger counted the second as `orphan_order_reports` and the pending
+  quantity was released twice. `LiveVenue` drops a second terminal report for an order it has already ended and counts it
+  as `duplicates` in `[VENUE]`; a fill that arrives after the end is still forwarded, because that is the order's
+  quantity rather than another ending.
+- **Measured on the demo, 2026-11-18, 60 s, passive_l2, cap 20:** before, `[VENUE] frames_sent=80 frames_received=102
+  orders=21 cancels=57 refused_by_adapter=37 reports=100 dropped=0` with `[EXECUTION] audited_rejected_orders=44
+  orphan_order_reports=13`; after, `[VENUE] frames_sent=43 frames_received=70 orders=21 cancels=20
+  refused_by_adapter=362 reports=54 dropped=0 duplicates=14` with `audited_rejected_orders=368` and no orphan field,
+  `late_fill_reports=8 late_fill_quantity=40400`, `[WIND-DOWN] position=-400 closed=400 residual=0 notional_usd=25.606
+  total_bps=4.99964`, the venue's probe `pos=0` and `[RECON] at=end equity_break_usd=-0.00457172 status=ok`. Every cancel
+  the second run sent was for an order the venue held.
+- **What the numbers also say:** with the refusals visible the strategy re-quotes after each one instead of believing it
+  is working, so 383 quotes met the 20-order session cap and 362 were refused. The cap bounds a session rather than a
+  rate; whether it should be a rate is the next scope question, and it is recorded rather than changed here.
+
 
 - **`orphan_order_reports` was carrying two different things.** A live venue answers a cancel for an order it has
   already filled with `sCode 51400` and sends the fill afterwards, so the ledger's per-order audit had already closed

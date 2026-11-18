@@ -162,6 +162,25 @@ int main()
         assert(venue.counters().refused_by_adapter == 1);
     }
 
+    // A refusal is told to the caller as well as counted. The pipeline compares `rejected_orders` across a
+    // submission to tell a refused order from a working one, so an adapter that only incremented its own counter left
+    // the strategy quoting against orders the venue never saw: the demo's 60 s session refused 37 of its 58 orders at
+    // the cap, then sent the venue a cancel for every one of them.
+    {
+        RecordingTransport wire;
+        LiveVenue venue(wire, LiveVenueConfig{.max_orders = 1});
+        venue.send_order(make_order(60, exchange::Side::Buy, 10.0, 1));
+        assert(venue.rejected_orders() == 0);
+        venue.send_order(make_order(61, exchange::Side::Buy, 10.0, 1));
+        assert(wire.frames.size() == 1);
+        assert(venue.rejected_orders() == 1);
+        // A dead wire refuses too: the order did not reach the venue either way.
+        wire.fail_next = true;
+        venue.send_order(make_order(62, exchange::Side::Buy, 10.0, 1));
+        assert(venue.rejected_orders() == 2);
+        assert(venue.counters().refused_by_adapter == 2);
+    }
+
     // The four replies a venue can send, mapped onto the reports the pipeline already consumes.
     {
         RecordingTransport wire;
@@ -342,6 +361,32 @@ int main()
         assert(reports[3].side == exchange::Side::Buy);
         assert(!venue.on_frame("FILL 41 6421.5 10"));
         assert(venue.counters().frames_dropped == 1);
+    }
+
+    // One ending, reported twice. The relay answers a cancel on its REST path and the venue reports the same
+    // cancellation on the private `orders` channel, so the adapter received two terminal frames for one order: the
+    // ledger counted the second as a report for an order it had already closed (13 of them in one 60 s demo session)
+    // and released the order's pending quantity a second time. The first ending is forwarded, the second is dropped
+    // and counted, and a fill after the ending is still forwarded -- that is the order's quantity, not another end.
+    {
+        RecordingTransport wire;
+        LiveVenue venue(wire);
+        std::vector<ExecutionReport> reports;
+        venue.set_report_callback([&reports](const ExecutionReport& report) { reports.push_back(report); });
+        venue.send_order(make_order(50, exchange::Side::Sell, 6421.5, 10));
+        assert(venue.on_frame("CANCELED 50 user"));
+        assert(venue.on_frame("CANCELED 50 venue"));
+        assert(reports.size() == 1);
+        assert(venue.counters().duplicate_reports == 1);
+        assert(venue.on_frame("FILL 50 6421.5 10"));
+        assert(reports.size() == 2 && reports[1].exec_type == ExecType::Trade);
+        assert(venue.counters().duplicate_reports == 1);
+
+        // A terminal report for an id this adapter never sent is still forwarded: the pipeline is what has to say
+        // it could not attribute it, and the adapter has no order to compare it with.
+        assert(venue.on_frame("CANCELED 51 user"));
+        assert(reports.size() == 3);
+        assert(venue.counters().duplicate_reports == 1);
     }
 
     // The venue's own working-order set: `PENDING` replaces it, an acknowledgement adds to it, a cancel marks it stale
