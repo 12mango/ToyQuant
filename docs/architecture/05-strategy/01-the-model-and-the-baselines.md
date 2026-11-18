@@ -107,6 +107,12 @@ Filled/Cancelled/Rejected; a transition that would move it backwards is counted 
 closed is counted in `orphan_order_reports`. Both counts are zero in a normal run and are printed only when
 non-zero.
 
+An order's entry outlives the report that ends it. The working set is not the attribution: a live venue answers a
+cancel for an order it has already filled with `sCode 51400` (a `Rejected` here) and sends the fill afterwards, so
+both L2 strategies keep the ids they submitted for the session (`SubmittedOrders` in `strategy/strategy.h`) and
+attribute a fill by the id it was placed under. A fill for an id the process never submitted stays ignored -- that is
+a resumed session's restored order, and `strategy_position_mismatches` is the count that names it.
+
 ### Order state machine
 
 The ledger's state machine is deliberately small: it covers the life of one order from the moment the

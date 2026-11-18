@@ -164,6 +164,7 @@ class L2MarketMakerBase : public Strategy
     void on_order_submitted(const StrategyOrder& order) override
     {
         open_orders_[order.order_id] = order;
+        submitted_orders_.note(order.order_id);
         metrics_.submitted_quantity += order.quantity;
         ++metrics_.quote_count;
         if (order.side == Side::Buy)
@@ -223,7 +224,12 @@ class L2MarketMakerBase : public Strategy
         if (report.exec_type != ExecType::Trade) return;
 
         auto order = open_orders_.find(report.order_id);
-        if (order == open_orders_.end()) return;
+        // A fill can arrive once its order has left the working set: a live venue answers a cancel for an order it
+        // has already filled with a rejection and sends the fill after it, and the close-out's cancel sweep is where
+        // the demo hit it. The id the order was submitted under is what makes the fill ours -- the account books it
+        // either way -- so the position moves and only the working-quantity bookkeeping is skipped. A fill for an id
+        // this process never submitted is still ignored, which is what a resumed session sees.
+        if (order == open_orders_.end() && !submitted_orders_.knows(report.order_id)) return;
         position_ += report.side == exchange::Side::Buy
                  ? static_cast<int64_t>(report.executed_quantity())
                  : -static_cast<int64_t>(report.executed_quantity());
@@ -234,6 +240,7 @@ class L2MarketMakerBase : public Strategy
             ++metrics_.buy_fill_count;
         else
             ++metrics_.sell_fill_count;
+        if (order == open_orders_.end()) return;
         order->second.quantity = order->second.quantity > report.executed_quantity()
                          ? order->second.quantity - report.executed_quantity()
                                      : 0;
@@ -499,6 +506,7 @@ class L2MarketMakerBase : public Strategy
 
     L2MarketMakerBaseConfig config_;
     std::unordered_map<uint64_t, StrategyOrder> open_orders_;
+    SubmittedOrders submitted_orders_;
     std::deque<TradeVolume> recent_trades_;
     uint64_t buy_volume_{0};
     uint64_t sell_volume_{0};

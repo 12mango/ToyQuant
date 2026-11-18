@@ -400,9 +400,20 @@ notional_usd=647.473 spread_bps=0.101008 fees_usd=0.32374 fees_bps=5.00005 total
 afterwards `position: flat`, `[VENUE] orders=4 cancels=3 refused_by_adapter=0 dropped=0`, and `[RECON] at=end
 venue_equity_usd=4956.58 ledger_equity_usd=4956.58 equity_break_usd=-8.49732e-08 tolerance_usd=0.495658 status=ok`.
 The exit cost 0.10 bps against the mark and 5.00 bps of taker fee, and the account the run ends with is flat on both
-sides. The strategy's own inventory still counts the close's fills (`strategy_net_position=20000` against the flat
-account, `strategy_position_mismatches=10`), because its `on_order_update` takes every report including the pipeline's
-close; that metric is the next thing to make agree, and it does not change the account.
+sides. That run also read `strategy_net_position=20000` against the flat account with `strategy_position_mismatches=10`,
+and the cause was not the close: the fills whose cancel the venue answered `51400` arrived after the `REJECT`, the
+strategy had already forgotten the order's id, and it booked the cancel without the fill. A strategy now keeps the ids
+it submitted for the whole session (`SubmittedOrders`), so a fill is attributed by the id it was placed under;
+`l2_strategy_test` and `pipeline_accounting_test` pin it, and the demo's next run reads the metric.
+
+`strategy_position_mismatches` is zero when every fill the account books is one this process can attribute. It is
+non-zero for a fill of an order the process never submitted, which is what a resumed session (`--snapshot-in`) looks
+like, and the 20000/10 line above is kept as the measurement of the defect rather than as a property of the metric.
+
+**The ledger's own audit still closes at the ending report.** `[EXECUTION]` counts a fill whose order ended before it
+arrived in `orphan_order_reports`: the fill is booked in the account and now attributed to the strategy, but its
+quantity is not in the order's queue profile or its minimum-commission bucket, and the new test case reads
+`orphan_order_reports=1` for its one late fill. Keeping that entry open through a late fill is the next change.
 
 **The end-of-run balance was asked twice in the earlier run and answered once; the fixed run answered twice.** The 20 bps
 demo7 run sent 17 frames (9 orders, 6 cancels, 2 `EQUITY`) and received 23 (22 order reports and one answer):

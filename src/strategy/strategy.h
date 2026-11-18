@@ -2,6 +2,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 #include "common/types.h"
@@ -106,6 +107,27 @@ struct StrategyMetrics
                << " sell_quote_count=" << sell_quote_count;
         return stream.str();
     }
+};
+
+// The ids a strategy has submitted, kept for the whole session rather than only while the order works.
+//
+// An order's entry has to outlive the report that ends it. A live venue answers a cancel for an order it has
+// already filled with `sCode 51400`, which the adapter reports as a `Rejected`, and the fill that made the order
+// unfillable arrives after it. A strategy that forgot the id at the rejection booked the cancel and dropped the
+// fill: the account kept the position and the strategy did not, and the demo's close read
+// `strategy_net_position=20000` against a flat account while every other number was right. `open_orders` stays
+// the working set, because that is what `cancel_requests` and `working_order_count` mean; this answers only
+// "was this fill mine". The bound is one id per order a session submits, the same bound the live adapter keeps
+// for its own attribution.
+class SubmittedOrders
+{
+   public:
+    void note(uint64_t order_id) { ids_.insert(order_id); }
+
+    bool knows(uint64_t order_id) const { return ids_.count(order_id) != 0; }
+
+   private:
+    std::unordered_set<uint64_t> ids_;
 };
 
 class Strategy

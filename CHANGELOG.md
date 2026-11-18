@@ -7,7 +7,26 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
-## A live close ends flat, and the venue and the ledger agree (2026-11-17)
+## A late fill is the strategy's own inventory (2026-11-18)
+
+- **A fill that arrives after the report that ended its order still moves the strategy's position.** The venue
+  answers a cancel for an order it has already filled with `sCode 51400`, which the relay reports as a `Rejected`,
+  and the fill that made the order unfillable follows it. The strategy forgot the order's id at that report, so it
+  booked the cancel and dropped the fill while the account booked both: the demo's close read
+  `strategy_net_position=20000` against a flat account with `strategy_position_mismatches=10`. `SubmittedOrders`
+  keeps the ids a session submitted, so a fill is attributed by the id it was placed under instead of by whether the
+  order is still working. A fill for an id the process never submitted is still ignored -- that is what a resumed
+  session holds, and it is the case the mismatch counter exists for.
+- **Pinned, not re-run on the venue:** `l2_strategy_test` books a fill that follows a `Rejected` on both L2 strategies
+  and still ignores a foreign id; `pipeline_accounting_test` drives a venue that answers a sell quote's cancel with
+  the refusal and then the fill, and the run ends `closed=10 residual=0` with `strategy_net_position=0` and
+  `strategy_position_mismatches=0` against a flat account. The account, the exposure and the reconciliation were
+  already the closed ones; the live re-run that reads the metric is the open measurement.
+- **Still open, and measured by the same case:** the ledger's per-order audit closes at the terminal report, so the
+  late fill is booked in the account and attributed to the strategy but not in the order's queue profile or its
+  minimum-commission bucket, and `[EXECUTION]` counts it in `orphan_order_reports` (1 in the new case). Keeping the
+  audit open through a late fill is the next change.
+
 
 - **An order's entry survives every ending report.** The venue's cancel reply for an order it already filled is
   `sCode 51400`, which the relay answers `REJECT`; the fill that made the order unfillable arrives after it. Erasing

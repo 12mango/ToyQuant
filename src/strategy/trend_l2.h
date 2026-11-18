@@ -124,6 +124,7 @@ class TrendL2Strategy : public Strategy
     uint64_t rejection_wait_{0};
     uint64_t retry_after_view_{0};
     std::unordered_map<uint64_t, StrategyOrder> open_orders_;
+    SubmittedOrders submitted_orders_;
     int64_t target_at_submit_{0};
     bool cancel_pending_{false};
     StrategyMetrics metrics_{};
@@ -271,6 +272,7 @@ inline std::vector<StrategyOrder> TrendL2Strategy::on_l2_market_view(const L2Mar
 inline void TrendL2Strategy::on_order_submitted(const StrategyOrder& order)
 {
     open_orders_[order.order_id] = order;
+    submitted_orders_.note(order.order_id);
     target_at_submit_ = target_;
     rejection_wait_ = 0;
     retry_after_view_ = 0;
@@ -325,7 +327,12 @@ inline void TrendL2Strategy::on_order_update(const ExecutionReport& report)
             schedule_rejection_backoff();
         return;
     }
-    if (report.exec_type != ExecType::Trade || order == open_orders_.end()) return;
+    if (report.exec_type != ExecType::Trade) return;
+    // A fill can arrive once its order has left the working set: a live venue answers a cancel for an order it has
+    // already filled with a rejection, and the fill follows it. The id the order was submitted under is what makes
+    // the fill ours, so the position moves even though the working set no longer holds the order; a fill for an id
+    // this process never submitted is still ignored, which is what a resumed session sees.
+    if (order == open_orders_.end() && !submitted_orders_.knows(report.order_id)) return;
 
     const uint64_t quantity = report.executed_quantity();
     if (quantity == 0) return;
@@ -366,6 +373,9 @@ inline void TrendL2Strategy::on_order_update(const ExecutionReport& report)
     if (buy) ++metrics_.buy_fill_count;
     else ++metrics_.sell_fill_count;
 
-    if (order->second.quantity > quantity) order->second.quantity -= quantity;
-    else open_orders_.erase(order);
+    if (order != open_orders_.end())
+    {
+        if (order->second.quantity > quantity) order->second.quantity -= quantity;
+        else open_orders_.erase(order);
+    }
 }

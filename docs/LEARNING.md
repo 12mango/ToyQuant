@@ -78,7 +78,10 @@ Read `max_abs_inventory`, `inventory_sign_changes`, `avg_abs_inventory`, and in 
 against `starting_cash_usd` says whether the run ever held more than its collateral allowed, and
 `exposure_over_collateral_fills` counts how often a fill pushed it past. `--max-position=N` turns that
 observation into a pre-trade gate. `strategy_position_mismatches` compares the strategy's own position
-against the pipeline's, and a non-zero value there means a callback was dropped.
+against the pipeline's. It is zero when every fill the account books was attributed to an order this process
+submitted -- a fill that arrives after the report that ended its order counts, because a live venue sends the
+fill that way -- and a non-zero value means a callback was dropped or an order the process does not know (a
+resumed session) filled.
 
 ## 5. Reading a comparison without fooling yourself
 

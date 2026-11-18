@@ -2,6 +2,7 @@
 #include <cmath>
 #include <fstream>
 #include <stdexcept>
+#include <unordered_map>
 
 #include "accounting/portfolio.h"
 #include "app/pipeline.h"
@@ -12,6 +13,92 @@
 #include "strategy/baseline_market_makers.h"
 #include "support/test_support.h"
 #include "utils/logger.h"
+
+namespace
+{
+// A venue whose cancel answer is the demo's: an order that filled before its cancel is answered with the refusal
+// the venue sends for it (`sCode 51400`, a `Rejected` here) and the fill that made it unfillable follows on the same
+// channel. The in-process matcher cannot produce that order -- it reports a fill before the report that ends the
+// order -- so the strategy's attribution of a late fill is pinned against a venue that answers the way the live one
+// did. A reduce-only exit is filled on placement, which is the market order the live close sends.
+class LateFillVenue : public IMatchingEngine
+{
+   public:
+    // How many sell cancels are answered in the 51400 shape; the rest cancel like any other venue. A count rather
+    // than a side rule, so the sweep the close performs afterwards is an ordinary cancel.
+    void fill_next_cancel(uint64_t count) { late_fill_cancels_ = count; }
+
+    void send_order(const exchange::Order& order) override
+    {
+        sent_[order.id] = order;
+        if (order.reduce_only)
+        {
+            emit_trade(order, order.price, order.qty);
+            return;
+        }
+        emit(ExecutionReport{.order_id = order.id,
+                             .side = order.side,
+                             .exec_type = ExecType::Resting,
+                             .symbol = order.symbol,
+                             .price = order.price,
+                             .quantity = order.remaining,
+                             .owner = order.owner});
+    }
+
+    void cancel_order(uint64_t order_id) override
+    {
+        const auto sent = sent_.find(order_id);
+        if (sent == sent_.end()) return;
+        if (late_fill_cancels_ > 0 && sent->second.side == exchange::Side::Sell)
+        {
+            --late_fill_cancels_;
+            emit(ExecutionReport{.order_id = order_id,
+                                 .side = sent->second.side,
+                                 .exec_type = ExecType::Rejected,
+                                 .symbol = sent->second.symbol,
+                                 .price = sent->second.price,
+                                 .quantity = sent->second.remaining,
+                                 .owner = sent->second.owner,
+                                 .reject_reason = RejectReason::Venue});
+            emit_trade(sent->second, sent->second.price, sent->second.remaining);
+            return;
+        }
+        emit(ExecutionReport{.order_id = order_id,
+                             .side = sent->second.side,
+                             .exec_type = ExecType::Cancelled,
+                             .symbol = sent->second.symbol,
+                             .price = sent->second.price,
+                             .quantity = sent->second.remaining,
+                             .owner = sent->second.owner,
+                             .cancel_reason = CancelReason::User});
+    }
+
+    void process_bbo(const BboQuote& quote) override { (void)quote; }
+    void process_market_trade(const MarketTrade& trade) override { (void)trade; }
+    void set_report_callback(ReportCallback cb) override { callback_ = std::move(cb); }
+
+   private:
+    void emit(const ExecutionReport& report)
+    {
+        if (callback_) callback_(report);
+    }
+
+    void emit_trade(const exchange::Order& order, double price, uint64_t quantity)
+    {
+        emit(ExecutionReport{.order_id = order.id,
+                             .side = order.side,
+                             .exec_type = ExecType::Trade,
+                             .symbol = order.symbol,
+                             .price = price,
+                             .quantity = quantity,
+                             .owner = order.owner});
+    }
+
+    std::unordered_map<uint64_t, exchange::Order> sent_;
+    ReportCallback callback_;
+    uint64_t late_fill_cancels_{0};
+};
+}  // namespace
 
 int main()
 {
@@ -793,4 +880,62 @@ int main()
         ref_pipeline.process_l2_market_trade(MarketTrade{2000001, "REF", 100.56, 1, Side::Sell, 6, "deribit"});
         assert(ref_pipeline.trade_reference().dislocated == 1);
     }
+
+    // A late fill belongs to the strategy that submitted the order, and the close that follows is priced against
+    // it. The venue answers a sell quote's cancel with `sCode 51400` -- a refusal here -- and then sends the fill
+    // that made the order unfillable, which is the demo's sequence: the order leaves the strategy's working set at
+    // the refusal and its quantity arrives afterwards. Counting it is what makes the strategy's position the
+    // account's; the demo's close read `strategy_net_position=20000` against a flat account because the fills that
+    // made the position were dropped this way.
+    {
+        test_support::TempFile late_orders_file("pipeline_late_fill_orders.csv");
+        test_support::TempFile late_trades_file("pipeline_late_fill_trades.csv");
+        std::ofstream late_orders = late_orders_file.open();
+        std::ofstream late_trades = late_trades_file.open();
+        L2MarketMakerBase late_strategy(L2MarketMakerBaseConfig{.order_size = 10,
+                                                                .base_spread = 1.0,
+                                                                .inventory_limit = 100,
+                                                                .tick_size = 0.5,
+                                                                .signal_mode = L2SignalMode::Baseline});
+        LateFillVenue late_venue;
+        Portfolio late_portfolio(1, 1000.0);
+        Pipeline late_pipeline(late_orders, late_trades, late_strategy, late_venue, late_portfolio, 0.5);
+        // One cancel is answered in the demo's shape; the sweep the close performs afterwards cancels normally.
+        late_venue.fill_next_cancel(1);
+        // A live close pulls the working quotes before it sends the exit, which is the path the pump marks.
+        late_pipeline.set_venue_pump([] {});
+
+        late_pipeline.process_l2_market_view(L2MarketView{.symbol = "LATE",
+                                                          .ts = 10,
+                                                          .top = TopOfBook{100.0, 100, 100.5, 100},
+                                                          .micro_price = 100.25});
+        assert(late_pipeline.summary().submitted_orders == 2);
+
+        // The mid moves a tick, so the quotes are stale and pulled: the venue refuses the sell's cancel and the
+        // fill follows it. The account books the fill either way; the strategy's own inventory has to as well.
+        late_pipeline.process_l2_market_view(L2MarketView{.symbol = "LATE",
+                                                          .ts = 11,
+                                                          .top = TopOfBook{100.5, 100, 101.0, 100},
+                                                          .micro_price = 100.75});
+        const auto* late_position = late_portfolio.find_position("LATE");
+        assert(late_position != nullptr && late_position->quantity == -10);
+        assert(late_strategy.net_position() == -10);
+        assert(late_pipeline.summary().strategy_position_mismatches == 0);
+
+        // The next view quotes again, and the close is sized against the position the late fill left: ten units
+        // bought back, filled on placement, so the run ends flat on both sides and the metric agrees.
+        late_pipeline.process_l2_market_view(L2MarketView{.symbol = "LATE",
+                                                          .ts = 12,
+                                                          .top = TopOfBook{100.5, 100, 101.0, 100},
+                                                          .micro_price = 100.75});
+        const WindDownSummary late_close = late_pipeline.close_out(13);
+        assert(late_close.closed_quantity == 10);
+        assert(late_close.residual == 0);
+        const auto late_summary = late_pipeline.summary();
+        const auto* late_flat = late_portfolio.find_position("LATE");
+        assert(late_flat != nullptr && late_flat->quantity == 0);
+        assert(late_summary.strategy_net_position == 0);
+        assert(late_summary.strategy_position_mismatches == 0);
+    }
+
 }

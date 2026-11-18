@@ -5,6 +5,7 @@
 #include "strategy/active_l2_market_maker.h"
 #include "strategy/inventory_aware_l2_market_maker.h"
 #include "strategy/l2_market_maker_base.h"
+#include "strategy/trend_l2.h"
 
 int main()
 {
@@ -427,5 +428,70 @@ int main()
                                                 .owner = "MarketMaker"});
         assert(carried.on_l2_market_view(view).size() == 2);
         assert(carried.flatten_orders() == 0);
+    }
+
+    // A fill that arrives after the report that ended the order is still the strategy's. A live venue answers a
+    // cancel for an order it has already filled with `sCode 51400` -- a `Rejected` here -- and sends the fill that
+    // made the order unfillable afterwards, so an order can leave the working set before its quantity is booked. A
+    // strategy that forgot the id there booked the cancel and dropped the fill: the account kept the position and
+    // the strategy did not, and the demo's close read `strategy_net_position=20000` against a flat account while
+    // every other number was right. An id the process never submitted is still ignored -- a resumed session holds
+    // orders it did not place, and that is the case `strategy_position_mismatches` exists for.
+    {
+        L2MarketMakerBase late_fill(L2MarketMakerBaseConfig{.order_size = 10,
+                                                     .base_spread = 1.0,
+                                                     .inventory_limit = 100,
+                                                     .tick_size = 0.5});
+        late_fill.on_order_submitted(StrategyOrder{Side::Sell, view.symbol.str(), 6421.0, 10, 51});
+        late_fill.on_order_update(ExecutionReport{.order_id = 51,
+                                                  .side = exchange::Side::Sell,
+                                                  .exec_type = ExecType::Rejected,
+                                                  .symbol = view.symbol.str(),
+                                                  .quantity = 10,
+                                                  .owner = "MarketMaker",
+                                                  .reject_reason = RejectReason::Venue});
+        assert(late_fill.working_order_count() == 0);
+        assert(late_fill.net_position() == 0);
+        late_fill.on_order_update(ExecutionReport{.order_id = 51,
+                                                  .side = exchange::Side::Sell,
+                                                  .exec_type = ExecType::Trade,
+                                                  .symbol = view.symbol.str(),
+                                                  .price = 6421.0,
+                                                  .quantity = 10,
+                                                  .owner = "MarketMaker"});
+        assert(late_fill.net_position() == -10);
+
+        const int64_t before_foreign = late_fill.net_position();
+        late_fill.on_order_update(ExecutionReport{.order_id = 999,
+                                                  .side = exchange::Side::Buy,
+                                                  .exec_type = ExecType::Trade,
+                                                  .symbol = view.symbol.str(),
+                                                  .price = 6421.0,
+                                                  .quantity = 10,
+                                                  .owner = "MarketMaker"});
+        assert(late_fill.net_position() == before_foreign);
+    }
+
+    // The same shape on the trend line, which held the order's entry for its entry price and its clip size as well
+    // as its position.
+    {
+        TrendL2Strategy trend(TrendL2Config{.order_size = 10, .max_position = 100, .tick_size = 0.5});
+        trend.on_order_submitted(StrategyOrder{Side::Buy, view.symbol.str(), view.top.ask_price, 10, 61});
+        trend.on_order_update(ExecutionReport{.order_id = 61,
+                                              .side = exchange::Side::Buy,
+                                              .exec_type = ExecType::Cancelled,
+                                              .symbol = view.symbol.str(),
+                                              .quantity = 10,
+                                              .owner = "MarketMaker",
+                                              .cancel_reason = CancelReason::Venue});
+        assert(trend.working_order_count() == 0);
+        trend.on_order_update(ExecutionReport{.order_id = 61,
+                                              .side = exchange::Side::Buy,
+                                              .exec_type = ExecType::Trade,
+                                              .symbol = view.symbol.str(),
+                                              .price = view.top.ask_price,
+                                              .quantity = 10,
+                                              .owner = "MarketMaker"});
+        assert(trend.net_position() == 10);
     }
 }
