@@ -11,12 +11,15 @@ mechanical rather than a matter of taste:
 | `[EXECUTION]` | `fill_rate`, `queue_ahead_consumed` | `fills=0` with a live book, or `strategy_position_mismatches>0` |
 | `[RISK]` | `fat_finger_rejections`, `rate_limited_orders` | any, unless the run was meant to trip that control |
 | `[RECON]` | `status` | `break`: the statement and the account disagree; `unknown` on a live line: the venue did not answer |
-| `[VENUE]` | `reports`, `dropped` | `dropped>0`, or `orders>0` with `reports=0` |
+| `[VENUE]` | `reports`, `dropped`, `refused_by_adapter` | `dropped>0`, or `orders>0` with `reports=0`; a `refused_by_adapter` close to the submission count says the adapter's own bound, not the venue, is what the run hit |
 
 > `[RISK]` prints only when `--fat-finger-bps` or `--max-orders-per-second` is named, and `[VENUE]` only on a run with a
 > venue leg. A live venue prints up to **three** `[RECON]` lines on the same run: the broker's statement against the
 > account, then the venue-equity line at `at=start` and at `at=end` (`venue_equity_usd` is the venue's **USDT equity**,
 > `details[ccy=USDT].eq`, not its account-wide `totalEq`; `ledger_equity_usd`, `equity_break_usd`, `tolerance_usd`).
+> `[VENUE]` also carries `duplicates`, an ending the adapter had already reported for that order (the relay's REST
+> answer and the channel's event for one cancel), `rate_limited`, the part of `refused_by_adapter` the rate bound took,
+> and `orders_per_second`, the configured rate.
 > `[LATENCY]`, `[LIVE]` and `[PERFORMANCE]` answer the same question about
 > timing and equity and are read the same way: one number, one red flag. The field-by-field reference is in
 > [the learning path](../LEARNING.md#field-reference).

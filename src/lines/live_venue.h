@@ -62,7 +62,9 @@ struct LiveVenueCounters
 {
     uint64_t orders_sent{0};
     uint64_t cancels_sent{0};
-    // Refused by this adapter rather than by the pipeline: a cap, or a transport that would not take it.
+    // Refused by this adapter rather than by the pipeline: a cap, the rate bound, or a transport that would not take
+    // it. It is the number `rejected_orders` hands the pipeline, so every one of them becomes a terminal rejection
+    // rather than an order the strategy goes on believing in.
     uint64_t refused_by_adapter{0};
     // The subset of those the rate bound refused, kept apart because it says something different: the order was
     // well-formed and the venue reachable, it was too soon after the last one. A session cap exhausted says the run

@@ -62,7 +62,7 @@ watch a position build names both: `--order-size=10 --inventory-limit=100`.
 | the one that does change a number | `--close-out`, `--close-out-cross-bps` | flattens the carried position at the touch and prints `[WIND-DOWN]`, so `[PNL]` becomes realisable instead of a mark; the band puts the closing IOC through the midpoint for a live venue whose book is not the market leg's last snapshot |
 | session | `--snapshot-out`, `--snapshot-in` | see below: the account comes back, the strategy's own state does not |
 | order leg | `--record-orders`, `--replay-orders` | see below: one file per venue, the reader that replays it, and the clock it replays on |
-| live order leg | `--live-orders`, `--venue-endpoint`, `--venue-max-orders` | see below: the venue becomes the relay's order channel; the three are required together and only `l2_replay` and `ws` take them |
+| live order leg | `--live-orders`, `--venue-endpoint`, `--venue-max-orders`, `--venue-orders-per-second` | see below: the venue becomes the relay's order channel; the first three are required together and only `l2_replay` and `ws` take them, and the rate is optional beside the session cap |
 | signals | `--trend-params` | the non-market-making line's EWMA cross and its exits; `--inventory-limit` doubles as the size of a full signal |
 | threads and pacing | `--feed-thread`, `--ring-capacity`, `--profile-stages`, `--live-pacing` | see below: the first three report the hand-off; pacing replays against the wall clock and reports `[LIVE]` |
 | paper trading | `--paper-broker` and its five fault flags, `--order-gateway` and its two | see below: they put a component between the strategy and the venue |

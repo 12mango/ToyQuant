@@ -2,8 +2,10 @@
 // is injected, so everything below runs with a recorder in its place -- no socket, no venue, no market data --
 // which is what makes this the first step rather than the last.
 //
-// What it pins: the frame an order becomes, the two bounds the adapter enforces itself, a wire that refuses,
-// and the four replies a venue can send mapped onto the reports the rest of the tree already understands.
+// What it pins: the frame an order becomes, the bounds the adapter enforces itself (the session cap, the rate, the
+// order size and the notional), a wire that refuses, the four replies a venue can send mapped onto the reports the rest
+// of the tree already understands, and the two cases the live venue produced later: an ending it reports twice and a
+// fill that arrives after the ending.
 
 #include <cassert>
 #include <cstdint>
