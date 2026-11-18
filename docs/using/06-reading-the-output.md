@@ -10,7 +10,7 @@ mechanical rather than a matter of taste:
 | `[PNL]` | `breakeven_maker_rate` | negative: no fee schedule makes the window flat |
 | `[EXECUTION]` | `fill_rate`, `queue_ahead_consumed` | `fills=0` with a live book, or `strategy_position_mismatches>0` |
 | `[RISK]` | `fat_finger_rejections`, `rate_limited_orders` | any, unless the run was meant to trip that control |
-| `[RECON]` | `status` | `break`: the statement and the account disagree; `unknown` on a live line: the venue did not answer |
+| `[RECON]` | `status`, and on a live run the position line's `position_break` | `break`: the statement and the account disagree, or the venue holds a quantity the ledger does not; `unknown` on a live line: the venue did not answer |
 | `[VENUE]` | `reports`, `dropped`, `refused_by_adapter` | `dropped>0`, or `orders>0` with `reports=0`; a `refused_by_adapter` close to the submission count says the adapter's own bound, not the venue, is what the run hit |
 
 > `[RISK]` prints only when `--fat-finger-bps` or `--max-orders-per-second` is named, and `[VENUE]` only on a run with a

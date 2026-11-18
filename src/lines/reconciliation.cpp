@@ -117,3 +117,35 @@ VenueEquityCheck reconcile_equity(const std::optional<double>& venue_equity_usd,
         check.equity_break_usd = check.venue_equity_usd - check.ledger_equity_usd;
     return check;
 }
+
+std::string VenuePositionCheck::to_log_string() const
+{
+    std::ostringstream stream;
+    stream << "venue_units=";
+    if (venue_known) stream << venue_units;
+    else stream << "n/a";
+    stream << " ledger_units=";
+    if (ledger_known) stream << ledger_units;
+    else stream << "n/a";
+    stream << " position_break=";
+    if (venue_known && ledger_known) stream << position_break;
+    else stream << "n/a";
+    stream << " tolerance_units=" << tolerance_units << " status="
+           << (!venue_known || !ledger_known ? "unknown" : broken() ? "break" : "ok");
+    return stream.str();
+}
+
+VenuePositionCheck reconcile_position(const std::optional<std::int64_t>& venue_units,
+                                      const std::optional<std::int64_t>& ledger_units,
+                                      std::int64_t tolerance_units)
+{
+    VenuePositionCheck check;
+    check.tolerance_units = tolerance_units;
+    check.venue_known = venue_units.has_value();
+    check.ledger_known = ledger_units.has_value();
+    if (check.venue_known) check.venue_units = *venue_units;
+    if (check.ledger_known) check.ledger_units = *ledger_units;
+    // Signed: a positive break is the venue holding more than the ledger booked, which is a fill the run never heard.
+    if (check.venue_known && check.ledger_known) check.position_break = check.venue_units - check.ledger_units;
+    return check;
+}

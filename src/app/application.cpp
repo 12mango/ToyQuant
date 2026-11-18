@@ -648,7 +648,7 @@ void Application::run_l2_session_mode() const
         return lines.size();
     };
     // The queries' answers share the socket with the reports, and a query can be asked before the pipeline exists (a
-    // resume) or while a caller is inside its own walk (the gateway's timeout sweep). So the pump applies the two
+    // resume) or while a caller is inside its own walk (the gateway's timeout sweep). So the pump applies the three
     // query frames and leaves everything else queued, in order, for the drain the pipeline already performs: a fill
     // delivered at a query would otherwise be applied with no callback to book it.
     const auto drain_query_answers = [&]()
@@ -661,7 +661,8 @@ void Application::run_l2_session_mode() const
         std::vector<std::string> reports;
         for (const std::string& line : lines)
         {
-            const bool answer = line.rfind("PENDING", 0) == 0 || line.rfind("EQUITY", 0) == 0;
+            const bool answer = line.rfind("PENDING", 0) == 0 || line.rfind("EQUITY", 0) == 0 ||
+                                line.rfind("POSITION", 0) == 0;
             if (answer) live_venue->on_frame(line);
             else reports.push_back(line);
         }
@@ -1069,6 +1070,10 @@ void Application::run_l2_session_mode() const
         // agreement; a position the ledger could not mark makes the ledger side `n/a` for the same reason.
         const std::optional<double> venue_equity =
             live_venue->refresh_equity() ? live_venue->venue_equity_usd() : std::nullopt;
+        // The quantity half of the same question, asked at the same moment: equity cannot see a position the venue
+        // closed while the run's report of it was still in flight, and a run that ends like that is not reconciled.
+        const std::optional<std::int64_t> venue_position =
+            live_venue->refresh_position() ? live_venue->venue_position() : std::nullopt;
         // A report that arrived while the balance was asked for is still the account's, and the comparison below
         // has to be made after it. The query pump leaves reports queued for exactly this drain, and the mark is
         // refreshed because a fill moves cash and a position and `metrics()` reads the mark it was last given.
@@ -1095,6 +1100,12 @@ void Application::run_l2_session_mode() const
         // is the width a real accounting break has to exceed, and it is what caught the demo's stale base.
         const double tolerance = ledger_equity ? std::max(0.05, 0.0001 * std::abs(*ledger_equity)) : 0.05;
         logger.log("[RECON] at=end ", reconcile_equity(venue_equity, ledger_equity, tolerance).to_log_string());
+        // The venue's quantity against the ledger's, because the equity line above cannot see a position the venue
+        // closed while the run's report of it was still in flight. A symbol the ledger never traded is flat.
+        const auto* held = portfolio.find_position(cfg_.symbol);
+        const std::optional<std::int64_t> ledger_position =
+            held != nullptr ? std::optional<std::int64_t>(held->quantity) : std::optional<std::int64_t>(0);
+        logger.log("[RECON] position ", reconcile_position(venue_position, ledger_position).to_log_string());
         live_transport->disconnect();
     }
     if (order_log)

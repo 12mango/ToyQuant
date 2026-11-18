@@ -89,6 +89,12 @@ struct LiveVenueCounters
     uint64_t equity_queries{0};
     uint64_t equity_answers{0};
     uint64_t equity_failures{0};
+    // The position query, which exists because equity is not quantity: a position the venue closed while the run's
+    // report of it was still in flight leaves the account worth the same and the ledger holding something that is no
+    // longer there.
+    uint64_t position_queries{0};
+    uint64_t position_answers{0};
+    uint64_t position_failures{0};
 };
 
 // A venue on the other end of a wire. The same decorator shape as `PaperBroker` and `OrderGateway`: the
@@ -105,6 +111,7 @@ struct LiveVenueCounters
 //           CANCELED <id> <reason>  REJECT <id> <reason>
 //           PENDING <n> <id>...     PENDING unavailable
 //           EQUITY <usd>            EQUITY unavailable
+//           POSITION <units>        POSITION unavailable
 //
 // `CLOSE` is the end-of-session exit on a live run: a market order with `reduceOnly`, whose units the relay rounds up
 // to the venue's contract grid, so a fractional position (0.95 of a contract) is closed by one contract and the venue
@@ -173,6 +180,13 @@ class LiveVenue : public IMatchingEngine
     bool refresh_equity();
     std::optional<double> venue_equity_usd() const;
 
+    // What the venue says the account holds in this instrument, in engine units and signed; `nullopt` when it did not
+    // answer. It is the quantity half of the same question `refresh_equity` answers in money, and it is asked because a
+    // run can end holding what the venue has already closed -- measured 2026-11-18: `[WIND-DOWN] residual=-900` against
+    // a venue probe reading `pos=0`, with the equity line reporting `ok` because the two accounts were worth the same.
+    bool refresh_position();
+    std::optional<std::int64_t> venue_position() const;
+
     // Where the wait pumps the transport: the receive thread queues a line rather than applying it, so a caller
     // that blocks has to hand the adapter a way to drain it. The application's pump applies only `PENDING`/`EQUITY`
     // answers and leaves reports queued for the pipeline's own drain, so a query asked before the pipeline exists
@@ -236,5 +250,9 @@ class LiveVenue : public IMatchingEngine
     uint64_t pending_generation_{0};
     uint64_t equity_generation_{0};
     std::optional<double> venue_equity_usd_;
+    // The last position the venue reported, in engine units, and the generation of that answer. Reset when the venue
+    // answers `unavailable`, because a value kept from an earlier answer would read as a fresh one.
+    uint64_t position_generation_{0};
+    std::optional<std::int64_t> venue_position_units_;
     std::function<void()> query_pump_;
 };

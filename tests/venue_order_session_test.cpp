@@ -441,6 +441,10 @@ class StandInRest
             else if (path.rfind("/api/v5/account/balance", 0) == 0)
                 answer = R"({"code":"0","msg":"","data":[{"totalEq":"80086.85",)"
                          R"("details":[{"ccy":"USDT","eq":"4986.73"},{"ccy":"BTC","eq":"1.0"}]}]})";
+            else if (path.rfind("/api/v5/account/positions", 0) == 0)
+                // One contract short. The engine's units are the contract size taken apart: 0.01 of the coin at a
+                // one-millionth scale is ten thousand units, and the sign is the position's.
+                answer = R"({"code":"0","msg":"","data":[{"instId":"BTC-USDT-SWAP","pos":"-1","avgPx":"6421.5"}]})";
             else
                 answer = R"({"code":"404","msg":"unknown path","data":[]})";
             const std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " +
@@ -771,6 +775,11 @@ int main()
     // spot holdings the ledger does not own.
     assert(wait_for([&rest_port] { return rest_port.contains("EQUITY 4986.73"); }));
     assert(placement.signature_matched());
+    // The quantity, on the same signed REST surface: one contract short is -10,000 engine units, and the sign is what
+    // makes the number comparable with the ledger's position rather than with a contract count.
+    resting.on_engine_line("POSITION");
+    assert(wait_for([&rest_port] { return rest_port.contains("POSITION -10000"); }));
+    assert(placement.signature_matched());
     assert(resting.counters().pending_queries.load() == 1);
     assert(resting.counters().equity_queries.load() == 1);
     assert(resting.counters().query_failures.load() == 0);
@@ -797,7 +806,8 @@ int main()
 
     resting.stop();
     rest_runner.join();
-    assert(placement.requests() == 13);  // the close's placement is one of them  // ten POSTs (the rate-limited one is three), two GETs
+    // Ten POSTs (the rate-limited one is three) and three GETs: the pending list, the balance and the position.
+    assert(placement.requests() == 14);  // the close's placement is one of them
     assert(resting.counters().write_failures.load() == 0);
     // The scheduled drop ran: every session it closed was a new login at the venue, which is the reconnect path a live
     // run takes when the venue drops the private channel.
@@ -808,7 +818,7 @@ int main()
     // call. The timing itself cannot be asserted here -- the stand-in answers in microseconds -- but the relationship can:
     // a placement contains its connection, and the summary states both averages beside the count.
     const std::string wire_summary = resting.counters().to_log_string();
-    assert(wire_summary.find("rest_calls=13") != std::string::npos);
+    assert(wire_summary.find("rest_calls=14") != std::string::npos);
     assert(wire_summary.find("rest_429=2") != std::string::npos);
     assert(wire_summary.find("pending_queries=1") != std::string::npos);
     assert(wire_summary.find("equity_queries=1") != std::string::npos);

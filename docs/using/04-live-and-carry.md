@@ -485,13 +485,18 @@ total_bps=5.00003`, the venue's probe `pos=0` and `[RECON] at=end equity_break_u
 before it read `duplicates=1`, and the session before the change `duplicates=31`. A refused cancel is untouched: it
 still ends the order, because the channel has nothing to say about an order the venue refused to cancel.
 
-**Equity is not quantity, and a run can end holding what the venue already closed.** One of those two sessions ended
-with `[WIND-DOWN] position=200 closed=0 residual=-900 no_liquidity=1` and `[EXECUTION] working_orders=1` while the
-venue's own probe read `pos=0`: the exit had filled and its report arrived after the close's one-second wait. The
-`[RECON] at=end` line still read `status=ok`, because it compares the venue's **equity** against the ledger's -- the
-account was worth the same either way -- and nothing compares the venue's **quantity** against the ledger's. That is the
-next measurement: a positions query on the REST surface the balance already uses, reported as a quantity break beside
-the equity break.
+**Equity is not quantity, and the run now checks both.** One of the 2026-11-18 sessions ended with `[WIND-DOWN]
+position=200 closed=0 residual=-900 no_liquidity=1` and `working_orders=1` while the venue's own probe read `pos=0`: the
+exit had filled and its report arrived after the close's one-second wait, and `[RECON] at=end` read `ok` because it
+compares the venue's **equity** against the ledger's -- the account was worth the same either way, the ledger holding the
+position and having paid for it. The adapter now asks the venue for its position too (`GET
+/api/v5/account/positions`, signed on the balance's own surface, converted to engine units by the translator's contract
+size and signed, because a short is a negative quantity here), and the run prints a second line: `[RECON] position
+venue_units=… ledger_units=… position_break=… tolerance_units=0 status=ok|break|unknown`. The tolerance is zero units
+because a quantity is exact. Measured on 2026-11-18, 60 s, passive_l2: `[RECON] position venue_units=0 ledger_units=0
+position_break=0 tolerance_units=0 status=ok` beside `[RECON] at=end venue_equity_usd=4921.88 ledger_equity_usd=4921.88
+equity_break_usd=0.00472691 status=ok`. The `break` case is pinned by `paper_broker_test` -- a venue at 0 against a ledger
+at -900 -- because a session that closes cleanly cannot produce it on purpose.
 
 **An order that fills completely ends as filled.** The venue's `orders` channel says `state: filled` and neither relay
 turns that state into a line, so until now the only thing that closed a filled order was a cancel for it being refused:

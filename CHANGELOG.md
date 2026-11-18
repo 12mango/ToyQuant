@@ -7,7 +7,26 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
-## A cancel is answered once, by the venue's state (2026-11-18)
+## The venue's position is reconciled, not only its equity (2026-11-18)
+
+- **Equity cannot see a quantity.** A session that ended `[WIND-DOWN] residual=-900` had the venue's probe reading
+  `pos=0`: the exit had filled and its report arrived after the close's one-second wait, and the account was worth the
+  same either way -- the ledger held the position and had paid for it -- so `[RECON] at=end` read `ok`. The adapter now
+  asks the venue for its position (`GET /api/v5/account/positions`, signed on the balance's own surface, converted to
+  engine units by the translator's contract size and signed, because a short is a negative quantity) and the run prints
+  `[RECON] position venue_units=… ledger_units=… position_break=… tolerance_units=0 status=ok|break|unknown`. The
+  tolerance is zero units: a quantity is exact, and one contract that came back rounded is the whole of the break.
+- **Measured on the demo, 2026-11-18, 60 s, passive_l2:** `[RECON] position venue_units=0 ledger_units=0 position_break=0
+  tolerance_units=0 status=ok` beside `[RECON] at=end venue_equity_usd=4921.88 ledger_equity_usd=4921.88
+  equity_break_usd=0.00472691 status=ok`. The run ended flat (`working_orders=0`), so this is the `ok` case; the `break`
+  case is pinned by `paper_broker_test` -- a venue at 0 against a ledger at -900 -- because a session that closes cleanly
+  cannot produce it on purpose.
+- **One defect found on the way, and it was observed:** the application's query pump forwarded only `PENDING` and
+  `EQUITY` answers and left everything else queued for the pipeline's drain, so a `POSITION` answer sat in the queue until
+  the query timed out -- the first run that asked printed `[RECON] position venue_units=n/a ledger_units=0
+  position_break=n/a tolerance_units=0 status=unknown`. The pump forwards the third answer now, and the same run reads
+  `0/0 ok`.
+
 
 - **The relay reported an accepted cancel twice.** The REST reply's `CANCELED <id> user` and the venue's `state: canceled`
   on the private `orders` channel are the same ending, so every successful cancellation reached the adapter as two and

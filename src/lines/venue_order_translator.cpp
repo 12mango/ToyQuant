@@ -53,6 +53,14 @@ std::uint64_t OrderTranslator::units_of(double contracts) const
         std::llround(contracts * mapping_.contract_size * static_cast<double>(mapping_.quantity_scale)));
 }
 
+std::int64_t OrderTranslator::units_signed(double contracts) const
+{
+    // A position, which is signed: the venue writes a short as a negative decimal, and the ledger's quantity is
+    // negative too, so the sign is carried rather than lost.
+    return static_cast<std::int64_t>(
+        std::llround(contracts * mapping_.contract_size * static_cast<double>(mapping_.quantity_scale)));
+}
+
 std::uint64_t OrderTranslator::contracts_for(std::uint64_t units) const
 {
     // Rounded down rather than to nearest: a size above what the strategy asked for is the direction that turns a

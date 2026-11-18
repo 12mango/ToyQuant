@@ -76,6 +76,10 @@ class OrderTranslator
     std::vector<std::string> decode_orders_entry(const Json& entry);
 
     std::uint64_t units_of(double contracts) const;
+
+    // The same conversion with a sign, for a quantity the venue reports as a decimal that can be negative: a short
+    // position is the engine's negative quantity, and `units_of` cannot say which way a negative rounds.
+    std::int64_t units_signed(double contracts) const;
     std::uint64_t contracts_for(std::uint64_t units) const;
     // The same conversion for a close, rounded up: a fractional position (0.95 of a contract) is closed by one
     // contract, and the venue's `reduceOnly` caps it at the position instead of flipping it.

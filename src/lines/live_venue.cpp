@@ -167,18 +167,24 @@ bool LiveVenue::on_frame(std::string_view frame)
     const std::vector<std::string_view> fields = fields_of(frame);
     // The two query answers are about the account rather than about an order, so they carry no id and produce no
     // report. They are read before the order-id parse for exactly that reason.
-    if (!fields.empty() && (fields[0] == "PENDING" || fields[0] == "EQUITY"))
+    if (!fields.empty() && (fields[0] == "PENDING" || fields[0] == "EQUITY" || fields[0] == "POSITION"))
     {
         const bool pending = fields[0] == "PENDING";
+        const bool position = fields[0] == "POSITION";
         if (fields.size() == 2 && fields[1] == "unavailable")
         {
             std::lock_guard<std::mutex> lock(query_mutex_);
             // An answer that cannot be given is still an answer: the generation moves so a wait stops, and the
-            // previous list is kept but marked stale -- a recovery must not read "could not ask" as "none working".
+            // previous answer is kept but marked stale -- a recovery must not read "could not ask" as "none working".
             if (pending)
             {
                 pending_available_ = false;
                 ++pending_generation_;
+            }
+            else if (position)
+            {
+                venue_position_units_.reset();
+                ++position_generation_;
             }
             else
             {
@@ -213,6 +219,26 @@ bool LiveVenue::on_frame(std::string_view frame)
             pending_available_ = true;
             ++pending_generation_;
             ++counters_.pending_answers;
+            return true;
+        }
+        if (position)
+        {
+            std::int64_t units = 0;
+            if (fields.size() != 2)
+            {
+                ++counters_.frames_dropped;
+                return false;
+            }
+            const auto parsed = std::from_chars(fields[1].data(), fields[1].data() + fields[1].size(), units);
+            if (parsed.ec != std::errc{} || parsed.ptr != fields[1].data() + fields[1].size())
+            {
+                ++counters_.frames_dropped;
+                return false;
+            }
+            std::lock_guard<std::mutex> lock(query_mutex_);
+            venue_position_units_ = units;
+            ++position_generation_;
+            ++counters_.position_answers;
             return true;
         }
         double equity = 0.0;
@@ -469,6 +495,53 @@ std::optional<double> LiveVenue::venue_equity_usd() const
 {
     std::lock_guard<std::mutex> lock(query_mutex_);
     return venue_equity_usd_;
+}
+
+bool LiveVenue::refresh_position()
+{
+    ++counters_.position_queries;
+    // The same budget as the balance query, for the same reason: the end of a run asks once, and a lost frame is not a
+    // venue that cannot answer.
+    const int attempts = config_.query_timeout_ms > 0 ? 2 : 1;
+    const auto per_attempt = std::chrono::milliseconds(config_.query_timeout_ms / attempts);
+    for (int attempt = 0; attempt < attempts; ++attempt)
+    {
+        uint64_t generation = 0;
+        {
+            std::lock_guard<std::mutex> lock(query_mutex_);
+            generation = position_generation_;
+        }
+        if (!transport_.send("POSITION"))
+        {
+            ++counters_.transport_failures;
+            ++counters_.position_failures;
+            return false;
+        }
+        if (config_.query_timeout_ms == 0) continue;
+        const auto deadline = std::chrono::steady_clock::now() + per_attempt;
+        while (std::chrono::steady_clock::now() < deadline)
+        {
+            if (query_pump_) query_pump_();
+            {
+                std::lock_guard<std::mutex> lock(query_mutex_);
+                if (position_generation_ != generation)
+                {
+                    if (venue_position_units_) return true;
+                    ++counters_.position_failures;
+                    return false;
+                }
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    }
+    ++counters_.position_failures;
+    return false;
+}
+
+std::optional<std::int64_t> LiveVenue::venue_position() const
+{
+    std::lock_guard<std::mutex> lock(query_mutex_);
+    return venue_position_units_;
 }
 
 OrderQuery LiveVenue::query_order(uint64_t order_id) const

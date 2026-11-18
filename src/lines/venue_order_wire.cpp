@@ -408,7 +408,7 @@ void VenueOrderConnection::session_once()
 
 void VenueOrderConnection::on_engine_line(std::string_view line)
 {
-    // The two queries are not orders and carry no id: they are read first so `place` never has to know them.
+    // The three queries are not orders and carry no id: they are read first so `place` never has to know them.
     if (line == "PENDING")
     {
         answer_pending();
@@ -417,6 +417,11 @@ void VenueOrderConnection::on_engine_line(std::string_view line)
     if (line == "EQUITY")
     {
         answer_equity();
+        return;
+    }
+    if (line == "POSITION")
+    {
+        answer_position();
         return;
     }
     const bool is_order = line.rfind("ORDER", 0) == 0 || line.rfind("CLOSE", 0) == 0;
@@ -517,6 +522,31 @@ void VenueOrderConnection::answer_equity()
     answer.precision(10);
     answer << "EQUITY " << *equity;
     if (engine_.write_line(answer.str())) ++counters_.replies;
+}
+
+void VenueOrderConnection::answer_position()
+{
+    std::lock_guard<std::mutex> lock(session_mutex_);
+    if (placer_ == nullptr)
+    {
+        // The socket route has no positions endpoint in this client, and saying so is the answer: a zero would read as
+        // a flat account and agree with a ledger that is wrong.
+        engine_.write_line("POSITION unavailable");
+        ++counters_.query_failures;
+        return;
+    }
+    const std::optional<double> contracts = placer_->position_contracts(session_.translator().instrument());
+    publish_rest_counters();
+    if (!contracts)
+    {
+        engine_.write_line("POSITION unavailable");
+        ++counters_.query_failures;
+        return;
+    }
+    // Engine units and signed, because the number this is compared with is the ledger's position, where a short is
+    // negative.
+    const std::int64_t units = session_.translator().units_signed(*contracts);
+    if (engine_.write_line("POSITION " + std::to_string(units))) ++counters_.replies;
 }
 
 void VenueOrderConnection::to_venue(std::string_view frame)
@@ -799,6 +829,59 @@ std::optional<double> RestPlacer::balance_usd()
     const Json* message = first != nullptr ? first->find("sMsg") : nullptr;
     if (message == nullptr) message = answer.find("msg");
     std::cerr << "the venue did not report a USDT equity: code="
+              << (code != nullptr ? code->as_text() : std::string()) << ' '
+              << (message != nullptr ? message->as_text() : std::string()) << std::endl;
+    return std::nullopt;
+}
+
+std::optional<double> RestPlacer::position_contracts(const std::string& inst_id)
+{
+    static constexpr std::string_view kPath = "/api/v5/account/positions";
+    std::string failure;
+    std::int64_t connect_ms = 0;
+    const HttpResponse response = request("GET", kPath, "", failure, connect_ms);
+    if (!failure.empty())
+    {
+        std::cerr << failure << std::endl;
+        return std::nullopt;
+    }
+    Json answer;
+    std::string error;
+    if (!JsonParser(response.body).parse(answer, error))
+    {
+        ++failures_;
+        std::cerr << "the venue answered the positions query with something that is not JSON (" << error << "): "
+                  << response.body.substr(0, 160) << std::endl;
+        return std::nullopt;
+    }
+    const Json* code = answer.find("code");
+    const Json* data = answer.find("data");
+    // One entry per instrument the account holds, and an instrument it does not hold may simply be absent: a symbol
+    // with no entry is flat, which is an answer, while a refused call is not. More than one entry for the same
+    // instrument would be two position modes at once, so they are summed rather than picked from.
+    if (code != nullptr && code->as_text() == "0" && data != nullptr)
+    {
+        double contracts = 0.0;
+        for (const Json& entry : data->items)
+        {
+            const Json* held = entry.find("instId");
+            if (held == nullptr || held->as_text() != inst_id) continue;
+            const Json* pos = entry.find("pos");
+            if (pos == nullptr || pos->as_text().empty()) continue;
+            try
+            {
+                contracts += pos->as_double();
+            }
+            catch (const std::exception&)
+            {
+                // A number this reader cannot convert is not a position, and zero would read as a flat one.
+            }
+        }
+        return contracts;
+    }
+    ++refused_;
+    const Json* message = answer.find("msg");
+    std::cerr << "the venue did not report a position: code="
               << (code != nullptr ? code->as_text() : std::string()) << ' '
               << (message != nullptr ? message->as_text() : std::string()) << std::endl;
     return std::nullopt;

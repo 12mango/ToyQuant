@@ -98,3 +98,43 @@ struct VenueEquityCheck
 VenueEquityCheck reconcile_equity(const std::optional<double>& venue_equity_usd,
                                   const std::optional<double>& ledger_equity_usd,
                                   double tolerance_usd = 0.05);
+
+/*
+-------------------------------------------
+ reconcile_position
+-------------------------------------------
+
+The venue's position against the ledger's, in engine units: the half of the same question `reconcile_equity` cannot
+reach. A run can end holding a position the venue has already closed, because the report of that fill arrived after the
+close's bounded wait -- and the account is worth the same either way, so the equity line says `ok`. Measured 2026-11-18:
+`[WIND-DOWN] position=200 closed=0 residual=-900 no_liquidity=1` with the venue's own probe reading `pos=0`, and
+`[RECON] at=end status=ok` on the equity line alone.
+
+A quantity is exact, so the tolerance is zero units by default and the line states it: one contract that came back
+rounded is the whole of the break. Both sides are optional for the reason the equity check's are -- the venue may not
+answer a positions query, and a symbol the ledger never traded is flat rather than unknown.
+-------------------------------------------
+*/
+
+struct VenuePositionCheck
+{
+    bool venue_known{false};
+    bool ledger_known{false};
+    std::int64_t venue_units{0};
+    std::int64_t ledger_units{0};
+    std::int64_t position_break{0};
+    std::int64_t tolerance_units{0};
+
+    // Unknown is not ok: a check that could not be made must not read like one that passed.
+    bool broken() const
+    {
+        return venue_known && ledger_known &&
+               (position_break > tolerance_units || -position_break > tolerance_units);
+    }
+
+    std::string to_log_string() const;
+};
+
+VenuePositionCheck reconcile_position(const std::optional<std::int64_t>& venue_units,
+                                      const std::optional<std::int64_t>& ledger_units,
+                                      std::int64_t tolerance_units = 0);

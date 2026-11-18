@@ -353,6 +353,25 @@ int main()
         assert(!unmarked.broken());
         assert(unmarked.to_log_string().find("ledger_equity_usd=n/a") != std::string::npos);
         assert(unmarked.to_log_string().find("status=unknown") != std::string::npos);
+
+        // The quantity, which the equity check cannot see: an account can be worth the same while one side holds a
+        // position the other does not. A quantity is exact, so the default tolerance is zero units.
+        const VenuePositionCheck same = reconcile_position(std::int64_t{-900}, std::int64_t{-900});
+        assert(same.venue_known && same.ledger_known && !same.broken());
+        assert(same.to_log_string().find("venue_units=-900 ledger_units=-900 position_break=0") !=
+               std::string::npos);
+        assert(same.to_log_string().find("status=ok") != std::string::npos);
+
+        const VenuePositionCheck one_unit = reconcile_position(std::int64_t{0}, std::int64_t{-900});
+        assert(one_unit.broken());
+        assert(one_unit.position_break == 900);
+        assert(one_unit.to_log_string().find("status=break") != std::string::npos);
+
+        const VenuePositionCheck silent = reconcile_position(std::nullopt, std::int64_t{0});
+        assert(!silent.broken());
+        assert(silent.to_log_string().find("venue_units=n/a") != std::string::npos);
+        assert(silent.to_log_string().find("position_break=n/a") != std::string::npos);
+        assert(silent.to_log_string().find("status=unknown") != std::string::npos);
     }
 
     return 0;

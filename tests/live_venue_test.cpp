@@ -514,7 +514,16 @@ int main()
         assert(venue.on_frame("EQUITY 998.5"));
         assert(venue.venue_equity_usd().has_value() && *venue.venue_equity_usd() == 998.5);
         assert(venue.counters().equity_answers == 1);
-        // The balance answer's value is an order-less frame: it must not become a report about order 998.
+        // The position answer is signed, because a short is the ledger's negative quantity, and `unavailable` clears it
+        // rather than leaving an older reading in place.
+        assert(venue.on_frame("POSITION -900"));
+        assert(venue.venue_position().has_value() && *venue.venue_position() == -900);
+        assert(venue.counters().position_answers == 1);
+        assert(venue.on_frame("POSITION unavailable"));
+        assert(!venue.venue_position().has_value());
+        assert(!venue.on_frame("POSITION not-a-number"));
+        assert(venue.counters().frames_dropped == 3);
+        // The balance and position answers are order-less frames: they must not become reports about an order.
         assert(venue.counters().reports_decoded == 0);
     }
 

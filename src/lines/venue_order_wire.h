@@ -161,6 +161,12 @@ class RestPlacer
     // not answer or reported no USDT, and the caller prints `n/a` rather than zero.
     std::optional<double> balance_usd();
 
+    // What the venue says it holds for one instrument, in its own contracts; `nullopt` when it cannot say. An
+    // instrument it does not hold is absent from the list and answers zero, because a flat account is an answer while a
+    // failed query is not. The contract size is the translator's, so this reports contracts and the caller converts --
+    // the same rule a placement's size follows.
+    std::optional<double> position_contracts(const std::string& inst_id);
+
     std::uint64_t placed() const { return placed_; }
     std::uint64_t refused() const { return refused_; }
     std::uint64_t transport_failures() const { return failures_; }
@@ -253,10 +259,12 @@ class VenueOrderConnection : public OrderSession::Sink
     // A placement, on whichever surface this connection was configured with. Both routes answer the engine with the same
     // lines, which is why they are one method with a branch rather than two callers.
     void place(std::string_view line);
-    // The two queries the engine can ask over this route. Both answer `unavailable` when the placement surface is the
-    // socket rather than REST, because a simulated venue has neither list and a silence would be read as an empty one.
+    // The three queries the engine can ask over this route. All answer `unavailable` when the placement surface is the
+    // socket rather than REST, because a simulated venue has no such endpoint and a silence would be read as an empty
+    // account or a flat one.
     void answer_pending();
     void answer_equity();
+    void answer_position();
     // Copies the placer's own counters into the summary after any REST call, so the line a run prints and the object
     // that paid for the calls state the same numbers.
     void publish_rest_counters();
