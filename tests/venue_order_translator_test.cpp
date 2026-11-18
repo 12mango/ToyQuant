@@ -54,10 +54,10 @@ int main()
     // position (9,500 engine units = 0.95 of a contract) is closed by one contract, and the venue caps the order at
     // the position instead of flipping it. The request keeps the units so the acknowledgement can name the size the
     // engine asked to close rather than the venue's grid size.
-    const auto close = translator.request_of("CLOSE 12 BTC-USDT-SWAP S 9500");
+    const auto close = translator.request_of("CLOSE 60 BTC-USDT-SWAP S 9500");
     assert(close.op == "order");
     assert(close.args_object ==
-           R"({"instId":"BTC-USDT-SWAP","tdMode":"cross","side":"sell","ordType":"market","sz":"1","reduceOnly":true,"clOrdId":"12","instIdCode":10459})");
+           R"({"instId":"BTC-USDT-SWAP","tdMode":"cross","side":"sell","ordType":"market","sz":"1","reduceOnly":true,"clOrdId":"60","instIdCode":10459})");
     assert(close.units == 9500);
     assert(close.reduce_only);
     assert(translator.contracts_to_close(9500) == 1);

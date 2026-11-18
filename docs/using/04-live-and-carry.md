@@ -390,11 +390,19 @@ The live close is a reduce-only market order instead: `CLOSE <id> <symbol> <side
 `ordType: market` with `reduceOnly: true`, the size rounded up to the contract grid, so a fractional position (0.95 of
 a contract) is closed by one contract and the venue caps it at the position. A reduce-only order is also exempt from
 the adapter's order count: the passive session placed 65 orders against a cap of 20, and the cap refused the exit
-before the wire -- the one order it must not stop. The replay's close is still the limit IOC. That session then showed
-a deeper finding: the engine ended long 10,000 units against the venue's short one contract, with four
-`buy_fill_count` against one sell, so the fills' sides disagree. The next instrument is the order leg's frame dump
-(`--order-dump`): the ORDER and FILL frames' sides are the only place that can say whether the adapter attributed a
-fill to the wrong order or the venue filled the opposite side.
+before the wire -- the one order it must not stop. The replay's close is still the limit IOC.
+
+The session that followed closed the last gap. The venue answers a cancel for an order it has already filled with
+`sCode 51400`, which the relay reports as `REJECT`, and the fill that made the order unfillable arrives after it; the
+adapter now keeps an order's entry for the whole session, so those fills are booked in the order's own side instead of
+being dropped. Measured on 2026-11-17 (60 s, passive_l2): `[WIND-DOWN] position=-10000 closed=10000 residual=0
+notional_usd=647.473 spread_bps=0.101008 fees_usd=0.32374 fees_bps=5.00005 total_bps=5.10106`, the venue's probe
+afterwards `position: flat`, `[VENUE] orders=4 cancels=3 refused_by_adapter=0 dropped=0`, and `[RECON] at=end
+venue_equity_usd=4956.58 ledger_equity_usd=4956.58 equity_break_usd=-8.49732e-08 tolerance_usd=0.495658 status=ok`.
+The exit cost 0.10 bps against the mark and 5.00 bps of taker fee, and the account the run ends with is flat on both
+sides. The strategy's own inventory still counts the close's fills (`strategy_net_position=20000` against the flat
+account, `strategy_position_mismatches=10`), because its `on_order_update` takes every report including the pipeline's
+close; that metric is the next thing to make agree, and it does not change the account.
 
 **The end-of-run balance was asked twice in the earlier run and answered once; the fixed run answered twice.** The 20 bps
 demo7 run sent 17 frames (9 orders, 6 cancels, 2 `EQUITY`) and received 23 (22 order reports and one answer):

@@ -187,17 +187,20 @@ bool MatchingEngine::external_touch(const exchange::Order& order, SymbolId id,
                                     double& execution_price, uint64_t& displayed_quantity) const
 {
     const auto quote_it = external_bbo_.find(id);
-    if (quote_it == external_bbo_.end() || order.type != exchange::OrderType::Limit) return false;
+    if (quote_it == external_bbo_.end()) return false;
     const BboQuote& quote = quote_it->second;
+    // A market order (the live close's type) has no price of its own to be stopped by: it takes the best the external
+    // book shows, which is the fill a venue's market order gets. The limit's own comparison stays for priced orders.
+    const bool market = order.type == exchange::OrderType::Market;
     if (order.side == exchange::Side::Buy && quote.ask_quantity > 0 &&
-        to_price_tick(order.price, tick_size_) >= to_price_tick(quote.ask_price, tick_size_))
+        (market || to_price_tick(order.price, tick_size_) >= to_price_tick(quote.ask_price, tick_size_)))
     {
         execution_price = quote.ask_price;
         displayed_quantity = quote.ask_quantity;
         return true;
     }
     if (order.side == exchange::Side::Sell && quote.bid_quantity > 0 &&
-        to_price_tick(order.price, tick_size_) <= to_price_tick(quote.bid_price, tick_size_))
+        (market || to_price_tick(order.price, tick_size_) <= to_price_tick(quote.bid_price, tick_size_)))
     {
         execution_price = quote.bid_price;
         displayed_quantity = quote.bid_quantity;

@@ -474,12 +474,9 @@ int main()
                                                          .ts = 12,
                                                          .top = TopOfBook{100.0, 100, 101.0, 100},
                                                          .micro_price = 100.5});
-        // The in-process engine fills inside the call, so the close must not wait: a pump set for a live venue is
-        // skipped when the position already moved, which is what keeps every recorded run's timing unchanged.
-        int pump_calls = 0;
-        end_pipeline.set_venue_pump([&pump_calls] { ++pump_calls; });
+        // The in-process close is the limit path: its fill is synchronous and its spread is the half spread the touch
+        // crosses. A live-like close (the `pull` test's pump) is the market path and is priced from its fills instead.
         const WindDownSummary wind_down = end_pipeline.close_out(13);
-        assert(pump_calls == 0);
         assert(wind_down.attempted());
         assert(wind_down.position == 10);
         assert(wind_down.closed_quantity == 10);

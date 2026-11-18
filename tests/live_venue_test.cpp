@@ -169,6 +169,11 @@ int main()
         std::vector<ExecutionReport> reports;
         venue.set_report_callback([&reports](const ExecutionReport& report) { reports.push_back(report); });
 
+        // The relay's replies carry the id and nothing else, so the adapter's table has to hold the orders they are
+        // about: a fill for an order it never sent is dropped (there is no side to book it in), and this block is the
+        // four replies' mapping, so the two orders are sent first.
+        venue.send_order(make_order(7, exchange::Side::Buy, 6421.5, 10));
+        venue.send_order(make_order(9, exchange::Side::Buy, 6421.5, 10));
         assert(venue.on_frame("ACK 7 10"));  // accepted and working, ten units still resting
         assert(venue.on_frame("FILL 7 6421.5 4"));
         assert(venue.on_frame("CANCELED 7 user"));
@@ -246,10 +251,11 @@ int main()
         assert(reports[0].side == exchange::Side::Buy && reports[0].liquidity_role == LiquidityRole::Maker);
         assert(venue.on_frame("CANCELED 11 user"));
         assert(reports.size() == 2 && reports[1].owner == "MarketMaker");
-        // The order has ended, so its owner is forgotten: a frame for that id afterwards carries none, and the
-        // side falls back to the report's default rather than being guessed from the frame.
+        // The entry survives the cancel: the venue fills what it can at the moment it cancels the remainder, and that
+        // report still belongs to this order -- its owner, side and symbol are the order's, not the report's defaults.
         assert(venue.on_frame("FILL 11 10 1"));
-        assert(reports.size() == 3 && reports[2].owner.empty());
+        assert(reports.size() == 3 && reports[2].owner == "MarketMaker");
+        assert(reports[2].side == exchange::Side::Buy);
 
         // A sell order's fill is a sell, and an immediate order's fill is a taker: both come from the sent order,
         // because the frame carries neither and the report's defaults are the wrong answer for both.
@@ -296,6 +302,10 @@ int main()
         LiveVenue venue(wire);
         std::vector<ExecutionReport> reports;
         venue.set_report_callback([&reports](const ExecutionReport& report) { reports.push_back(report); });
+        venue.send_order(make_order(7, exchange::Side::Buy, 6421.5, 4));
+        venue.send_order(make_order(8, exchange::Side::Buy, 6421.5, 4));
+        venue.send_order(make_order(9, exchange::Side::Buy, 6421.5, 4));
+        venue.send_order(make_order(10, exchange::Side::Buy, 6421.5, 4));
         assert(venue.on_frame("FILL 7 6421.5 4 0.02"));
         assert(venue.on_frame("FILL 8 6421.5 4 -0.01"));
         assert(venue.on_frame("FILL 9 6421.5 4"));
@@ -319,10 +329,17 @@ int main()
         venue.send_order(make_order(40, exchange::Side::Sell, 6421.5, 10));
         assert(venue.on_frame("CANCELED 40 user"));
         assert(venue.on_frame("FILL 40 6421.5 10"));
-        assert(reports.size() == 2);
+        // A cancel the venue refuses because the order filled (`51400`) arrives as `REJECT`, and the fill follows it:
+        // the entry survives that too, or the fill is dropped and the position misses what the venue executed.
+        venue.send_order(make_order(42, exchange::Side::Buy, 6421.5, 10));
+        assert(venue.on_frame("REJECT 42 venue"));
+        assert(venue.on_frame("FILL 42 6421.5 10"));
+        assert(reports.size() == 4);
         assert(reports[1].exec_type == ExecType::Trade);
         assert(reports[1].side == exchange::Side::Sell);
         assert(reports[1].symbol == "BTC-PERPETUAL");
+        assert(reports[3].exec_type == ExecType::Trade);
+        assert(reports[3].side == exchange::Side::Buy);
         assert(!venue.on_frame("FILL 41 6421.5 10"));
         assert(venue.counters().frames_dropped == 1);
     }

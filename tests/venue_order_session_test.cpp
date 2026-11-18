@@ -728,7 +728,7 @@ int main()
     resting.on_engine_line("ORDER 23 BTC-USDT-SWAP B 6421.5 100000 Gtc");
     assert(wait_for([&rest_port] { return rest_port.contains("REJECT 23 venue"); }));
     assert(resting.counters().transport_failures.load() == 2);
-    assert(resting.counters().placed.load() == 2);  // the two accepted placements and no more
+    assert(resting.counters().placed.load() == 3);  // the two accepted placements and the close
 
     // The two queries a long-lived session needs: which orders the venue still holds, and what it says the account is
     // worth. Both are GETs on a signed path, and the stand-in recomputes the signature over the method and the query
@@ -769,7 +769,7 @@ int main()
 
     resting.stop();
     rest_runner.join();
-    assert(placement.requests() == 12);  // ten POSTs (the rate-limited one is three), two GETs
+    assert(placement.requests() == 13);  // the close's placement is one of them  // ten POSTs (the rate-limited one is three), two GETs
     assert(resting.counters().write_failures.load() == 0);
     // The scheduled drop ran: every session it closed was a new login at the venue, which is the reconnect path a live
     // run takes when the venue drops the private channel.
@@ -780,7 +780,7 @@ int main()
     // call. The timing itself cannot be asserted here -- the stand-in answers in microseconds -- but the relationship can:
     // a placement contains its connection, and the summary states both averages beside the count.
     const std::string wire_summary = resting.counters().to_log_string();
-    assert(wire_summary.find("rest_calls=12") != std::string::npos);
+    assert(wire_summary.find("rest_calls=13") != std::string::npos);
     assert(wire_summary.find("rest_429=2") != std::string::npos);
     assert(wire_summary.find("pending_queries=1") != std::string::npos);
     assert(wire_summary.find("equity_queries=1") != std::string::npos);

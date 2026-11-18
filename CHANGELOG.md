@@ -7,6 +7,22 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## A live close ends flat, and the venue and the ledger agree (2026-11-17)
+
+- **An order's entry survives every ending report.** The venue's cancel reply for an order it already filled is
+  `sCode 51400`, which the relay answers `REJECT`; the fill that made the order unfillable arrives after it. Erasing
+  the adapter's per-order entry on a cancel or a reject dropped those fills (`[VENUE] dropped=16` in one session) and
+  left the engine four contracts from the venue. The entry is kept for the session, a placement's reject included, and
+  a fill without one is still dropped and counted rather than guessed.
+- **Measured:** 2026-11-17, 60 s, passive_l2, the reduce-only market close: `[WIND-DOWN] position=-10000 closed=10000
+  residual=0 notional_usd=647.473 spread_bps=0.101008 fees_usd=0.32374 fees_bps=5.00005 total_bps=5.10106`, the venue's
+  probe `position: flat`, `[VENUE] orders=4 cancels=3 refused_by_adapter=0 dropped=0`, and `[RECON] at=end
+  venue_equity_usd=4956.58 ledger_equity_usd=4956.58 equity_break_usd=-8.49732e-08 tolerance_usd=0.495658 status=ok`.
+  The exit cost 0.10 bps against the mark plus 5.00 bps of taker fee, and the run ends flat on both sides.
+- **The strategy's inventory still counts the close's fills** (`strategy_net_position=20000` against the flat account,
+  `strategy_position_mismatches=10`): the close is the pipeline's order, and the strategy's `on_order_update` takes
+  every report. The account, the exposure and the reconciliation are the closed ones; the strategy metric is next.
+
 ## The exit is a reduce-only market close, a close is exempt from the order cap, and a fill keeps its side (2026-11-17)
 
 - **A fill that arrives after its cancel is booked in the order's side.** `LiveVenue` erased the order's entry when

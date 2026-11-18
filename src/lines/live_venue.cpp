@@ -295,14 +295,13 @@ bool LiveVenue::on_frame(std::string_view frame)
         return false;
     }
 
-    // An order that has ended will not be reported again, so its owner is no longer needed; a fill keeps it,
-    // because an order can fill more than once. A cancel is not the end of its reports: the venue fills what it can
-    // at the moment it cancels the remainder, and that fill arrives after this line -- the demo's passive session
-    // ended with the engine long and the venue short because the entry was erased here first. A reject has no fill
-    // and its entry goes; a cancelled order's entry stays, bounded by the orders a session places.
+    // An order's entry is kept for the whole session, whatever report ends it. The venue's cancel reply for a filled
+    // order is `sCode 51400`, which the relay answers `REJECT`, and the fill that made the order unfillable arrives
+    // after it: erasing on the cancel made the demo drop sixteen fills and end the session four contracts from the
+    // venue. A reject from a placement is the same shape, so neither erases; the map is bounded by the orders a
+    // session places, and no report is ever guessed from a missing entry (a fill without one is dropped and counted).
     if (report.exec_type == ExecType::Cancelled || report.exec_type == ExecType::Rejected)
     {
-        if (report.exec_type == ExecType::Rejected) sent_.erase(order_id);
         // The venue has said the order is over, so the working set drops it without waiting for a new query.
         std::lock_guard<std::mutex> lock(query_mutex_);
         pending_.erase(order_id);
