@@ -462,6 +462,20 @@ them as often as one whose orders are refused. Both runs end with `strategy_net_
 and `[RECON] at=end status=ok`; a session's activity varies with the market, so the numbers to read are the ratio of
 refusals to placements and whether the run is still quoting at the last second, not the fill count of one window.
 
+**An order that fills completely ends as filled.** The venue's `orders` channel says `state: filled` and neither relay
+turns that state into a line, so until now the only thing that closed a filled order was a cancel for it being refused:
+`[EXECUTION]` read `audited_filled_orders=0` on every live run and those orders were counted as cancelled or rejected.
+The adapter knows the size it sent, so the fills reaching it is the fact -- the last fill is forwarded, then a `Filled`,
+and the ending is reported once (the venue's later answer to a cancel for that order is a `duplicates`). Measured on
+2026-11-18, 60 s, passive_l2, `--venue-max-orders=200 --venue-orders-per-second=2`: `[EXECUTION] audited_orders=57
+audited_filled_orders=10 audited_cancelled_orders=31 cancelled_after_fill_orders=0 orders_that_filled=10
+filled_orders_by_size=0/0,0/0,0/0,0/0,0/0,10/102700 late_fill_reports=11 late_fill_quantity=62700
+strategy_net_position=0 strategy_position_mismatches=0`, `[VENUE] orders=47 cancels=37 refused_by_adapter=10
+duplicates=31 rate_limited=10`, `[WIND-DOWN] position=12700 closed=12700 residual=0 notional_usd=811.726
+fees_bps=4.99999 total_bps=5.01447`, the venue's probe `pos=0` and `[RECON] at=end equity_break_usd=0.00361225
+status=ok`. The two halves of the run's fills add up: ten completed orders carried 102,700 units and the eleven late
+fills the remaining 62,700 of `trade_report_quantity=165400`.
+
 **The end-of-run balance was asked twice in the earlier run and answered once; the fixed run answered twice.** The 20 bps
 demo7 run sent 17 frames (9 orders, 6 cancels, 2 `EQUITY`) and received 23 (22 order reports and one answer):
 `at=start` read `venue_equity_usd=4977.92 ledger_equity_usd=4977.92 equity_break_usd=4.28026e-07 status=ok`, `at=end`

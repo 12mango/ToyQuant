@@ -141,8 +141,14 @@ void LiveVenue::send_order(const exchange::Order& order)
         return;
     }
     ++counters_.orders_sent;
-    // Kept until the order ends, because the venue's frames carry the id and nothing else.
-    sent_[order.id] = SentOrder{order.owner, order.symbol, order.side, order.time_in_force};
+    // Kept until the order ends, because the venue's frames carry the id and nothing else. The size sent is what a
+    // fill is measured against when it completes the order.
+    sent_[order.id] = SentOrder{.owner = order.owner,
+                                .symbol = order.symbol,
+                                .side = order.side,
+                                .time_in_force = order.time_in_force,
+                                .ended = false,
+                                .remaining = order.qty};
 }
 
 void LiveVenue::cancel_order(uint64_t order_id)
@@ -345,6 +351,37 @@ bool LiveVenue::on_frame(std::string_view frame)
     report.ts = report_clock_ ? report_clock_() : 0;
     ++counters_.reports_decoded;
     if (callback_) callback_(report);
+    // A fill that completes the order ends it. The venue reports `state: filled` on its `orders` channel and neither
+    // relay maps that state to a line, so before this an order that filled completely stayed open until a cancel for
+    // it was refused: every live run read `audited_filled_orders=0` and closed those orders as cancelled or rejected.
+    // The adapter knows the size it sent, so the fills reaching it is the fact. The fill is forwarded first, so the
+    // account has the quantity before the audit closes; a fill that arrives after the end (a cancel raced it) is
+    // still forwarded, and does not end the order a second time.
+    if (report.exec_type == ExecType::Trade && sent != sent_.end() && !sent->second.ended)
+    {
+        const uint64_t executed = report.executed_quantity();
+        sent->second.remaining = sent->second.remaining > executed ? sent->second.remaining - executed : 0;
+        if (sent->second.remaining == 0)
+        {
+            sent->second.ended = true;
+            {
+                // The venue has no working order left, so the working set drops it without waiting for a new query.
+                std::lock_guard<std::mutex> lock(query_mutex_);
+                pending_.erase(order_id);
+            }
+            ExecutionReport filled;
+            filled.order_id = order_id;
+            filled.side = sent->second.side;
+            filled.symbol = sent->second.symbol;
+            filled.owner = sent->second.owner;
+            filled.exec_type = ExecType::Filled;
+            // A `Filled` report carries the order's remaining quantity, and there is none: the fill above is all of it.
+            filled.quantity = 0;
+            filled.ts = report.ts;
+            ++counters_.reports_decoded;
+            if (callback_) callback_(filled);
+        }
+    }
     return true;
 }
 

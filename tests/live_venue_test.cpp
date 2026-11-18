@@ -296,18 +296,25 @@ int main()
         venue.send_order(order);
 
         assert(venue.on_frame("FILL 11 10 5"));
-        assert(reports.size() == 1 && reports[0].owner == "MarketMaker");
+        // The fill, then the ending: the order was five units and the fill was all of it. The owner, the symbol, the
+        // side and the role are the sent order's, not the frame's -- an adapter that dropped the owner booked no fill
+        // at all, which is what the first app-level run did.
+        assert(reports.size() == 2);
+        assert(reports[0].owner == "MarketMaker");
         // The symbol is the position's key: a report without it books the fill under the empty string, where no mid
         // is ever found, and the account reports its cash as equity while the position is worth nothing.
         assert(reports[0].symbol == "BTC-PERPETUAL");
         assert(reports[0].side == exchange::Side::Buy && reports[0].liquidity_role == LiquidityRole::Maker);
-        assert(venue.on_frame("CANCELED 11 user"));
-        assert(reports.size() == 2 && reports[1].owner == "MarketMaker");
-        // The entry survives the cancel: the venue fills what it can at the moment it cancels the remainder, and that
+        assert(reports[1].exec_type == ExecType::Filled);
+        // The entry survives the ending: the venue fills what it can at the moment it cancels the remainder, and that
         // report still belongs to this order -- its owner, side and symbol are the order's, not the report's defaults.
+        // A cancel after the ending is a duplicate, so the late fill is the third report rather than the second.
+        assert(venue.on_frame("CANCELED 11 user"));
+        assert(reports.size() == 2);
+        assert(venue.counters().duplicate_reports == 1);
         assert(venue.on_frame("FILL 11 10 1"));
         assert(reports.size() == 3 && reports[2].owner == "MarketMaker");
-        assert(reports[2].side == exchange::Side::Buy);
+        assert(reports[2].side == exchange::Side::Buy && reports[2].exec_type == ExecType::Trade);
 
         // A sell order's fill is a sell, and an immediate order's fill is a taker: both come from the sent order,
         // because the frame carries neither and the report's defaults are the wrong answer for both.
@@ -315,8 +322,9 @@ int main()
         sell.owner = "MarketMaker";
         venue.send_order(sell);
         assert(venue.on_frame("FILL 12 10 4"));
-        assert(reports.size() == 4);
+        assert(reports.size() == 5);
         assert(reports[3].side == exchange::Side::Sell && reports[3].liquidity_role == LiquidityRole::Taker);
+        assert(reports[4].exec_type == ExecType::Filled);
     }
 
     // A report's timestamp is the market clock the run was on when it heard the answer, and without a clock it
@@ -361,10 +369,13 @@ int main()
         assert(venue.on_frame("FILL 7 6421.5 4 0.02"));
         assert(venue.on_frame("FILL 8 6421.5 4 -0.01"));
         assert(venue.on_frame("FILL 9 6421.5 4"));
-        assert(reports.size() == 3);
+        // Three fills and three endings: each order was four units and its fill completed it.
+        assert(reports.size() == 6);
         assert(reports[0].fee == 0.02);
-        assert(reports[1].fee == -0.01);
-        assert(reports[2].fee == 0.0);
+        assert(reports[2].fee == -0.01);
+        assert(reports[4].fee == 0.0);
+        assert(reports[1].exec_type == ExecType::Filled && reports[3].exec_type == ExecType::Filled &&
+               reports[5].exec_type == ExecType::Filled);
         assert(!venue.on_frame("FILL 10 6421.5 4 not-a-fee"));
         assert(venue.counters().frames_dropped == 1);
     }
@@ -420,6 +431,43 @@ int main()
         assert(venue.on_frame("CANCELED 51 user"));
         assert(reports.size() == 3);
         assert(venue.counters().duplicate_reports == 1);
+    }
+
+    // A fill that completes the order ends it, because neither relay maps the venue's `state: filled` to a line: every
+    // live run read `audited_filled_orders=0`, and the only thing that closed a filled order was a cancel the venue
+    // refused. The adapter knows the size it sent, so the fills reaching it is the fact -- the fill first, then the
+    // ending, so the account has the quantity before the audit closes.
+    {
+        RecordingTransport wire;
+        LiveVenue venue(wire);
+        std::vector<ExecutionReport> reports;
+        venue.set_report_callback([&reports](const ExecutionReport& report) { reports.push_back(report); });
+        venue.send_order(make_order(80, exchange::Side::Buy, 10.0, 10));
+        assert(venue.on_frame("FILL 80 10 4"));
+        assert(reports.size() == 1 && reports[0].exec_type == ExecType::Trade);
+        assert(venue.on_frame("FILL 80 10 6"));
+        assert(reports.size() == 3);
+        assert(reports[1].exec_type == ExecType::Trade);
+        assert(reports[2].exec_type == ExecType::Filled);
+        // A `Filled` report carries the order's remaining quantity, which is none, so the account books nothing twice.
+        assert(reports[2].quantity == 0 && reports[2].executed_quantity() == 0);
+        assert(reports[2].side == exchange::Side::Buy && reports[2].symbol == "BTC-PERPETUAL");
+        // The ending is reported once: the venue's answer to a later cancel is a duplicate, not a second end.
+        assert(venue.on_frame("REJECT 80 venue"));
+        assert(reports.size() == 3);
+        assert(venue.counters().duplicate_reports == 1);
+        // A fill the venue rounds past the size sent is clamped, and a fill after the end is still forwarded -- that
+        // is the order's quantity, not another ending.
+        venue.send_order(make_order(81, exchange::Side::Sell, 10.0, 10));
+        assert(venue.on_frame("FILL 81 10 12"));
+        assert(reports.size() == 5 && reports[4].exec_type == ExecType::Filled);
+        assert(venue.on_frame("FILL 81 10 2"));
+        assert(reports.size() == 6 && reports[5].exec_type == ExecType::Trade);
+        // A fill that does not complete the order leaves it open, and the cancel that ends it still does.
+        venue.send_order(make_order(82, exchange::Side::Buy, 10.0, 10));
+        assert(venue.on_frame("FILL 82 10 4"));
+        assert(venue.on_frame("CANCELED 82 user"));
+        assert(reports.size() == 8 && reports[7].exec_type == ExecType::Cancelled);
     }
 
     // The venue's own working-order set: `PENDING` replaces it, an acknowledgement adds to it, a cancel marks it stale

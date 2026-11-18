@@ -7,7 +7,26 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
-## A rate bound beside the live order leg's session cap (2026-11-18)
+## A filled order ends as filled (2026-11-18)
+
+- **The adapter never ended an order that filled.** The venue reports `state: filled` on its `orders` channel and
+  neither relay maps that state to a line, so the only thing that ever closed a filled order was a cancel for it being
+  refused (`sCode 51400` -> `REJECT`): every live run read `audited_filled_orders=0` and its filled orders were counted
+  as cancelled or rejected. The adapter knows the size it sent, so the fills reaching it is the fact -- the last fill is
+  forwarded, then a `Filled`, and a later answer for that order is a `duplicates`. A fill that arrives after the end is
+  still forwarded, and a fill the venue rounds past the size sent is clamped.
+- **Measured on the demo, 2026-11-18, 60 s, passive_l2, `--venue-max-orders=200 --venue-orders-per-second=2`:**
+  `[EXECUTION] audited_orders=57 audited_filled_orders=10 audited_cancelled_orders=31 cancelled_after_fill_orders=0
+  orders_that_filled=10 filled_orders_by_size=0/0,0/0,0/0,0/0,0/0,10/102700 late_fill_reports=11
+  late_fill_quantity=62700 strategy_net_position=0 strategy_position_mismatches=0`, `[VENUE] orders=47 cancels=37
+  refused_by_adapter=10 duplicates=31 rate_limited=10`, `[WIND-DOWN] position=12700 closed=12700 residual=0
+  total_bps=5.01447`, the venue's probe `pos=0` and `[RECON] at=end equity_break_usd=0.00361225 status=ok`. Ten
+  completed orders carried 102,700 units and the eleven late fills the other 62,700 of `trade_report_quantity=165400`.
+- **Pinned by `live_venue_test`:** two fills of four and six on a ten-unit order give a `Trade`, a `Trade` and a
+  `Filled` whose quantity is the remaining none; a later cancel answer is a duplicate; a fill rounded past the size sent
+  is clamped; a fill that does not complete the order leaves it open for its cancel. Reverting the ending for one
+  rebuild failed the test at the first completed order.
+
 
 - **The cap was the wrong shape once refusals reached the strategy.** `--venue-max-orders` counts the orders a whole
   run sends; a maker that replaces its quotes spends that budget in seconds and is refused for the rest of the session

@@ -210,6 +210,11 @@ class LiveVenue : public IMatchingEngine
         // Whether an ending has already been reported for this order. The entry itself is kept to the end of the
         // session -- a fill can follow the report that ended the order -- but the ending is only reported once.
         bool ended{false};
+        // What the venue has not filled yet, in engine units, from the size this adapter sent. A fill that
+        // completes it ends the order: the venue reports `state: filled` on its `orders` channel and neither relay
+        // maps that state to a line, so without this the only thing that ever closed a filled order was a cancel the
+        // venue refused.
+        uint64_t remaining{0};
     };
     std::unordered_map<uint64_t, SentOrder> sent_;
     std::function<uint64_t()> report_clock_;
