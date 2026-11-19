@@ -90,6 +90,10 @@ class OrderTranslator
     // state, so a session with a drop that reports zero here is the surprising case.
     std::uint64_t fills_deduplicated() const { return fills_deduplicated_; }
     const std::string& instrument() const { return instrument_; }
+    // The engine units per coin the conversion was built with. The relay states this on its position answer, and the
+    // engine compares it with its own run's scale: two processes converting the same fill can count different units,
+    // and a comparison across two conventions is a number about nothing.
+    std::uint64_t quantity_scale() const { return mapping_.quantity_scale; }
 
    private:
     struct Known

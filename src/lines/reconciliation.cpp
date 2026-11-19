@@ -4,6 +4,7 @@
 #include <cmath>
 #include <sstream>
 #include <unordered_map>
+#include <utility>
 
 namespace
 {
@@ -120,6 +121,7 @@ VenueEquityCheck reconcile_equity(const std::optional<double>& venue_equity_usd,
 
 std::string VenuePositionCheck::to_log_string() const
 {
+    const bool comparable = venue_known && ledger_known && units_agree();
     std::ostringstream stream;
     stream << "venue_units=";
     if (venue_known) stream << venue_units;
@@ -127,20 +129,42 @@ std::string VenuePositionCheck::to_log_string() const
     stream << " ledger_units=";
     if (ledger_known) stream << ledger_units;
     else stream << "n/a";
+    // A difference between two quantities counted in different units is not a break, so it is not printed as one.
     stream << " position_break=";
-    if (venue_known && ledger_known) stream << position_break;
+    if (comparable) stream << position_break;
     else stream << "n/a";
-    stream << " tolerance_units=" << tolerance_units << " status="
-           << (!venue_known || !ledger_known ? "unknown" : broken() ? "break" : "ok");
+    stream << " tolerance_units=" << tolerance_units;
+    if (venue_known && ledger_known && !units_agree())
+    {
+        // Which two conventions were compared, named rather than assumed: a reader has to be able to tell a venue
+        // holding another coin from an older relay that stated nothing.
+        stream << " venue_units_per_coin=";
+        if (venue_unit.stated()) stream << venue_unit.units_per_coin;
+        else stream << "n/a";
+        stream << " venue_coin=";
+        if (!venue_unit.coin.empty()) stream << venue_unit.coin;
+        else stream << "n/a";
+        stream << " ledger_units_per_coin=";
+        if (ledger_unit.stated()) stream << ledger_unit.units_per_coin;
+        else stream << "n/a";
+        stream << " ledger_coin=";
+        if (!ledger_unit.coin.empty()) stream << ledger_unit.coin;
+        else stream << "n/a";
+    }
+    stream << " status="
+           << (!venue_known || !ledger_known || !units_agree() ? "unknown" : broken() ? "break" : "ok");
     return stream.str();
 }
 
 VenuePositionCheck reconcile_position(const std::optional<std::int64_t>& venue_units,
                                       const std::optional<std::int64_t>& ledger_units,
-                                      std::int64_t tolerance_units)
+                                      std::int64_t tolerance_units, PositionUnits venue_unit,
+                                      PositionUnits ledger_unit)
 {
     VenuePositionCheck check;
     check.tolerance_units = tolerance_units;
+    check.venue_unit = std::move(venue_unit);
+    check.ledger_unit = std::move(ledger_unit);
     check.venue_known = venue_units.has_value();
     check.ledger_known = ledger_units.has_value();
     if (check.venue_known) check.venue_units = *venue_units;

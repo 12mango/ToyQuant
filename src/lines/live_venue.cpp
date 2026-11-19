@@ -184,6 +184,8 @@ bool LiveVenue::on_frame(std::string_view frame)
             else if (position)
             {
                 venue_position_units_.reset();
+                venue_units_per_coin_ = 0;
+                venue_coin_.clear();
                 ++position_generation_;
             }
             else
@@ -223,20 +225,40 @@ bool LiveVenue::on_frame(std::string_view frame)
         }
         if (position)
         {
-            std::int64_t units = 0;
-            if (fields.size() != 2)
+            // Two shapes. The number alone is what a relay that converts without stating its convention sends, and it
+            // is kept as the number it is: `reconcile_position` reads no unit from it and says `unknown` rather than
+            // agreeing with a ledger about a quantity whose unit it does not know. The four-field answer states the
+            // convention -- engine units per coin and the coin -- which is what makes the two comparable.
+            if (fields.size() != 2 && fields.size() != 4)
             {
                 ++counters_.frames_dropped;
                 return false;
             }
+            std::int64_t units = 0;
             const auto parsed = std::from_chars(fields[1].data(), fields[1].data() + fields[1].size(), units);
             if (parsed.ec != std::errc{} || parsed.ptr != fields[1].data() + fields[1].size())
             {
                 ++counters_.frames_dropped;
                 return false;
             }
+            std::int64_t units_per_coin = 0;
+            if (fields.size() == 4)
+            {
+                const auto scale =
+                    std::from_chars(fields[2].data(), fields[2].data() + fields[2].size(), units_per_coin);
+                // A stated convention has to be a usable one: zero units per coin divides by nothing, and a coin name
+                // that is not a name would take part in an equality that cannot mean anything.
+                if (scale.ec != std::errc{} || scale.ptr != fields[2].data() + fields[2].size() ||
+                    units_per_coin <= 0 || fields[3].empty())
+                {
+                    ++counters_.frames_dropped;
+                    return false;
+                }
+            }
             std::lock_guard<std::mutex> lock(query_mutex_);
             venue_position_units_ = units;
+            venue_units_per_coin_ = units_per_coin;
+            venue_coin_ = fields.size() == 4 ? std::string(fields[3]) : std::string{};
             ++position_generation_;
             ++counters_.position_answers;
             return true;
@@ -542,6 +564,18 @@ std::optional<std::int64_t> LiveVenue::venue_position() const
 {
     std::lock_guard<std::mutex> lock(query_mutex_);
     return venue_position_units_;
+}
+
+std::int64_t LiveVenue::venue_units_per_coin() const
+{
+    std::lock_guard<std::mutex> lock(query_mutex_);
+    return venue_units_per_coin_;
+}
+
+std::string LiveVenue::venue_coin() const
+{
+    std::lock_guard<std::mutex> lock(query_mutex_);
+    return venue_coin_;
 }
 
 OrderQuery LiveVenue::query_order(uint64_t order_id) const

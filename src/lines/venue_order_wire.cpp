@@ -15,6 +15,7 @@
 
 #include "lines/venue_auth.h"
 #include "lines/venue_ws.h"
+#include "common/instrument_spec.h"
 
 namespace venue_order_wire
 {
@@ -544,9 +545,15 @@ void VenueOrderConnection::answer_position()
         return;
     }
     // Engine units and signed, because the number this is compared with is the ledger's position, where a short is
-    // negative.
+    // negative -- and stated with the convention that produced it: engine units per coin, and the coin the instrument
+    // is of. Two processes converting one fill can count different units (a relay started with another
+    // `--quantity-scale`, a run publishing one coin against a venue holding another), and the engine refuses the
+    // comparison when the two disagree rather than printing a break whose magnitude would mean nothing.
     const std::int64_t units = session_.translator().units_signed(*contracts);
-    if (engine_.write_line("POSITION " + std::to_string(units))) ++counters_.replies;
+    if (engine_.write_line("POSITION " + std::to_string(units) + " " +
+                           std::to_string(session_.translator().quantity_scale()) + " " +
+                           base_coin_of(session_.translator().instrument())))
+        ++counters_.replies;
 }
 
 void VenueOrderConnection::to_venue(std::string_view frame)

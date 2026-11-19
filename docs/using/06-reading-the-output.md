@@ -10,7 +10,7 @@ mechanical rather than a matter of taste:
 | `[PNL]` | `breakeven_maker_rate` | negative: no fee schedule makes the window flat |
 | `[EXECUTION]` | `fill_rate`, `queue_ahead_consumed` | `fills=0` with a live book, or `strategy_position_mismatches>0` |
 | `[RISK]` | `fat_finger_rejections`, `rate_limited_orders` | any, unless the run was meant to trip that control |
-| `[RECON]` | `status`, and on a live run the position line's `position_break` | `break`: the statement and the account disagree, or the venue holds a quantity the ledger does not; `unknown` on a live line: the venue did not answer |
+| `[RECON]` | `status`, and on a live run the position line's `position_break` | `break`: the statement and the account disagree, or the venue holds a quantity the ledger does not; `unknown` on a live line: the venue did not answer, or the two sides counted their quantity differently (`venue_units_per_coin`/`venue_coin` say how) |
 | `[VENUE]` | `reports`, `dropped`, `refused_by_adapter` | `dropped>0`, or `orders>0` with `reports=0`; a `refused_by_adapter` close to the submission count says the adapter's own bound, not the venue, is what the run hit |
 
 > `[RISK]` prints only when `--fat-finger-bps` or `--max-orders-per-second` is named, and `[VENUE]` only on a run with a
@@ -18,7 +18,10 @@ mechanical rather than a matter of taste:
 > account, then an equity line and a position line at `at=start` and the same pair at `at=end` (`venue_equity_usd` is the
 > venue's **USDT equity**, `details[ccy=USDT].eq`, not its account-wide `totalEq`; `ledger_equity_usd`,
 > `equity_break_usd`, `tolerance_usd`; and `venue_units`/`ledger_units`/`position_break` with a zero tolerance, because a
-> quantity is exact).
+> quantity is exact). The position line's number is only comparable within one unit convention, so the relay states the
+> one it converted with -- engine units per coin and the coin -- and the line prints `venue_units_per_coin`/`venue_coin`
+> and says `unknown` when the two statements differ: a difference across two conventions is not a break, and a magnitude
+> for it would be a number about nothing.
 > `[VENUE]` also carries `duplicates`, an ending the adapter had already reported for that order -- the venue repeated
 > it, which a normal run never does, because the relay answers a cancel once, with the channel's state -- `rate_limited`,
 > the part of `refused_by_adapter` the rate bound took, and `orders_per_second`, the configured rate.

@@ -754,8 +754,15 @@ void Application::run_l2_session_mode() const
         const std::optional<std::int64_t> opening_position =
             opening_held != nullptr ? std::optional<std::int64_t>(opening_held->quantity)
                                     : std::optional<std::int64_t>(0);
+        // What each number is counted in, stated from both sides: the ledger's from the run's instrument, the venue's
+        // from the relay's own answer. Two processes that converted the same fill can disagree about a unit, and the
+        // line refuses that comparison rather than printing a break whose magnitude would mean nothing.
         logger.log("[RECON] at=start position ",
-                   reconcile_position(venue_position, opening_position).to_log_string());
+                   reconcile_position(venue_position, opening_position, 0,
+                                      PositionUnits{live_venue->venue_units_per_coin(), live_venue->venue_coin()},
+                                      PositionUnits{static_cast<std::int64_t>(instrument.quantity_scale),
+                                                    base_coin_of(instrument.symbol)})
+                       .to_log_string());
     }
     Pipeline pipeline(output_files.orders, output_files.trades, *strategy, *venue, portfolio,
                       instrument.tick_size);
@@ -1115,8 +1122,13 @@ void Application::run_l2_session_mode() const
         const auto* held = portfolio.find_position(cfg_.symbol);
         const std::optional<std::int64_t> ledger_position =
             held != nullptr ? std::optional<std::int64_t>(held->quantity) : std::optional<std::int64_t>(0);
+        // The same two unit statements as the start line, from the same two sides.
         logger.log("[RECON] at=end position ",
-                   reconcile_position(venue_position, ledger_position).to_log_string());
+                   reconcile_position(venue_position, ledger_position, 0,
+                                      PositionUnits{live_venue->venue_units_per_coin(), live_venue->venue_coin()},
+                                      PositionUnits{static_cast<std::int64_t>(instrument.quantity_scale),
+                                                    base_coin_of(instrument.symbol)})
+                       .to_log_string());
         live_transport->disconnect();
     }
     if (order_log)

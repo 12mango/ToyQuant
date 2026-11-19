@@ -776,9 +776,11 @@ int main()
     assert(wait_for([&rest_port] { return rest_port.contains("EQUITY 4986.73"); }));
     assert(placement.signature_matched());
     // The quantity, on the same signed REST surface: one contract short is -10,000 engine units, and the sign is what
-    // makes the number comparable with the ledger's position rather than with a contract count.
+    // makes the number comparable with the ledger's position rather than with a contract count. It is stated with the
+    // convention that produced it -- 1,000,000 engine units per coin, of BTC -- so the engine can check it against its
+    // own instrument instead of assuming the two processes count the same unit.
     resting.on_engine_line("POSITION");
-    assert(wait_for([&rest_port] { return rest_port.contains("POSITION -10000"); }));
+    assert(wait_for([&rest_port] { return rest_port.contains("POSITION -10000 1000000 BTC"); }));
     assert(placement.signature_matched());
     assert(resting.counters().pending_queries.load() == 1);
     assert(resting.counters().equity_queries.load() == 1);

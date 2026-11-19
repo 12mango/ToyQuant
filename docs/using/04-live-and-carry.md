@@ -514,11 +514,16 @@ ledger_units=10000 position_break=-10000 tolerance_units=0 status=break`. Both l
 the point of printing both: a position the venue does not hold is 100,000 USD of face in the ledger's account -- this
 instrument's unit is a 10 USD contract -- and nothing at the venue.
 
-> The line compares units, so the ledger's instrument and the venue's have to mean the same thing by one unit. `ws`
-> guarantees it, because the market symbol is the venue's instrument; `l2_replay --live-orders` does not, and the runs
-> above trade `BTC-PERPETUAL` against a venue holding `BTC-USDT-SWAP`, whose unit is a contract of 0.01 BTC. Both sides
-> read zero there, so the number is the same zero either way -- a nonzero comparison across two instruments is a figure
-> to check before it is quoted.
+> The line compares units, so the ledger's instrument and the venue's have to mean the same thing by one unit: 1e6 engine
+> units per coin, of the same coin. That is now a check rather than a note -- the relay's `POSITION` answer states the
+> conversion it used (`POSITION <units> <units_per_coin> <coin>`, and `POSITION <units>` for a relay that states
+> nothing), the engine compares it with the run's own instrument, and a disagreement reads `position_break=n/a
+> venue_units_per_coin=… venue_coin=… ledger_units_per_coin=… ledger_coin=… status=unknown` with no magnitude at all.
+> The two instruments' names differ on purpose and that is not the fault: the runs above trade `BTC-PERPETUAL` against a
+> venue holding `BTC-USDT-SWAP`, and either is a quantity of BTC. A relay started with another `--quantity-scale`, or a
+> venue holding another coin, is what the line refuses to compare. `paper_broker_test` pins all three branches (agreeing,
+> disagreeing, unstated); the venue-side mismatch has not been run yet, because it needs a relay that lies about its
+> conversion and that is a fault to inject rather than a number to measure.
 
 **An order that fills completely ends as filled.** The venue's `orders` channel says `state: filled` and neither relay
 turns that state into a line, so until now the only thing that closed a filled order was a cancel for it being refused:

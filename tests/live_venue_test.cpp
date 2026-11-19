@@ -515,14 +515,27 @@ int main()
         assert(venue.venue_equity_usd().has_value() && *venue.venue_equity_usd() == 998.5);
         assert(venue.counters().equity_answers == 1);
         // The position answer is signed, because a short is the ledger's negative quantity, and `unavailable` clears it
-        // rather than leaving an older reading in place.
+        // rather than leaving an older reading in place. The four-field shape states what the number is counted in --
+        // engine units per coin and the coin -- which is what lets the reconciliation refuse a comparison across two
+        // conventions; the two-field shape is an older relay and leaves the unit unstated rather than assumed.
         assert(venue.on_frame("POSITION -900"));
         assert(venue.venue_position().has_value() && *venue.venue_position() == -900);
+        assert(!venue.venue_units_per_coin() && venue.venue_coin().empty());
         assert(venue.counters().position_answers == 1);
+        assert(venue.on_frame("POSITION 10000 1000000 BTC"));
+        assert(venue.venue_position().has_value() && *venue.venue_position() == 10000);
+        assert(venue.venue_units_per_coin() == 1000000 && venue.venue_coin() == "BTC");
+        assert(venue.counters().position_answers == 2);
+        // A stated unit has to be usable: zero units per coin, or no coin, is dropped rather than believed.
+        assert(!venue.on_frame("POSITION 10000 0 BTC"));
+        assert(!venue.on_frame("POSITION 10000 1000000"));
+        assert(!venue.on_frame("POSITION 10000 1000000 BTC extra"));
+        assert(venue.counters().frames_dropped == 5);
         assert(venue.on_frame("POSITION unavailable"));
         assert(!venue.venue_position().has_value());
+        assert(!venue.venue_units_per_coin() && venue.venue_coin().empty());
         assert(!venue.on_frame("POSITION not-a-number"));
-        assert(venue.counters().frames_dropped == 3);
+        assert(venue.counters().frames_dropped == 6);
         // The balance and position answers are order-less frames: they must not become reports about an order.
         assert(venue.counters().reports_decoded == 0);
     }

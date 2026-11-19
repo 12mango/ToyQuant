@@ -355,14 +355,18 @@ int main()
         assert(unmarked.to_log_string().find("status=unknown") != std::string::npos);
 
         // The quantity, which the equity check cannot see: an account can be worth the same while one side holds a
-        // position the other does not. A quantity is exact, so the default tolerance is zero units.
-        const VenuePositionCheck same = reconcile_position(std::int64_t{-900}, std::int64_t{-900});
+        // position the other does not. A quantity is exact, so the default tolerance is zero units, and it travels with
+        // the unit both sides counted it in: engine units per coin and the coin.
+        const PositionUnits btc_perpetual{1000000, "BTC"};
+        const VenuePositionCheck same =
+            reconcile_position(std::int64_t{-900}, std::int64_t{-900}, 0, btc_perpetual, btc_perpetual);
         assert(same.venue_known && same.ledger_known && !same.broken());
         assert(same.to_log_string().find("venue_units=-900 ledger_units=-900 position_break=0") !=
                std::string::npos);
         assert(same.to_log_string().find("status=ok") != std::string::npos);
 
-        const VenuePositionCheck one_unit = reconcile_position(std::int64_t{0}, std::int64_t{-900});
+        const VenuePositionCheck one_unit =
+            reconcile_position(std::int64_t{0}, std::int64_t{-900}, 0, btc_perpetual, btc_perpetual);
         assert(one_unit.broken());
         assert(one_unit.position_break == 900);
         assert(one_unit.to_log_string().find("status=break") != std::string::npos);
@@ -372,6 +376,31 @@ int main()
         assert(silent.to_log_string().find("venue_units=n/a") != std::string::npos);
         assert(silent.to_log_string().find("position_break=n/a") != std::string::npos);
         assert(silent.to_log_string().find("status=unknown") != std::string::npos);
+
+        // Two quantities that agree but are counted differently are not a check that passed. A relay started with
+        // another `--quantity-scale`, or a venue holding another coin, makes the difference a number about nothing:
+        // the line says `unknown`, prints both statements, and does not put a magnitude where a break would go.
+        const VenuePositionCheck other_scale =
+            reconcile_position(std::int64_t{-900}, std::int64_t{-900}, 0, PositionUnits{100, "BTC"}, btc_perpetual);
+        assert(!other_scale.broken() && !other_scale.units_agree());
+        assert(other_scale.to_log_string().find("position_break=n/a") != std::string::npos);
+        assert(other_scale.to_log_string().find("venue_units_per_coin=100 venue_coin=BTC") != std::string::npos);
+        assert(other_scale.to_log_string().find("status=unknown") != std::string::npos);
+
+        const VenuePositionCheck other_coin = reconcile_position(std::int64_t{-900}, std::int64_t{-900}, 0,
+                                                                 PositionUnits{1000000, "ETH"}, btc_perpetual);
+        assert(!other_coin.broken() && !other_coin.units_agree());
+        assert(other_coin.to_log_string().find("venue_coin=ETH") != std::string::npos);
+        assert(other_coin.to_log_string().find("ledger_coin=BTC status=unknown") != std::string::npos);
+        assert(other_coin.to_log_string().find("status=unknown") != std::string::npos);
+
+        // An old relay states only the number, and an unstated unit is one the engine cannot compare: the same
+        // silence the equity check gives a venue that did not answer, in the other direction.
+        const VenuePositionCheck unstated =
+            reconcile_position(std::int64_t{-900}, std::int64_t{-900}, 0, {}, btc_perpetual);
+        assert(!unstated.broken() && !unstated.units_agree());
+        assert(unstated.to_log_string().find("venue_units_per_coin=n/a venue_coin=n/a") != std::string::npos);
+        assert(unstated.to_log_string().find("status=unknown") != std::string::npos);
     }
 
     return 0;

@@ -113,8 +113,26 @@ close's bounded wait -- and the account is worth the same either way, so the equ
 A quantity is exact, so the tolerance is zero units by default and the line states it: one contract that came back
 rounded is the whole of the break. Both sides are optional for the reason the equity check's are -- the venue may not
 answer a positions query, and a symbol the ledger never traded is flat rather than unknown.
+
+A quantity is also only comparable within one unit convention, which is why `PositionUnits` travels with it: engine
+units per coin and the coin, one statement from each process. The engine's comes from the run's instrument; the venue's
+from the relay's own answer, because the relay is the side that converts the venue's contracts. Two processes can still
+disagree -- a relay started with another `--quantity-scale`, a run publishing BTC-PERPETUAL against a venue holding
+ETH-USDT-SWAP -- and a difference across two conventions is not a break but a number about nothing, so the line says
+`unknown` and prints both statements instead of a magnitude.
 -------------------------------------------
 */
+
+// The convention a quantity is counted in. `stated()` is false for 0 or an empty name, which is what the engine reads
+// from a relay whose position answer carries only the number: an old relay's quantity is a number whose unit is
+// unknown, not one that agrees with anything.
+struct PositionUnits
+{
+    std::int64_t units_per_coin{0};
+    std::string coin;
+
+    bool stated() const { return units_per_coin > 0 && !coin.empty(); }
+};
 
 struct VenuePositionCheck
 {
@@ -124,11 +142,21 @@ struct VenuePositionCheck
     std::int64_t ledger_units{0};
     std::int64_t position_break{0};
     std::int64_t tolerance_units{0};
+    PositionUnits venue_unit;
+    PositionUnits ledger_unit;
 
-    // Unknown is not ok: a check that could not be made must not read like one that passed.
+    // Both sides stated a convention and it is the same one on both. This gates the verdict rather than being a
+    // footnote to it: a comparison that cannot be made is not one that passed.
+    bool units_agree() const
+    {
+        return venue_unit.stated() && ledger_unit.stated() &&
+               venue_unit.units_per_coin == ledger_unit.units_per_coin && venue_unit.coin == ledger_unit.coin;
+    }
+
+    // Unknown is not ok, and neither is a comparison across two conventions.
     bool broken() const
     {
-        return venue_known && ledger_known &&
+        return venue_known && ledger_known && units_agree() &&
                (position_break > tolerance_units || -position_break > tolerance_units);
     }
 
@@ -137,4 +165,5 @@ struct VenuePositionCheck
 
 VenuePositionCheck reconcile_position(const std::optional<std::int64_t>& venue_units,
                                       const std::optional<std::int64_t>& ledger_units,
-                                      std::int64_t tolerance_units = 0);
+                                      std::int64_t tolerance_units = 0, PositionUnits venue_unit = {},
+                                      PositionUnits ledger_unit = {});

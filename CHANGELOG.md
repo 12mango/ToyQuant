@@ -7,6 +7,28 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The position line states its unit, and refuses a comparison across two (2026-11-19)
+
+- **A quantity without its unit is not comparable with another quantity.** The position line compared the venue's
+  `POSITION <units>` with the ledger's position as if both counted the same thing, and nothing checked that they did:
+  the relay converts the venue's contracts with `--contract-size` and `--quantity-scale`, and a relay started with a
+  different scale, or pointed at a venue holding another coin, would have printed a `break` whose magnitude meant
+  nothing -- or an `ok` by coincidence. The relay's answer now carries the conversion it used, `POSITION <units>
+  <units_per_coin> <coin>`, and the engine compares both fields with its own instrument's. A disagreement prints no
+  magnitude: `position_break=n/a venue_units_per_coin=… venue_coin=… ledger_units_per_coin=… ledger_coin=… status=unknown`.
+- **The coin is compared, not the instrument's name,** because the two processes legitimately name it differently:
+  `BTC-PERPETUAL` and `BTC-USDT-SWAP` are one quantity of BTC. The rule that splits a name into its coin lives in one
+  place (`base_coin_of`), so the two sides cannot split one name differently, and a name with no separator is taken as
+  the coin itself.
+- **An answer that states only the number is `unknown`, not `ok`:** an older relay's quantity is one whose unit the
+  engine does not know, and a check that could not be made must not read like one that passed.
+- **Pinned by** `paper_broker_test` (agreeing, differing scale, differing coin, unstated), `live_venue_test` (the
+  four-field answer, a zero scale and a missing coin dropped, `unavailable` clearing the statement) and
+  `venue_order_session_test` (the relay's own answer, `POSITION -10000 1000000 BTC`). **Not measured against a venue:**
+  the runs of 2026-11-19 were recorded before the field existed, so every line quoted above predates it and would read
+  the same with it; a mismatched pair needs a relay lying about its conversion, which is a fault to inject rather than
+  a number to measure. **No recorded run moved**, because the agreeing case prints the line it always did.
+
 ## A resumed session's positions meet the venue's (2026-11-19)
 
 - **The position line now prints at both ends.** `[RECON] at=start position …` is the one a resumed session needs:

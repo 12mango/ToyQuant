@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 
 struct InstrumentSpec
 {
@@ -55,6 +56,20 @@ struct InstrumentSpec
     double audit_fee_per_share{0.0};
     double maker_rebate_per_share{0.0};
 };
+
+// The coin a quantity of this instrument is of: the first field of a name whose convention is `COIN-QUOTE-TYPE`
+// (`BTC-USDT-SWAP`, `BTC-PERPETUAL`), and the whole name when it carries no separator (`BTCUSDT`, `SPY`).
+//
+// It exists because a position is a quantity of one coin, and the two processes that compare one -- the engine with
+// its ledger and the relay with the venue -- know the instrument by different names. Saying which coin the units are
+// of is what makes the comparison checkable: `BTC-PERPETUAL` and `BTC-USDT-SWAP` are one quantity of BTC, and a run
+// publishing one against a venue holding the other is not a break but a number about nothing. The rule is here rather
+// than in either process so the two cannot split a name differently.
+inline std::string base_coin_of(std::string_view symbol)
+{
+    const auto separator = symbol.find('-');
+    return std::string(separator == std::string_view::npos ? symbol : symbol.substr(0, separator));
+}
 
 // USD value of one quantity unit at `price`. Shared by the fee model and the portfolio so the
 // two cannot disagree about what a filled quantity is worth.

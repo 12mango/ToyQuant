@@ -111,7 +111,7 @@ struct LiveVenueCounters
 //           CANCELED <id> <reason>  REJECT <id> <reason>
 //           PENDING <n> <id>...     PENDING unavailable
 //           EQUITY <usd>            EQUITY unavailable
-//           POSITION <units>        POSITION unavailable
+//           POSITION <units> <units_per_coin> <coin>   POSITION unavailable
 //
 // `CLOSE` is the end-of-session exit on a live run: a market order with `reduceOnly`, whose units the relay rounds up
 // to the venue's contract grid, so a fractional position (0.95 of a contract) is closed by one contract and the venue
@@ -186,11 +186,16 @@ class LiveVenue : public IMatchingEngine
     // a venue probe reading `pos=0`, with the equity line reporting `ok` because the two accounts were worth the same.
     bool refresh_position();
     std::optional<std::int64_t> venue_position() const;
+    // The convention the venue's own answer stated for that number -- engine units per coin and the coin -- or zero
+    // and empty when it carried only the number. The caller passes both to `reconcile_position`, which refuses to
+    // compare two quantities counted differently rather than printing a break about nothing.
+    std::int64_t venue_units_per_coin() const;
+    std::string venue_coin() const;
 
     // Where the wait pumps the transport: the receive thread queues a line rather than applying it, so a caller
-    // that blocks has to hand the adapter a way to drain it. The application's pump applies only `PENDING`/`EQUITY`
-    // answers and leaves reports queued for the pipeline's own drain, so a query asked before the pipeline exists
-    // (a resume) cannot book a fill with no callback.
+    // that blocks has to hand the adapter a way to drain it. The application's pump applies the three query answers
+    // (`PENDING`, `EQUITY`, `POSITION`) and leaves reports queued for the pipeline's own drain, so a query asked
+    // before the pipeline exists (a resume) cannot book a fill with no callback.
     void set_query_pump(std::function<void()> pump) { query_pump_ = std::move(pump); }
 
     // A query, not a report: it says whether the venue still holds the order. The answer comes from the last
@@ -254,5 +259,9 @@ class LiveVenue : public IMatchingEngine
     // answers `unavailable`, because a value kept from an earlier answer would read as a fresh one.
     uint64_t position_generation_{0};
     std::optional<std::int64_t> venue_position_units_;
+    // What that number is counted in, from the same answer: engine units per coin, and the coin. Zero and empty when
+    // the answer carried only the number, which is an older relay and makes the quantity incomparable.
+    std::int64_t venue_units_per_coin_{0};
+    std::string venue_coin_;
     std::function<void()> query_pump_;
 };
