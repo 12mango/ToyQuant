@@ -11,6 +11,11 @@
 #   tools/live/resume_live.sh resume    # resume from it; the venue is asked about every order it listed
 #   tools/live/resume_live.sh break     # the same resume from a snapshot that claims a position the venue does
 #                                       # not hold, which the position line has to call a break
+#   tools/live/resume_live.sh venue     # the other direction: one contract on the venue, placed through the
+#                                       # relay's order leg with no engine connected, so the account holds a
+#                                       # position the snapshot does not know. `S` (the default) shorts it,
+#                                       # `B` lengthens it. The `resume` after it is the venue-side break
+#   tools/live/resume_live.sh flat      # the same line the other way, to take that position off again
 #
 # Environment: BIN, RELAY, TRADES, DEPTH, PORT, OUT (log and snapshot prefix), VENUE (the REST base url),
 # INST_CODE, STARTING_CASH, ORDER_SIZE, MAX_ORDERS, POSITION_UNITS (the fabricated one `break` injects).
@@ -66,6 +71,48 @@ relay=$!
 trap 'kill "$relay" 2>/dev/null; wait "$relay" 2>/dev/null' EXIT
 sleep 2
 
+# One contract placed on the venue by something other than the engine. The relay's order leg speaks the same line
+# protocol whatever is on the other end, so this order crosses the same translation and the same REST placement an
+# engine's order would -- only the ledger never hears about it, which is the state the position line exists to catch.
+# The price is the venue's own touch, so the order is marketable on arrival, and `Ioc` leaves nothing resting behind.
+venue_order()
+{
+  python3 - "$PORT" "$1" "$ORDER_SIZE" "$VENUE" <<'PY'
+import json
+import socket
+import sys
+import time
+import urllib.request
+
+port, side, units, venue = int(sys.argv[1]), sys.argv[2], sys.argv[3], sys.argv[4]
+ticker = json.load(urllib.request.urlopen(
+    f"{venue}/api/v5/market/ticker?instId=BTC-USDT-SWAP", timeout=15))["data"][0]
+# A sell crosses the venue's bid and a buy its ask, so the order trades on arrival at the price the venue itself
+# last quoted rather than at one this script guessed.
+price = ticker["bidPx"] if side == "S" else ticker["askPx"]
+line = f"ORDER {int(time.time())} BTC-PERPETUAL {side} {price} {units} Ioc"
+print("sent:", line, flush=True)
+with socket.create_connection(("127.0.0.1", port), timeout=5) as sock:
+    sock.sendall(line.encode() + b"\n")
+    sock.settimeout(25)
+    answers = b""
+    while True:
+        try:
+            chunk = sock.recv(4096)
+        except socket.timeout:
+            break
+        if not chunk:
+            break
+        answers += chunk
+        # The placement answer and the fill arrive as separate lines; the second is the one this exists for, so the
+        # read continues a little past the first terminal-looking line.
+        if b"FILL" in answers or b"REJECT" in answers:
+            sock.settimeout(3)
+print("answers:", answers.decode(errors="replace").replace("\n", " | ").strip(), flush=True)
+sys.exit(0 if b"FILL" in answers else 1)
+PY
+}
+
 COMMON=(
   l2_replay "$TRADES" "$DEPTH" BTC-PERPETUAL 0 active_l2 1000000 prorata
   --fast-validation "--starting-cash=${STARTING_CASH}" "--order-size=${ORDER_SIZE}"
@@ -93,13 +140,29 @@ case "$MODE" in
     "$BIN" "${COMMON[@]}" --snapshot-in="${OUT}_snapshot_broken.txt" > "${OUT}_break.log" 2>&1
     status=$?
     ;;
+  venue|flat)
+    # The snapshot is what these modes exist to contradict: the account gains a position the file does not know about,
+    # and the `resume` after them is what has to say so. Without one there is no file to be wrong about, so this names
+    # the missing input rather than placing an order nobody can check.
+    [ -f "${OUT}_snapshot.txt" ] || { echo "run 'fresh' first: no ${OUT}_snapshot.txt" >&2; exit 2; }
+    if [ "$MODE" = "venue" ]; then
+      # A sell crosses the venue's bid and shorts the account; the engine never hears about it.
+      venue_order "${2:-S}"
+    else
+      # The same line the other way, priced at the venue's ask, to take that position off again.
+      venue_order "${2:-B}"
+    fi
+    status=$?
+    ;;
   *)
-    echo "usage: $0 fresh|resume|break" >&2
+    echo "usage: $0 fresh|resume|break|venue [S|B]|flat [B|S]" >&2
     exit 2
     ;;
 esac
 
-# The lines the mode exists to produce, verbatim. A missing line is the failure, so the grep's exit status is not
-# swallowed by the trailer.
-grep -hE '^\[(RESUME|RECON|SNAPSHOT|VENUE)' "${OUT}_${MODE}.log" || status=1
+# The engine's own lines, when the mode ran the engine -- verbatim, because a missing line is the failure. The venue
+# modes have none: their evidence is the relay's answer, already printed above.
+if [ -f "${OUT}_${MODE}.log" ]; then
+  grep -hE '^\[(RESUME|RECON|SNAPSHOT|VENUE)' "${OUT}_${MODE}.log" || status=1
+fi
 exit "$status"

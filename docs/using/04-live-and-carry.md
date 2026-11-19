@@ -525,6 +525,15 @@ instrument's unit is a 10 USD contract -- and nothing at the venue.
 > disagreeing, unstated); the venue-side mismatch has not been run yet, because it needs a relay that lies about its
 > conversion and that is a fault to inject rather than a number to measure.
 
+**The two-book path has no position line, and cannot have one today.** Every layer that would be asked is refused on a
+run with two books, each for the same reason and with its own message: `--live-orders` ("names one venue, and a two-book
+run has two engines"), and `--paper-broker`/`--order-gateway` ("wrap one venue; a two-symbol run builds one venue per
+symbol, and the wrapper is not per leg yet"). So that path has no second statement to compare the account with: its
+venues are in-process matchers, and the check it carries is inside each book's pipeline, `[EXECUTION]`'s
+`strategy_net_position`/`strategy_position_mismatches` against the engine that book owns, beside `[EXPOSURE]` across the
+two legs. A live two-leg session would need one order adapter per leg and one line per leg -- a single number would merge
+two instruments' units -- and until one exists the absence is the decision rather than an omission.
+
 **An order that fills completely ends as filled.** The venue's `orders` channel says `state: filled` and neither relay
 turns that state into a line, so until now the only thing that closed a filled order was a cancel for it being refused:
 `[EXECUTION]` read `audited_filled_orders=0` on every live run and those orders were counted as cancelled or rejected.

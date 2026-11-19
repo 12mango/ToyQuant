@@ -82,7 +82,7 @@ does not.
 | `tools/live/websocket_sender.py` | a local venue streaming two recorded files | hand |
 | `tools/live/soak_push.sh` | a session's ping, reconnect and sequence counters | hand |
 | `tools/live/trace_order.sh` | the order that waited longest, stage by stage | hand |
-| `tools/live/resume_live.sh` | a snapshot written, resumed, and the break a fabricated position produces | hand |
+| `tools/live/resume_live.sh` | a snapshot written, resumed, and either break -- the file's or the venue's | hand |
 | `tools/export/bundle.py` | two bundles, a manifest and a diff, each checked | hand |
 | `tools/export/push_windows.sh` | the copied names with remote size and sha256 | hand |
 | `tools/export/install_post_commit.sh` | the hook it wrote, or the one it repaired | hand |
