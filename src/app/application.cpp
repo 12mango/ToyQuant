@@ -14,6 +14,7 @@
 #include <string>
 #include <thread>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "lines/carry_ledger.h"
@@ -730,6 +731,16 @@ void Application::run_l2_session_mode() const
     // start rather than only at the end is the difference between a run that reports a wrong base after an hour and
     // one that says so in its first second.
     if (resumed && !resumed->marks.empty()) portfolio.mark_to_market(resumed->marks);
+    // The unit each side counts a quantity in, built once and used by both position lines below: the ledger's from the
+    // run's instrument, the venue's from the relay's own answer. A line that stated it separately could state it
+    // differently, which is the disagreement the two statements exist to catch -- so the pair is made here rather than
+    // twice. It is called only inside the `if (live_venue)` blocks, which is what makes the capture safe.
+    const auto position_units = [&]
+    {
+        return std::pair<PositionUnits, PositionUnits>(
+            PositionUnits{live_venue->venue_units_per_coin(), live_venue->venue_coin()},
+            PositionUnits{static_cast<std::int64_t>(instrument.quantity_scale), base_coin_of(instrument.symbol)});
+    };
     if (live_venue)
     {
         const bool answered = live_venue->refresh_equity();
@@ -754,14 +765,10 @@ void Application::run_l2_session_mode() const
         const std::optional<std::int64_t> opening_position =
             opening_held != nullptr ? std::optional<std::int64_t>(opening_held->quantity)
                                     : std::optional<std::int64_t>(0);
-        // What each number is counted in, stated from both sides: the ledger's from the run's instrument, the venue's
-        // from the relay's own answer. Two processes that converted the same fill can disagree about a unit, and the
-        // line refuses that comparison rather than printing a break whose magnitude would mean nothing.
+        // What each number is counted in, stated from both sides by the one place that names it.
+        const auto [venue_unit, ledger_unit] = position_units();
         logger.log("[RECON] at=start position ",
-                   reconcile_position(venue_position, opening_position, 0,
-                                      PositionUnits{live_venue->venue_units_per_coin(), live_venue->venue_coin()},
-                                      PositionUnits{static_cast<std::int64_t>(instrument.quantity_scale),
-                                                    base_coin_of(instrument.symbol)})
+                   reconcile_position(venue_position, opening_position, 0, venue_unit, ledger_unit)
                        .to_log_string());
     }
     Pipeline pipeline(output_files.orders, output_files.trades, *strategy, *venue, portfolio,
@@ -1122,12 +1129,10 @@ void Application::run_l2_session_mode() const
         const auto* held = portfolio.find_position(cfg_.symbol);
         const std::optional<std::int64_t> ledger_position =
             held != nullptr ? std::optional<std::int64_t>(held->quantity) : std::optional<std::int64_t>(0);
-        // The same two unit statements as the start line, from the same two sides.
+        // The same two unit statements as the start line, from the same one place.
+        const auto [venue_unit, ledger_unit] = position_units();
         logger.log("[RECON] at=end position ",
-                   reconcile_position(venue_position, ledger_position, 0,
-                                      PositionUnits{live_venue->venue_units_per_coin(), live_venue->venue_coin()},
-                                      PositionUnits{static_cast<std::int64_t>(instrument.quantity_scale),
-                                                    base_coin_of(instrument.symbol)})
+                   reconcile_position(venue_position, ledger_position, 0, venue_unit, ledger_unit)
                        .to_log_string());
         live_transport->disconnect();
     }

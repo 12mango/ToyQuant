@@ -52,7 +52,8 @@ site now points at `ToyQuant`.
   venue, produced by the file rather than by the venue. One caveat, on the live page: the line compares units, which
   `ws` makes comparable (the market symbol is the venue's instrument) and `l2_replay --live-orders` does not.
 - **What it costs, and what it cannot reach:** one position query at the start of every live run, including a fresh one
-  and a resumed one. The two-book path asks each leg's venue for pending orders and would need its own line.
+  and a resumed one. The two-book path has no position line and cannot have one: `--live-orders` is refused on a run with
+  two books, so there is no venue to ask there.
 
 
 - **Equity cannot see a quantity.** A session that ended `[WIND-DOWN] residual=-900` had the venue's probe reading

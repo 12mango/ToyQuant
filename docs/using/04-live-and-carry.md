@@ -514,25 +514,29 @@ ledger_units=10000 position_break=-10000 tolerance_units=0 status=break`. Both l
 the point of printing both: a position the venue does not hold is 100,000 USD of face in the ledger's account -- this
 instrument's unit is a 10 USD contract -- and nothing at the venue.
 
-> The line compares units, so the ledger's instrument and the venue's have to mean the same thing by one unit: 1e6 engine
-> units per coin, of the same coin. That is now a check rather than a note -- the relay's `POSITION` answer states the
-> conversion it used (`POSITION <units> <units_per_coin> <coin>`, and `POSITION <units>` for a relay that states
-> nothing), the engine compares it with the run's own instrument, and a disagreement reads `position_break=n/a
-> venue_units_per_coin=… venue_coin=… ledger_units_per_coin=… ledger_coin=… status=unknown` with no magnitude at all.
-> The two instruments' names differ on purpose and that is not the fault: the runs above trade `BTC-PERPETUAL` against a
-> venue holding `BTC-USDT-SWAP`, and either is a quantity of BTC. A relay started with another `--quantity-scale`, or a
-> venue holding another coin, is what the line refuses to compare. `paper_broker_test` pins all three branches (agreeing,
-> disagreeing, unstated); the venue-side mismatch has not been run yet, because it needs a relay that lies about its
-> conversion and that is a fault to inject rather than a number to measure.
+/// details | What the line can refuse to compare, and why two books have no such line
 
-**The two-book path has no position line, and cannot have one today.** Every layer that would be asked is refused on a
-run with two books, each for the same reason and with its own message: `--live-orders` ("names one venue, and a two-book
-run has two engines"), and `--paper-broker`/`--order-gateway` ("wrap one venue; a two-symbol run builds one venue per
-symbol, and the wrapper is not per leg yet"). So that path has no second statement to compare the account with: its
-venues are in-process matchers, and the check it carries is inside each book's pipeline, `[EXECUTION]`'s
+The line compares units, so the ledger's instrument and the venue's have to mean the same thing by one unit: 1e6 engine
+units per coin, of the same coin. That is now a check rather than a note -- the relay's `POSITION` answer states the
+conversion it used (`POSITION <units> <units_per_coin> <coin>`, and `POSITION <units>` for a relay that states
+nothing), the engine compares it with the run's own instrument, and a disagreement reads `position_break=n/a
+venue_units_per_coin=… venue_coin=… ledger_units_per_coin=… ledger_coin=… status=unknown` with no magnitude at all.
+The two instruments' names differ on purpose and that is not the fault: the runs above trade `BTC-PERPETUAL` against a
+venue holding `BTC-USDT-SWAP`, and either is a quantity of BTC. A relay started with another `--quantity-scale`, or a
+venue holding another coin, is what the line refuses to compare. `paper_broker_test` pins all three branches (agreeing,
+disagreeing, unstated); the venue-side mismatch has not been run yet, because it needs a relay that lies about its
+conversion and that is a fault to inject rather than a number to measure.
+
+The two-book path has no position line, and cannot have one today. Every layer that would be asked is refused on a run
+with two books, each for the same reason and with its own message: `--live-orders` ("names one venue, and a two-book run
+has two engines"), and `--paper-broker`/`--order-gateway` ("wrap one venue; a two-symbol run builds one venue per symbol,
+and the wrapper is not per leg yet"). So that path has no second statement to compare the account with: its venues are
+in-process matchers, and the check it carries is inside each book's pipeline, `[EXECUTION]`'s
 `strategy_net_position`/`strategy_position_mismatches` against the engine that book owns, beside `[EXPOSURE]` across the
 two legs. A live two-leg session would need one order adapter per leg and one line per leg -- a single number would merge
 two instruments' units -- and until one exists the absence is the decision rather than an omission.
+
+///
 
 **An order that fills completely ends as filled.** The venue's `orders` channel says `state: filled` and neither relay
 turns that state into a line, so until now the only thing that closed a filled order was a cancel for it being refused:
