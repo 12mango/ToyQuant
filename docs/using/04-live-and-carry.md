@@ -491,12 +491,17 @@ exit had filled and its report arrived after the close's one-second wait, and `[
 compares the venue's **equity** against the ledger's -- the account was worth the same either way, the ledger holding the
 position and having paid for it. The adapter now asks the venue for its position too (`GET
 /api/v5/account/positions`, signed on the balance's own surface, converted to engine units by the translator's contract
-size and signed, because a short is a negative quantity here), and the run prints a second line: `[RECON] position
-venue_units=… ledger_units=… position_break=… tolerance_units=0 status=ok|break|unknown`. The tolerance is zero units
-because a quantity is exact. Measured on 2026-11-18, 60 s, passive_l2: `[RECON] position venue_units=0 ledger_units=0
-position_break=0 tolerance_units=0 status=ok` beside `[RECON] at=end venue_equity_usd=4921.88 ledger_equity_usd=4921.88
-equity_break_usd=0.00472691 status=ok`. The `break` case is pinned by `paper_broker_test` -- a venue at 0 against a ledger
-at -900 -- because a session that closes cleanly cannot produce it on purpose.
+size and signed, because a short is a negative quantity here), and the run prints it at both ends of the session:
+`[RECON] at=start position venue_units=… ledger_units=… position_break=… tolerance_units=0 status=ok|break|unknown` and
+the same at `at=end`. The start line is what a resumed session needs: `--snapshot-in` puts positions back from a file,
+and the venue is the only one that can say whether those are still the positions it holds. The tolerance is zero units
+because a quantity is exact. Measured on 2026-11-19, 60 s, passive_l2: `[RECON] at=start position venue_units=0
+ledger_units=0 position_break=0 tolerance_units=0 status=ok` and the same at the end, beside `[RECON] at=end
+venue_equity_usd=4917.96 ledger_equity_usd=4917.96 equity_break_usd=9.74505e-05 status=ok`, with `[WIND-DOWN]
+position=10000 closed=10000 residual=0 total_bps=5`. A resumed session reaches the start line through `l2_replay
+--live-orders --snapshot-in`, because the snapshot flags are refused on `ws` -- a session is written and resumed against
+a replay's own clock. The `break` case is pinned by `paper_broker_test` -- a venue at 0 against a ledger at -900 --
+because a session that closes cleanly cannot produce it on purpose.
 
 **An order that fills completely ends as filled.** The venue's `orders` channel says `state: filled` and neither relay
 turns that state into a line, so until now the only thing that closed a filled order was a cancel for it being refused:

@@ -7,7 +7,24 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
-## The venue's position is reconciled, not only its equity (2026-11-18)
+## A resumed session's positions meet the venue's (2026-11-19)
+
+- **The position line now prints at both ends.** `[RECON] at=start position …` is the one a resumed session needs:
+  `--snapshot-in` puts the account's positions back from a file and resolves the venue's pending orders, and the venue
+  is the only one that can say whether the positions the file restored are the ones it still holds. The line is the same
+  check as `at=end` -- `venue_units`, `ledger_units`, `position_break`, a zero-unit tolerance and an
+  `ok|break|unknown` verdict -- printed before anything is quoted, so a resume that restores the wrong side of a
+  position says so in its first second rather than after an hour of quoting against it.
+- **Measured on 2026-11-19, 60 s, passive_l2:** `[RECON] at=start position venue_units=0 ledger_units=0
+  position_break=0 tolerance_units=0 status=ok` and the same at the end, beside `[RECON] at=end venue_equity_usd=4917.96
+  ledger_equity_usd=4917.96 equity_break_usd=9.74505e-05 status=ok`, with `[WIND-DOWN] position=10000 closed=10000
+  residual=0 total_bps=5` and `[VENUE] duplicates=0`.
+- **What it costs, and what it cannot reach yet:** one position query at the start of every live run, including a fresh
+  one. The `at=start` line on a *resumed* session is reachable only through `l2_replay --live-orders --snapshot-in`,
+  because the snapshot flags are refused on `ws` ("a session is written and resumed against a replay's own clock"); the
+  check itself is pinned by `paper_broker_test`, and the fresh-run case is the measurement above. The two-book path asks
+  each leg's venue for pending orders and would need its own line.
+
 
 - **Equity cannot see a quantity.** A session that ended `[WIND-DOWN] residual=-900` had the venue's probe reading
   `pos=0`: the exit had filled and its report arrived after the close's one-second wait, and the account was worth the

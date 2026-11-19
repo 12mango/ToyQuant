@@ -735,6 +735,10 @@ void Application::run_l2_session_mode() const
         const bool answered = live_venue->refresh_equity();
         const std::optional<double> venue_equity =
             answered ? live_venue->venue_equity_usd() : std::nullopt;
+        // The quantity half of the same question, at the same moment. A resumed session puts positions back from a
+        // file, and the venue is the only one that can say whether those are still the positions it holds.
+        const std::optional<std::int64_t> venue_position =
+            live_venue->refresh_position() ? live_venue->venue_position() : std::nullopt;
         const PortfolioMetrics opening = portfolio.metrics();
         std::optional<double> ledger_equity;
         if (opening.marks_complete) ledger_equity = opening.equity;
@@ -746,6 +750,12 @@ void Application::run_l2_session_mode() const
         const double tolerance = std::max(0.05, 0.0001 * std::abs(reference));
         logger.log("[RECON] at=start ",
                    reconcile_equity(venue_equity, ledger_equity, tolerance).to_log_string());
+        const auto* opening_held = portfolio.find_position(cfg_.symbol);
+        const std::optional<std::int64_t> opening_position =
+            opening_held != nullptr ? std::optional<std::int64_t>(opening_held->quantity)
+                                    : std::optional<std::int64_t>(0);
+        logger.log("[RECON] at=start position ",
+                   reconcile_position(venue_position, opening_position).to_log_string());
     }
     Pipeline pipeline(output_files.orders, output_files.trades, *strategy, *venue, portfolio,
                       instrument.tick_size);
@@ -1105,7 +1115,8 @@ void Application::run_l2_session_mode() const
         const auto* held = portfolio.find_position(cfg_.symbol);
         const std::optional<std::int64_t> ledger_position =
             held != nullptr ? std::optional<std::int64_t>(held->quantity) : std::optional<std::int64_t>(0);
-        logger.log("[RECON] position ", reconcile_position(venue_position, ledger_position).to_log_string());
+        logger.log("[RECON] at=end position ",
+                   reconcile_position(venue_position, ledger_position).to_log_string());
         live_transport->disconnect();
     }
     if (order_log)
