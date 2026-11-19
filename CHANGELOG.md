@@ -19,11 +19,18 @@ site now points at `ToyQuant`.
   position_break=0 tolerance_units=0 status=ok` and the same at the end, beside `[RECON] at=end venue_equity_usd=4917.96
   ledger_equity_usd=4917.96 equity_break_usd=9.74505e-05 status=ok`, with `[WIND-DOWN] position=10000 closed=10000
   residual=0 total_bps=5` and `[VENUE] duplicates=0`.
-- **What it costs, and what it cannot reach yet:** one position query at the start of every live run, including a fresh
-  one. The `at=start` line on a *resumed* session is reachable only through `l2_replay --live-orders --snapshot-in`,
-  because the snapshot flags are refused on `ws` ("a session is written and resumed against a replay's own clock"); the
-  check itself is pinned by `paper_broker_test`, and the fresh-run case is the measurement above. The two-book path asks
-  each leg's venue for pending orders and would need its own line.
+- **Measured on a resumed session, against the demo venue (2026-11-19).** `tools/live/resume_live.sh fresh|resume|break`
+  is the three runs. The fresh one wrote a snapshot holding one working order; the resume printed `[RESUME]
+  symbol=BTC-PERPETUAL … orders=1 live=0 gone=1 cancelled=0 cash_usd=4917.96 legs=0 next_order_id=2` and `[RECON]
+  at=start position venue_units=0 ledger_units=0 position_break=0 tolerance_units=0 status=ok` -- the line that was
+  unreachable before, because the snapshot flags are refused on `ws` and the reachable shape is `l2_replay --live-orders
+  --snapshot-in`. The third run resumes from a copy of that snapshot with a fabricated 10,000-unit position: `[RECON]
+  at=start position venue_units=0 ledger_units=10000 position_break=-10000 tolerance_units=0 status=break` beside
+  `venue_equity_usd=4917.96 ledger_equity_usd=104918 equity_break_usd=-100000 status=break` -- the `break` verdict on a
+  venue, produced by the file rather than by the venue. One caveat, on the live page: the line compares units, which
+  `ws` makes comparable (the market symbol is the venue's instrument) and `l2_replay --live-orders` does not.
+- **What it costs, and what it cannot reach:** one position query at the start of every live run, including a fresh one
+  and a resumed one. The two-book path asks each leg's venue for pending orders and would need its own line.
 
 
 - **Equity cannot see a quantity.** A session that ended `[WIND-DOWN] residual=-900` had the venue's probe reading
@@ -36,8 +43,8 @@ site now points at `ToyQuant`.
 - **Measured on the demo, 2026-11-18, 60 s, passive_l2:** `[RECON] position venue_units=0 ledger_units=0 position_break=0
   tolerance_units=0 status=ok` beside `[RECON] at=end venue_equity_usd=4921.88 ledger_equity_usd=4921.88
   equity_break_usd=0.00472691 status=ok`. The run ended flat (`working_orders=0`), so this is the `ok` case; the `break`
-  case is pinned by `paper_broker_test` -- a venue at 0 against a ledger at -900 -- because a session that closes cleanly
-  cannot produce it on purpose.
+  case was pinned by `paper_broker_test` -- a venue at 0 against a ledger at -900 -- because a session that closes
+  cleanly does not produce it; the entry above produces it on purpose, from the snapshot rather than from the venue.
 - **One defect found on the way, and it was observed:** the application's query pump forwarded only `PENDING` and
   `EQUITY` answers and left everything else queued for the pipeline's drain, so a `POSITION` answer sat in the queue until
   the query timed out -- the first run that asked printed `[RECON] position venue_units=n/a ledger_units=0

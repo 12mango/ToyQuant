@@ -498,10 +498,27 @@ and the venue is the only one that can say whether those are still the positions
 because a quantity is exact. Measured on 2026-11-19, 60 s, passive_l2: `[RECON] at=start position venue_units=0
 ledger_units=0 position_break=0 tolerance_units=0 status=ok` and the same at the end, beside `[RECON] at=end
 venue_equity_usd=4917.96 ledger_equity_usd=4917.96 equity_break_usd=9.74505e-05 status=ok`, with `[WIND-DOWN]
-position=10000 closed=10000 residual=0 total_bps=5`. A resumed session reaches the start line through `l2_replay
---live-orders --snapshot-in`, because the snapshot flags are refused on `ws` -- a session is written and resumed against
-a replay's own clock. The `break` case is pinned by `paper_broker_test` -- a venue at 0 against a ledger at -900 --
-because a session that closes cleanly cannot produce it on purpose.
+position=10000 closed=10000 residual=0 total_bps=5`.
+
+**A resumed session's positions meet the venue's.** The snapshot flags are refused on `ws` -- a session is written and
+resumed against a replay's own clock -- so the shape that reaches `at=start` on a resume is `l2_replay --live-orders
+--snapshot-in`: the market leg a file, the order leg a socket. `tools/live/resume_live.sh fresh|resume|break` is the
+three runs, and they were measured against the demo venue on 2026-11-19. The fresh one wrote `[SNAPSHOT] orders=1
+legs=0 cash_usd=4917.96`; the resume printed `[RESUME] symbol=BTC-PERPETUAL last_ts=1585785597986000 orders=1 live=0
+gone=1 cancelled=0 cash_usd=4917.96 legs=0 next_order_id=2` -- the venue had already let the order go -- and `[RECON]
+at=start position venue_units=0 ledger_units=0 position_break=0 tolerance_units=0 status=ok`. The third run is the
+`break` verdict, and the fault was the file rather than the venue: a copy of that snapshot with one fabricated position
+of 10,000 units added, resumed to `[RECON] at=start venue_equity_usd=4917.96 ledger_equity_usd=104918
+equity_break_usd=-100000 tolerance_usd=10.4918 status=break` beside `[RECON] at=start position venue_units=0
+ledger_units=10000 position_break=-10000 tolerance_units=0 status=break`. Both lines see the same disagreement, which is
+the point of printing both: a position the venue does not hold is 100,000 USD of face in the ledger's account -- this
+instrument's unit is a 10 USD contract -- and nothing at the venue.
+
+> The line compares units, so the ledger's instrument and the venue's have to mean the same thing by one unit. `ws`
+> guarantees it, because the market symbol is the venue's instrument; `l2_replay --live-orders` does not, and the runs
+> above trade `BTC-PERPETUAL` against a venue holding `BTC-USDT-SWAP`, whose unit is a contract of 0.01 BTC. Both sides
+> read zero there, so the number is the same zero either way -- a nonzero comparison across two instruments is a figure
+> to check before it is quoted.
 
 **An order that fills completely ends as filled.** The venue's `orders` channel says `state: filled` and neither relay
 turns that state into a line, so until now the only thing that closed a filled order was a cancel for it being refused:

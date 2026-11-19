@@ -11,7 +11,7 @@ kind of tool a file is:
 | `sweep/` | the measurements that vary one thing over a window and print a table | `risk_check.sh` |
 | `fetch/` | getting data in and cutting it down: five venue fetchers, `slice.py`, `inspect_source.py` | `slice.py window`, `fetch_iex_hist.py --self-test` |
 | `study/` | the studies: one question each, and the drivers that turn a window into a row | five `--self-test`s, and `viability.py` |
-| `live/` | the four tools that speak to a socket: relay, sender, soak, tracer | `venue_relay.py --self-test` |
+| `live/` | the five tools that speak to a socket: relay, sender, soak, tracer, resume | `venue_relay.py --self-test` |
 | `export/` | the bundle a reader that cannot clone the tree is given | no |
 | `bench/` | two harnesses for the performance line: the paired A/B runner and the libc call counter | no |
 | `legacy/` | the CSV and UDP generators for the L1 path that the demo and `data/scenarios/` still use | no |
@@ -82,6 +82,7 @@ does not.
 | `tools/live/websocket_sender.py` | a local venue streaming two recorded files | hand |
 | `tools/live/soak_push.sh` | a session's ping, reconnect and sequence counters | hand |
 | `tools/live/trace_order.sh` | the order that waited longest, stage by stage | hand |
+| `tools/live/resume_live.sh` | a snapshot written, resumed, and the break a fabricated position produces | hand |
 | `tools/export/bundle.py` | two bundles, a manifest and a diff, each checked | hand |
 | `tools/export/push_windows.sh` | the copied names with remote size and sha256 | hand |
 | `tools/export/install_post_commit.sh` | the hook it wrote, or the one it repaired | hand |
