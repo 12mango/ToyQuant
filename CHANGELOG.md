@@ -22,8 +22,13 @@ site now points at `ToyQuant`.
   the exit's reduce-only sell is rejected, and the wind-down reads `refused=1` with no `no_liquidity` and the position
   untouched. The first version of that test failed on the id being recorded after the synchronous report -- which is the
   bug the mode exists to catch.
-- **No recorded number moved**: the two runs above are quoted as they were printed, and the live page now says what the
-  same run would print with this change.
+- **A position that grew during the exit is now its own field.** `closed` is `|before| - |after|`, so a working quote that
+  fills the other way during the wait reads as nothing having closed: measured on a 300 s session, `[WIND-DOWN]
+  position=-1400 closed=0 residual=-11400 ... no_liquidity=1` where a resting sell had filled 10,000 units and the exit's
+  own reduce-only order had not filled at all. The line now prints `grew=<units>` beside either verdict, because losing a
+  race and finding an empty book are different facts.
+- **Pinned by** `pipeline_accounting_test`: the refusing venue also fills a quote during the exit's wait, and the summary
+  reads `refused=1`, `grew=10`, no `no_liquidity`, with the position carried at -20.
 
 ## The relay's transport is bounded, and reaches the venue through a proxy (2026-11-21)
 

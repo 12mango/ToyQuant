@@ -32,6 +32,19 @@ class LateFillVenue : public IMatchingEngine
     // measured case (2026-11-21) -- as a report rather than as silence.
     void refuse_closes(bool on) { refuse_closes_ = on; }
 
+    // A working quote that fills while the exit is working: the venue books it against the position the exit was sized
+    // for, which is the race a cancel cannot close.
+    void fill_extra(const std::string& symbol, exchange::Side side, double price, uint64_t quantity)
+    {
+        emit(ExecutionReport{.order_id = 9000 + extra_fills_++,
+                             .side = side,
+                             .exec_type = ExecType::Trade,
+                             .symbol = symbol,
+                             .price = price,
+                             .quantity = quantity,
+                             .owner = "MarketMaker"});
+    }
+
     void send_order(const exchange::Order& order) override
     {
         sent_[order.id] = order;
@@ -114,6 +127,7 @@ class LateFillVenue : public IMatchingEngine
     ReportCallback callback_;
     uint64_t late_fill_cancels_{0};
     bool refuse_closes_{false};
+    uint64_t extra_fills_{0};
 };
 }  // namespace
 
@@ -981,7 +995,14 @@ int main()
         // One sell quote's cancel is answered with the refusal and then the fill, which is how the account acquires the
         // short the exit is refused for; the close's own reduce-only sell is what this test is about.
         refuse_venue.fill_next_cancel(1);
-        refuse_pipeline.set_venue_pump([] {});
+        // The exit is refused *and* a quote fills the other way during its wait: the second fact is what `closed=0`
+        // used to hide, so both are asserted below.
+        bool pumped = false;
+        refuse_pipeline.set_venue_pump([&refuse_venue, &pumped] {
+            if (pumped) return;
+            pumped = true;
+            refuse_venue.fill_extra("REFUSE", exchange::Side::Sell, 100.0, 10);
+        });
         refuse_pipeline.process_l2_market_view(L2MarketView{.symbol = "REFUSE",
                                                             .ts = 10,
                                                             .top = TopOfBook{100.0, 100, 100.5, 100},
@@ -998,13 +1019,16 @@ int main()
         const WindDownSummary refused_close = refuse_pipeline.close_out(12);
         assert(refused_close.attempted());
         assert(refused_close.closed_quantity == 0);
-        assert(refused_close.residual == -10);
+        assert(refused_close.residual == -20);
         assert(refused_close.refused);
         assert(!refused_close.no_liquidity);
+        assert(refused_close.grew);
+        assert(refused_close.grew_quantity == 10);
         assert(refused_close.to_log_string().find(" refused=1") != std::string::npos);
         assert(refused_close.to_log_string().find("no_liquidity") == std::string::npos);
+        assert(refused_close.to_log_string().find(" grew=10") != std::string::npos);
         const auto* refuse_left = refuse_portfolio.find_position("REFUSE");
-        assert(refuse_left != nullptr && refuse_left->quantity == -10);
+        assert(refuse_left != nullptr && refuse_left->quantity == -20);
     }
 
 

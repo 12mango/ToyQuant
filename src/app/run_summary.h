@@ -216,6 +216,12 @@ struct WindDownSummary
     // and only a fresh view restores, so the last event of a window frequently leaves the best bid at zero. The exit
     // then has a price and no depth, and that is a fact about the window rather than a failure of the close.
     bool no_liquidity{false};
+    // True when the position grew while the exit was working -- a working quote that filled the other way, which is the
+    // race `cancel` cannot close. The closed quantity is then zero by arithmetic and the story is not "no size":
+    // measured 2026-11-21, `position=-1400 closed=0 residual=-11400 no_liquidity=1` after a resting sell filled during
+    // the wait. `grew_quantity` is the growth, in the same units as `position`.
+    bool grew{false};
+    uint64_t grew_quantity{0};
 
     bool attempted() const
     {

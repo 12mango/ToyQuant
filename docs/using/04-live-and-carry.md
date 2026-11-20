@@ -400,6 +400,22 @@ acknowledged and the reports arrived after it. `Pipeline::close_out` now gives a
 wait is skipped, which is why no recorded number moved, and a book with no size still returns its residual and
 `no_liquidity=1` after the wait.
 
+**Five minutes through the tunnel, with the position line agreeing on a nonzero number.** Measured 2026-11-21, `ws` on
+BTC-USDT-SWAP, cap 4000, rate 2/s, and `--starting-cash` set to the venue's own USDT equity: `[RECON] at=start
+venue_equity_usd=4873.97 ledger_equity_usd=4873.97 equity_break_usd=-2.77474e-07 status=ok` and `[RECON] at=end
+venue_equity_usd=4850.19 ledger_equity_usd=4850.2 equity_break_usd=-0.00386365 status=ok`, beside `[RECON] at=end
+position venue_units=-1400 ledger_units=-1400 position_break=0 status=ok` -- the first session on this line whose two
+sides compared a **nonzero** position and agreed. `[VENUE]` read `frames_sent=612 frames_received=869 orders=326
+cancels=281 refused_by_adapter=75 write_failures=0 reports=909 dropped=0 duplicates=2 rate_limited=75`: every refusal was
+the rate, none the cap. Its wind-down printed `position=-1400 closed=0 residual=-11400 notional_usd=82.602 spread_bps=40
+fees_usd=0.295079 fees_bps=0 total_bps=40 no_liquidity=1`, which was two facts in one field -- the exit's reduce-only
+order did not fill, and a resting quote filled the other way during its wait, growing the position by 10,000 units -- so
+the line now prints `grew=10000` beside it.
+
+A session cap of 200 buys about a minute of quoting. The same 300 s shape with it read `[VENUE] orders=201
+rate_limited=43 refused_by_adapter=1004`: the cap was spent early and the rest of the window was refusals. A longer
+session needs the cap raised until the rate is the only bound, which is the 4000 above.
+
 What the wait does not fix was visible in the next run, and two more changes followed. The venue's position probe read
 `pos: -1` where the engine's book held `+2000` units, and `close-position` flattened it: a working quote the engine still
 counted had filled at the venue after the session's clock had stopped. `send_close_order` now cancels every working

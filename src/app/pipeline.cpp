@@ -556,6 +556,7 @@ std::string WindDownSummary::to_log_string() const
            << " total_bps=" << total_bps;
     if (refused) stream << " refused=1";
     if (no_liquidity) stream << " no_liquidity=1";
+    if (grew) stream << " grew=" << grew_quantity;
     return stream.str();
 }
 
@@ -660,6 +661,15 @@ WindDownSummary Pipeline::send_close_order(uint64_t ts)
     const int64_t closed = std::llabs(position) - std::llabs(after);
     summary.closed_quantity = closed > 0 ? static_cast<uint64_t>(closed) : 0;
     summary.residual = after;
+    // A quote that filled while the exit was working is a position on the other side, and the subtraction above reads it
+    // as nothing having closed. Saying so is the difference between a report and a rumour: the exit did not meet an empty
+    // book, it lost a race it cannot win.
+    const int64_t grew = std::llabs(after) - std::llabs(position);
+    if (grew > 0)
+    {
+        summary.grew = true;
+        summary.grew_quantity = static_cast<uint64_t>(grew);
+    }
     const double closed_units = static_cast<double>(summary.closed_quantity) /
                                 static_cast<double>(std::max<uint64_t>(1, quantity_scale_));
     const double closed_notional = closed_units * unit_notional_at(unit_notional_usd_, multiplier_, mid);
