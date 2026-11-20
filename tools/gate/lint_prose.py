@@ -267,6 +267,10 @@ def main():
                         # `--venue-demo`: one of the two says where the market leg dials, and the shorthand says
                         # which venue that is for a demo account.
                         "--venue",
+                        # The tunnel the relay dials when the venue is only reachable through one. A flag of the
+                        # relay's, not the engine's: it names a host:port that both legs and the placement route go
+                        # through, and the engine never opens a connection to the venue itself.
+                        "--proxy",
                         # The order leg's grid and the engine's scale. The relay owns them for the same reason it owns
                         # `--instrument`: the engine's units are not the venue's contracts, and only the venue layer
                         # knows how many of one make the other.

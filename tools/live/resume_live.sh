@@ -18,7 +18,8 @@
 #   tools/live/resume_live.sh flat      # the same line the other way, to take that position off again
 #
 # Environment: BIN, RELAY, TRADES, DEPTH, PORT, OUT (log and snapshot prefix), VENUE (the REST base url),
-# INST_CODE, STARTING_CASH, ORDER_SIZE, MAX_ORDERS, POSITION_UNITS (the fabricated one `break` injects).
+# INST_CODE, STARTING_CASH, ORDER_SIZE, MAX_ORDERS, POSITION_UNITS (the fabricated one `break` injects), PROXY (the
+# HTTP CONNECT proxy the venue is reached through, `host:port`; empty dials directly).
 #
 # It is not a gate tier: it needs the demo credentials and a network, so its numbers are quoted through a marked
 # block rather than re-derived by `fast`. The credentials are read the way the relay reads them:
@@ -50,6 +51,9 @@ STARTING_CASH="${STARTING_CASH:-4917.96}"
 ORDER_SIZE="${ORDER_SIZE:-10000}"
 MAX_ORDERS="${MAX_ORDERS:-2}"
 POSITION_UNITS="${POSITION_UNITS:-10000}"
+# Empty is a direct connection: the relay parses `--proxy=` as "no tunnel", so the flag is always passed and the value
+# decides. On a host whose resolver answers `www.okx.com` with a link-local address, nothing crosses without it.
+PROXY="${PROXY:-}"
 MODE="${1:-fresh}"
 
 [ -x "$BIN" ] || { echo "binary not found: $BIN" >&2; exit 2; }
@@ -66,7 +70,7 @@ mkdir -p "$(dirname "$OUT")"
 # arrives from the file.
 "$RELAY" --instrument BTC-USDT-SWAP \
   --order-listen "127.0.0.1:${PORT}" --order-rest "$VENUE" --order-inst-code="$INST_CODE" \
-  --max-seconds 900 >> "${OUT}_relay.log" 2>&1 &
+  --proxy="$PROXY" --max-seconds 900 >> "${OUT}_relay.log" 2>&1 &
 relay=$!
 trap 'kill "$relay" 2>/dev/null; wait "$relay" 2>/dev/null' EXIT
 sleep 2

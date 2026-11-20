@@ -68,6 +68,9 @@ struct WireConfig
     std::string rest_url;
     // The REST route's own budget, per endpoint. Only read when `rest_url` is set.
     RestLimits rest_limits{};
+    // The tunnel the venue is reached through, when it is not reached directly. Both the session's socket and the
+    // placement route's calls use it: a venue behind a proxy is behind it for every connection.
+    venue_ws::Proxy proxy;
     // The venue's own name for the contract, sent only when it is known: a wrong guess would be an order on the wrong
     // instrument, so it is an operator's reading rather than something derived here.
     std::int64_t inst_code{-1};
@@ -146,7 +149,8 @@ struct HttpResponse
 class RestPlacer
 {
    public:
-    RestPlacer(std::string base_url, OrderSession::Credentials credentials, RestLimits limits = {});
+    RestPlacer(std::string base_url, OrderSession::Credentials credentials, RestLimits limits = {},
+               venue_ws::Proxy proxy = {});
 
     std::vector<std::string> place(const OrderTranslator::Request& request, const OrderTranslator& translator);
 
@@ -199,6 +203,8 @@ class RestPlacer
     venue_ws::Url url_;
     OrderSession::Credentials credentials_;
     RestLimits limits_;
+    // Empty for a direct connection, which is the case the venue's own documentation describes.
+    venue_ws::Proxy proxy_;
     std::mutex bucket_mutex_;
     std::unordered_map<std::string, Bucket> buckets_;
     std::uint64_t placed_{0};

@@ -7,6 +7,34 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The relay's transport is bounded, and reaches the venue through a proxy (2026-11-21)
+
+- **`connect(2)` had no deadline.** A peer that blackholed a SYN held the caller for minutes: measured on this host, a
+  balance query sat inside the connect for the whole seventy seconds it was watched, and the Python relay has always
+  passed `timeout=15` to `socket.create_connection`, so the C++ port had dropped a bound the reference never lacked. The
+  connect is now non-blocking with a ten-second budget for the whole address list (per attempt, one deadline), and the
+  error names the budget when it is what ended the wait.
+- **A query no longer holds the session lock across the network.** `answer_pending`, `answer_equity` and
+  `answer_position` took `session_mutex_` and then called REST inside it, so a connect that hung stopped the venue's read
+  loop: the session thread waited at `on_connected` and the engine read `frames_received=0` with no error anywhere but
+  `last_error`. What those answers read is immutable -- the placer is built once and the translator is a const reference
+  -- so they take no lock.
+- **A TLS write on a reset socket ended the process.** `MSG_NOSIGNAL` covers the plaintext writes and `SSL_write` has no
+  such flag, so a session died with `exit=141`; `SIGPIPE` is now ignored once at the relay's entry and the same write
+  returns the error the caller already handles.
+- **`--proxy=HOST:PORT` puts both legs and the placement route behind an HTTP `CONNECT` tunnel**, dialled instead of the
+  venue while the venue's own name is what the tunnel asks for and what the certificate is checked against. Measured on a
+  host whose resolver answers `www.okx.com` with a link-local address: the market leg carried the public stream, the order
+  leg placed over REST, and the run closed flat with `[RECON] at=end position venue_units=0 ledger_units=0
+  position_break=0 status=ok`.
+- **Pinned by** a new `venue_ws_test`: a connect that cannot complete throws with its budget in the message and spends it
+  (a listener whose accept queue is full is the blackhole), a refused port fails at once rather than by deadline, a
+  successful connect leaves a blocking socket a read can use, the tunnel asks for the venue's own name and relays its
+  bytes, a proxy that answers `403` is named with its status, and a write to a closed peer is an error rather than a
+  signal. **The venue-side `break` was measured in the same session**, in the one shape whose two sides count the same
+  thing (`ws` on `BTC-USDT-SWAP`): `-100` where the contract is `-10000` units, because the venue's `pos` is the coin
+  amount and the relay divides it as a contract count -- the verdict is unaffected, the magnitude is the open item.
+
 ## The position line states its unit, and refuses a comparison across two (2026-11-19)
 
 - **A quantity without its unit is not comparable with another quantity.** The position line compared the venue's

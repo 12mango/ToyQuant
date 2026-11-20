@@ -13,8 +13,8 @@ legacy CSV / UDP / Binance ─────────────────�
 
 | | |
 |---|---|
-| **Size** | 133 files, 30,117 lines: `app` 9447, `market` 4071, `legacy` 1851, `lines` 7177, `strategy` 2005, `exchange` 1363, `common` 966, `backtest` 611, `bench` 563, `orderbook` 591, `accounting` 778, `utils` 488, `concurrency` 176, `main` 30 |
-| **Tests** | 38 test binaries, at least one per module, run by tier 0 of the gate |
+| **Size** | 133 files, 30,307 lines: `app` 9447, `market` 4071, `legacy` 1851, `lines` 7367, `strategy` 2005, `exchange` 1363, `common` 966, `backtest` 611, `bench` 563, `orderbook` 591, `accounting` 778, `utils` 488, `concurrency` 176, `main` 30 |
+| **Tests** | 39 test binaries, at least one per module, run by tier 0 of the gate |
 | **Tools** | the scripts under `tools/` (`*.py` and `*.sh`, grouped by what they do) and one C harness: the gate and its six lints in `tools/gate/`, the measurement sweeps, the source fetches, the one-off studies, and the live harnesses. `docs/TOOLS.md` is the inventory, and the lint requires a line there for every file |
 | **Build** | CMake + presets, C++20, standard library only (zlib for `.gz` inputs) |
 | **Numbers** | every figure below is re-derived by `bash tools/gate/verify_l2.sh fast` on every change |
@@ -423,10 +423,10 @@ One script, four tiers, run on every change. `tools/gate/verify_l2.sh all`:
 
 | Tier | Time | What it checks |
 |---|---|---|
-| 0 | ~3 s | CTest: 38 unit-test binaries |
+| 0 | ~3 s | CTest: 39 unit-test binaries |
 | 1 | ~1-2 min | pinned invariants on an L2 and an L1 run, every number quoted in the documents, the prose lints, the site build, and the IEX and futures registries' own checks -- the code half is 26 s and the document half is the rest |
 | 2 | ~26 s | the SHA-256 of the full 1.5 GB standard output against `tests/fixtures/l2_full_ref.sha256`, taken with the mode line filtered out so the reference describes the code rather than one checkout's absolute paths |
-| 3 | ~10 s built, 632 s cold | the same 38 test binaries and one 200k-row replay under AddressSanitizer and UndefinedBehaviorSanitizer, with leak detection on -- 6 s of tests and 4 s of replay once the sanitizer tree exists |
+| 3 | ~10 s built, 632 s cold | the same 39 test binaries and one 200k-row replay under AddressSanitizer and UndefinedBehaviorSanitizer, with leak detection on -- 6 s of tests and 4 s of replay once the sanitizer tree exists |
 
 Most of tier 1 is the document check: it re-runs the 53 recorded runs the documents quote, which include the
 F4 windows, the latency sweep on converted Databento data and the interval a five-window series carries, so a

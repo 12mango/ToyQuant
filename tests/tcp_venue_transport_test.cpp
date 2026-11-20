@@ -192,16 +192,23 @@ int main()
     }
 
     // An endpoint nobody is listening on is reported as a failed connection, not as a connected transport that
-    // silently sends nothing.
+    // silently sends nothing. The port is bound and held for the duration of the attempt: a port that was bound and
+    // released is a race, and with two tests running together this assertion once read a successful connect -- the
+    // connection had gone to another test's listener that had taken the port in between.
     {
-        uint16_t free_port = 0;
-        {
-            LoopbackVenue throwaway;
-            free_port = throwaway.port();
-        }
-        TcpVenueTransport transport("127.0.0.1", free_port);
+        const int held = ::socket(AF_INET, SOCK_STREAM, 0);
+        assert(held >= 0);
+        sockaddr_in address{};
+        address.sin_family = AF_INET;
+        address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        address.sin_port = 0;
+        assert(::bind(held, reinterpret_cast<sockaddr*>(&address), sizeof(address)) == 0);
+        socklen_t length = sizeof(address);
+        assert(::getsockname(held, reinterpret_cast<sockaddr*>(&address), &length) == 0);
+        TcpVenueTransport transport("127.0.0.1", ntohs(address.sin_port));
         assert(!transport.connect());
         assert(!transport.connected());
+        ::close(held);
     }
 
     return 0;

@@ -180,11 +180,12 @@ HttpResponse parse_answer(const std::string& answer)
 // for the order endpoints and GET for the two queries; a GET carries no body and the same `Content-Length: 0`, so the
 // one reader below ends either answer on a header rather than on the venue closing the socket.
 HttpResponse http_json(std::string_view method, const venue_ws::Url& url, std::string_view path,
-                       std::string_view headers, std::string_view body, std::int64_t& connect_ms)
+                       std::string_view headers, std::string_view body, std::int64_t& connect_ms,
+                       const venue_ws::Proxy& proxy)
 {
     venue_ws::Stream stream;
     const std::int64_t started = venue_ws::now_ms();
-    stream.connect(url);
+    stream.connect(url, venue_ws::kConnectTimeoutMs, proxy);
     connect_ms = venue_ws::now_ms() - started;
     std::string request;
     request += method;
@@ -278,7 +279,8 @@ VenueOrderConnection::VenueOrderConnection(std::string instrument, OrderSession:
                    : std::function<std::uint64_t()>([] { return venue_ws::now_seconds(); }))
 {
     if (!config_.rest_url.empty())
-        placer_ = std::make_unique<RestPlacer>(config_.rest_url, session_.credentials(), config_.rest_limits);
+        placer_ = std::make_unique<RestPlacer>(config_.rest_url, session_.credentials(), config_.rest_limits,
+                                               config_.proxy);
     if (!config_.dump_path.empty())
     {
         // Appended rather than truncated: a run that reconnects writes several sessions into one file, and the order they
@@ -345,7 +347,7 @@ void VenueOrderConnection::session_once()
 {
     const venue_ws::Url url = venue_ws::parse_url(config_.venue_url);
     venue_ws::Stream stream;
-    stream.connect(url);
+    stream.connect(url, venue_ws::kConnectTimeoutMs, config_.proxy);
     venue_ws::client_handshake(stream, url);
     CurrentStream current(write_mutex_, stream_, stream);
     up_.store(true);
@@ -478,7 +480,12 @@ void VenueOrderConnection::publish_rest_counters()
 
 void VenueOrderConnection::answer_pending()
 {
-    std::lock_guard<std::mutex> lock(session_mutex_);
+    // The three answers below take no session lock, deliberately. What they read is immutable -- `placer_` is built once in
+    // the constructor, and `session_.translator()` is a const reference to a mapping made there -- while the lock is what
+    // the venue's read loop needs in order to deliver a fill. Held across the REST call, a query the venue could not
+    // answer stopped that loop for good: measured 2026-11-21, one `connect(2)` to a blackholed address kept
+    // `session_mutex_` for the whole seventy seconds it was watched, the session thread waited at `on_connected`, and the
+    // relay answered nothing at all -- an engine reading `frames_received=0`, with no error anywhere but `last_error`.
     ++counters_.pending_queries;
     if (placer_ == nullptr)
     {
@@ -503,7 +510,6 @@ void VenueOrderConnection::answer_pending()
 
 void VenueOrderConnection::answer_equity()
 {
-    std::lock_guard<std::mutex> lock(session_mutex_);
     ++counters_.equity_queries;
     if (placer_ == nullptr)
     {
@@ -527,7 +533,6 @@ void VenueOrderConnection::answer_equity()
 
 void VenueOrderConnection::answer_position()
 {
-    std::lock_guard<std::mutex> lock(session_mutex_);
     if (placer_ == nullptr)
     {
         // The socket route has no positions endpoint in this client, and saying so is the answer: a zero would read as
@@ -600,8 +605,12 @@ std::string VenueOrderConnection::last_error() const
 
 // ------------------------------------------------------------------ the placement route
 
-RestPlacer::RestPlacer(std::string base_url, OrderSession::Credentials credentials, RestLimits limits)
-    : url_(venue_ws::parse_url(base_url)), credentials_(std::move(credentials)), limits_(limits)
+RestPlacer::RestPlacer(std::string base_url, OrderSession::Credentials credentials, RestLimits limits,
+                       venue_ws::Proxy proxy)
+    : url_(venue_ws::parse_url(base_url)),
+      credentials_(std::move(credentials)),
+      limits_(limits),
+      proxy_(std::move(proxy))
 {
     // The path is the venue's, not the base url's, so a base url carrying one would be silently dropped: refused instead.
     if (url_.target != "/")
@@ -677,7 +686,7 @@ HttpResponse RestPlacer::request(std::string_view method, std::string_view path,
         std::int64_t call_connect_ms = 0;
         try
         {
-            response = http_json(method, url_, path, headers, body, call_connect_ms);
+            response = http_json(method, url_, path, headers, body, call_connect_ms, proxy_);
         }
         catch (const std::exception& error_text)
         {

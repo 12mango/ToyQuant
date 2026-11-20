@@ -1,7 +1,9 @@
 #pragma once
 
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <netdb.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <unistd.h>
@@ -11,9 +13,13 @@
 #include <openssl/ssl.h>
 #endif
 
+#include <algorithm>
 #include <chrono>
 #include <cerrno>
 #include <cstdint>
+#include <cstring>
+#include <csignal>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -82,6 +88,95 @@ inline Url parse_url(const std::string& url)
     return parsed;
 }
 
+// An HTTP proxy that speaks `CONNECT`. That is how a venue is reached from behind one: the client asks the proxy for a
+// tunnel to `host:port` and then speaks its own protocol through it, so the proxy never sees a key and the venue's
+// certificate is still checked against the venue's own name. Measured need: `www.okx.com` resolves to a link-local
+// address on this host and only the operator's proxy reaches it, so a direct connection is not merely slower, it is
+// nothing at all.
+struct Proxy
+{
+    std::string host;
+    uint16_t port{0};
+    [[nodiscard]] bool enabled() const { return port != 0; }
+};
+
+// `host:port`, or empty for a direct connection. Named rather than guessed: a malformed value is an error, because the
+// alternative is a setting the operator gave and this client silently ignored.
+inline Proxy parse_proxy(const std::string& text)
+{
+    if (text.empty()) return Proxy{};
+    const std::size_t colon = text.rfind(':');
+    if (colon == std::string::npos) throw std::runtime_error("a proxy is host:port, not " + text);
+    Proxy proxy;
+    proxy.host = text.substr(0, colon);
+    int port = 0;
+    try
+    {
+        port = std::stoi(text.substr(colon + 1));
+    }
+    catch (const std::exception&)
+    {
+        throw std::runtime_error("a proxy is host:port, not " + text);
+    }
+    if (proxy.host.empty() || port <= 0 || port > 65535)
+        throw std::runtime_error("a proxy is host:port, not " + text);
+    proxy.port = static_cast<uint16_t>(port);
+    return proxy;
+}
+
+// A peer that has gone must be a failed write rather than a signal that kills the process. The plaintext path asks for
+// that per write (`MSG_NOSIGNAL`), but `SSL_write` has no such flag -- OpenSSL writes with `write(2)` -- so a connection
+// the venue resets raises SIGPIPE and ends the process: measured 2026-11-21 as the relay's exit code 141 in the middle
+// of answering a balance query. Ignored once, the same write returns an error the caller already handles.
+inline void ignore_sigpipe()
+{
+    static std::once_flag once;
+    std::call_once(once, [] { ::signal(SIGPIPE, SIG_IGN); });
+}
+
+// The TCP connect's own bound. The Python relay has always had one (`socket.create_connection(..., timeout=15)`) and this
+// port did not: `connect(2)` against a peer that blackholes a SYN retries for minutes, and every caller sits inside it --
+// a placement, a query, or a session's read loop, which is the one that must keep its clock. Ten seconds is the REST
+// route's answer budget, so a venue that cannot be reached costs one deadline rather than two.
+inline constexpr std::int64_t kConnectTimeoutMs = 10'000;
+
+// True when the connection came up before the deadline. The socket is left blocking again, because the read side carries
+// its own 200 ms timeout and a non-blocking socket would turn every read into a verdict the caller never asked for.
+inline bool connect_within(int fd, const sockaddr* address, socklen_t length, std::int64_t deadline_ms)
+{
+    const int flags = ::fcntl(fd, F_GETFL, 0);
+    if (flags < 0) return false;
+    if (::fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) return false;
+    bool connected = ::connect(fd, address, length) == 0;
+    if (!connected && errno == EINPROGRESS)
+    {
+        while (true)
+        {
+            const std::int64_t remaining = deadline_ms - now_ms();
+            if (remaining <= 0) break;
+            pollfd watched{};
+            watched.fd = fd;
+            watched.events = POLLOUT;
+            // A wake-up every 200 ms rather than one wait for the whole budget: the loop re-reads the clock, so a
+            // deadline crossed while poll sleeps is noticed on the next round instead of being rounded to it.
+            const int ready = ::poll(&watched, 1, static_cast<int>(std::min<std::int64_t>(remaining, 200)));
+            if (ready < 0)
+            {
+                if (errno == EINTR) continue;
+                break;
+            }
+            if (ready == 0) continue;
+            int error = 0;
+            socklen_t size = sizeof(error);
+            if (::getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &size) < 0) break;
+            connected = error == 0;
+            break;
+        }
+    }
+    ::fcntl(fd, F_SETFL, flags);
+    return connected;
+}
+
 // One connection, plaintext or TLS. The TLS branch is compiled only when OpenSSL's headers were found, which is the one
 // thing this tree cannot assume; without it a `wss://` url is refused by name rather than half-connected. The read side
 // times out after 200 ms rather than blocking, so the caller's loop keeps its clock: without that a keepalive could not
@@ -94,7 +189,10 @@ class Stream
     Stream& operator=(const Stream&) = delete;
     ~Stream() { close(); }
 
-    void connect(const Url& url)
+    // `timeout_ms` is the TCP connect's budget, and it is a parameter because a test proves the bound with 600 ms rather
+    // than with the ten seconds a live session is allowed. `proxy` is where the connection is dialled when the venue is
+    // only reachable through one; the name in `url` is still what the tunnel asks for and what TLS verifies.
+    void connect(const Url& url, std::int64_t timeout_ms = kConnectTimeoutMs, const Proxy& proxy = Proxy{})
     {
         if (url.secure)
         {
@@ -105,28 +203,45 @@ class Stream
                 "this build has no TLS: pass a ws:// url, or build with OpenSSL's headers");
 #endif
         }
+        // A proxy is dialled instead of the venue; the venue's own name is still what the tunnel asks for and what TLS
+        // verifies, so a proxy never becomes the authority on where the connection went.
+        const std::string dial_host = proxy.enabled() ? proxy.host : url.host;
+        const std::string port = std::to_string(proxy.enabled() ? proxy.port : url.port);
         addrinfo hints{};
         hints.ai_family = AF_UNSPEC;
         hints.ai_socktype = SOCK_STREAM;
         addrinfo* result = nullptr;
-        const std::string port = std::to_string(url.port);
-        if (getaddrinfo(url.host.c_str(), port.c_str(), &hints, &result) != 0)
-            throw std::runtime_error("could not resolve " + url.host);
+        if (getaddrinfo(dial_host.c_str(), port.c_str(), &hints, &result) != 0)
+            throw std::runtime_error("could not resolve " + dial_host);
+        // One deadline for the whole address list: a host with four records that all blackhole would otherwise cost four
+        // budgets, and the caller's own timeout is stated in seconds, not in addresses.
+        const std::int64_t deadline = now_ms() + timeout_ms;
+        bool expired = false;
         for (addrinfo* address = result; address != nullptr; address = address->ai_next)
         {
             fd_ = ::socket(address->ai_family, address->ai_socktype, address->ai_protocol);
             if (fd_ < 0) continue;
-            if (::connect(fd_, address->ai_addr, address->ai_addrlen) == 0) break;
+            if (connect_within(fd_, address->ai_addr, address->ai_addrlen, deadline)) break;
             ::close(fd_);
             fd_ = -1;
+            if (now_ms() >= deadline)
+            {
+                expired = true;
+                break;
+            }
         }
         freeaddrinfo(result);
-        if (fd_ < 0) throw std::runtime_error("could not connect to " + url.host + ":" + port);
+        if (fd_ < 0)
+            throw std::runtime_error("could not connect to " + dial_host + ":" + port +
+                                     (expired ? " within " + std::to_string(timeout_ms) + " ms" : ""));
 
         timeval timeout{};
         timeout.tv_sec = 0;
         timeout.tv_usec = 200'000;
         setsockopt(fd_, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+
+        // On the plain connection and before TLS: the proxy is asked for a tunnel to the venue's name.
+        if (proxy.enabled()) tunnel_through(url);
 
 #ifdef TOYQUANT_HAVE_OPENSSL
         if (url.secure)
@@ -162,6 +277,14 @@ class Stream
     // >0 bytes, 0 closed, -1 error, -2 a receive timeout.
     int read(void* buffer, std::size_t count)
     {
+        if (!pushed_back_.empty())
+        {
+            // Bytes the tunnel's answer carried past its header: they are the far end's, not the proxy's.
+            const std::size_t taken = std::min(count, pushed_back_.size());
+            std::memcpy(buffer, pushed_back_.data(), taken);
+            pushed_back_.erase(0, taken);
+            return static_cast<int>(taken);
+        }
 #ifdef TOYQUANT_HAVE_OPENSSL
         if (ssl_ != nullptr)
         {
@@ -202,6 +325,39 @@ class Stream
         return true;
     }
 
+    // The tunnel, on the plain connection and before TLS: an HTTP request asking the proxy for the venue's own name. A
+    // proxy that refuses is named with its status line, because a bare "could not connect" would send a reader looking at
+    // the venue instead of at the tunnel. Nothing follows the blank line -- a proxy is silent until the client speaks --
+    // so the reader stops at the header's end rather than waiting for bytes that would be tunnel data.
+    void tunnel_through(const Url& url)
+    {
+        const std::string target = url.host + ":" + std::to_string(url.port);
+        if (!write_all("CONNECT " + target + " HTTP/1.1\r\nHost: " + target + "\r\n\r\n"))
+            throw std::runtime_error("the proxy tunnel could not be requested");
+        std::string answer;
+        const std::int64_t deadline = now_ms() + kConnectTimeoutMs;
+        while (answer.find("\r\n\r\n") == std::string::npos)
+        {
+            if (now_ms() >= deadline)
+                throw std::runtime_error("the proxy did not answer the tunnel within " +
+                                         std::to_string(kConnectTimeoutMs) + " ms");
+            char buffer[512];
+            const int got = read(buffer, sizeof(buffer));
+            if (got > 0)
+                answer.append(buffer, static_cast<std::size_t>(got));
+            else if (got != -2)
+                throw std::runtime_error("the proxy closed while the tunnel was being set up");
+        }
+        // The status line is the proxy's answer and the only part of it that matters here; a `200` is the tunnel.
+        const std::size_t end = answer.find("\r\n\r\n");
+        const std::string status = answer.substr(0, answer.find("\r\n"));
+        if (status.find(" 200") == std::string::npos)
+            throw std::runtime_error("the proxy refused the tunnel: " + status);
+        // A proxy may answer and start relaying in one write, so whatever followed the header's end belongs to the tunnel
+        // and is served by `read` before the socket is touched again.
+        pushed_back_ = answer.substr(end + 4);
+    }
+
     void close()
     {
 #ifdef TOYQUANT_HAVE_OPENSSL
@@ -228,6 +384,9 @@ class Stream
     void adopt(int fd) { fd_ = fd; }
 
     int fd_{-1};
+    // Bytes already read from the socket that belong to the caller: the tunnel's setup is an HTTP exchange, and a proxy
+    // may put the far end's first bytes in the same write as its 200.
+    std::string pushed_back_;
 #ifdef TOYQUANT_HAVE_OPENSSL
     SSL* ssl_{nullptr};
     SSL_CTX* ctx_{nullptr};

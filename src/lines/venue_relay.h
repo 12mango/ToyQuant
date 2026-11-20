@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <string>
 
+#include "lines/venue_ws.h"
+
 // The C++ twin of `tools/live/venue_relay.py`: a client to a venue's public stream, a server to the engine,
 // and a direct recorder, all over one decoder. It is a line component rather than core because it knows
 // a venue's message shapes, which the engine deliberately does not.
@@ -28,6 +30,9 @@ struct RelayConfig
     // The placement surface, when it is REST rather than the socket's trade operation: this venue answers `50026` to the
     // websocket op and places over REST, so the two are not a choice of taste. Empty places over the socket.
     std::string order_rest;
+    // The tunnel through which the venue is reached, when it is not reached directly (`--proxy host:port`). Both legs and
+    // the placement route use it, because a venue behind a proxy is behind it for every connection.
+    venue_ws::Proxy proxy;
     // The venue's own name for the contract, sent only when it is known (-1 leaves it out).
     int64_t order_inst_code{-1};
     // The two venue grids an order has to land on; the market side reads the venue's prices as they arrive.

@@ -274,6 +274,14 @@ set -a; . secrets/okx-demo.env; set +a      # the demo key, read from the enviro
   --max-exposure-usd=1000 --live-orders --venue-endpoint=127.0.0.1:8766 --venue-max-orders=20
 ```
 
+A host that cannot reach the venue directly needs one flag rather than another tool: `--proxy=HOST:PORT` puts both legs
+and the placement route behind an HTTP `CONNECT` tunnel, and the venue's own name is still what the tunnel asks for and
+what the certificate is checked against. Measured on 2026-11-21, on a host whose resolver answers `www.okx.com` with a
+link-local address: the market leg carried the venue's public stream through the tunnel, the order leg placed over REST,
+and the run closed flat with `[RECON] at=end venue_equity_usd=4914.47 ledger_equity_usd=4914.48
+equity_break_usd=-0.00123797 status=ok` beside `[RECON] at=end position venue_units=0 ledger_units=0 position_break=0
+status=ok`.
+
 It fills, and the two sides agree. Measured on 2026-11-15 over 120 s through that route: `[VENUE] orders=20 cancels=32
 refused_by_adapter=16 write_failures=0 reports=103 dropped=0`, `[EXECUTION] submitted_orders=36 trade_reports=27
 fill_rate=0.132222`, `[PORTFOLIO] equity=998.5 fees_paid=1.0772 maker_trade_count=27`, `[PNL] gross_pnl_usd=-0.423298
@@ -294,6 +302,17 @@ and the account reported its cash as equity, because no midpoint can be found fo
 stamps the symbol from the order it sent, and the same run prints `legs=BTC-USDT-SWAP:-6700:-439.749`.
 
 ### What the route costs, and what it survived
+
+**Three transport defects came after that, each found by trying to run a session.** `connect(2)` had no bound, so a
+peer that blackholed a SYN held the caller for minutes -- the Python relay has always passed `timeout=15` to
+`socket.create_connection`, and the C++ port dropped it. The bound is now ten seconds for the whole address list,
+`venue_ws_test` pins it against a listener whose accept queue is full, and the same test fails on a socket that cannot
+complete. **A query held the session lock across the network**: answering `EQUITY` took `session_mutex_` and then blocked
+inside the connect, so the venue's read loop waited at `on_connected` -- measured on 2026-11-21 as seventy seconds of a
+relay that answered nothing, `frames_received=0` and no error anywhere but `last_error`. The three answers now take no
+session lock, because what they read is immutable. **A TLS write on a reset socket killed the relay**: `MSG_NOSIGNAL`
+covers the plaintext writes and `SSL_write` has no such flag, so one session ended with `exit=141`; `SIGPIPE` is ignored
+once at the relay's entry, and the same write returns an error the caller already handles.
 
 Three more defects, found after the port, all fixed. **The handshakes read the poll as a close**: the socket's
 200 ms receive timeout is what keeps a caller's clock, and both the TLS and the WebSocket handshake treated the first
@@ -500,6 +519,14 @@ ledger_units=0 position_break=0 tolerance_units=0 status=ok` and the same at the
 venue_equity_usd=4917.96 ledger_equity_usd=4917.96 equity_break_usd=9.74505e-05 status=ok`, with `[WIND-DOWN]
 position=10000 closed=10000 residual=0 total_bps=5`.
 
+**The venue's own break was measured on 2026-11-21**, in the one shape whose two sides count the same thing: `ws` on
+BTC-USDT-SWAP, whose instrument is the venue's. With the account flat the run read `[RECON] at=start position
+venue_units=0 ledger_units=0 position_break=0 tolerance_units=0 status=ok` and the same pair at the end. One contract sold
+on the venue from outside the engine made the next run read `[RECON] at=start position venue_units=-100 ledger_units=0
+position_break=-100 tolerance_units=0 status=break` beside `[RECON] at=start venue_equity_usd=4914.48
+ledger_equity_usd=4917.96 equity_break_usd=-3.4844 status=break`: both lines see the same position, which is why both are
+printed.
+
 **A resumed session's positions meet the venue's.** The snapshot flags are refused on `ws` -- a session is written and
 resumed against a replay's own clock -- so the shape that reaches `at=start` on a resume is `l2_replay --live-orders
 --snapshot-in`: the market leg a file, the order leg a socket. `tools/live/resume_live.sh fresh|resume|break` is the
@@ -524,8 +551,14 @@ venue_units_per_coin=… venue_coin=… ledger_units_per_coin=… ledger_coin=�
 The two instruments' names differ on purpose and that is not the fault: the runs above trade `BTC-PERPETUAL` against a
 venue holding `BTC-USDT-SWAP`, and either is a quantity of BTC. A relay started with another `--quantity-scale`, or a
 venue holding another coin, is what the line refuses to compare. `paper_broker_test` pins all three branches (agreeing,
-disagreeing, unstated); the venue-side mismatch has not been run yet, because it needs a relay that lies about its
-conversion and that is a fault to inject rather than a number to measure.
+disagreeing, unstated). The venue-side *break* has now been run (the paragraph above, 2026-11-21), and running it turned up
+two unit facts to know before quoting either number. The replay shape cannot compare at all: `l2_replay`'s ledger counts
+coins (`ledger_units_per_coin=1`) against the venue's 1e6 units per coin, so a resumed run reads `status=unknown` with
+`position_break=n/a` -- the check refusing a magnitude that would mean nothing. And the venue's `pos` is not its `sz`: one
+contract reports `pos=-0.01` (the coin amount, `ctVal=0.01`) while the relay divides it as a contract count, so the
+quantity is understated by that factor (`-100` where the contract is `-10000` units). The verdict is unaffected -- the
+tolerance is zero, so any difference is a break -- and the magnitude is the open item: convert with `ctVal` rather than
+assume a contract count.
 
 The two-book path has no position line, and cannot have one today. Every layer that would be asked is refused on a run
 with two books, each for the same reason and with its own message: `--live-orders` ("names one venue, and a two-book run

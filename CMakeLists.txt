@@ -238,6 +238,7 @@ add_toy_test(order_recorder_test)
 add_toy_test(venue_auth_test)
 add_toy_test(venue_order_translator_test)
 add_toy_test(venue_order_session_test)
+add_toy_test(venue_ws_test)
 # The session's transport is compiled into its own test rather than into a layer library, for the reason the relay's
 # target states above: TLS is a compile definition a target carries, and the test needs no TLS at all -- its venue is a
 # loopback socket -- so linking OpenSSL in to prove that would make the dependency universal for no measurement.

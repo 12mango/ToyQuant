@@ -9,6 +9,7 @@
 #include <string>
 
 #include "lines/venue_relay.h"
+#include "lines/venue_ws.h"
 
 namespace
 {
@@ -27,6 +28,8 @@ void usage(const char* executable)
               << "  --order-venue=URL       the venue's private websocket url for that leg (default: its demo endpoint)\n"
               << "  --order-rest=URL        place over REST at this base url instead of the socket's trade operation\n"
               << "  --order-inst-code=N     the venue's own code for the contract, sent when known; -1 leaves it out\n"
+              << "  --proxy=HOST:PORT       reach the venue through this HTTP CONNECT proxy; absent dials directly\n"
+
               << "  --order-drop-after-seconds=X  close and reopen the private connection every X seconds (reconnect test)\n"
               << "  --order-dump=FILE       append every frame both ways, one JSON object a line (credentials masked)\n"
               << "  --tick-size=X           the price step the venue accepts on this instrument (default 0.1)\n"
@@ -50,6 +53,9 @@ std::string option(const std::map<std::string, std::string>& options, const std:
 
 int main(int argc, char** argv)
 {
+    // Before anything opens a socket: a venue that resets a TLS connection mid-write must cost the write, not the
+    // process (see `venue_ws::ignore_sigpipe`).
+    venue_ws::ignore_sigpipe();
     RelayConfig config;
     std::map<std::string, std::string> options;
     bool self_test = false;
@@ -124,6 +130,10 @@ int main(int argc, char** argv)
         config.order_listen = option(options, "--order-listen", config.order_listen);
         config.order_venue = option(options, "--order-venue", config.order_venue);
         config.order_rest = option(options, "--order-rest", config.order_rest);
+        // A tunnel when the venue is only reachable through one: `--proxy host:port`, direct when the flag is absent. The
+        // value is parsed rather than stored, so a typo is an error at start-up instead of a direct connection nobody
+        // asked for.
+        config.proxy = venue_ws::parse_proxy(option(options, "--proxy", ""));
         config.order_dump = option(options, "--order-dump", config.order_dump);
         if (present("--order-inst-code")) config.order_inst_code = std::stoll(options["--order-inst-code"]);
         if (present("--tick-size")) config.tick_size = std::stod(options["--tick-size"]);
