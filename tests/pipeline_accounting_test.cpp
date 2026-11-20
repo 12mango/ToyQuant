@@ -28,9 +28,25 @@ class LateFillVenue : public IMatchingEngine
     // than a side rule, so the sweep the close performs afterwards is an ordinary cancel.
     void fill_next_cancel(uint64_t count) { late_fill_cancels_ = count; }
 
+    // The venue's answer to a reduce-only exit it will not take -- a sell against an account already short is the
+    // measured case (2026-11-21) -- as a report rather than as silence.
+    void refuse_closes(bool on) { refuse_closes_ = on; }
+
     void send_order(const exchange::Order& order) override
     {
         sent_[order.id] = order;
+        if (order.reduce_only && refuse_closes_)
+        {
+            emit(ExecutionReport{.order_id = order.id,
+                                 .side = order.side,
+                                 .exec_type = ExecType::Rejected,
+                                 .symbol = order.symbol,
+                                 .price = order.price,
+                                 .quantity = order.remaining,
+                                 .owner = order.owner,
+                                 .reject_reason = RejectReason::Venue});
+            return;
+        }
         if (order.reduce_only)
         {
             emit_trade(order, order.price, order.qty);
@@ -97,6 +113,7 @@ class LateFillVenue : public IMatchingEngine
     std::unordered_map<uint64_t, exchange::Order> sent_;
     ReportCallback callback_;
     uint64_t late_fill_cancels_{0};
+    bool refuse_closes_{false};
 };
 }  // namespace
 
@@ -944,5 +961,52 @@ int main()
         assert(late_summary.to_log_string().find("late_fill_reports=1 late_fill_quantity=10") !=
                std::string::npos);
     }
+    // A venue that refuses the closing order is not a book that showed no size, and until now the run could not tell
+    // them apart. Measured 2026-11-21: a reduce-only sell against an account that was already short is answered
+    // `REJECT <id> venue`, and that run reported `no_liquidity=1` for it -- a reader's attention sent to the book
+    // instead of to the refusal. The exit ends its wait when the venue says so and reports `refused=1`.
+    {
+        test_support::TempFile refuse_orders_file("pipeline_close_refused_orders.csv");
+        test_support::TempFile refuse_trades_file("pipeline_close_refused_trades.csv");
+        std::ofstream refuse_orders = refuse_orders_file.open();
+        std::ofstream refuse_trades = refuse_trades_file.open();
+        L2MarketMakerBase refuse_strategy(L2MarketMakerBaseConfig{.order_size = 10,
+                                                                  .base_spread = 1.0,
+                                                                  .inventory_limit = 100,
+                                                                  .tick_size = 0.5,
+                                                                  .signal_mode = L2SignalMode::Baseline});
+        LateFillVenue refuse_venue;
+        Portfolio refuse_portfolio(1, 1000.0);
+        Pipeline refuse_pipeline(refuse_orders, refuse_trades, refuse_strategy, refuse_venue, refuse_portfolio, 0.5);
+        // One sell quote's cancel is answered with the refusal and then the fill, which is how the account acquires the
+        // short the exit is refused for; the close's own reduce-only sell is what this test is about.
+        refuse_venue.fill_next_cancel(1);
+        refuse_pipeline.set_venue_pump([] {});
+        refuse_pipeline.process_l2_market_view(L2MarketView{.symbol = "REFUSE",
+                                                            .ts = 10,
+                                                            .top = TopOfBook{100.0, 100, 100.5, 100},
+                                                            .micro_price = 100.25});
+        refuse_pipeline.process_l2_market_view(L2MarketView{.symbol = "REFUSE",
+                                                            .ts = 11,
+                                                            .top = TopOfBook{100.5, 100, 101.0, 100},
+                                                            .micro_price = 100.75});
+        const auto* refuse_open = refuse_portfolio.find_position("REFUSE");
+        assert(refuse_open != nullptr && refuse_open->quantity == -10);
+        refuse_venue.refuse_closes(true);
+        // A budget that would be spent in full if the refusal were not noticed: the wait ends on the report.
+        refuse_pipeline.set_close_out_wait_ms(300);
+        const WindDownSummary refused_close = refuse_pipeline.close_out(12);
+        assert(refused_close.attempted());
+        assert(refused_close.closed_quantity == 0);
+        assert(refused_close.residual == -10);
+        assert(refused_close.refused);
+        assert(!refused_close.no_liquidity);
+        assert(refused_close.to_log_string().find(" refused=1") != std::string::npos);
+        assert(refused_close.to_log_string().find("no_liquidity") == std::string::npos);
+        const auto* refuse_left = refuse_portfolio.find_position("REFUSE");
+        assert(refuse_left != nullptr && refuse_left->quantity == -10);
+    }
+
+
 
 }

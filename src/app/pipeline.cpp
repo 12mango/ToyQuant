@@ -81,6 +81,11 @@ void Pipeline::handle_report(const ExecutionReport& report)
     // in every quote it sizes, so it is counted here rather than assumed away.
     if (report.owner == "MarketMaker" && strategy_.net_position() != fill_accounting_.position())
         ++strategy_position_mismatches_;
+    // The venue's answer to the closing order, noted while it passes: the exit below waits on this same stream, and a
+    // refusal is a different fact from a book that showed no size. Measured 2026-11-21 -- a reduce-only sell against an
+    // account that was already short is answered `REJECT <id> venue`, and the run reported `no_liquidity=1` for it.
+    if (close_order_id_ != 0 && report.order_id == close_order_id_ && report.exec_type == ExecType::Rejected)
+        close_refused_ = true;
     if (is_terminal(report.exec_type))
         fill_accounting_.release(
             report.side == exchange::Side::Buy ? Side::Buy : Side::Sell,
@@ -623,11 +628,16 @@ WindDownSummary Pipeline::send_close_order(uint64_t ts)
     const uint64_t submitted_before = submitted_orders_;
     const double cash_before = portfolio_.metrics().cash;
     const double fees_before = portfolio_.metrics().fees_paid;
+    // The id this submission will take, read before it: an in-process matcher and a stand-in venue both report inside
+    // `submit_order`, so an id noted afterwards would be too late to attribute the refusal to this exit.
+    close_order_id_ = next_order_id();
+    close_refused_ = false;
     submit_order(order, ts, &quote);
     if (submitted_orders_ == submitted_before)
     {
         // A pre-trade control refused it. The account is therefore still open and the caller has to be able to see
-        // that, or a refused close would read exactly like a finished one.
+        // that, or a refused close would read exactly like a finished one. No id was taken, so none is watched.
+        close_order_id_ = 0;
         summary.refused = true;
         summary.residual = position;
         return summary;
@@ -641,6 +651,8 @@ WindDownSummary Pipeline::send_close_order(uint64_t ts)
     {
         venue_pump_();
         if (fill_accounting_.position() != position) break;
+        // A refused order has no fill coming, so the wait is over the moment the venue says so rather than at its end.
+        if (close_refused_) break;
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -668,9 +680,17 @@ WindDownSummary Pipeline::send_close_order(uint64_t ts)
         summary.spread_bps = std::max(0.0, signed_bps * 10'000.0);
     }
     summary.total_bps = summary.spread_bps + summary.fees_bps;
-    // A close that sent an order and got nothing back within its wait is the venue showing no size, not a refusal and
-    // not a fill: saying which of the three happened is the difference between a report and a rumour.
-    if (summary.closed_quantity == 0) summary.no_liquidity = true;
+    // Three things can happen to a closing order and they are not the same fact: it fills, the venue's book shows no
+    // size, or the venue refuses it outright. A refusal is the one that says the account is open by the venue's own
+    // judgment rather than by the book's, and it arrives on the stream above.
+    if (summary.closed_quantity == 0)
+    {
+        if (close_refused_)
+            summary.refused = true;
+        else
+            summary.no_liquidity = true;
+    }
+    close_order_id_ = 0;
     return summary;
 }
 

@@ -384,6 +384,10 @@ class Pipeline
     double close_out_cross_bps_{0.0};
     std::function<void()> venue_pump_;
     int close_out_wait_ms_{1000};
+    // The closing order's id and the venue's answer to it, so a refusal and an empty book can be told apart. Set around
+    // the one submission the exit makes; `close_refused_` is raised by the report stream, which is what the wait reads.
+    uint64_t close_order_id_{0};
+    bool close_refused_{false};
     ExecutionQualityMetrics execution_quality_;
     uint64_t quote_cycle_{0};
     // The pre-trade controls in one object, so the order path and the summary read the same counters and

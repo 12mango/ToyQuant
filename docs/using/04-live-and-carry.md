@@ -383,8 +383,12 @@ points through the midpoint, because a live venue's book is not the market leg's
 upper bound: the venue refuses a sell below its own price floor. The 2026-11-17 40 bps run is the measurement of that
 bound. The market leg's last mid was 64,250.9 and the venue's mark 64,368.86, so the floor was 64,047; 40 bps put the
 sell at 63,993, below it, and the venue refused the order -- `[WIND-DOWN] position=10000 closed=0 residual=10000
-spread_bps=40 fees_bps=0 total_bps=40 no_liquidity=1`. The band is a ceiling in `spread_bps`; the fill is still the
-venue's own price.
+spread_bps=40 fees_bps=0 total_bps=40 no_liquidity=1`. That last field was wrong for it: the order was refused, not left
+unfilled for want of size, and the exit could not tell the two apart until 2026-11-21, when a reduce-only sell against a
+short account was refused the same way and the run again said `no_liquidity=1`. The refusal arrives on the report stream
+the exit is waiting on, so the wait now ends when it does and the line reads `refused=1` -- the field the struct's own
+comment always said covered a refusal by the venue or by a control. The band is a ceiling in `spread_bps`; the fill is
+still the venue's own price.
 
 **The 20 bps band cleared the floor, and the close now books what the venue filled -- but the venue still ends ahead of
 the engine.** The 2026-11-17 run with `--close-out-cross-bps=20` put the sell at 64,122, inside the floor.
@@ -522,10 +526,12 @@ position=10000 closed=10000 residual=0 total_bps=5`.
 **The venue's own break was measured on 2026-11-21**, in the one shape whose two sides count the same thing: `ws` on
 BTC-USDT-SWAP, whose instrument is the venue's. With the account flat the run read `[RECON] at=start position
 venue_units=0 ledger_units=0 position_break=0 tolerance_units=0 status=ok` and the same pair at the end. One contract sold
-on the venue from outside the engine made the next run read `[RECON] at=start position venue_units=-100 ledger_units=0
-position_break=-100 tolerance_units=0 status=break` beside `[RECON] at=start venue_equity_usd=4914.48
-ledger_equity_usd=4917.96 equity_break_usd=-3.4844 status=break`: both lines see the same position, which is why both are
-printed.
+on the venue from outside the engine made the next run read `[RECON] at=start position venue_units=-10000 ledger_units=0
+position_break=-10000 tolerance_units=0 status=break` beside `[RECON] at=start venue_equity_usd=4908.6
+ledger_equity_usd=4917.96 equity_break_usd=-9.35721 status=break`: both lines see the same position, which is why both are
+printed. The size of that fault is what the venue says it is, not what the order asked for -- an IOC priced at a bid
+that moved fills a fraction or nothing, so a probe that reads `pos=-0.01` after sending `sz=1` has a hundredth of a
+contract, and its break is `-100` units rather than `-10000`. Read the row, then read the line.
 
 **A resumed session's positions meet the venue's.** The snapshot flags are refused on `ws` -- a session is written and
 resumed against a replay's own clock -- so the shape that reaches `at=start` on a resume is `l2_replay --live-orders
@@ -551,14 +557,12 @@ venue_units_per_coin=… venue_coin=… ledger_units_per_coin=… ledger_coin=�
 The two instruments' names differ on purpose and that is not the fault: the runs above trade `BTC-PERPETUAL` against a
 venue holding `BTC-USDT-SWAP`, and either is a quantity of BTC. A relay started with another `--quantity-scale`, or a
 venue holding another coin, is what the line refuses to compare. `paper_broker_test` pins all three branches (agreeing,
-disagreeing, unstated). The venue-side *break* has now been run (the paragraph above, 2026-11-21), and running it turned up
-two unit facts to know before quoting either number. The replay shape cannot compare at all: `l2_replay`'s ledger counts
-coins (`ledger_units_per_coin=1`) against the venue's 1e6 units per coin, so a resumed run reads `status=unknown` with
-`position_break=n/a` -- the check refusing a magnitude that would mean nothing. And the venue's `pos` is not its `sz`: one
-contract reports `pos=-0.01` (the coin amount, `ctVal=0.01`) while the relay divides it as a contract count, so the
-quantity is understated by that factor (`-100` where the contract is `-10000` units). The verdict is unaffected -- the
-tolerance is zero, so any difference is a break -- and the magnitude is the open item: convert with `ctVal` rather than
-assume a contract count.
+disagreeing, unstated). The venue-side *break* has now been run (the paragraph above, 2026-11-21), and one unit fact came
+out of it: the venue's `pos` is already the contract count -- a one-contract short reads `pos=-1` beside
+`notionalUsd=582.5454` and `imr=194.5729`, and the relay's answer for it is `POSITION -10000 1000000 BTC`, which is the
+contract size (0.01) times the scale (1e6) and therefore correct. The replay shape is the one that cannot compare at all:
+`l2_replay`'s ledger counts coins (`ledger_units_per_coin=1`) against the venue's 1e6 units per coin, so a resumed run
+reads `status=unknown` with `position_break=n/a` -- the check refusing a magnitude that would mean nothing.
 
 The two-book path has no position line, and cannot have one today. Every layer that would be asked is refused on a run
 with two books, each for the same reason and with its own message: `--live-orders` ("names one venue, and a two-book run

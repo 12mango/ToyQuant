@@ -7,6 +7,24 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## A refused exit is not an empty book (2026-11-21)
+
+- **`[WIND-DOWN]` printed `no_liquidity=1` for an order the venue refused.** The summary struct's own comment has always
+  said `refused` covers "the venue or a pre-trade control", and only the control was ever set. Two runs read the wrong
+  field: the 2026-11-17 40 bps exit, refused by the demo venue for pricing below its floor, and the 2026-11-21 break run,
+  whose reduce-only sell was refused because the account was already short. Neither was a book showing no size, and a
+  reader sent to the book would find depth there.
+- **The refusal is watched for now.** The exit records the id its submission will take -- read *before* the call, because
+  an in-process matcher and a stand-in venue both report inside it -- the report stream raises a flag when that id is
+  rejected, and the wait ends on the flag rather than spending its budget. The summary then prints `refused=1`, and the
+  position stays on the ledger where it is.
+- **Pinned by** `pipeline_accounting_test`, whose `LateFillVenue` gained a `refuse_closes` mode: the account is short ten,
+  the exit's reduce-only sell is rejected, and the wind-down reads `refused=1` with no `no_liquidity` and the position
+  untouched. The first version of that test failed on the id being recorded after the synchronous report -- which is the
+  bug the mode exists to catch.
+- **No recorded number moved**: the two runs above are quoted as they were printed, and the live page now says what the
+  same run would print with this change.
+
 ## The relay's transport is bounded, and reaches the venue through a proxy (2026-11-21)
 
 - **`connect(2)` had no deadline.** A peer that blackholed a SYN held the caller for minutes: measured on this host, a
@@ -32,8 +50,11 @@ site now points at `ToyQuant`.
   successful connect leaves a blocking socket a read can use, the tunnel asks for the venue's own name and relays its
   bytes, a proxy that answers `403` is named with its status, and a write to a closed peer is an error rather than a
   signal. **The venue-side `break` was measured in the same session**, in the one shape whose two sides count the same
-  thing (`ws` on `BTC-USDT-SWAP`): `-100` where the contract is `-10000` units, because the venue's `pos` is the coin
-  amount and the relay divides it as a contract count -- the verdict is unaffected, the magnitude is the open item.
+  thing (`ws` on `BTC-USDT-SWAP`): flat read `position_break=0 status=ok`, and one contract sold on the venue with a
+  market order read `venue_units=-10000 ledger_units=0 position_break=-10000 status=break` beside
+  `equity_break_usd=-9.35721 status=break`. The conversion is right: the venue's `pos` is the contract count (`-1`), and
+  `-1 x 0.01 x 1e6` is the `-10000` the line printed. An IOC priced at a bid that moved is how a smaller fault looks --
+  a hundredth of a contract fills and the break is `-100` units -- which is the row to read before the line.
 
 ## The position line states its unit, and refuses a comparison across two (2026-11-19)
 
