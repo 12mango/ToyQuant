@@ -362,7 +362,10 @@ that passed.
 opens with, which is also the exposure ceiling and the `[EXECUTION] starting_cash_usd` field. The default 1000 is the
 replay account; a funded venue is why the flag exists. Pass the venue's **USDT equity**, not its `totalEq`. Measured on
 2026-11-17 with the account flat: `--starting-cash=4981.77` opened `at=start venue_equity_usd=4981.77
-ledger_equity_usd=4981.77 equity_break_usd=0.004472 tolerance_usd=0.498177 status=ok`. A run that ends flat keeps the
+ledger_equity_usd=4981.77 equity_break_usd=0.004472 tolerance_usd=0.498177 status=ok`. The number to pass is what
+`tools/live/okx_probe.py all` prints as `"eq"` from `details[ccy=USDT]`, and the same tool's `position` rows are how a
+position left over from an earlier session is found and taken off with `market B <contracts>` before the next run -- a
+residual is otherwise the only thing that turns the start line into a `break`. A run that ends flat keeps the
 same comparison; a position left open makes the venue's mark the other side's price, which is the width the tolerance
 covers. A resumed run takes its cash and positions from the snapshot instead (`--snapshot-in` wins over the flag), and
 marks the restored positions at the snapshot's prices before the first comparison.
