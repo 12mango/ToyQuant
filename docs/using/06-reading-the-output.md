@@ -21,7 +21,9 @@ mechanical rather than a matter of taste:
 > quantity is exact). The position line's number is only comparable within one unit convention, so the relay states the
 > one it converted with -- engine units per coin and the coin -- and the line prints `venue_units_per_coin`/`venue_coin`
 > and says `unknown` when the two statements differ: a difference across two conventions is not a break, and a magnitude
-> for it would be a number about nothing.
+> for it would be a number about nothing. A `break` at `at=end` can also be the run's own last fill arriving after its
+> final drain -- measured 2026-11-21, `venue_units=0 ledger_units=-1800` with the account flat and the ledger one late
+> fill behind -- and `[EXECUTION]`'s `late_fill_reports` is what says whether that is the shape.
 > `[VENUE]` also carries `duplicates`, an ending the adapter had already reported for that order -- the venue repeated
 > it, which a normal run never does, because the relay answers a cancel once, with the channel's state -- `rate_limited`,
 > the part of `refused_by_adapter` the rate bound took, and `orders_per_second`, the configured rate.
@@ -151,8 +153,11 @@ size. Every `net USD` column in these documents that carries a position is a mar
 A live venue answers asynchronously. The fill is a report that arrives after the placement is acknowledged, not a return
 value, so `--close-out` gives a live venue a bounded wait -- one second -- to deliver it through the run's own drain
 before it reads what is left. An in-process engine fills inside the call and the wait is skipped, which is why every
-recorded run's `[WIND-DOWN]` is unchanged. On a live run `closed=0 no_liquidity=1` therefore means the venue filled
-nothing inside that second, not that the order was never sent.
+recorded run's `[WIND-DOWN]` is unchanged. On a live run `closed=0` says the position did not shrink inside that second,
+and the line says which of three things happened: `no_liquidity=1` is the venue showing no size, `refused=1` is the venue
+or a pre-trade control refusing the exit outright (the refusal arrives on the same report stream and ends the wait), and
+`grew=<units>` is a working quote filling the other way while the exit worked -- measured 2026-11-21, `position=-1400
+closed=0 residual=-11400 ... no_liquidity=1` was a 10,000-unit growth and an exit that never filled.
 
 The live close also pulls the strategy's working orders first: `--close-out` cancels them, drains the cancels for the
 same bounded second, and sizes the exit against what is left, because a quote that fills while the exit works is a
