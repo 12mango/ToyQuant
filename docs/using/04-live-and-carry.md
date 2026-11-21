@@ -416,6 +416,30 @@ A session cap of 200 buys about a minute of quoting. The same 300 s shape with i
 rate_limited=43 refused_by_adapter=1004`: the cap was spent early and the rest of the window was refusals. A longer
 session needs the cap raised until the rate is the only bound, which is the 4000 above.
 
+**Three five-minute windows, and what their decomposition says.** Measured 2026-11-21 through the tunnel, `ws` on
+BTC-USDT-SWAP, cap 4000, rate 2/s, each run given a `--starting-cash` read from the venue first:
+
+| window | gross | fees | net |
+|---|---|---|---|
+| 1 | -0.41 bps | 3.36 bps | -3.77 bps |
+| 2 | +0.92 bps | 3.88 bps | -2.95 bps |
+| 3 | +1.07 bps | 3.80 bps | -2.73 bps |
+
+The gross column is `[PNL] gross_pnl_usd` over `maker_notional_usd` (61,884.4, 53,281.2 and 43,208.4 USD), the fee column
+is what the venue charged, and the net is what the account did: `net_pnl_usd` -23.309, -15.7405 and -11.7888. The line's
+own `breakeven_maker_rate` says the same in the venue's language -- -4.09e-05, 9.217e-05 and 1.07135e-04 -- so this
+strategy would need a maker fee between zero and about one basis point, and the demo venue charges two. Three windows are
+not evidence of an edge in either direction: one gross is negative and two are positive, and a window selected for being
+positive is not an edge. What they pin is the arithmetic of the question: a passive quote capturing around a basis point
+cannot pay a two-basis-point maker fee in any of the three.
+
+**A run can end with the ledger one fill behind the venue.** Window 2 closed `[RECON] at=end position venue_units=0
+ledger_units=-1800 position_break=1800 status=break` while its equity line read `ok`. Its `[EXECUTION]` explains it: 280
+of its 304 trade reports were `late_fill_reports`, because this venue answers a cancel for an order it has already filled
+with `51400` and sends the fill afterwards, and the last one arrived after the run's final drain. The account was flat,
+the ledger caught up on the next query, and the line reported what was true at that instant -- which is the point of
+printing quantity beside equity. `late_fill_reports` is how a reader recognises the shape.
+
 What the wait does not fix was visible in the next run, and two more changes followed. The venue's position probe read
 `pos: -1` where the engine's book held `+2000` units, and `close-position` flattened it: a working quote the engine still
 counted had filled at the venue after the session's clock had stopped. `send_close_order` now cancels every working
