@@ -449,6 +449,26 @@ why it lands in `post_only_cancels` rather than among the rejected orders. This 
 +0.92 / +1.07 above, so its net (-2.12 bps) is not a like-for-like comparison; the fee *rate* is, and it says the fee
 half is now the venue's two basis points while the gross half is still where a passive quote at this size fails.
 
+**The pair, which is the comparison one window could not make.** The same shape in the same hour, the only difference the
+flag -- `post-only` at 02:32 and `baseline` at 03:05:
+
+| window | fees | taker fills | gross | net |
+|---|---|---|---|---|
+| `post-only` | 2.21 bps | 1 (the exit) | +0.085 bps | -2.12 bps |
+| `baseline` | 5.64 bps | 176 | -0.633 bps | -6.27 bps |
+
+`baseline`'s 5.64 is the maker's 2.00 plus 3.64 of taker fees on 17,903 USD of aggressive notional, 42% of what it filled,
+and its gross is *lower* than the flagged window's -- so the fills the venue declined were, on average, the bad ones that
+half hour. The saving is 3.43 bps here and 1.15 to 1.67 bps against the 2026-11-21 windows: what the flag is worth
+depends on how much of the flow would have crossed, and that is not a constant. Both windows reconciled at both ends with
+the position flat (`[RECON] ... position_break=0 status=ok`).
+
+The session above is one command now: `bash .run.sh soak post-only` runs `tools/live/soak.sh`, which starts both relays,
+requires `STARTING_CASH` (the probe's `eq`), records the market and the order leg under `<OUT>/<mode>`, and refuses to
+start without the credentials. `baseline` is the same window without the flag, so the two differ in the one thing under
+test. The verb is not a convenience: a session started from the tool's own terminal once left that shell unable to run
+anything for twenty minutes while the session ran fine, and the runner is the path that closes every descriptor.
+
 **A run can end with the ledger one fill behind the venue.** Window 2 closed `[RECON] at=end position venue_units=0
 ledger_units=-1800 position_break=1800 status=break` while its equity line read `ok`. Its `[EXECUTION]` explains it: 280
 of its 304 trade reports were `late_fill_reports`, because this venue answers a cancel for an order it has already filled

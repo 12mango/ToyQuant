@@ -7,6 +7,26 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## A live session is a verb, and add-liquidity-only gets its baseline (2026-11-23)
+
+- **`tools/live/soak.sh`, started as `bash .run.sh soak <post-only|baseline>`.** The 300 s `ws` shape had been typed into
+  a terminal three times from a scratch script, and the third time cost the terminal: the session ran fine in the
+  background while the tool's shell executed nothing for twenty minutes. A live session is now a verb, like every gate,
+  and the tool takes `STARTING_CASH` (the probe's `eq`, refused when absent), starts both relays, records the market and
+  the order leg, and prints the summary grep.
+- **The flag's baseline, in the same hour.** `post-only` read 2.21 bps of fees (2.00 maker + 0.21 exit), gross +0.085,
+  net -2.12; `baseline` read 5.64 bps (2.00 maker + 3.64 taker on 17,903 USD of aggressive notional, 42% of what it
+  filled), gross -0.633, net -6.27. The flagged window's gross is the higher of the two, so the fills the venue declined
+  were the bad ones; the saving is 3.43 bps here against 1.15-1.67 against the 2026-11-21 windows, which makes it a
+  property of the flow rather than a constant.
+- **What a replay can and cannot say about the flag.** On the recording of the flagged window, `--post-only` changes
+  nothing without `--order-latency-us`: the quote and the book are the same event, so nothing is marketable on arrival.
+  At 100 ms the matcher declines two of nine fills' worth of quotes and the fee rate moves from 6.66 to 2.00 bps -- the
+  mechanism, on nine fills, not a measurement. `docs/L2_FLAGS.md`'s latency row says so, so a reader does not run the
+  no-op and conclude the flag does nothing.
+- Pinned by `docs/TOOLS.md`'s row for the tool and `.clinerules`'s rule for the terminal; no source changed, and no
+  recorded number moved.
+
 ## The kind of order reaches the venue, and a live fill carries the role it was charged (2026-11-23)
 
 - **`--post-only` was a replay-only flag.** The engine's order line has one slot for the kind of order, and `PostOnly`

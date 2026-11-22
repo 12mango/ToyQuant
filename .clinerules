@@ -115,6 +115,12 @@ compatibility path. Everything below assumes that page.
   worked example).
 - **Deleting a tool breaks a document, not the program.** Before removing anything, grep the documents and the gate for
   it; if nothing names it, say so in the commit message.
+- **A live session is a verb, not a command typed into the tool's shell.** `bash .run.sh soak <post-only|baseline>` runs
+  `tools/live/soak.sh` through the same detached `start()` every gate uses. Measured 2026-11-23: a session started from
+  the tool's terminal with `tools/gate/detach.sh` ran to completion in the background while the tool's shell executed
+  **nothing** for twenty minutes -- the command printed its log path and returned, and the tool never saw it end, so
+  every later command was dropped. The session's own numbers were unaffected; only the loop was lost. So the long verbs
+  are the entrance and `detach.sh` is for a script, not for the terminal the tool types into.
 - **A long command is started detached, and "is it done" is a file.** The invoking tool waits for the pty it handed the
   command to be free, and a background child that inherits the terminal's descriptors keeps it open: measured
   2026-11-17, a `build` that finished in 16 s was reported "still running" for the tool's 300 s budget, and a bare
