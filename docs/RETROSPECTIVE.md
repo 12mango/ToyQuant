@@ -97,7 +97,7 @@ own payoff rather than on a cost.
   ratio by more than twenty percent, and separating a 941 USD capture from a 10,588 USD position term would take five
   hundred and six windows. The C++ core stays as infrastructure; what is closed is the direction.
 
-## The demo line's three decisions, closed by policy (2026-11-22)
+## The demo line's three decisions, closed (2026-11-22)
 
 | decision | the policy, and why it is the cheap one |
 |---|---|

@@ -44,9 +44,9 @@ site now points at `ToyQuant`.
   9.217e-05 and 1.07135e-04 says the same in the venue's language: the line needs a maker fee at or below about one basis
   point and the demo venue charges two. Recorded as the fifth closed market rather than optimised against, because a fee
   that is a multiple of the edge is the wall the other four hit.
-- **The three remaining decisions were closed by policy**, not by code: one attempt and stop after a refused or grown
-  exit; refuse to start on an unresolved recovery; record the fee boundary instead of tuning for a positive window. They
-  are in `docs/RETROSPECTIVE.md` with the numbers behind each.
+- **The three remaining decisions were closed**: one attempt and stop after a refused or grown exit (policy, written
+  where the growth is detected), refuse to start on an unresolved recovery (code, above), and record the fee boundary
+  instead of tuning for a positive window (policy). Each is in `docs/RETROSPECTIVE.md` with the numbers behind it.
 
 ## A refused exit is not an empty book (2026-11-21)
 

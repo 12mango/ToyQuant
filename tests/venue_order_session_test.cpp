@@ -668,8 +668,12 @@ int main()
     // The venue drops the socket. The client has to treat that as a new session -- a login and a subscription on a new
     // connection -- and the stand-in only counts a second login if it arrives on one.
     venue.drop_next_session();
-    assert(wait_for([&venue] { return venue.logins() >= 2; }));
-    assert(venue.subscribes() >= 2);
+    // The login and the subscription are two frames and the stand-in counts them separately, so waiting for the login and
+    // then asserting the subscription is a race a loaded machine loses: measured 2026-11-22 at three failures in ten
+    // runs, always on the next line. The second session's work is not done until its subscription has arrived, which is
+    // the later of the two facts, so that is what is waited for.
+    assert(wait_for([&venue] { return venue.subscribes() >= 2; }));
+    assert(venue.logins() >= 2);
     assert(venue.login_signature_matched());
     // The second session's subscription pushed its own fill as well, and the translator deduplicated it: the assertion is
     // that it was pushed, not that a second FILL line reached the engine.
