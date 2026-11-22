@@ -7,6 +7,31 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The kind of order reaches the venue, and a live fill carries the role it was charged (2026-11-23)
+
+- **`--post-only` was a replay-only flag.** The engine's order line has one slot for the kind of order, and `PostOnly`
+  now travels in it: `LiveVenue` writes `ORDER <id> <symbol> <B|S> <price> <qty> PostOnly`, both relays translate that
+  slot into the venue's `ordType` (`post_only`, `ioc`, `fok`, and `limit` for Gtc), and a venue that cancels such an
+  order answers `CANCELED <id> post_only`, which the engine already counts as `post_only_cancels`. Until this, every
+  kind left as `limit`: an IOC rested at the venue and an add-liquidity-only quote was the taker fill it exists to
+  prevent, which is the flag's whole purpose silently absent.
+- **A live fill now says which role it was charged as.** The relay forwards OKX's `execType` (`M` rested, `T` took) as
+  a sixth field after the fee (a fill with no fee states a zero to keep the position), and `LiveVenue` books
+  `liquidity_role` from it instead of assuming a Gtc fill was a maker. That assumption put a live run's taker fills in
+  `maker_trade_count`: the three windows' 3.36-3.88 bps of maker notional decompose to 21-27% taker by arithmetic on
+  the fee amounts, and the venue's own word is what turns that arithmetic into a measurement.
+- **No recorded number moved, and one live window measured the change.** Every recorded run is a replay -- the matcher
+  sets the role and reports the post-only cancel itself -- and the simulated venue sends neither new field, so the
+  shorter `FILL` line and the adapter's rule remain what a session without a venue's `execType` books. Measured `ws` on
+  `BTC-USDT-SWAP`, 300 s, cap 4000, rate 2/s, `--post-only`: `[PORTFOLIO] fees_paid=4.58896 maker_fees=4.16071
+  taker_fees=0.428249 maker_trade_count=44 taker_trade_count=1` and `[PNL] gross_pnl_usd=0.17664
+  maker_notional_usd=20803.6`, which is 2.21 bps of maker notional against the three windows' 3.36-3.80, with 87 of 172
+  quotes declined as marketable and both `[RECON]` lines `ok`. The fee saving's ceiling, 1.36 to 1.88 bps against a gross
+  capture of 0.92-1.07, was the prediction; 1.15 to 1.67 was the measurement, and the remaining gap is gross.
+- Pinned by `venue_order_translator_test` (the four `ordType` values, the role with and without a fee, the post-only
+  cancel), `live_venue_test` (the `PostOnly` frame, the venue's role overriding the rule, an unknown role dropping the
+  frame) and `venue_relay.py --self-test` (the same shapes).
+
 ## A recovery that could not resolve an order refuses to start (2026-11-22)
 
 - **`OrderQuery` gained a third answer, because two were being asked to mean three things.** `Unknown` was both "the venue

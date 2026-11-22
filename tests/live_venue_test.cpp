@@ -97,6 +97,19 @@ int main()
         assert(venue.counters().orders_sent == 0);
     }
 
+    // Add-liquidity-only is a word the relay reads, so the venue is told about it: an order that asked for it
+    // carries `PostOnly` where its time in force would be. The translation is asserted because a flag the venue never
+    // sees is a flag that did nothing, which is what this one was until the word existed.
+    {
+        RecordingTransport wire;
+        LiveVenue venue(wire);
+        exchange::Order add_only = make_order(9, exchange::Side::Buy, 6421.5, 10000);
+        add_only.post_only = true;
+        venue.send_order(add_only);
+        assert(wire.frames.size() == 1);
+        assert(wire.frames.back() == "ORDER 9 BTC-PERPETUAL B 6421.5 10000 PostOnly");
+    }
+
     // The adapter's own order bound refuses before the wire, and it refuses silently: the point is that the
     // order never leaves this process.
     {
@@ -377,6 +390,29 @@ int main()
         assert(reports[1].exec_type == ExecType::Filled && reports[3].exec_type == ExecType::Filled &&
                reports[5].exec_type == ExecType::Filled);
         assert(!venue.on_frame("FILL 10 6421.5 4 not-a-fee"));
+        assert(venue.counters().frames_dropped == 1);
+    }
+
+    // The venue's own role beats the adapter's rule: a frame with a sixth field books the fill in the role the venue
+    // charged, which is the difference between a resting quote and the taker fill a stale price turned it into. A
+    // role the parser does not know drops the frame rather than picking a rate for it.
+    {
+        RecordingTransport wire;
+        LiveVenue venue(wire);
+        std::vector<ExecutionReport> reports;
+        venue.set_report_callback([&reports](const ExecutionReport& report) { reports.push_back(report); });
+        venue.send_order(make_order(30, exchange::Side::Buy, 6421.5, 4));
+        venue.send_order(make_order(31, exchange::Side::Buy, 6421.5, 4));
+        assert(venue.on_frame("FILL 30 6421.5 4 0.02 taker"));
+        assert(venue.on_frame("FILL 31 6421.5 4 0.01 maker"));
+        assert(reports[0].liquidity_role == LiquidityRole::Taker);
+        assert(reports[2].liquidity_role == LiquidityRole::Maker);
+        // Without the field the rule stands: these were sent Gtc, so the adapter books them as maker.
+        venue.send_order(make_order(32, exchange::Side::Buy, 6421.5, 4));
+        assert(venue.on_frame("FILL 32 6421.5 4 0.01"));
+        assert(reports[4].liquidity_role == LiquidityRole::Maker);
+        venue.send_order(make_order(33, exchange::Side::Buy, 6421.5, 4));
+        assert(!venue.on_frame("FILL 33 6421.5 4 0.01 sometimes"));
         assert(venue.counters().frames_dropped == 1);
     }
 

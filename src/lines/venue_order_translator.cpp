@@ -34,6 +34,17 @@ bool all_digits(std::string_view text)
     return true;
 }
 
+// The engine's one order-kind slot as the venue's `ordType`. A plain `limit` is the default because that is what a
+// resting quote is; the other three are words the venue acts on, and a relay that sent them all as `limit` would turn
+// an IOC into a quote that rests and an add-liquidity-only order into the taker fill it exists to prevent.
+const char* ord_type_token(std::string_view tif)
+{
+    if (tif == "PostOnly") return "post_only";
+    if (tif == "Ioc") return "ioc";
+    if (tif == "Fok") return "fok";
+    return "limit";
+}
+
 double positive(std::string_view text, const char* what)
 {
     std::string copy(text);
@@ -140,18 +151,23 @@ OrderTranslator::Request OrderTranslator::request_of(std::string_view line)
         (void)price;
         if (!all_digits(quantity) || std::strtoull(std::string(quantity).c_str(), nullptr, 10) == 0)
             throw OrderError("quantity '" + std::string(quantity) + "' is not a positive integer");
-        if (tif != "Gtc" && tif != "Ioc" && tif != "Fok")
-            throw OrderError("time in force '" + std::string(tif) + "' is not Gtc, Ioc or Fok");
+        // `PostOnly` sits in the time-in-force slot because the engine's line has one field for "which kind of order
+        // is this", and add-liquidity-only is the one kind the venue has to be told about: sent as a plain limit, an
+        // order whose price the market has already gone through is filled as a taker, and the flag exists to stop that.
+        if (tif != "Gtc" && tif != "Ioc" && tif != "Fok" && tif != "PostOnly")
+            throw OrderError("time in force '" + std::string(tif) + "' is not Gtc, Ioc, Fok or PostOnly");
 
         const auto units = static_cast<std::uint64_t>(std::strtoull(std::string(quantity).c_str(), nullptr, 10));
         const std::uint64_t contracts = contracts_for(units);
         orders_[std::string(cl_ord_id)] =
-            Known{.symbol = std::string(fields[2]), .units = units, .contracts = contracts};
+            Known{.symbol = std::string(fields[2]), .units = units, .contracts = contracts,
+                  .post_only = tif == "PostOnly"};
         // OKX's shape for a limit order, with both numbers on the venue's grid. The instrument is the relay's, not the
         // engine's: the replay runs on whatever its book came from, and the venue only knows its own name for the thing.
         std::ostringstream args;
         args << R"({"instId":")" << instrument_ << R"(","tdMode":"cross","side":")"
-             << (side == "B" ? "buy" : "sell") << R"(","ordType":"limit","px":")" << price_on_tick(fields[4])
+             << (side == "B" ? "buy" : "sell") << R"(","ordType":")"
+             << ord_type_token(tif) << R"(","px":")" << price_on_tick(fields[4])
              << R"(","sz":")" << contracts << R"(","clOrdId":")" << cl_ord_id << '"';
         if (inst_code_ >= 0) args << R"(,"instIdCode":)" << inst_code_;
         args << '}';
@@ -323,11 +339,23 @@ std::vector<std::string> OrderTranslator::decode_orders_entry(const Json& entry)
             // the venue takes money, and the engine books a cost as positive. A rebate then arrives negative.
             const Json* fee = entry.find("fillFee");
             if (fee == nullptr) fee = entry.find("fee");
-            if (fee != nullptr && !(fee->is_string() && fee->text.empty()))
+            const bool has_fee = fee != nullptr && !(fee->is_string() && fee->text.empty());
+            if (has_fee)
             {
                 char cost[40];
                 std::snprintf(cost, sizeof(cost), " %.10g", -fee->as_double());
                 line += cost;
+            }
+            // The venue's own role, when it reports one: OKX's `execType` is `M` for a fill that rested and `T` for
+            // one that took, and that is the venue's word where an order's time in force is only this process's rule.
+            // It rides as the sixth field, so a fill with no fee states a zero to keep the position -- the role is
+            // what picks the fee the account is charged, and a field that shifted would charge the wrong rate.
+            const Json* exec = entry.find("execType");
+            const std::string exec_text = exec != nullptr ? exec->as_text() : std::string();
+            if (exec_text == "M" || exec_text == "T")
+            {
+                if (!has_fee) line += " 0";
+                line += exec_text == "M" ? " maker" : " taker";
             }
             lines.push_back(line);
             known.filled = cumulative;
@@ -337,7 +365,11 @@ std::vector<std::string> OrderTranslator::decode_orders_entry(const Json& entry)
         const std::string state_text = state != nullptr ? state->as_text() : std::string();
         if (state_text == "canceled" && !known.terminal)
         {
-            lines.push_back("CANCELED " + cl_ord_id + " user");
+            // Who ended it. An order that asked to add liquidity only and was cancelled by the venue is the fill the
+            // venue declined -- the same fact the matcher reports as `CancelReason::PostOnly`, which is why one
+            // counter can read both modes. Everything else keeps the word this relay has always sent: a cancel this
+            // client asked for is the common case, and the venue's channel carries no reason of its own.
+            lines.push_back("CANCELED " + cl_ord_id + (known.post_only ? " post_only" : " user"));
             known.terminal = true;
             emitted = true;
         }

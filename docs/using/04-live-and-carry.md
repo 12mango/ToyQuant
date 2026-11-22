@@ -436,6 +436,19 @@ not evidence of an edge in either direction: one gross is negative and two are p
 positive is not an edge. What they pin is the arithmetic of the question: a passive quote capturing around a basis point
 cannot pay a two-basis-point maker fee in any of the three.
 
+**The same shape with add-liquidity-only, measured.** 2026-11-23, 300 s, `ws` on BTC-USDT-SWAP, cap 4000, rate 2/s, the
+run given `--post-only` and a `--starting-cash` read from the venue first: `[PNL] gross_pnl_usd=0.17664
+maker_notional_usd=20803.6 net_pnl_usd=-4.41232 breakeven_maker_rate=8.49085e-06`, `[PORTFOLIO] fees_paid=4.58896
+maker_fees=4.16071 taker_fees=0.428249 maker_trade_count=44 taker_trade_count=1`, `[EXECUTION] submitted_orders=172
+trade_reports=45 post_only_cancels=87`, and both `[RECON]` lines `status=ok` with the position flat after
+`[WIND-DOWN] position=14100 closed=14100 residual=0 fees_bps=5.00091`. Fees were **2.21 bps** of maker notional -- the
+maker's own 2.00 plus the exit's 0.21 -- against 3.36 / 3.88 / 3.80 above, so the flag saved 1.15 to 1.67 bps, and the
+venue's split is its own word now: 44 maker fills and one taker fill, that being the closing order. The cost is in the
+same line: **87 of 172 quotes were declined as marketable**, and the venue delivers that decline as a cancel, which is
+why it lands in `post_only_cancels` rather than among the rejected orders. This window's gross was +0.085 bps, not the
++0.92 / +1.07 above, so its net (-2.12 bps) is not a like-for-like comparison; the fee *rate* is, and it says the fee
+half is now the venue's two basis points while the gross half is still where a passive quote at this size fails.
+
 **A run can end with the ledger one fill behind the venue.** Window 2 closed `[RECON] at=end position venue_units=0
 ledger_units=-1800 position_break=1800 status=break` while its equity line read `ok`. Its `[EXECUTION]` explains it: 280
 of its 304 trade reports were `late_fill_reports`, because this venue answers a cancel for an order it has already filled
@@ -461,6 +474,16 @@ The live close is a reduce-only market order instead: `CLOSE <id> <symbol> <side
 a contract) is closed by one contract and the venue caps it at the position. A reduce-only order is also exempt from
 the adapter's order count: the passive session placed 65 orders against a cap of 20, and the cap refused the exit
 before the wire -- the one order it must not stop. The replay's close is still the limit IOC.
+
+**Two things a live order says that a replay's does not have to.** The kind of order leaves as the venue's own
+`ordType`: a quote asked to add liquidity only is `post_only`, an IOC is `ioc`, a FOK is `fok`, and only a Gtc quote is
+a plain `limit` -- so a quote whose price the book has gone through on the way is declined by the venue rather than
+filled against it at five basis points. A venue that cancels such a quote answers `CANCELED <id> post_only`, which the
+engine counts as `post_only_cancels`; one refused at placement arrives as a rejected order, and the two counters are
+read together. And the fill's role is the venue's word: the relay forwards OKX's `execType` (`M` rested, `T` took) as a
+sixth field after the fee, and the adapter books the fee under that role. Without it a resting order was assumed to be a
+maker, so the taker fill a stale price turned it into was booked in `maker_trade_count` -- which is why the three
+windows' 3.36-3.88 bps of maker notional could only be decomposed by arithmetic instead of by the venue's own split.
 
 The session that followed closed the last gap. The venue answers a cancel for an order it has already filled with
 `sCode 51400`, which the relay reports as `REJECT`, and the fill that made the order unfillable arrives after it; the

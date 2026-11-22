@@ -131,8 +131,14 @@ void LiveVenue::send_order(const exchange::Order& order)
     }
     else
     {
+        // Add-liquidity-only is a word of its own in the order slot rather than a flag beside it: the relay turns it
+        // into the venue's `ordType: post_only`, and a venue that declines such a quote answers in the same vocabulary
+        // as the matcher cancelling it -- which is what `post_only_cancels` counts. Without the word the venue fills
+        // the quote as a taker whenever its book has moved through the price on the way, and that fill is what the
+        // flag was asked to prevent.
         frame << "ORDER " << order.id << ' ' << order.symbol << ' ' << side_token(order.side) << ' '
-              << order.price << ' ' << order.qty << ' ' << tif_token(order.time_in_force);
+              << order.price << ' ' << order.qty << ' '
+              << (order.post_only ? "PostOnly" : tif_token(order.time_in_force));
     }
     if (!transport_.send(frame.str()))
     {
@@ -347,11 +353,40 @@ bool LiveVenue::on_frame(std::string_view frame)
             ++counters_.frames_dropped;
             return false;
         }
-        // A Gtc order rests, so a venue filling it is filling a maker; an Ioc or Fok order is a taker by
-        // definition. The frame carries no role, so this is the adapter's rule rather than the venue's word.
-        report.liquidity_role = sent != sent_.end() && sent->second.time_in_force != TimeInForce::Gtc
-                                    ? LiquidityRole::Taker
-                                    : LiquidityRole::Maker;
+        if (fields.size() > 6)
+        {
+            ++counters_.frames_dropped;
+            return false;
+        }
+        // The venue's own role when the relay forwards one: OKX's `execType` (`M` rested, `T` took) is the sixth
+        // field, and it is the role the account was actually charged by. A resting quote whose price the market had
+        // moved through is filled as a taker, and the rule below would have booked that fill at the maker rate --
+        // which is exactly the split the live fee decomposition could not answer. Without the field the rule stands:
+        // a Gtc order rests, so a venue filling it is filling a maker, and an Ioc or Fok order is a taker by
+        // definition. That is this adapter's rule rather than the venue's word, and it is what every live number
+        // measured before the role was carried was booked under.
+        if (fields.size() >= 6)
+        {
+            const std::string_view role = fields[5];
+            if (role == "maker")
+            {
+                report.liquidity_role = LiquidityRole::Maker;
+            }
+            else if (role == "taker")
+            {
+                report.liquidity_role = LiquidityRole::Taker;
+            }
+            else
+            {
+                ++counters_.frames_dropped;
+                return false;
+            }
+        }
+        else
+        {
+            report.liquidity_role = sent->second.time_in_force != TimeInForce::Gtc ? LiquidityRole::Taker
+                                                                                  : LiquidityRole::Maker;
+        }
     }
     else if (kind == "CANCELED")
     {

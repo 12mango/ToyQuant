@@ -667,20 +667,29 @@ class OrderTranslator:
             _positive(price, "price")
             if not quantity.isdigit() or int(quantity) == 0:
                 raise OrderError(f"quantity '{quantity}' is not a positive integer")
-            if tif not in ("Gtc", "Ioc", "Fok"):
-                raise OrderError(f"time in force '{tif}' is not Gtc, Ioc or Fok")
+            # `PostOnly` is the fourth word in the order slot, and the venue is told about it rather than the relay
+            # keeping it: a plain limit whose price the market has gone through is filled as a taker, and the flag
+            # exists to stop that. The order is remembered with the flag so the venue's answer to it can be read as
+            # the decline it is rather than as a cancel this client asked for.
+            if tif not in ("Gtc", "Ioc", "Fok", "PostOnly"):
+                raise OrderError(f"time in force '{tif}' is not Gtc, Ioc, Fok or PostOnly")
             units = int(quantity)
             contracts = self.contracts_for(units)
             self.orders[cl_ord_id] = {"symbol": symbol, "units": units, "contracts": contracts,
-                                      "filled": 0, "terminal": False}
+                                      "filled": 0, "terminal": False, "post_only": tif == "PostOnly"}
             # OKX's shape for a limit order, with both numbers on the venue's grid: `sz` in contracts (one is
             # `contract_size` of the coin, so the engine's `quantity_scale` and the contract's value are the two
             # halves of the conversion) and `px` on the tick. The instrument is the relay's, not the engine's: the
             # replay runs on whatever instrument its book came from, and the venue only knows its own name for the
             # thing, so the operator names it once on `--instrument`.
+            # The one order-kind slot as the venue's `ordType`: a plain `limit` rests, and the other three are words
+            # the venue acts on. An IOC sent as a limit would rest, and add-liquidity-only sent as a limit is the taker
+            # fill it exists to prevent.
+            ord_type = {"Gtc": "limit", "Ioc": "ioc", "Fok": "fok", "PostOnly": "post_only"}[tif]
             order = {"instId": self.instrument, "tdMode": "cross",
                      "side": "buy" if side == "B" else "sell",
-                     "ordType": "limit", "px": self.price_on_tick(price), "sz": str(contracts),
+                     "ordType": ord_type,
+                     "px": self.price_on_tick(price), "sz": str(contracts),
                      "clOrdId": cl_ord_id}
             if self.inst_code is not None:
                 order["instIdCode"] = self.inst_code
@@ -765,14 +774,28 @@ class OrderTranslator:
                     # are negative when the venue takes money. The engine books a cost as a positive number and a
                     # rebate as a negative one, so the sign is flipped here rather than in the accounting.
                     fee = entry.get("fillFee", entry.get("fee"))
+                    wrote_fee = False
                     if fee not in (None, ""):
                         line += f" {-float(fee):.10g}"
+                        wrote_fee = True
+                    # The venue's own role: `execType` is `M` for a fill that rested and `T` for one that took, and
+                    # it is the role the account was charged by where the order's time in force is only this
+                    # process's rule. It rides as the sixth field, so a fill with no fee states a zero to keep the
+                    # position -- a field that shifted would book the wrong rate.
+                    exec_type = entry.get("execType")
+                    if exec_type in ("M", "T"):
+                        if not wrote_fee:
+                            line += " 0"
+                        line += " maker" if exec_type == "M" else " taker"
                     lines.append(line)
                     known["filled"] = cumulative
                     emitted = True
                 state = entry.get("state")
                 if state == "canceled" and not known.get("terminal"):
-                    lines.append(f"CANCELED {cl_ord_id} user")
+                    # An order that asked to add liquidity only and was cancelled by the venue is the fill the venue
+                    # declined; everything else keeps the word this relay has always sent.
+                    reason = "post_only" if known.get("post_only") else "user"
+                    lines.append(f"CANCELED {cl_ord_id} {reason}")
                     known["terminal"] = True
                     emitted = True
                 elif state == "rejected" and not known.get("terminal"):
@@ -1743,6 +1766,15 @@ def self_test():
     # contracts on a five-contract grid are ten.
     lots = OrderTranslator("BTC-USDT-SWAP", mapping=OrderMapping(0.01, 1000000, 0.1, 5))
     assert lots.encode("ORDER 11 BTC-PERPETUAL B 6421.5 120000 Gtc")["args"][0]["sz"] == "10"
+    # Add-liquidity-only is the venue's own order type, and the order is remembered with it: the answer to a post-only
+    # order the venue cancels is the fill it declined, not a cancel this client asked for.
+    add_only = translator.encode("ORDER 12 BTC-PERPETUAL B 6421.5 100000 PostOnly")
+    assert add_only["args"][0]["ordType"] == "post_only", add_only
+    # An IOC or a FOK sent as a limit would rest at the venue, so the kind is carried as well.
+    assert translator.encode("ORDER 13 BTC-PERPETUAL B 6421.5 100000 Ioc")["args"][0]["ordType"] == "ioc"
+    assert translator.encode("ORDER 14 BTC-PERPETUAL B 6421.5 100000 Fok")["args"][0]["ordType"] == "fok"
+    assert translator.decode({"arg": {"channel": "orders"}, "data": [
+        {"clOrdId": "12", "state": "canceled", "accFillSz": "0"}]}) == ["CANCELED 12 post_only"]
     # The venue's internal instrument code goes on the wire only when the operator names it: its newer order
     # operation refuses without one, and a guessed default would be an order on the wrong contract.
     assert "instIdCode" not in argument, argument
@@ -1809,6 +1841,16 @@ def self_test():
         {"clOrdId": "17", "state": "partially_filled", "accFillSz": "0.5", "fillPx": "66664.04",
          "fillFee": "0.02"}]})
     assert rebate == ["FILL 17 66664.04 5000 -0.02"], rebate
+    # The venue's own role rides on the fill when it reports one: `execType` `M` rested, `T` took. It is the sixth
+    # field, and a fill with no fee states a zero to keep the position, because the role picks the rate charged.
+    rested = translator.decode({"arg": {"channel": "orders"}, "data": [
+        {"clOrdId": "18", "state": "partially_filled", "accFillSz": "0.5", "fillPx": "100",
+         "execType": "M"}]})
+    assert rested == ["FILL 18 100 5000 0 maker"], rested
+    took = translator.decode({"arg": {"channel": "orders"}, "data": [
+        {"clOrdId": "19", "state": "partially_filled", "accFillSz": "0.5", "fillPx": "100",
+         "fillFee": "-0.02", "execType": "T"}]})
+    assert took == ["FILL 19 100 5000 0.02 taker"], took
 
     # A refused request answers at the top level with an empty data list, and it reaches the engine as a REJECT
     # rather than as nothing: the venue's own words ("parameter id can not be empty") were the first sandbox

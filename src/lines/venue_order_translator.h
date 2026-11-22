@@ -101,6 +101,10 @@ class OrderTranslator
         std::string symbol;
         std::uint64_t units{0};
         std::uint64_t contracts{0};
+        // The order asked to add liquidity only. Kept because the venue's answer to such an order has to be read as
+        // the decline it is: a venue-side cancel of it is the quote that would have traded, which is the fact the
+        // engine counts under `post_only_cancels` and the matcher reports as a cancel with that reason.
+        bool post_only{false};
         double filled{0.0};
         bool terminal{false};
         // A close's acknowledgement is the engine's units, not the venue's rounded-up contract count.

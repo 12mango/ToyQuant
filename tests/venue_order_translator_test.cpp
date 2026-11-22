@@ -46,7 +46,25 @@ int main()
     OrderTranslator plain("BTC-PERPETUAL");
     assert(plain.encode("ORDER 7 BTC-PERPETUAL S 6421.5 100000 Gtc").find("instIdCode") == std::string::npos);
 
-    // A cancel names the instrument it was placed on, which is why the translator remembers the order.
+    // Add-liquidity-only reaches the venue as its own `ordType`, because a plain limit is what gets filled as a
+    // taker when the book has moved through the price on the way. The word shares the slot a time in force occupies:
+    // nothing is both post-only and an IOC, and the engine's line has one field for the kind of order.
+    const std::string add_only = translator.encode("ORDER 12 BTC-PERPETUAL B 6421.5 100000 PostOnly");
+    assert(add_only.find(R"("ordType":"post_only")") != std::string::npos);
+    assert(add_only.find(R"("ordType":"limit")") == std::string::npos);
+    // The other two kinds are words too: an IOC sent as a limit would rest at the venue, which is not what the flag
+    // asks for. Both are OKX `ordType` values, and the engine's one slot is the only thing that changes.
+    assert(translator.encode("ORDER 13 BTC-PERPETUAL B 6421.5 100000 Ioc").find(R"("ordType":"ioc")") !=
+           std::string::npos);
+    assert(translator.encode("ORDER 14 BTC-PERPETUAL B 6421.5 100000 Fok").find(R"("ordType":"fok")") !=
+           std::string::npos);
+
+    // A venue that cancels one of those has declined the fill, not ended a quote this client withdrew: the matcher
+    // reports the same fact as a cancel whose reason is `post_only`, so one counter reads both modes.
+    assert(decode_text(translator, R"({"arg":{"channel":"orders"},"data":[{"clOrdId":"12","state":"canceled",)"
+                                 R"("accFillSz":"0"}]})") == std::vector<std::string>{"CANCELED 12 post_only"});
+
+
     assert(translator.encode("CANCEL 7") ==
            R"({"id":"7","op":"cancel-order","args":[{"instId":"BTC-USDT-SWAP","clOrdId":"7","instIdCode":10459}]})");
 
@@ -125,6 +143,21 @@ int main()
     assert(decode_text(rebating, R"({"arg":{"channel":"orders"},"data":[{"clOrdId":"15","state":"partially_filled",)"
                                  R"("fillPx":"100","accFillSz":"0.5","fillFee":"0.02"}]})") ==
            std::vector<std::string>{"FILL 15 100 5000 -0.02"});
+
+    // The venue's own role rides on the fill when it reports one: `execType` is `M` for a fill that rested and `T`
+    // for one that took. It is the sixth field, and a fill the venue reports no fee for states a zero to keep the
+    // position, because the role is what picks the rate the account is charged.
+    assert(decode_text(translator, R"({"arg":{"channel":"orders"},"data":[{"clOrdId":"21","state":"partially_filled",)"
+                                 R"("fillPx":"100","accFillSz":"0.5","execType":"M"}]})") ==
+           std::vector<std::string>{"FILL 21 100 5000 0 maker"});
+    assert(decode_text(translator, R"({"arg":{"channel":"orders"},"data":[{"clOrdId":"22","state":"partially_filled",)"
+                                 R"("fillPx":"100","accFillSz":"0.5","fillFee":"-0.01","execType":"T"}]})") ==
+           std::vector<std::string>{"FILL 22 100 5000 0.01 taker"});
+    // A push with no role keeps the shorter line, which is what the simulated venue sends and what every live number
+    // before the role was carried was booked under.
+    assert(decode_text(translator, R"({"arg":{"channel":"orders"},"data":[{"clOrdId":"23","state":"partially_filled",)"
+                                 R"("fillPx":"100","accFillSz":"0.9"}]})") ==
+           std::vector<std::string>{"FILL 23 100 9000"});
 
     // A counter that goes backwards is not a duplicate to ignore: it would book a position nothing explains.
     try

@@ -54,7 +54,7 @@ watch a position build names both: `--order-size=10 --inventory-limit=100`.
 | quoting | `--base-spread-ticks`, `--refresh-price-ticks`, `--inventory-shift-ticks`, `--edge-cover-ticks`, `--min-spread-ticks` | `0` leaves each at the strategy's own setting; `--base-spread-ticks=1` quotes at the touch |
 | risk | `--max-position`, `--max-exposure-usd`, `--kill-switch-loss-usd`, `--fat-finger-bps`, `--max-orders-per-second` with `--order-burst` | `--max-exposure-usd` is enforced once named and reported either way |
 | account | `--starting-cash` | the cash the account opens with (default 1000), which is also the exposure ceiling; a live run against a funded account passes the venue's balance or its `[RECON]` reports the break |
-| fills | `--participation-limit`, `--time-in-force`, `--post-only`, `--arrival-share`, `--queue-chunks`, `--queue-seed` | the queue model is the seventh positional argument, not a flag |
+| fills | `--participation-limit`, `--time-in-force`, `--post-only`, `--arrival-share`, `--queue-chunks`, `--queue-seed` | the queue model is the seventh positional argument, not a flag; the kind of order is what the venue's `ordType` says, so `--post-only` is `post_only` and an IOC is `ioc` rather than a limit that rests |
 | latency | `--order-latency-us`, `--cancel-latency-us` | holds the order or the cancel for N microseconds of the market's own clock |
 | fees | `--maker-fee-rate`, `--fee-schedule` | a schedule names `min`, `regulatory`, `clearing`, `audit`, `rebate`, `commission`; every term is zero unless named |
 | gates | `--markout-cover`, `--flatten-band`, `--markout-horizon` | `--markout-cover` needs `active_l2`; `--markout-horizon` moves the cycle count behind the markout itself |
@@ -148,14 +148,19 @@ one 60 s demo run -- while a rate bounds how fast the risk accumulates without e
 from both. `--venue-max-notional=USD`
 adds the cap a reader can price: one order's notional, computed with `fill_notional_usd`, the same helper the ledger
 books with, so the number refused is the number the accounting would have recorded. What the venue echoes back is only
-an order id, so the adapter stamps the owner, the side and the liquidity role from the order it sent: a report with no
-owner is a fill that was reported and never booked, and the report's default side is Buy, which would turn every sell
-fill into a buy. A fill's fee is the venue's own: the `FILL` frame's fifth field is what the venue charged on that fill,
-read from its `fillFee` and negated into the engine's sign, because the venue writes a charge as a negative number. Before
-that field existed every live fill arrived with `fee = 0`, and a live run's `[PNL]` was gross of a fee the venue had
-already taken. `tests/live_venue_test` pins those fields, the optional fee and the notional bound, and a run against the
-relay's simulated venue reconciles (`[RECON] status=ok`, no quantity break) -- by hand, not yet in the gate; the same
-run against the demo venue's own feed fills and reconciles, and ADR 0005 quotes it.
+an order id, so the adapter stamps the owner and the side from the order it sent: a report with no owner is a fill that
+was reported and never booked, and the report's default side is Buy, which would turn every sell fill into a buy. A
+fill's fee is the venue's own: the `FILL` frame's fifth field is what the venue charged on that fill, read from its
+`fillFee` and negated into the engine's sign, because the venue writes a charge as a negative number. Before that field
+existed every live fill arrived with `fee = 0`, and a live run's `[PNL]` was gross of a fee the venue had already taken.
+The role is the venue's too when it reports one: OKX's `execType` (`M` rested, `T` took) rides as a sixth field, and a
+fill the venue reports no fee for states a zero to keep the position. Without it the adapter's rule books the fill -- a
+Gtc order rests, so it is a maker -- which is what every live number before the field was carried was booked under. A
+venue that declines an add-liquidity-only quote ends the order as `CANCELED <id> post_only` (the relay remembers the
+order asked for it), so `post_only_cancels` counts it; a refusal at placement arrives as a rejected order instead.
+`tests/live_venue_test` pins those fields, the optional fee and the notional bound, and a run against the relay's
+simulated venue reconciles (`[RECON] status=ok`, no quantity break) -- by hand, not yet in the gate; the same run
+against the demo venue's own feed fills and reconciles, and ADR 0005 quotes it.
 
 **The feed thread.** `--feed-thread` reads on its own thread and hands each event to the strategy thread over a bounded
 ring, reporting the hand-off as `[LATENCY]`: the ring wait, the processing, and the total, each as mean, p50, p99 and max,

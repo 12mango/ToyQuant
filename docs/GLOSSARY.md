@@ -60,7 +60,7 @@ The one place where a run leaves the process. The terms are small but they are t
 |---|---|---|
 | the order leg | a run's own orders leaving the process: a socket to the relay, which signs the venue's REST calls, with the venue's private `orders` channel coming back as state | `src/lines/live_venue.h` |
 | `owner` | the client id the adapter stamps on every order, so a venue report can be matched to the order that caused it | `ExecutionReport::owner` |
-| `liquidity_role` | what the **venue** says the fill was, `maker` or `taker`, which picks the fee rate; the engine's own queue model does not set it | `ExecutionReport::liquidity_role` |
+| `liquidity_role` | maker or taker, which picks the fee rate: the **venue's** own `execType` when it reports one, which a live run forwards; otherwise the adapter's rule -- a Gtc order rests, an Ioc or Fok order takes -- and never the engine's queue model | `ExecutionReport::liquidity_role` |
 | `ctVal` | a contract's size in the underlying -- `0.01` BTC for `BTC-USDT-SWAP` -- so a venue-unit quantity is not a coin quantity | the venue's instrument list |
 | reconciliation | the ledger's statement against the venue's own reports; `status=break` means the two disagree, and no number from that run is quoted | `[RECON]` |
 | venue equity | the venue's **USDT equity** (`details[ccy=USDT].eq`) against the ledger's marked equity, on the `at=start` and `at=end` `[RECON]` lines: `equity_break_usd` is signed and `status=unknown` says one side was `n/a` | `[RECON]`, `GET /api/v5/account/balance` |
