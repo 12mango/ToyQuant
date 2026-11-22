@@ -485,3 +485,30 @@ Three readings, and the third is the one that decides whether finer data is wort
    offline, to fit the four rules — instead of a new runtime path, and only if the goal becomes proving the
    queue reconstruction itself.
 
+
+## The Signal Line Pays the Taker Fee on Every Entry
+
+`trend_l2` is the repository's answer to both of those conclusions: stop racing the queue and trade a signal instead. Its
+entry is a limit *at* the touch, and a venue sees a limit at the touch as marketable, so every entry fills as a taker --
+514 of 514 reports on this window, `maker_notional_usd=0`, and the fee paid is the instrument's 5 bps, which is why
+`--maker-fee-rate` does not touch this run at all. `breakeven_maker_rate` prints `0` for the same reason: there is no
+maker notional to divide by. `--post-only` does not make that entry passive; it declines it, 1,814 quotes and no fill:
+
+<!-- toyquant:check
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 trend_l2 1 prorata --fast-validation --inventory-limit=10 --maker-fee-rate=0.0002
+then: submitted_orders=514 trade_reports=514 fees_paid=2.57 maker_fees=0 taker_fees=2.57 maker_trade_count=0 taker_trade_count=514 maker_notional_usd=0 gross_pnl_usd=-0.318271 net_pnl_usd=-2.88827 breakeven_maker_rate=0
+
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 trend_l2 1 prorata --fast-validation --inventory-limit=10 --maker-fee-rate=0.0002 --post-only
+then: submitted_orders=1814 trade_reports=0 post_only_cancels=1814 fees_paid=0 realized_pnl=0
+-->
+
+Two things follow, and the second is why the flag is not the answer here.
+
+1. **A signal that pays the taker on both legs needs 10 bps, not 4.** `cascade_probe.py` measured the strongest member of
+   this family at +6.09 bps gross at 30 s on this same day, and against a 10 bps taker round trip its best net was -3.88.
+   The gross is real; the round trip is what it cannot pay.
+2. **Making it passive is a different order, not a flag.** `--post-only` declines every quote of this strategy because the
+   quote is priced where the trade happens. A passive version has to rest behind the touch and accept a fill probability,
+   which is a strategy with its own entry rule and its own measurement -- the queue model measured in
+   [part 2](history-02-l2.md) is what would price it.
+
