@@ -138,6 +138,15 @@ compatibility path. Everything below assumes that page.
   killed by it. After launching a detached command, ask the shell nothing until its exit file appears. A shell that
   cannot answer `echo` is wedged; recovery is closing the terminal tab, and the state that counts afterwards is what
   `git` says, not what the wedged shell said.
+- **A command whose completion was not observed ends that terminal, not just the command.** Measured twice on
+  2026-11-23 -- once after a live session was typed into the shell, once right after a commit and a log read -- the tool
+  never saw the last command end, kept waiting for the pty, and **every** command typed afterwards refused to execute:
+  `bash .run.sh sh ...` printed nothing, and a bare `date > /tmp/x` wrote no file. The tell is a file the command should
+  have written and did not, so check for it with a read rather than a retype. There is nothing to kill and nothing to
+  retry: read the artifacts (the verb's log, `.git/refs/remotes/origin/main` for whether a push landed), ask for the tab
+  to be restarted, and resume in a fresh shell. A restart costs seconds; typing into a wedged pty costs the rest of the
+  budget and leaves every later claim unverified.
+
 - **A command whose completion is not reported is a stray child, not a lost command.** Measured 2026-11-17: the first
   command of a session (`git log --oneline -5`) opened `less`, the tool waited its full 300 s budget, and the pager was
   still alive when `ps` was read hours later. Before retyping anything, look for the child with

@@ -463,6 +463,25 @@ half hour. The saving is 3.43 bps here and 1.15 to 1.67 bps against the 2026-11-
 depends on how much of the flow would have crossed, and that is not a constant. Both windows reconciled at both ends with
 the position flat (`[RECON] ... position_break=0 status=ok`).
 
+**The width, measured once, and the ratio it exposes.** The quote is two ticks wide by default (`default_spread =
+2 * tick_size`, 0.031 bps at 64k) and sits inside the book's own half-spread. Asking for six ticks moved the fills from
+44 to 24 and the gross from +0.085 to -1.045 bps, with 59 of 100 quotes still marketable on arrival: on this feed a
+wider quote is one that gets picked off, not one that earns more.
+
+| window | width | fees | fills (maker/taker) | gross | net |
+|---|---|---|---|---|---|
+| 02:32 | 2 ticks | 2.21 bps | 44/1 | +0.085 bps | -2.12 bps |
+| 03:05 | 2 ticks, no flag | 5.64 bps | 47/176 | -0.633 bps | -6.27 bps |
+| 03:52 | 6 ticks | 2.00 bps | 24/0 | -1.045 bps | -3.05 bps |
+
+Read as a ratio rather than as three rows. Per unit of filled notional the flagged window captured 0.085 bps against a
+half-spread this instrument measures at 0.101 bps -- **84% of what the book offered** -- while the fee at 2 bps is
+**twenty half-spreads**. A maker cannot earn twenty of them in one fill, and even a perfect capture (100% of the
+half-spread) adds 0.016 bps against the 2. So no width, gate or inventory rule closes this gap; a fee at or below the
+capture, or an instrument whose half-spread *is* the fee, does. That is the fifth closed market of
+`docs/RETROSPECTIVE.md` restated as arithmetic rather than as a loss.
+
+
 The session above is one command now: `bash .run.sh soak post-only` runs `tools/live/soak.sh`, which starts both relays,
 requires `STARTING_CASH` (the probe's `eq`), records the market and the order leg under `<OUT>/<mode>`, and refuses to
 start without the credentials. `baseline` is the same window without the flag, so the two differ in the one thing under

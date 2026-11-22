@@ -17,6 +17,11 @@
 # normal way in; `host:port` tunnels both legs), VENUE, INST_CODE, ORDER_SIZE (10000 engine units = one contract),
 # INVENTORY_LIMIT (10000), MAX_EXPOSURE_USD (1000), MAX_ORDERS (4000), RATE (2), CLOSE_OUT_CROSS_BPS (20).
 #
+# Two knobs exist for the scan this tool was written for: STRATEGY (default `passive_l2`; `active_l2` is the mainline,
+# with the toxicity, weak-flow, volatility and markout gates) and SPREAD_TICKS (empty = the strategy's own width,
+# otherwise `--base-spread-ticks=N`). TAG is appended to every artifact's name, so three widths do not overwrite each
+# other's logs and recordings.
+#
 # The market leg is the venue's public stream through the relay, the order leg is REST through the relay, and both are
 # recorded (`<OUT>/<mode>_trades.csv`, `_depth.csv`, `_orders.csv`) so the window can be replayed afterwards. A session
 # starts *flat*: it asks the venue for its equity first and refuses to run when the answer is not the cash it was given.
@@ -62,6 +67,10 @@ MAX_EXPOSURE_USD="${MAX_EXPOSURE_USD:-1000}"
 MAX_ORDERS="${MAX_ORDERS:-4000}"
 RATE="${RATE:-2}"
 CLOSE_OUT_CROSS_BPS="${CLOSE_OUT_CROSS_BPS:-20}"
+STRATEGY="${STRATEGY:-passive_l2}"
+SPREAD_TICKS="${SPREAD_TICKS:-}"
+TAG="${TAG:-}"
+NAME="${MODE}${TAG}"
 
 [ -x "$BIN" ] || { echo "binary not found: $BIN" >&2; exit 2; }
 [ -x "$RELAY" ] || { echo "relay not found: $RELAY" >&2; exit 2; }
@@ -71,11 +80,11 @@ mkdir -p "$OUT"
 # working session into `frames_received=0`.
 LIFETIME=$((DURATION + 120))
 "$RELAY" --instrument "$INST" --venue-demo --proxy="$PROXY" --listen "127.0.0.1:${PORT}" \
-    --max-seconds "$LIFETIME" > "${OUT}/${MODE}_market_relay.log" 2>&1 &
+    --max-seconds "$LIFETIME" > "${OUT}/${NAME}_market_relay.log" 2>&1 &
 market_relay=$!
 "$RELAY" --instrument "$INST" --order-listen "127.0.0.1:${ORDER_PORT}" --order-rest "$VENUE" \
     --order-inst-code="$INST_CODE" --proxy="$PROXY" --max-seconds "$LIFETIME" \
-    > "${OUT}/${MODE}_order_relay.log" 2>&1 &
+    > "${OUT}/${NAME}_order_relay.log" 2>&1 &
 order_relay=$!
 trap 'kill "$market_relay" "$order_relay" 2>/dev/null; wait 2>/dev/null' EXIT
 sleep 3
@@ -85,16 +94,19 @@ FLAGS=(--fast-validation --ws-seconds="$DURATION" --starting-cash="$STARTING_CAS
        --max-exposure-usd="$MAX_EXPOSURE_USD" --live-orders
        --venue-endpoint="127.0.0.1:${ORDER_PORT}" --venue-max-orders="$MAX_ORDERS"
        --venue-orders-per-second="$RATE" --close-out --close-out-cross-bps="$CLOSE_OUT_CROSS_BPS"
-       --record="${OUT}/${MODE}" --record-orders="${OUT}/${MODE}")
+       --record="${OUT}/${NAME}" --record-orders="${OUT}/${NAME}")
 if [ "$MODE" = "post-only" ]; then
     FLAGS+=(--post-only)
 fi
+if [ -n "$SPREAD_TICKS" ]; then
+    FLAGS+=(--base-spread-ticks="$SPREAD_TICKS")
+fi
 
 # The six positional arguments come first and the flags after them, in the order this binary reads them.
-"$BIN" ws "127.0.0.1:${PORT}" "$INST" passive_l2 1000000 prorata "${FLAGS[@]}" > "${OUT}/${MODE}.log" 2>&1
+"$BIN" ws "127.0.0.1:${PORT}" "$INST" "$STRATEGY" 1000000 prorata "${FLAGS[@]}" > "${OUT}/${NAME}.log" 2>&1
 status=$?
 kill "$market_relay" "$order_relay" 2>/dev/null
 wait 2>/dev/null
-echo "engine=$status mode=$MODE out=$OUT"
-echo "summary: grep -E '^\\[(PNL|PORTFOLIO|EXECUTION|WIND-DOWN|VENUE|RECON)\\]' ${OUT}/${MODE}.log"
+echo "engine=$status mode=$MODE strategy=$STRATEGY spread=${SPREAD_TICKS:-default} out=$OUT"
+echo "summary: grep -E '^\\[(PNL|PORTFOLIO|EXECUTION|WIND-DOWN|VENUE|RECON)\\]' ${OUT}/${NAME}.log"
 exit "$status"
