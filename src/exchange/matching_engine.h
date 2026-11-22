@@ -107,8 +107,14 @@ struct MEOrderBook
 // state.
 enum class OrderQuery : uint8_t
 {
+    // The venue answered that it no longer holds the order. It cannot say whether that is a fill or a cancel, which is
+    // why a recovery counts this bucket rather than interpreting it.
     Unknown = 0,
-    Working
+    Working,
+    // The venue did not answer at all. Kept apart from `Unknown` because a recovery that reads "could not ask" as "gone"
+    // starts a session on top of orders nobody has looked at: measured 2026-11-21, a `PENDING unavailable` reply from the
+    // relay would have counted every inherited order as gone.
+    Unanswered
 };
 
 class IMatchingEngine

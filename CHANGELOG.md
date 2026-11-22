@@ -7,6 +7,47 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## A recovery that could not resolve an order refuses to start (2026-11-22)
+
+- **`OrderQuery` gained a third answer, because two were being asked to mean three things.** `Unknown` was both "the venue
+  answered that it no longer holds this order" (a fill or a cancel, which the venue cannot tell apart) and "nobody
+  answered". A recovery read the second as the first and counted every inherited order as gone -- measured 2026-11-21: a
+  relay that replied `PENDING unavailable` left the session with nothing to cancel and no way to know it.
+- **`LiveVenue::query_order` answers only from a list this client was actually given.** An `unavailable` reply clears the
+  flag, and so does a refresh that times out (`query_timeout_ms`), because a list that predates the question is not an
+  answer to it. It reports `Unanswered` until a fresh list arrives.
+- **`ResumeSummary` counts that bucket** as `orders_unknown` and prints `unknown=<n>` on the `[RESUME]` line, only when it
+  is not zero. `orders` is `live + gone + unknown`; `cancelled` is a subset of `live`.
+- **Both resume sites refuse to start on it** -- the single-book path and the two-book one -- with an error naming the
+  symbol and the count and pointing at `tools/live/okx_probe.py`, before anything quotes. The account is restored and the
+  process exits non-zero; the operator checks the venue with the probe and starts again. This is the fail-closed policy
+  the milestone closes on: an order nobody has looked at is a position the session cannot see.
+- **The exit is not re-sized after a growth, and that is now written down where the growth is detected.** `grew=<units>`
+  means the session no longer knows what it holds, so the session stops and says so -- one attempt, the position left on
+  the ledger -- rather than looping a re-sizing state machine over a venue that has just proved it is faster than the
+  client.
+- **Pinned by** `session_state_test` (a venue that does not answer leaves `orders_unknown=2`, `gone=0`, nothing cancelled,
+  and the count reaches the line) and `live_venue_test` (before any answer, and after `PENDING unavailable`, `query_order`
+  is `Unanswered`; a fresh list is what clears it, and a dropped frame is not a list). No recorded run moved: a healthy
+  recovery prints the line it always did, with no `unknown=` field.
+
+## The demo milestone is closed (2026-11-22)
+
+- **What was proven**: the full live path -- venue market leg, order leg over REST, fill accounting, order state machine,
+  rate and session bounds, and a ledger reconciled against the venue's own statement at both ends of every session.
+  Measured over three five-minute windows: worst `equity_break_usd=-0.00386365`, one session comparing a **nonzero**
+  position with the venue's contract count and agreeing (`venue_units=-1400 ledger_units=-1400 position_break=0`), every
+  transport fault named in a field of its own (`late_fill_reports`, `duplicates`, `refused_by_adapter`, `rate_limited`,
+  `dropped`, and the exit's `refused=1` / `grew=<units>`).
+- **What was not there**: the edge to pay the fee. Gross capture -0.41, +0.92 and +1.07 bps of maker notional against
+  3.36, 3.88 and 3.80 bps charged -- net -3.77, -2.95 and -2.73 bps -- and `[PNL]`'s `breakeven_maker_rate` of -4.09e-05,
+  9.217e-05 and 1.07135e-04 says the same in the venue's language: the line needs a maker fee at or below about one basis
+  point and the demo venue charges two. Recorded as the fifth closed market rather than optimised against, because a fee
+  that is a multiple of the edge is the wall the other four hit.
+- **The three remaining decisions were closed by policy**, not by code: one attempt and stop after a refused or grown
+  exit; refuse to start on an unresolved recovery; record the fee boundary instead of tuning for a positive window. They
+  are in `docs/RETROSPECTIVE.md` with the numbers behind each.
+
 ## A refused exit is not an empty book (2026-11-21)
 
 - **`[WIND-DOWN]` printed `no_liquidity=1` for an order the venue refused.** The summary struct's own comment has always

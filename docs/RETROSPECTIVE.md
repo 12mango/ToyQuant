@@ -78,12 +78,32 @@ own payoff rather than on a cost.
   edge at two standard deviations needs about **506 windows**, two years of daily two-hour sessions.
 * **No quoting parameter moves that ratio by more than twenty percent.** Distance from the touch, quote width, the
   inventory shift, size, the exposure cap, the kill switch and the fee schedule have all been swept.
-* Four markets have therefore been falsified with numbers: crypto perpetuals, the micro E-mini, SPY and the US large
-  cap equities, and in each case the reason is the ratio of the fee and the spread to the inventory's own move.
+* Five markets have therefore been falsified with numbers: crypto perpetuals, the micro E-mini, SPY and the US large
+  cap equities, and in each case the reason is the ratio of the fee and the spread to the inventory's own move. The
+  fifth is the demo account measured live, below.
+* **The demo milestone closed on 2026-11-22: the instrument was proven and the strategy's edge was not there to pay the
+  fee.** Three five-minute live windows through the relay and the operator's proxy: gross capture -0.41, +0.92 and
+  +1.07 bps of maker notional against 3.36, 3.88 and 3.80 bps charged, net -3.77, -2.95 and -2.73 bps (`net_pnl_usd`
+  -23.309, -15.7405, -11.7888). `[PNL]`'s own `breakeven_maker_rate` (-4.09e-05, 9.217e-05, 1.07135e-04) says the same
+  in the venue's language: the line needs a maker fee at or below about one basis point, and the demo venue charges two.
+  What the same three windows establish about the *infrastructure* is the other half: every fill, cancel, refusal, late
+  fill and position reconciled against the venue's own statement at both ends of every session -- worst
+  `equity_break_usd=-0.00386365`, one session comparing a nonzero position to the contract (`-1400` against `-1400`), and
+  every fault named in a field of its own (`late_fill_reports`, `duplicates`, `refused=1`, `grew=<units>`). A cost
+  boundary measured by an instrument that agrees with the venue to a third of a cent is a result, not a failure of the
+  measurement.
 * **The equity line is placed in hibernation rather than continued**, and its reasons are numbers rather than a
   shortage of effort: the fee floor binds on seventy-nine percent of order instances, no swept parameter moves the
   ratio by more than twenty percent, and separating a 941 USD capture from a 10,588 USD position term would take five
   hundred and six windows. The C++ core stays as infrastructure; what is closed is the direction.
+
+## The demo line's three decisions, closed by policy (2026-11-22)
+
+| decision | the policy, and why it is the cheap one |
+|---|---|
+| an exit that did not fill, or a position that grew while it worked | one attempt and stop: `refused=1` or `grew=<units>` says which, the position stays on the ledger, and the operator restarts from a checked account. A re-sizing loop would be a state machine racing a venue that has just shown it is faster than the client |
+| a recovery that could not resolve an inherited order | refuse to start: the query is asked again rather than read as "gone", `orders_unknown` counts it, and the run exits non-zero naming the symbol and the count. `tools/live/okx_probe.py` is what the operator checks the account with before the next start |
+| a strategy whose gross capture is below the fee | recorded, not tuned: the windows above are the answer to the question the line asked, and a sweep is the wall the four earlier markets hit |
 
 ## What is open, and how each would be verified
 

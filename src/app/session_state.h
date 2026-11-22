@@ -62,10 +62,15 @@ struct SessionSnapshot
     static bool from_text(const std::string& text, SessionSnapshot& out, std::string& error);
 };
 
-// What a recovery found, which is one line of the run's output per book. Every order the snapshot listed is
-// resolved into one of two buckets -- the venue still had it and we cancelled it, or the venue did not know it any
-// more -- so the two add up to `orders` and a count that does not add up is a bug rather than a policy. The account's
-// own numbers (`cash_usd`, `legs`) are repeated on every book's line so each line stands alone.
+// What a recovery found, which is one line of the run's output per book. Every order the snapshot listed is resolved
+// into one of three buckets -- the venue still had it, the venue did not know it any more, or the venue did not answer --
+// so `live`, `gone` and `unknown` add up to `orders` and a count that does not add up is a bug rather than a policy.
+// `cancelled` is a subset of `live`: the ones the second query confirmed are no longer working.
+//
+// `unknown` is the bucket a session may not start on. It is not an interpretation of a negative answer; it is the absence
+// of an answer, and the caller refuses to trade while it is not zero, because the alternative is a session managing an
+// order nobody has looked at. The account's own numbers (`cash_usd`, `legs`) are repeated on every book's line so each
+// line stands alone.
 struct ResumeSummary
 {
     std::string symbol;
@@ -74,6 +79,9 @@ struct ResumeSummary
     uint64_t orders_live{0};
     uint64_t orders_gone{0};
     uint64_t cancelled{0};
+    // Orders this recovery could not establish the state of: the venue did not answer the query, before the cancel or
+    // after it. Counted rather than guessed, and the run refuses to start while it is not zero.
+    uint64_t orders_unknown{0};
     double cash_usd{0.0};
     uint64_t legs{0};
     uint64_t next_order_id{1};

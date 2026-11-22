@@ -723,7 +723,19 @@ void Application::run_l2_session_mode() const
                 "--snapshot-in against a live venue needs the venue's pending-orders query: run the relay's order "
                 "leg with --order-rest (a simulated venue has no list to ask)");
         for (const ResumeSummary& summary : resume_session(snapshot, portfolio, {{instrument.symbol, venue}}))
+        {
             logger.log("[RESUME] ", summary.to_log_string());
+            // Fail closed: an order the venue did not answer about is an order nobody has looked at, and a session that
+            // starts on top of one is managing a position it cannot see. Refusing here is cheaper than any recovery --
+            // the operator runs `tools/live/okx_probe.py all`, takes the account back to flat or confirms it, and starts
+            // again. Measured 2026-11-21: a relay that answered `PENDING unavailable` used to count every inherited
+            // order as gone, which is the same session starting blind.
+            if (summary.orders_unknown != 0)
+                throw std::runtime_error(
+                    "the venue did not answer about " + std::to_string(summary.orders_unknown) + " order(s) of " +
+                    summary.symbol +
+                    "; refusing to start on top of them -- check the account with tools/live/okx_probe.py and run again");
+        }
         resumed = std::move(snapshot);
     }
     // The venue's account against the ledger's opening balance, before anything is quoted. A fresh run opens at
@@ -1250,7 +1262,16 @@ void Application::run_multi_book_mode() const
         if (!read_snapshot(to_abs_path(cfg_.snapshot_in_path), snapshot, snapshot_error))
             throw std::invalid_argument(snapshot_error);
         for (const ResumeSummary& summary : resume_session(snapshot, portfolio, venues))
+        {
             logger.log("[RESUME] ", summary.to_log_string());
+            // The same refusal as the single-book path, and for the same reason: each leg's orders are resolved at its own
+            // venue, and an order one of them did not answer about is a position nobody has looked at.
+            if (summary.orders_unknown != 0)
+                throw std::runtime_error(
+                    "the venue did not answer about " + std::to_string(summary.orders_unknown) + " order(s) of " +
+                    summary.symbol +
+                    "; refusing to start on top of them -- check the account with tools/live/okx_probe.py and run again");
+        }
         resumed = std::move(snapshot);
     }
 

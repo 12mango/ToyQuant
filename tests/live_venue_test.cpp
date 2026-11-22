@@ -476,9 +476,9 @@ int main()
     {
         RecordingTransport wire;
         LiveVenue venue(wire, LiveVenueConfig{.query_timeout_ms = 0});
-        // No snapshot yet: the answer is the venue's last word, which is nothing, and asking does not go to the
-        // wire -- a caller may be inside the gateway's own walk over its in-flight table.
-        assert(venue.query_order(7) == OrderQuery::Unknown);
+        // No snapshot yet: nobody has asked the venue, so the answer is that it has not said -- not that the order is
+        // gone. Asking does not go to the wire either; a caller may be inside the gateway's own walk over its table.
+        assert(venue.query_order(7) == OrderQuery::Unanswered);
         assert(wire.frames.empty());
         assert(venue.on_frame("PENDING 2 7 9"));
         assert(venue.counters().pending_answers == 1);
@@ -500,15 +500,22 @@ int main()
     }
 
     // An answer that cannot be given is not an empty set, and a malformed query answer is dropped rather than read as
-    // one: `PENDING unavailable` leaves the previous list in place and marks it stale.
+    // one: `PENDING unavailable` leaves the previous list in place and marks it stale -- and the staleness is what
+    // `query_order` reports, so a recovery refuses to start instead of counting every inherited order as gone.
     {
         RecordingTransport wire;
         LiveVenue venue(wire, LiveVenueConfig{.query_timeout_ms = 0});
         assert(venue.on_frame("PENDING 1 7"));
+        assert(venue.query_order(7) == OrderQuery::Working);
         assert(venue.on_frame("PENDING unavailable"));
+        assert(venue.query_order(7) == OrderQuery::Unanswered);
+        // A complete list is what clears it, and only a list: the dropped frames below are not answers.
         assert(!venue.on_frame("PENDING 3 7"));
         assert(!venue.on_frame("PENDING 1 not-a-number"));
+        assert(venue.query_order(7) == OrderQuery::Unanswered);
         assert(venue.counters().frames_dropped == 2);
+        assert(venue.on_frame("PENDING 1 7"));
+        assert(venue.query_order(7) == OrderQuery::Working);
         assert(venue.on_frame("EQUITY unavailable"));
         assert(!venue.venue_equity_usd().has_value());
         assert(venue.on_frame("EQUITY 998.5"));

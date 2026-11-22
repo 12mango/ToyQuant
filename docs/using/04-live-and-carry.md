@@ -651,7 +651,10 @@ had, and `LiveVenue::query_order` answers from the venue's `GET /api/v5/trade/or
 the recovery asks and again after each cancel (`settle_queries`), because a venue answers a cancel on its own
 connection. The rule is the simulator's: a working order is cancelled, a forgotten one is counted, and `[RESUME]` prints
 both. If the venue does not answer the first query the run refuses to resume, naming the relay's `--order-rest`,
-because assuming "none working" would leave every inherited order alive.
+because assuming "none working" would leave every inherited order alive. The same refusal covers the answer that arrives
+late: an order the venue did not reply about is counted as `unknown=` on the `[RESUME]` line, and any `unknown` above
+zero ends the run before it quotes -- the operator confirms the account with `tools/live/okx_probe.py` and starts again,
+which is cheaper than any recovery this side could invent.
 
 **The recovery pair, measured on 2026-11-17.** A replay with `--live-orders` wrote `[SNAPSHOT] orders=1`; the
 `--snapshot-in` run printed `[RESUME] orders=1 live=0 gone=1 cancelled=0` -- the venue had already let the order go, so

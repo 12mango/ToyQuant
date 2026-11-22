@@ -664,6 +664,11 @@ WindDownSummary Pipeline::send_close_order(uint64_t ts)
     // A quote that filled while the exit was working is a position on the other side, and the subtraction above reads it
     // as nothing having closed. Saying so is the difference between a report and a rumour: the exit did not meet an empty
     // book, it lost a race it cannot win.
+    //
+    // Deliberately not re-sized and re-sent: a growth during the close means the session no longer knows what it holds,
+    // and the answer this project chose is to stop and say so -- one attempt, the position left on the ledger, the line
+    // naming it -- rather than to loop a re-sizing state machine over a venue that has just proved it is faster than the
+    // client. The operator reads the line and restarts from a checked account.
     const int64_t grew = std::llabs(after) - std::llabs(position);
     if (grew > 0)
     {

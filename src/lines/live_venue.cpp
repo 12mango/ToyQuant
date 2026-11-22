@@ -467,6 +467,11 @@ bool LiveVenue::refresh_pending()
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
+        // No answer inside the budget is the same fact as an `unavailable` one: nobody has told this client what the
+        // venue holds. It is cleared here so `query_order` reports that, rather than answering the recovery from a list
+        // that predates the question.
+        std::lock_guard<std::mutex> lock(query_mutex_);
+        pending_available_ = false;
     }
     ++counters_.pending_failures;
     return false;
@@ -581,5 +586,10 @@ std::string LiveVenue::venue_coin() const
 OrderQuery LiveVenue::query_order(uint64_t order_id) const
 {
     std::lock_guard<std::mutex> lock(query_mutex_);
-    return pending_complete_ && pending_.count(order_id) != 0 ? OrderQuery::Working : OrderQuery::Unknown;
+    // The two negatives are different facts and the caller acts differently on them: an order the venue no longer holds
+    // is resolved, while a venue that did not answer leaves the recovery blind -- and a session that starts on top of an
+    // order nobody has looked at is the failure a `PENDING unavailable` used to become. The list a stale answer left
+    // behind is not an answer to this question, so it is not read as one.
+    if (!pending_available_) return OrderQuery::Unanswered;
+    return pending_.count(order_id) != 0 ? OrderQuery::Working : OrderQuery::Unknown;
 }

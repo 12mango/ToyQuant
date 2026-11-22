@@ -325,6 +325,9 @@ std::string ResumeSummary::to_log_string() const
     stream << "symbol=" << symbol << " last_ts=" << last_ts << " orders=" << orders
            << " live=" << orders_live << " gone=" << orders_gone << " cancelled=" << cancelled
            << " cash_usd=" << cash_usd << " legs=" << legs << " next_order_id=" << next_order_id;
+    // Printed only when it is not zero, like the other fault fields: a recovery that could not resolve an order is the
+    // one line a reader has to see, and a `unknown=0` in every healthy run would bury it.
+    if (orders_unknown != 0) stream << " unknown=" << orders_unknown;
     return stream.str();
 }
 
@@ -391,7 +394,17 @@ std::vector<ResumeSummary> resume_session(
             // The query says whether the venue still holds the order and nothing else: filled and cancelled both
             // come back as unknown, which is why the second bucket is counted rather than interpreted. A fill that
             // happened while nobody was listening shows up against the venue's own statement, not here.
-            if (venue.query_order(order.id) != OrderQuery::Working)
+            //
+            // A query the venue did not answer is a third case and is neither: counted on its own, and left alone -- the
+            // order may still be working, so cancelling it would be an action without an answer, and calling it gone
+            // would start the session blind. The caller refuses to trade while one of these is counted.
+            const OrderQuery state = venue.query_order(order.id);
+            if (state == OrderQuery::Unanswered)
+            {
+                ++summary.orders_unknown;
+                continue;
+            }
+            if (state != OrderQuery::Working)
             {
                 ++summary.orders_gone;
                 continue;
@@ -402,8 +415,13 @@ std::vector<ResumeSummary> resume_session(
             // answer has been applied; the in-process engine's is a no-op and its state is already new.
             venue.settle_queries();
             // The order is asked about again, because a cancel that did not take is a recovery that did not finish:
-            // `cancelled` is the count that says so, and it can be smaller than `live`.
-            if (venue.query_order(order.id) != OrderQuery::Working) ++summary.cancelled;
+            // `cancelled` is the count that says so, and it can be smaller than `live`. A second query the venue does not
+            // answer leaves the cancel unverified, which is the same reason to refuse to start as the first.
+            const OrderQuery after = venue.query_order(order.id);
+            if (after == OrderQuery::Unanswered)
+                ++summary.orders_unknown;
+            else if (after != OrderQuery::Working)
+                ++summary.cancelled;
         }
         summaries.push_back(std::move(summary));
     }

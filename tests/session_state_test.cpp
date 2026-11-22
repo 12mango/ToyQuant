@@ -72,6 +72,9 @@ class AsyncVenue : public IMatchingEngine
     void set_report_callback(ReportCallback) override {}
     OrderQuery query_order(uint64_t order_id) const override
     {
+        // A venue that does not answer is the case the recovery must not read as "gone": `Answering = false` is the
+        // shape of a `PENDING unavailable` reply.
+        if (!answering) return OrderQuery::Unanswered;
         return working_.count(order_id) != 0 ? OrderQuery::Working : OrderQuery::Unknown;
     }
     void settle_queries() override
@@ -84,6 +87,7 @@ class AsyncVenue : public IMatchingEngine
     std::unordered_set<uint64_t> working_{1, 2};
     std::unordered_set<uint64_t> cancel_requests_;
     int settles_{0};
+    bool answering{true};
 };
 }  // namespace
 
@@ -342,6 +346,38 @@ int main()
         assert(summaries[0].cancelled == 2);
         assert(venue.settles_ == 2);  // once after each cancel, before the second query
         assert(venue.working_.empty());
+    }
+
+    // A venue that does not answer leaves the recovery blind, and the summary counts that as its own bucket rather than
+    // calling the orders gone: the run that resumes from this refuses to start, which is the only safe answer to a
+    // question nobody answered. Nothing is cancelled either -- acting on an order whose state is unknown is the failure
+    // the bucket exists to prevent.
+    {
+        AsyncVenue silent_venue;
+        silent_venue.answering = false;
+        SessionSnapshot snapshot;
+        snapshot.account.cash = 1000.0;
+        SessionBook book;
+        book.symbol = "BTC-PERPETUAL";
+        book.last_ts = 12;
+        book.next_order_id = 3;
+        book.working_orders = {{.id = 1, .symbol = "BTC-PERPETUAL"},
+                               {.id = 2, .symbol = "BTC-PERPETUAL"}};
+        snapshot.books.push_back(book);
+        Portfolio account(1, 1000.0, 10.0);
+        const std::vector<ResumeSummary> summaries =
+            resume_session(snapshot, account, {{"BTC-PERPETUAL", &silent_venue}});
+        assert(summaries.size() == 1);
+        assert(summaries[0].orders == 2);
+        assert(summaries[0].orders_unknown == 2);
+        assert(summaries[0].orders_gone == 0);
+        assert(summaries[0].orders_live == 0);
+        assert(summaries[0].cancelled == 0);
+        assert(silent_venue.cancel_requests_.empty());
+        assert(silent_venue.settles_ == 0);
+        // The count reaches the line, because it is the one field a reader has to see: a healthy recovery prints no
+        // `unknown=` at all.
+        assert(summaries[0].to_log_string().find(" unknown=2") != std::string::npos);
     }
 
     // The single-book format this project wrote first is still read, because a restart reads a file an older build

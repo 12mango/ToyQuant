@@ -745,7 +745,10 @@ int main()
     resting.on_engine_line("CANCEL 11");
     assert(wait_for([&placement]
                     { return placement.last_body().find("\"clOrdId\":\"11\"") != std::string::npos; }));
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    // No sleep here: `on_engine_line` is synchronous on this route -- the placement, the cancel and the answer all happen
+    // inside the call -- so anything the route was going to write has been written by the time it returns. The line is
+    // asserted absent rather than waited out, which is both faster and a stronger check: a bug that wrote it would be
+    // caught rather than given a hundred milliseconds to arrive late.
     assert(!rest_port.contains("CANCELED 11 user"));
     state.push_cancel("11");
     assert(wait_for([&rest_port] { return rest_port.contains("CANCELED 11 user"); }));

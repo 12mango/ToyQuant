@@ -170,9 +170,10 @@ class LiveVenue : public IMatchingEngine
     bool on_frame(std::string_view frame);
 
     // Asks the venue which of this adapter's orders are still working, and waits for the answer up to
-    // `config_.query_timeout_ms`. The answer is what `query_order` reads, and a failure leaves the previous
-    // answer in place rather than replacing a list with nothing: a recovery that cannot ask must not conclude
-    // that the venue holds no orders.
+    // `config_.query_timeout_ms`. The answer is what `query_order` reads. A failure keeps the last list it was given --
+    // replacing a set with nothing would be a conclusion nobody reached -- and clears the flag that says the venue has
+    // answered about the current question, so `query_order` reports `Unanswered` rather than answering from a list that
+    // predates it.
     bool refresh_pending();
 
     // The same for the account's equity, in USD. False when the venue did not answer; the value is then left as
@@ -247,8 +248,10 @@ class LiveVenue : public IMatchingEngine
     mutable std::mutex query_mutex_;
     std::unordered_set<uint64_t> pending_;
     bool pending_complete_{false};
-    // Whether the last `PENDING` answer was a list rather than `unavailable`: a refresh returns this, while
-    // `query_order` keeps reading the last complete list, because "could not ask" must not mean "none working".
+    // Whether the venue's last reply about that set was a list rather than `unavailable`, and whether a refresh
+    // succeeded: `query_order` answers only from a list this client was actually given, and reports `Unanswered`
+    // otherwise. That is the difference between "the venue says it is gone" and "nobody has said" -- a recovery that
+    // confuses them starts a session on top of orders nobody has looked at.
     bool pending_available_{false};
     // Each answer bumps its generation, so a wait can tell a fresh answer from the one it already had. `unavailable`
     // bumps it too: it is an answer, and the caller should stop waiting for one that will not come.
