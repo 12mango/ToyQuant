@@ -71,6 +71,7 @@ STRATEGY="${STRATEGY:-passive_l2}"
 SPREAD_TICKS="${SPREAD_TICKS:-}"
 TAG="${TAG:-}"
 NAME="${MODE}${TAG}"
+ARTIFACT="${OUT}/${NAME}"
 
 [ -x "$BIN" ] || { echo "binary not found: $BIN" >&2; exit 2; }
 [ -x "$RELAY" ] || { echo "relay not found: $RELAY" >&2; exit 2; }
@@ -80,11 +81,11 @@ mkdir -p "$OUT"
 # working session into `frames_received=0`.
 LIFETIME=$((DURATION + 120))
 "$RELAY" --instrument "$INST" --venue-demo --proxy="$PROXY" --listen "127.0.0.1:${PORT}" \
-    --max-seconds "$LIFETIME" > "${OUT}/${NAME}_market_relay.log" 2>&1 &
+    --max-seconds "$LIFETIME" > "${ARTIFACT}_market_relay.log" 2>&1 &
 market_relay=$!
 "$RELAY" --instrument "$INST" --order-listen "127.0.0.1:${ORDER_PORT}" --order-rest "$VENUE" \
     --order-inst-code="$INST_CODE" --proxy="$PROXY" --max-seconds "$LIFETIME" \
-    > "${OUT}/${NAME}_order_relay.log" 2>&1 &
+    > "${ARTIFACT}_order_relay.log" 2>&1 &
 order_relay=$!
 trap 'kill "$market_relay" "$order_relay" 2>/dev/null; wait 2>/dev/null' EXIT
 sleep 3
@@ -94,7 +95,7 @@ FLAGS=(--fast-validation --ws-seconds="$DURATION" --starting-cash="$STARTING_CAS
        --max-exposure-usd="$MAX_EXPOSURE_USD" --live-orders
        --venue-endpoint="127.0.0.1:${ORDER_PORT}" --venue-max-orders="$MAX_ORDERS"
        --venue-orders-per-second="$RATE" --close-out --close-out-cross-bps="$CLOSE_OUT_CROSS_BPS"
-       --record="${OUT}/${NAME}" --record-orders="${OUT}/${NAME}")
+       --record="${ARTIFACT}" --record-orders="${ARTIFACT}")
 if [ "$MODE" = "post-only" ]; then
     FLAGS+=(--post-only)
 fi
@@ -102,11 +103,10 @@ if [ -n "$SPREAD_TICKS" ]; then
     FLAGS+=(--base-spread-ticks="$SPREAD_TICKS")
 fi
 
-# The six positional arguments come first and the flags after them, in the order this binary reads them.
-"$BIN" ws "127.0.0.1:${PORT}" "$INST" "$STRATEGY" 1000000 prorata "${FLAGS[@]}" > "${OUT}/${NAME}.log" 2>&1
+# The six positional arguments come first and the flags after them, in the order this binary reads them. The EXIT trap
+# stops the relays, so nothing here repeats that.
+"$BIN" ws "127.0.0.1:${PORT}" "$INST" "$STRATEGY" 1000000 prorata "${FLAGS[@]}" > "${ARTIFACT}.log" 2>&1
 status=$?
-kill "$market_relay" "$order_relay" 2>/dev/null
-wait 2>/dev/null
 echo "engine=$status mode=$MODE strategy=$STRATEGY spread=${SPREAD_TICKS:-default} out=$OUT"
-echo "summary: grep -E '^\\[(PNL|PORTFOLIO|EXECUTION|WIND-DOWN|VENUE|RECON)\\]' ${OUT}/${NAME}.log"
+echo "summary: grep -E '^\\[(PNL|PORTFOLIO|EXECUTION|WIND-DOWN|VENUE|RECON)\\]' ${ARTIFACT}.log"
 exit "$status"

@@ -7,6 +7,26 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The two gates in one command, and the terminal out of the path (2026-11-23)
+
+- **`tools/study/fee_gate_table.py`.** One row per instrument with both gates a strategy review asks about: the fee
+  against the half-spread at the trades (`screen_spread.measure`) and `R_max` against its 71-print reference
+  (`venue_ratio.measure`). It imports the two measures rather than recomputing them, so each ratio keeps one definition
+  in the tree; `venue_ratio`'s clip loop is now `fill_ratios`, shared by its own main and the new tool.
+- **What the join says that neither half did.** On the three tracked mbp-10 windows the screen's numbers reproduce
+  exactly (half spreads 1.5, 0.5 and 2.5 ticks; fee/half-spread 0.23, 0.70 and 0.14) and the capture gate disagrees with
+  the spread gate on SPY -- 255 prints a fill against a spread that is not three fees wide. A wide book that barely
+  moves is a different instrument from a tight one that moves, which is why both gates are printed.
+- **`viability.py --derive` confirms nothing moved**: `r_max recorded=56 measured=56` and `checked 8 recorded verdicts, 0
+  mismatch`.
+- **The terminal left the execution path.** It lost a command's end four times on 2026-11-23, each time dropping every
+  later command for about twenty minutes. `.run.sh daemon` and `.run.sh queue <verb>` make a request a file that a
+  detached loop executes through the same `start()`, and `.run.sh job <name> '<command>'` gives a long inspection its own
+  verb name so two can run at once. Verified while the terminal was wedged: a `status` and two jobs were enqueued by
+  writing files and both ran.
+- `tools/live/soak.sh` loses a duplicated `kill`/`wait` (the EXIT trap owns it) and reads its artifact prefix from one
+  variable.
+
 ## A live session is a verb, and add-liquidity-only gets its baseline (2026-11-23)
 
 - **`tools/live/soak.sh`, started as `bash .run.sh soak <post-only|baseline>`.** The 300 s `ws` shape had been typed into

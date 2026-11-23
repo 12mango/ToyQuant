@@ -146,6 +146,17 @@ compatibility path. Everything below assumes that page.
   retry: read the artifacts (the verb's log, `.git/refs/remotes/origin/main` for whether a push landed), ask for the tab
   to be restarted, and resume in a fresh shell. A restart costs seconds; typing into a wedged pty costs the rest of the
   budget and leaves every later claim unverified.
+- **A terminal fault gets a post-mortem, and the fix has to be structural.** Measured three times on 2026-11-23 (the
+  earlier bullet's two, and one more after a `status` that had succeeded): the shell integration stops reporting a
+  command's end, the tool waits for the pty, and every later command is dropped while the work itself runs on. Ruled out
+  by measurement rather than by guess: the pager (the runner exports `GIT_PAGER=cat`), descriptor inheritance (`run.sh`
+  and `detach.sh` both `setsid` with `</dev/null`), and a stray child (`ps` showed none in the two cases that were
+  checked). What is left is the completion detector, which the tree cannot fix -- so the tree stopped depending on it:
+  `.run.sh daemon` is one `setsid` loop with no terminal, and `.run.sh queue <verb> [args]` hands it a request **as a
+  file**, which it executes through the same `start()`. Enqueuing is therefore a file write, and a wedged pty costs
+  nothing. Verified the same day: a `status` request written by an editor rather than a shell executed and left its log.
+  The order in a session is: start the daemon once, then enqueue. A fault that returns after a fix means the fix was
+  descriptive, not preventive, and the next one gets the same treatment instead of another restart.
 
 - **A command whose completion is not reported is a stray child, not a lost command.** Measured 2026-11-17: the first
   command of a session (`git log --oneline -5`) opened `less`, the tool waited its full 300 s budget, and the pager was

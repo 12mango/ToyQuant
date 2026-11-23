@@ -78,6 +78,25 @@ def measure(rows, multiplier):
             "sigma": sigma}
 
 
+def fill_ratios(stats, clips, *, fee_per_unit, min_commission, extra_per_unit=0.0,
+                regulatory_rate=0.0, rebate_per_unit=0.0):
+    """Fill `stats` with one R_max per clip and the best of them, which is the number the ranking uses.
+
+    The cost a unit is the account's charge on one order instance -- the commission floor binding below 100 shares at
+    0.35 with a 0.0035 rate -- so the clip is an argument rather than a constant. A clip whose cost exceeds the half
+    spread has no ratio at all: `None` rather than a negative number, because a negative fill ratio is not a small one.
+    """
+    for clip in clips:
+        cost = (max(min_commission, fee_per_unit * clip) / clip
+                + extra_per_unit + regulatory_rate * stats["premium"]
+                - rebate_per_unit)
+        margin = stats["half_usd"] - cost
+        stats[f"rmax_{clip:g}"] = (stats["prints"] * margin / stats["sigma"]) if margin > 0 else None
+    best = [(stats[f"rmax_{clip:g}"], clip) for clip in clips if stats[f"rmax_{clip:g}"] is not None]
+    stats["best"] = max(best)[0] if best else None
+    return stats
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -106,14 +125,9 @@ def main():
             if stats is None:
                 continue
             stats["symbol"] = symbol
-            for clip in clips:
-                cost = (max(args.min_commission, args.fee_per_unit * clip) / clip
-                        + args.extra_per_unit + args.regulatory_rate * stats["premium"]
-                        - args.rebate_per_unit)
-                margin = stats["half_usd"] - cost
-                stats[f"rmax_{clip:g}"] = (stats["prints"] * margin / stats["sigma"]) if margin > 0 else None
-            best = [(stats[f"rmax_{clip:g}"], clip) for clip in clips if stats[f"rmax_{clip:g}"] is not None]
-            stats["best"] = max(best)[0] if best else None
+            fill_ratios(stats, clips, fee_per_unit=args.fee_per_unit,
+                        min_commission=args.min_commission, extra_per_unit=args.extra_per_unit,
+                        regulatory_rate=args.regulatory_rate, rebate_per_unit=args.rebate_per_unit)
             measured.append(stats)
 
     header = "| instrument | prints | median spread | half spread a unit | sigma a unit |"

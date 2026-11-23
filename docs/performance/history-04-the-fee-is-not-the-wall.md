@@ -766,3 +766,23 @@ These are commands rather than marked blocks: each reads a multi-million-row fil
 is the reason the walk-forward and the cascade pass are commands too. Both inputs are tracked, so every number here is
 re-derivable from the command line beside it.
 
+The two gates are joined in one command -- `tools/study/fee_gate_table.py`, which imports `screen_spread.measure` and
+`venue_ratio.measure` rather than recomputing either:
+
+```bash
+python3 tools/study/fee_gate_table.py --input 'data/v2/equities/xnas_mbp10_*.csv*' --clip 1,100
+```
+
+| instrument | half spread at trades | fee a side | fee / half spread | spread gate | R_max | ratio gate |
+|---|---:|---:|---:|---|---:|---|
+| AAPL | 1.500 ticks | 0.350 ticks | 0.23 | pass | 1273 | pass |
+| SPY | 0.500 ticks | 0.350 ticks | 0.70 | fail | 255 | pass |
+| TSLA | 2.500 ticks | 0.350 ticks | 0.14 | pass | 1164 | pass |
+
+Two things the join adds. **The gates disagree on SPY**, which is why both exist: its spread is not three fees wide
+(0.70, a failure) while its capture against its own move clears the 71-print reference (255). A wide book that barely
+moves is a different instrument from a tight one that moves. And the two ratios read different spreads on purpose:
+`R_max` uses the median of the book -- SPY's two ticks -- while the spread gate uses the rows where trades print, one
+tick, because a resting quote is filled where trades print rather than at the median of the book.
+
+

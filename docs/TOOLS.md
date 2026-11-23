@@ -75,6 +75,7 @@ does not.
 | `tools/study/screen_spread.py` | symbols whose half spread could absorb a fee | hand |
 | `tools/study/slice_pnl.py` | the same maker per slice, as two joinable tables | both |
 | `tools/study/venue_ratio.py` | instruments ranked by capture against their own move | hand |
+| `tools/study/fee_gate_table.py` | both gates in one row: the fee against the spread, and R_max against its reference, imported from the two tools above rather than recomputed | hand |
 | `tools/study/viability.py` | the eight closed lines, re-derived | gate |
 | `tools/study/volatility_window.py` | a windowed true range and its median split | both |
 | `tools/study/walk_forward.py` | chosen on the past, scored on the next window | both |
