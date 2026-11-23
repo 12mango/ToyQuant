@@ -13,8 +13,8 @@ site now points at `ToyQuant`.
   marked out -0.75, -0.33, -0.29, -0.05 and +0.76 ticks, and gross -0.45 to -0.79 bps of maker notional against 2.2 to
   3.2 bps of fee: the fill is adversely selected on four of the five and the gross is negative on all five.
 - **The third condition is a data question and cannot move a sign.** The bar asked for three windows; the tracked data
-  holds one session per name, and a second session would be a fetch. It cannot pass the bar either, because the first
-  two conditions are signs and both point the same way on every run.
+  holds one session per name, and a second one is a paid Databento download rather than a run. It cannot pass the bar
+  either, because the first two conditions are signs and both point the same way on every run.
 - **What would reopen it is a measurement, not a parameter**: a markout that is positive in the same test, which would say
   the fill is informed rather than selected. Width, age and clip have all been moved and none of them touches the sign.
 

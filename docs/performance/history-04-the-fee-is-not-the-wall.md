@@ -775,11 +775,13 @@ windows -- the five runs fail on the two conditions a window cannot have too few
 (-0.45 to -0.79 bps of maker notional) while the fee is 2.2 to 3.2 bps, of which 37 to 53 percent is the per-order floor,
 and the markout after the fill is negative on four of the five (-0.05 to -0.75 ticks), so the handoff a passive entry buys
 is one the other side chose. The third condition -- three windows -- is unmet for a reason outside the strategy: the tracked
-data is one session per name, so a second one is a fetch. It cannot change the verdict either, because the first two
-conditions are signs and both point the wrong way on every run: the passive entry moved the question from "the fee eats a
-positive capture" to "the signal's capture is negative and the fee is on top", which is the shape the low-turnover reversion
-line was already closed on. What would reopen it is a measurement rather than a parameter -- a markout that is positive in
-the same test, which would say the fill is informed rather than selected -- and not a width, an age or a clip.
+data is one session per name, so a second one is a paid Databento download, not a run
+([the data page](../DATA.md) prices a window before it spends anything, and the converted files under `data/v2/` are not
+tracked). It cannot change the verdict either, because the first two conditions are signs and both point the wrong way on
+every run: the passive entry moved the question from "the fee eats a positive capture" to "the signal's capture is negative
+and the fee is on top", which is the shape the low-turnover reversion line was already closed on. What would reopen it is a
+measurement rather than a parameter -- a markout that is positive in the same test, which would say the fill is informed
+rather than selected -- and not a width, an age or a clip.
 
 ```bash
 python3 tools/study/fee_gate_table.py --input 'data/v2/equities/xnas_mbp10_*.csv*' --clip 1,100
