@@ -1386,6 +1386,45 @@ and **no spend**. It is a command rather than a marked block for the reason the 
 takes about a minute, and `fast` is the check every edit pays for -- a measurement that answers a question when the answer
 is being written does not belong in it.
 
+### The two cells the screen had never been run on (2026-11-23)
+
+The screen above was run on equities and on options, and the two cells it had not touched were the names the equity
+limit hides -- shares under twenty dollars, where one cent is two to fifty basis points -- and the perpetuals the demo
+line does not trade. Both were screened against the same two pre-registered numbers: a half spread of at least three
+times the fee per side where the trades print, and at least 2.8 trade prints a second.
+
+**Small caps: the spread half passes and the floor does not, again.** Seven names, XNAS top of book, the same two hours,
+**0.053662 USD** of credit: IONQ's spread at the trades is **3.494** times the round turn of the account's own schedule
+and FCEL's **3.874**, so the fee half is met by two of the seven -- and they trade **1.473** and **0.594** prints a
+second against the floor's 2.8. The other five (SOUN, RGTI, QBTS, PLUG, LCID) are one tick wide at 2.03 to 2.06 and fail
+both halves. That is JNUG's shape exactly: the wide spread and the flow are in different names.
+
+**Perpetuals: one instrument passes both halves, and it is the first one since AAPL and TSLA.** The venue's public
+tickers route answers without a key and returns 548 two-sided swaps, of which **107 quote a half spread at or above the
+2 bps it charges to rest while trading at least a million dollars a day** -- so the "19.8 half-spreads" bound is a
+property of `BTC-USDT-SWAP`, not of the venue. Twenty book samples a second apart, the real venue's own book:
+
+| instrument | median half spread | ratio to 2 bps | prints in 13:30-15:30 UTC, per second | the floor, 2.8 |
+|---|---:|---:|---:|---|
+| `UP-USDT-SWAP` | 8.51 bps | 4.25 | 3.21 | **pass** |
+| `DOS-USDT-SWAP` | 7.40 bps | 3.70 | 0.38 | fail |
+| `SKY-USDT-SWAP` | 5.84 bps | 2.92 | 0.52 | fail |
+| `BTC-USDT-SWAP` | 0.01 bps | 0.00 | 37.10 | pass |
+
+The prints come from the free daily trade archive (`tools/fetch/fetch_okx_trades.py`, one day, one symbol per file, the
+day cut on UTC+8), counted inside the window the equity screen uses so the two tables are judged by one number.
+
+**What it says, and what it does not.** A passer is a candidate and not a result: the last two symbols to pass this
+screen were AAPL and TSLA, and the measurement that followed them -- five own-side runs -- failed on the markout on four
+and on the gross on all five. `UP-USDT-SWAP` is the same kind of candidate one asset class away, and the question that
+decides it is unchanged: does the fill get picked off at 8.51 bps of half spread, which is a queue-model measurement and
+not a screen. What this does settle is the denominator of the demo line's bound: the demo venue's own `spread_bps` is
+0.101 while the real `BTC-USDT-SWAP` book quotes **0.01**, so the 19.8 half-spreads measured on the demo understates
+what a quote on the real venue faces by about ten times. A demo number is about the demo.
+
+A live snapshot is not a series, and none of the four rows above is a marked block: the book sample is taken by hand and
+the trade archive is a download, so both are reproducible by a reader and neither is a number the gate can re-derive.
+
 ### Line 8 executed: the low turnover rule, and the dispersion that replaces the verdict
 
 The rule was fixed before any window was read, because the point of it is to be falsifiable rather than tuned: a one

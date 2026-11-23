@@ -7,6 +7,21 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The two screen cells that had never been run (2026-11-23)
+
+- **Small caps: the spread half passes, the activity floor does not.** Seven names under twenty dollars for 0.053662 USD of
+  credit: IONQ's spread at the trades is 3.494 times the round turn of the account's own schedule and FCEL's 3.874, and
+  they trade 1.473 and 0.594 prints a second against the pre-registered 2.8; the other five are one tick wide and fail
+  both halves. JNUG's shape, one price band down.
+- **Perpetuals: one instrument passes both, and the bound was a property of BTC.** The venue's public tickers route
+  returns 548 two-sided swaps, 107 of them with a half spread at or above the 2 bps it charges while trading at least a
+  million dollars a day. Sampled a second apart, `UP-USDT-SWAP` quotes 8.51 bps (4.25 times the fee) at 3.21 prints a
+  second, which passes both halves; DOS and SKY pass the spread and trade 0.38 and 0.52 prints a second.
+- **The demo's book understates the real one by ten times.** `BTC-USDT-SWAP` at the venue quotes a 0.01 bps half spread
+  against the demo window's `spread_bps=0.101`, so the demo's 19.8 half-spreads is a number about the demo.
+- Recorded in `docs/archive/studies.md` with no marked block: a live snapshot and a downloaded archive are not numbers the
+  gate can re-derive, and the section says so rather than implying a check it does not have.
+
 ## The fee tier, and the cascade window (2026-11-23)
 
 - **A one-basis-point maker tier does not save the demo line.** The breakeven maker rate is the gross minus the exit's
