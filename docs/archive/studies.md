@@ -1402,7 +1402,7 @@ both halves. That is JNUG's shape exactly: the wide spread and the flow are in d
 **Perpetuals: one instrument passes both halves, and it is the first one since AAPL and TSLA.** The venue's public
 tickers route answers without a key and returns 548 two-sided swaps, of which **107 quote a half spread at or above the
 2 bps it charges to rest while trading at least a million dollars a day** -- so the "19.8 half-spreads" bound is a
-property of `BTC-USDT-SWAP`, not of the venue. Twenty book samples a second apart, the real venue's own book:
+property of `BTC-USDT-SWAP`, not of the venue. Twenty book samples spread over ninety seconds, the real venue's own book:
 
 | instrument | median half spread | ratio to 2 bps | prints in 13:30-15:30 UTC, per second | the floor, 2.8 |
 |---|---:|---:|---:|---|
