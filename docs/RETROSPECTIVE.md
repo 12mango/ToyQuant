@@ -86,6 +86,10 @@ own payoff rather than on a cost.
   +1.07 bps of maker notional against 3.36, 3.88 and 3.80 bps charged, net -3.77, -2.95 and -2.73 bps (`net_pnl_usd`
   -23.309, -15.7405, -11.7888). `[PNL]`'s own `breakeven_maker_rate` (-4.09e-05, 9.217e-05, 1.07135e-04) says the same
   in the venue's language: the line needs a maker fee at or below about one basis point, and the demo venue charges two.
+  The structural ceiling is lower still, and it is a ratio rather than a window: the half-spread this instrument
+  measures is 0.101 bps (the 2026-11-17 window's `[WIND-DOWN] spread_bps`), so a maker that captured a *whole* half-spread
+  on every fill would still pay twenty times the fee it collects -- 2.00 / 0.101 = 19.8, and the same table for four
+  markets is in [the fee history](performance/history-04-the-fee-is-not-the-wall.md#the-ratio-across-the-markets-this-repository-owns).
   What the same three windows establish about the *infrastructure* is the other half: every fill, cancel, refusal, late
   fill and position reconciled against the venue's own statement at both ends of every session -- worst
   `equity_break_usd=-0.00386365`, one session comparing a nonzero position to the contract (`-1400` against `-1400`), and

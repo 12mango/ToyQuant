@@ -736,3 +736,33 @@ must carry to earn its spread, and no quoting parameter changes either of the tw
 that is left is the venue, where the same arithmetic comes out differently, and `docs/ROADMAP.md` now carries the
 test for one rather than a preference between them.
 
+
+## The Ratio, Across the Markets This Repository Owns
+
+One ratio decides the sign before any strategy does: the fee per side divided by the half-spread a fill can collect. It
+is unit-free, so it compares a perpetual with an equity, and a tenth of a dollar with a cent:
+
+| market | half-spread at the trades | fee per side | fee / half-spread |
+|---|---:|---:|---:|
+| BTC-USDT-SWAP, demo, live | 0.101 bps | 2.00 bps | **19.8** |
+| SPY | 0.5 tick | 0.35 tick | 0.70 |
+| AAPL | 1.5 ticks | 0.35 tick | 0.23 |
+| TSLA | 2.5 ticks | 0.35 tick | 0.14 |
+
+The first row is the instrument this project has been trading, and both of its numbers are measurements: the half-spread
+is the `[WIND-DOWN] spread_bps=0.101008` of the 2026-11-17 live window, and the fee is the venue's 2 bps maker rate. The
+last three come from `tools/study/screen_spread.py --input data/v2/equities/xnas_mbp10_<symbol>_2026-09-29_1330_1530.csv`
+(symbols of 2.2M, 841k and 475k rows, 28,592, 55,052 and 49,368 trades), which computes the spread where the trades
+print rather than the median of the book, and the default 0.0035 USD a share.
+
+The screen's own pre-registered bar is this ratio the other way round -- a half-spread of at least three fees, i.e. a
+ratio at or below 0.33 -- and the screen section above records it passing AAPL and TSLA and failing SPY. What the first
+row adds is the size of the gap on the demo's instrument: **twenty half-spreads per fill**, so a maker that collected a
+whole half-spread every time would still pay twenty times its best case. That is why its five live windows are all
+negative and why a width sweep, a taker-free execution layer and the toxicity gates moved none of them: on that
+instrument the fee is not paid out of the spread, it is twenty spreads.
+
+These are commands rather than marked blocks: each reads a multi-million-row file and takes about twenty seconds, which
+is the reason the walk-forward and the cascade pass are commands too. Both inputs are tracked, so every number here is
+re-derivable from the command line beside it.
+

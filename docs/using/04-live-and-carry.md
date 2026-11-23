@@ -474,12 +474,13 @@ wider quote is one that gets picked off, not one that earns more.
 | 03:05 | 2 ticks, no flag | 5.64 bps | 47/176 | -0.633 bps | -6.27 bps |
 | 03:52 | 6 ticks | 2.00 bps | 24/0 | -1.045 bps | -3.05 bps |
 
-Read as a ratio rather than as three rows. Per unit of filled notional the flagged window captured 0.085 bps against a
-half-spread this instrument measures at 0.101 bps -- **84% of what the book offered** -- while the fee at 2 bps is
-**twenty half-spreads**. A maker cannot earn twenty of them in one fill, and even a perfect capture (100% of the
-half-spread) adds 0.016 bps against the 2. So no width, gate or inventory rule closes this gap; a fee at or below the
-capture, or an instrument whose half-spread *is* the fee, does. That is the fifth closed market of
-`docs/RETROSPECTIVE.md` restated as arithmetic rather than as a loss.
+Read as a ratio rather than as three rows. The fee and the half-spread are both rates on the same notional, so they
+compare directly: 2.00 bps charged against a half-spread this instrument measures at 0.101 bps, which is **19.8
+half-spreads**. A maker that captured *the whole* half-spread on every fill would still be twenty times short of the
+fee, so no width, gate or inventory rule closes this gap; a fee at or below the capture, or an instrument whose
+half-spread is the fee, does. The windows agree with the arithmetic -- the best of them collected +1.07 bps of gross
+against 3.80 charged -- but the gross figure is a whole-window mark that includes the inventory's own drift, so the
+half-spread ratio, not the gross, is the bound that no strategy work moves.
 
 
 The session above is one command now: `bash .run.sh soak post-only` runs `tools/live/soak.sh`, which starts both relays,
