@@ -7,6 +7,20 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## An acknowledgement that trails a fill is not a fault (2026-11-23)
+
+- **`OrderLedger::mark_resting` no longer refuses an acknowledgement of an order that already filled part of itself.**
+  The engine reports a marketable limit as a fill and then as resting its remainder, and the state machine's linear
+  order (Pending, Resting, PartiallyFilled) cannot express "filled, then rested", so the second acknowledgement was
+  counted as a backwards transition: 5,889 of a 12,000-order run, with those orders' queue measurements lost.
+- **What the fix changed in a run.** `invalid_order_transitions` is absent from `[EXECUTION]` (zero, printed only when
+  non-zero) and `queue_profile_orders` rises from 0 to 5,889 -- the acknowledgements that had been swallowed, now read
+  once each: on the same window, 517 of them joined a level that was already cleared.
+- **The rule is now stated where it is checked**: an acknowledgement moves an order to Resting only from Pending; on a
+  working order it applies its fields once and leaves the state; a terminal order keeps its state, because the report
+  was accounted for elsewhere (a late fill, an orphan). `order_state_test` pins the repeat, the trailing acknowledgement
+  and the engine's own order of events.
+
 ## A passive entry for the trend line, and what the conditional fill costs (2026-11-23)
 
 - **`--trend-entry=side=own[,ticks=N][,max_age=VIEWS][,cooldown=VIEWS]`.** The trend line's clip is priced on our own

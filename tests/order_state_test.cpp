@@ -163,9 +163,10 @@ int main()
     ledger.on_report(partial, 0, quality, 1, 0.0, 0.0);
     assert(ledger.order_state(100) == OrderLedger::OrderState::PartiallyFilled);
 
-    // A second Resting report cannot move a partially filled order backwards.
+    // A second Resting report is the same fact again and cannot move a partially filled order backwards; it is not a
+    // state-machine fault either, and the counter stays where it was.
     ledger.mark_resting(resting, queue_engine, quality);
-    assert(quality.invalid_order_transitions == 1);
+    assert(quality.invalid_order_transitions == 0);
     assert(ledger.order_state(100) == OrderLedger::OrderState::PartiallyFilled);
 
     const ExecutionReport filled{.order_id = 100,
@@ -179,11 +180,40 @@ int main()
     ledger.on_report(filled, 0, quality, 1, 0.0, 0.0);
     assert(!ledger.order_state(100).has_value());
     assert(quality.audited_filled_orders == 1);
-    assert(quality.invalid_order_transitions == 1);
+    assert(quality.invalid_order_transitions == 0);
 
     // The audit is closed, so the same terminal report again is an orphan, not a second transition.
     ledger.on_report(filled, 0, quality, 1, 0.0, 0.0);
     assert(quality.orphan_order_reports == 1);
+    {
+        // The engine's own shape for a marketable limit: part of it fills, then the remainder is reported resting.
+        // That is not a backwards transition -- the state machine's linear order cannot express "filled, then
+        // rested" -- and the acknowledgement still records the queue the remainder joined behind.
+        ExecutionQualityMetrics marketable_quality;
+        test_support::TempFile ack_orders_file("order_state_ack_orders.csv");
+        test_support::TempFile ack_trades_file("order_state_ack_trades.csv");
+        std::ofstream ack_orders = ack_orders_file.open();
+        std::ofstream ack_trades = ack_trades_file.open();
+        OrderLedger marketable(ack_orders, ack_trades);
+        marketable.open_order(200, 0, marketable_quality);
+        marketable.on_report(ExecutionReport{.order_id = 200,
+                                            .side = exchange::Side::Buy,
+                                            .exec_type = ExecType::Trade,
+                                            .symbol = "TEST",
+                                            .price = 100.0,
+                                            .quantity = 4,
+                                            .ts = 1,
+                                            .owner = "MarketMaker"},
+                             0, marketable_quality, 1, 0.0, 0.0);
+        assert(marketable.order_state(200) == OrderLedger::OrderState::PartiallyFilled);
+        ExecutionReport late_ack = resting;
+        late_ack.order_id = 200;
+        marketable.mark_resting(late_ack, queue_engine, marketable_quality);
+        assert(marketable_quality.invalid_order_transitions == 0);
+        assert(marketable.order_state(200) == OrderLedger::OrderState::PartiallyFilled);
+    }
+
+
 
     // A fill for an order this process placed, arriving after the report that ended it: the live venue's
     // `sCode 51400` sequence, where the cancel is answered and the fill that made the order unfillable follows. It

@@ -208,7 +208,20 @@ void OrderLedger::mark_resting(const ExecutionReport& report, IMatchingEngine& e
     const auto resting_audit = order_audit_.find(report.order_id);
     if (resting_audit == order_audit_.end()) return;
     OrderAudit& audit = resting_audit->second;
-    if (!transition(audit.state, OrderState::Resting, quality)) return;
+    // A terminal order keeps its state: the report was accounted for elsewhere (a fill after the ending is a late
+    // fill, a second ending is an orphan), and an acknowledgement cannot reopen it.
+    if (audit.state == OrderState::Filled || audit.state == OrderState::Cancelled ||
+        audit.state == OrderState::Rejected)
+        return;
+    // An acknowledgement moves an order to Resting only if it has not been accepted yet. The engine reports a
+    // marketable limit as a fill and then as resting with its remainder -- the state machine's linear order
+    // (Pending, Resting, PartiallyFilled) cannot express "filled, then rested" -- so a repeat, and an acknowledgement
+    // that trails a fill, leaves the state where it is. Counting those as backwards transitions made a 12,000-order
+    // run report 5,889 of them, which is what a normal shape must not do.
+    if (audit.state == OrderState::Pending) transition(audit.state, OrderState::Resting, quality);
+    // The queue this order joined behind, read once, at the first acknowledgement: the level exists only while one of
+    // our orders rests in it, and a later acknowledgement would read a book that has moved on.
+    if (audit.profiling) return;
     audit.profiling = true;
     audit.symbol = report.symbol;
     audit.side = report.side == exchange::Side::Buy ? Side::Buy : Side::Sell;

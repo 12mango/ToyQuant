@@ -160,7 +160,9 @@ stateDiagram-v2
 | PartiallyFilled | `Rejected` | Rejected | the remainder was refused |
 | Filled / Cancelled / Rejected | a `Trade` for an id this process placed | no state | `late_fill_reports`: the venue answered the cancel before it sent the fill |
 | Filled / Cancelled / Rejected | any other report | no state | counted in `orphan_order_reports` |
-| any open state | a backwards event, e.g. `Resting` after a fill | no state | counted in `invalid_order_transitions` |
+| any open state | a backwards event, e.g. `Filled` after `Cancelled` | no state | counted in `invalid_order_transitions` |
+| Pending | `Resting` | Resting | the acknowledgement is the acceptance |
+| Resting / PartiallyFilled | `Resting` | unchanged | a repeat, or the remainder of a marketable limit resting after its fill: applied without moving the state, and not a fault |
 
 The three terminal states all run the same cleanup: release the quantity the position gate reserved, close
 the audit entry and remove the order from the strategy's open set. A `Rejected` is not a `Cancelled`: it
