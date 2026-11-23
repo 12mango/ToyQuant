@@ -763,9 +763,12 @@ Four things the runs say, and the second is why the flag had to exist before the
    percent of the fee, because the conservative model fills about 24 shares per order -- so the order size does not move
    the floor and the rate is the whole cost only when the *fill* reaches 100 shares.
 4. **The touch entry is a warning rather than a control.** Eleven thousand taker fills lose 56,732 USD gross on the same
-   window and the run reports `invalid_order_transitions=5889`: the ledger counts a report for an order it has already
-   closed, which is a cancel and a fill racing in one event. That is a defect on the taker path rather than a baseline,
-   and it is recorded here as one.
+   window, and the run reported `invalid_order_transitions=5889`. The cause was found afterwards and it is not the taker
+   path: the engine reports a marketable limit as a fill and then as resting its remainder, and the ledger counted that
+   second acknowledgement as a backwards transition. An acknowledgement no longer moves an order that has filled part of
+   itself (`824588e`), the field is absent on the same window afterwards, and `queue_profile_orders` rises from 0 to
+   5,889 -- the queue readings those acknowledgements carry, of which 517 joined a level that was already cleared. The
+   56,732 USD is therefore a clean measurement of a taker entry, not a defective one.
 
 By the criterion registered before the run -- net at least +2 bps, markout at least +4 bps, three windows -- this square
 does not clear it, and the five runs say why in one line: **the gross is negative on every name** (-0.45 to -0.79 bps of

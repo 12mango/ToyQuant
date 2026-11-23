@@ -226,9 +226,9 @@ void OrderLedger::mark_resting(const ExecutionReport& report, IMatchingEngine& e
     audit.symbol = report.symbol;
     audit.side = report.side == exchange::Side::Buy ? Side::Buy : Side::Sell;
     audit.price = report.price;
-    // The queue this order joined behind. The engine has just created the level, and the level exists
-    // only while one of our orders rests in it, which is why both ends of the measurement are taken
-    // while the order is still there.
+    // Taken here and not at the cancel: the engine erases a level once no order rests in it, so a reading after the
+    // order is gone would report an empty queue for a level that was not empty. This is the number that says how much
+    // queue was still in front of a quote when it filled.
     audit.queue_at_rest = engine.queue_ahead_at(audit.symbol, audit.side, audit.price);
     audit.min_queue_ahead = audit.queue_at_rest;
 }
