@@ -743,30 +743,37 @@ test for one rather than a preference between them.
 `max_age` cancels an entry nobody hit. Three runs on the same two-hour window, `--order-size=100`, the equity schedule
 (`min=0.35,regulatory=0.0000206,clearing=0.0002,audit=0.000003,rebate=0.0013`), `conservative`:
 
-| run | fills | fill rate | captured edge | markout a share | fees USD | of which the floor | gross USD | net USD |
+| run | order size | fills | fill rate | captured edge | markout a share | fees USD | of which the floor | net |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| AMD, own side | 722 | 1.1% | +7.63 ticks | **-0.75 ticks** | 229.24 | 102.10 | -24.07 | -253.31 |
-| AAPL, own side | 652 | 2.9% | +1.67 ticks | **-0.33 ticks** | 157.68 | 82.96 | -135.17 | -292.85 |
-| AMD, touch (control) | 11,597 | 55.7% | -12.74 ticks | +13.02 ticks | 6,779.98 | 2,347.14 | -56,731.9 | -63,511.9 |
+| AMD, own side | 100 | 722 | 1.1% | +7.63 ticks | -0.75 ticks | 229.24 | 45% | -0.28 bps |
+| AAPL, own side | 100 | 652 | 2.9% | +1.67 ticks | -0.33 ticks | 157.68 | 53% | -0.69 bps |
+| AMD, own side | 500 | 781 | 0.33% | +7.43 ticks | -0.29 ticks | 266.73 | 37% | -1.01 bps |
+| AAPL, own side | 500 | 760 | 1.0% | +1.44 ticks | -0.05 ticks | 192.20 | 45% | -1.04 bps |
+| TSLA, own side | 500 | 1,800 | 0.84% | +0.96 ticks | **+0.76 ticks** | 508.57 | 45% | -0.76 bps |
+| AMD, touch (warning) | 100 | 11,597 | 55.7% | -12.74 ticks | +13.02 ticks | 6,779.98 | -- | -63,511.9 USD |
 
 Four things the runs say, and the second is why the flag had to exist before the question could be answered.
 
-1. **The passive entry works mechanically.** `taker_trade_count=0` in both own-side runs: the clip rests, the fee is the
+1. **The passive entry works mechanically.** `taker_trade_count=0` in every own-side run: the clip rests, the fee is the
    maker rate plus the per-order floor, and nothing reaches the book as an aggressor.
-2. **The fill is adversely selected, which is the whole question.** The capture at the fill is positive (+7.63 and +1.67
-   ticks) and the markout after it is negative (-0.75 and -0.33): the fill arrives when the move is about to stop. That
-   is the conditional-fill bias, and it is now a printed field rather than an argument.
-3. **The floor, not the rate, is half the bill.** 20-share average fills leave 380 of 722 and 326 of 652 order instances
-   under the 0.35 commission floor -- 45 and 53 percent of the fee. A clip has to fill 100 shares before the rate is the
-   whole cost.
+2. **The fill is adversely selected on four of the five.** The capture at the fill is positive (+0.96 to +7.63 ticks) and
+   the markout after it is negative on AMD and AAPL (-0.75, -0.33, -0.29, -0.05) and positive only on TSLA (+0.76). The
+   conditional-fill bias is real and is now a printed field; TSLA is the one name where the move continued.
+3. **The floor follows the fill, not the order.** Raising the clip from 100 to 500 shares left the floor at 37 to 45
+   percent of the fee, because the conservative model fills about 24 shares per order -- so the order size does not move
+   the floor and the rate is the whole cost only when the *fill* reaches 100 shares.
 4. **The touch entry is a warning rather than a control.** Eleven thousand taker fills lose 56,732 USD gross on the same
-   window and the run reports `invalid_order_transitions=5889`: a partial taker fill answered by a cancel is a state this
-   line does not model, so the comparison is between the two passive runs and the closing rule, not with that run.
+   window and the run reports `invalid_order_transitions=5889`: the ledger counts a report for an order it has already
+   closed, which is a cancel and a fill racing in one event. That is a defect on the taker path rather than a baseline,
+   and it is recorded here as one.
 
 By the criterion registered before the run -- net at least +2 bps, markout at least +4 bps, three windows -- this square
-does not clear it: the markout is negative on both names, and the net is negative on both. Two names and one session each
-is not three windows, so the honest sentence is "the pair that was measured fails on the markout", not "the family is
-closed"; a third name and a second session are what would close it. `fee_gate_table.py` is how the names are chosen.
+does not clear it, and the five runs say why in one line: **the gross is negative on every name** (-0.45 to -0.79 bps of
+maker notional) while the fee is 2.2 to 3.2 bps, of which 37 to 53 percent is the per-order floor. So the passive entry
+moved the question from "the fee eats a positive capture" to "the signal's capture is negative and the fee is on top",
+which is the shape the low-turnover reversion line was already closed on. Five runs on three names with one session each
+is still not the "three windows" the criterion asks for, so the recorded sentence is "the measured runs fail on the
+gross and the markout", not "the family is closed".
 
 ```bash
 python3 tools/study/fee_gate_table.py --input 'data/v2/equities/xnas_mbp10_*.csv*' --clip 1,100
