@@ -174,6 +174,7 @@ StrategyFactoryConfig Application::strategy_config(const InstrumentSpec& instrum
         .flatten_band_units = cfg_.flatten_band,
         .min_spread_ticks_override = cfg_.min_spread_ticks,
         .trend = cfg_.trend,
+        .trend_entry = cfg_.trend_entry,
         .execution = StrategyFactoryConfig::ExecutionParams{
             .side = cfg_.parent_side,
             .quantity = cfg_.parent_quantity,
@@ -409,6 +410,7 @@ void Application::run_replay_mode() const
                                       .edge_cover_ticks_override = cfg_.edge_cover_ticks,
                                       .min_spread_ticks_override = cfg_.min_spread_ticks,
                                       .trend = cfg_.trend,
+                                      .trend_entry = cfg_.trend_entry,
                                       .execution = StrategyFactoryConfig::ExecutionParams{
                                           .side = cfg_.parent_side,
                                           .quantity = cfg_.parent_quantity,

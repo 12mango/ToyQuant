@@ -108,6 +108,10 @@ struct AppConfig
     // The non-market-making signal. A run that does not name --trend-params leaves `set` false and the
     // strategy's own defaults in force.
     TrendParams trend{};
+    // Where that line's entry is priced, from --trend-entry=side=own,ticks=1,max_age=200,cooldown=60. Every key is
+    // optional and the defaults leave the touch entry and the unbounded order in force, so every recorded trend
+    // number keeps the behaviour it was taken with.
+    TrendEntryParams trend_entry{};
     // Quote placement, as a half-spread in ticks: 1 puts the quote at the venue touch, 2 is the
     // default the recorded runs use. 0 means "use the default". It exists because the fill count is
     // dominated by where the quote sits, and that has to be measurable rather than argued about.

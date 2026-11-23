@@ -53,6 +53,8 @@ struct StrategyFactoryConfig
     double min_spread_ticks_override = 0.0;
     // The non-market-making signal, from --trend-params. `set` false leaves the strategy's own defaults.
     TrendParams trend{};
+    // Where that line's entry is priced, from --trend-entry. The defaults are the touch entry every recorded run had.
+    TrendEntryParams trend_entry{};
     // The execution line's parent order, from --parent and --algo. A side of Unknown means no parent, which is
     // what every strategy name except execution_l2 expects.
     struct ExecutionParams

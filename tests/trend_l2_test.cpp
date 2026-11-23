@@ -20,6 +20,16 @@ L2MarketView view_at(double mid)
     return view;
 }
 
+// A view with the spread chosen by the test, for the entries that are priced inside it.
+L2MarketView view_between(double bid, double ask)
+{
+    L2MarketView view;
+    view.symbol = "TEST";
+    view.top = TopOfBook{bid, 100, ask, 100};
+    view.micro_price = (bid + ask) / 2.0;
+    return view;
+}
+
 struct Harness
 {
     explicit Harness(TrendL2Config config) : strategy(config) {}
@@ -27,6 +37,17 @@ struct Harness
     std::vector<StrategyOrder> on(double mid)
     {
         auto orders = strategy.on_l2_market_view(view_at(mid));
+        for (StrategyOrder& order : orders)
+        {
+            order.order_id = next_id++;
+            strategy.on_order_submitted(order);
+        }
+        return orders;
+    }
+
+    std::vector<StrategyOrder> on_view(const L2MarketView& view)
+    {
+        auto orders = strategy.on_l2_market_view(view);
         for (StrategyOrder& order : orders)
         {
             order.order_id = next_id++;
@@ -251,6 +272,105 @@ int main()
         assert(h.strategy.working_order_count() == 0);
         assert(h.on(100.15).empty());
         assert(!h.on(100.20).empty());
+    }
+
+    {
+        // A passive entry is priced on our own side, one tick inside a wide spread, and it never crosses; when the
+        // spread is a single tick there is no room inside it, so the clip sits on the bid.
+        const auto warm = [](Harness& h, double spread)
+        {
+            for (int index = 0; index < 4; ++index)
+                h.on_view(view_between(100.0 - spread / 2.0, 100.0 + spread / 2.0));
+        };
+        Harness wide(TrendL2Config{.order_size = 10,
+                                   .max_position = 10,
+                                   .tick_size = 0.5,
+                                   .fast_views = 2,
+                                   .slow_views = 4,
+                                   .entry_ticks = 0.5,
+                                   .exit_ticks = 0.2,
+                                   .stop_ticks = 5.0,
+                                   .max_holding_views = 100,
+                                   .own_side_entry = true,
+                                   .entry_improve_ticks = 1.0});
+        warm(wide, 1.0);
+        const auto inside = wide.on_view(view_between(100.0, 102.0));
+        assert(inside.size() == 1 && inside[0].side == Side::Buy);
+        assert(std::abs(inside[0].price - 100.5) < 1e-9);
+        assert(inside[0].price < 102.0);
+
+        Harness tight(TrendL2Config{.order_size = 10,
+                                    .max_position = 10,
+                                    .tick_size = 0.5,
+                                    .fast_views = 2,
+                                    .slow_views = 4,
+                                    .entry_ticks = 0.5,
+                                    .exit_ticks = 0.2,
+                                    .stop_ticks = 5.0,
+                                    .max_holding_views = 100,
+                                    .own_side_entry = true,
+                                    .entry_improve_ticks = 1.0});
+        warm(tight, 0.5);
+        const auto clamped = tight.on_view(view_between(100.75, 101.25));
+        assert(clamped.size() == 1);
+        assert(std::abs(clamped[0].price - 100.75) < 1e-9);
+    }
+    {
+        // An entry that nobody hit is cancelled once it reaches the age limit, and the cancel is the age rule's rather
+        // than the book moving: the same view is repeated, so the quote still matches the book.
+        Harness h(TrendL2Config{.order_size = 10,
+                                .max_position = 10,
+                                .tick_size = 0.5,
+                                .fast_views = 2,
+                                .slow_views = 4,
+                                .entry_ticks = 0.05,
+                                .exit_ticks = 0.02,
+                                .stop_ticks = 5.0,
+                                .max_holding_views = 100,
+                                .own_side_entry = true,
+                                .entry_improve_ticks = 1.0,
+                                .max_order_age_views = 1,
+                                .entry_cooldown_views = 0});
+        for (int index = 0; index < 4; ++index) h.on_view(view_between(99.5, 100.5));
+        const auto first = h.on_view(view_between(100.0, 102.0));
+        assert(first.size() == 1);
+        assert(h.strategy.cancel_requests().empty());          // the view that placed it does not cancel it
+        assert(h.on_view(view_between(100.0, 102.0)).empty()); // working, so no second clip
+        assert(h.strategy.cancel_requests().size() == 1);      // one view later it has aged out
+        assert(h.strategy.working_order_count() == 1);         // the cancel is a request, not a state change
+    }
+    {
+        // After an entry ages out, the next one waits the cooldown rather than chasing the same book.
+        Harness h(TrendL2Config{.order_size = 10,
+                                .max_position = 10,
+                                .tick_size = 0.5,
+                                .fast_views = 2,
+                                .slow_views = 4,
+                                .entry_ticks = 0.05,
+                                .exit_ticks = 0.02,
+                                .stop_ticks = 5.0,
+                                .max_holding_views = 100,
+                                .own_side_entry = true,
+                                .entry_improve_ticks = 1.0,
+                                .max_order_age_views = 1,
+                                .entry_cooldown_views = 1});
+        for (int index = 0; index < 4; ++index) h.on_view(view_between(99.5, 100.5));
+        const auto first = h.on_view(view_between(100.0, 102.0));
+        assert(first.size() == 1);
+        assert(h.on_view(view_between(100.0, 102.0)).empty());
+        assert(h.strategy.cancel_requests().size() == 1);
+        h.strategy.on_order_update(ExecutionReport{.order_id = first[0].order_id,
+                                                   .side = exchange::Side::Buy,
+                                                   .exec_type = ExecType::Cancelled,
+                                                   .symbol = "TEST",
+                                                   .price = first[0].price,
+                                                   .quantity = first[0].quantity,
+                                                   .ts = 0,
+                                                   .owner = "MarketMaker",
+                                                   .cancel_reason = CancelReason::User});
+        assert(h.strategy.working_order_count() == 0);
+        assert(h.on_view(view_between(100.0, 102.0)).empty());   // still cooling down
+        assert(!h.on_view(view_between(100.0, 102.0)).empty());  // and then the next clip goes out
     }
 
     return 0;

@@ -26,9 +26,14 @@ gap falls inside `exit_ticks` of zero, the target is flat. Nothing is decided un
 `slow_views` views, so the first decisions are not made on an average that is still just the first price.
 
 The position is reached in clips of `order_size` at the opposite touch, which the engine fills as a taker.
-A working order is left alone until it fills, the touch moves away, or the target changes; each of those is a
-cancel and the next view sends the next clip. The target is a position, not a quote, so there is no queue
-model to argue about here.
+`own_side_entry` moves that clip onto our own side of the book instead: `entry_improve_ticks` inside the touch and never
+through it, so the order rests and a fill pays the maker rate. It is the mode a directional signal needs when the fee is
+the wall, because the touch entry pays the taker rate by construction -- measured 2026-11-23, 514 of 514 fills -- and it
+is off by default, so every recorded trend number keeps the behaviour it was taken with. A passive entry also needs a
+bound: `max_order_age_views` cancels an entry nobody hit and `entry_cooldown_views` is the wait afterwards, so a market
+that ran away is not chased by re-quoting at the new price. A working order is left alone until it fills, the touch moves
+away, the age limit fires, or the target changes; each of those is a cancel and the next view sends the next clip. The
+target is a position, not a quote, so there is no queue model to argue about here.
 
 Three exits sit above the signal. A stop when the midpoint has moved `stop_ticks` against the entry, a time
 stop after `max_holding_views`, and the signal's own exit band. The first two raise `risk_pause_count`, which
@@ -59,6 +64,16 @@ struct TrendL2Config
     // refusal and is capped; zero retries on the next view, which was the old behaviour.
     uint64_t rejection_backoff_views{60};
     uint64_t max_rejection_backoff_views{3840};
+    // Where the entry is priced. False, the default, is the opposite touch: the engine fills it as a taker, which is
+    // what every recorded trend run did. True prices it on our own side instead, `entry_improve_ticks` inside the
+    // touch and never through it, so the order rests and the fill pays the maker rate.
+    bool own_side_entry{false};
+    double entry_improve_ticks{1.0};
+    // Views a working entry may live before it is cancelled, and the views to wait afterwards. 0 leaves the old rule:
+    // the order lives until it fills or the market moves away. A passive entry needs the bound, because the order
+    // nobody hit is the one whose signal has already failed.
+    uint64_t max_order_age_views{0};
+    uint64_t entry_cooldown_views{0};
 };
 
 class TrendL2Strategy : public Strategy
@@ -108,6 +123,10 @@ class TrendL2Strategy : public Strategy
     void update_signal(double mid);
     void update_target(double mid);
     bool stop_hit(double mid) const;
+    // The price this line would quote on the current view, clamped so a passive entry never reaches the opposite
+    // touch. Placing and deciding whether a working order still matches the book read the same function, because a
+    // cancel rule written against a different reference is a quote that cancels itself on the next view.
+    double entry_price(Side side, const TopOfBook& top) const;
     void request_cancel_all();
     void schedule_rejection_backoff();
 
@@ -124,6 +143,9 @@ class TrendL2Strategy : public Strategy
     uint64_t rejection_wait_{0};
     uint64_t retry_after_view_{0};
     std::unordered_map<uint64_t, StrategyOrder> open_orders_;
+    // The view each working order was submitted on, for the age limit. Kept beside the orders rather than in them,
+    // because `StrategyOrder` is what the pipeline hands around and this is the strategy's own bookkeeping.
+    std::unordered_map<uint64_t, uint64_t> submitted_view_;
     SubmittedOrders submitted_orders_;
     int64_t target_at_submit_{0};
     bool cancel_pending_{false};
@@ -213,6 +235,15 @@ inline void TrendL2Strategy::update_target(double mid)
     }
 }
 
+inline double TrendL2Strategy::entry_price(Side side, const TopOfBook& top) const
+{
+    const bool buy = side == Side::Buy;
+    if (!config_.own_side_entry) return buy ? top.ask_price : top.bid_price;
+    const double improve = config_.entry_improve_ticks * config_.tick_size;
+    return buy ? std::min(top.bid_price + improve, top.ask_price - config_.tick_size)
+               : std::max(top.ask_price - improve, top.bid_price + config_.tick_size);
+}
+
 inline void TrendL2Strategy::request_cancel_all()
 {
     cancel_pending_ = !open_orders_.empty();
@@ -241,9 +272,22 @@ inline std::vector<StrategyOrder> TrendL2Strategy::on_l2_market_view(const L2Mar
         for (const auto& entry : open_orders_)
         {
             const StrategyOrder& order = entry.second;
-            const double touch = order.side == Side::Buy ? view.top.ask_price : view.top.bid_price;
-            if (std::abs(order.price - touch) >= config_.tick_size)
+            // The quote a working order should be at now, computed by the same function that placed it: a cancel rule
+            // written against a different reference (the touch, in the passive mode) would fire on the order's own
+            // improve distance. Moving away is a cancel, which is the "do not chase" rule -- the next entry, if
+            // there is one, is priced from the new book rather than followed up.
+            const double expected = entry_price(order.side, view.top);
+            const bool moved_away = std::abs(order.price - expected) >= config_.tick_size;
+            const auto submitted = submitted_view_.find(order.order_id);
+            const bool aged_out = config_.max_order_age_views > 0 && submitted != submitted_view_.end() &&
+                                  views_ - submitted->second >= config_.max_order_age_views;
+            if (moved_away || aged_out)
             {
+                // An entry that aged out is not re-sent on the next view either: the wait is the whole point of the
+                // bound, and an exit (target 0) is never delayed by it. `cooldown_views` counts the views skipped, so
+                // 0 re-enters on the next view and 1 skips exactly one.
+                if (aged_out && config_.entry_cooldown_views > 0)
+                    retry_after_view_ = views_ + config_.entry_cooldown_views + 1;
                 request_cancel_all();
                 break;
             }
@@ -264,7 +308,7 @@ inline std::vector<StrategyOrder> TrendL2Strategy::on_l2_market_view(const L2Mar
         std::min<uint64_t>(config_.order_size, static_cast<uint64_t>(difference));
     if (quantity == 0) return orders;
 
-    const double price = buy ? view.top.ask_price : view.top.bid_price;
+    const double price = entry_price(buy ? Side::Buy : Side::Sell, view.top);
     orders.emplace_back(buy ? Side::Buy : Side::Sell, view.symbol.str(), price, quantity, 0);
     return orders;
 }
@@ -272,6 +316,7 @@ inline std::vector<StrategyOrder> TrendL2Strategy::on_l2_market_view(const L2Mar
 inline void TrendL2Strategy::on_order_submitted(const StrategyOrder& order)
 {
     open_orders_[order.order_id] = order;
+    submitted_view_[order.order_id] = views_;
     submitted_orders_.note(order.order_id);
     target_at_submit_ = target_;
     rejection_wait_ = 0;
@@ -316,6 +361,7 @@ inline void TrendL2Strategy::on_order_update(const ExecutionReport& report)
     if (is_terminal(report.exec_type))
     {
         open_orders_.erase(report.order_id);
+        submitted_view_.erase(report.order_id);
         // A user cancel or an IOC expiry is expected and may be re-quoted on the next view. A venue cancel,
         // a self-trade prevention or a client timeout is the venue telling the strategy that its state or
         // its flow is wrong, so it takes the same backoff as a rejection.

@@ -737,6 +737,47 @@ that is left is the venue, where the same arithmetic comes out differently, and 
 test for one rather than a preference between them.
 
 
+## The Passive Entry, Measured (2026-11-23)
+
+`--trend-entry=side=own` puts the clip on our own side of the book, `ticks` inside the touch and never through it, and
+`max_age` cancels an entry nobody hit. Three runs on the same two-hour window, `--order-size=100`, the equity schedule
+(`min=0.35,regulatory=0.0000206,clearing=0.0002,audit=0.000003,rebate=0.0013`), `conservative`:
+
+| run | fills | fill rate | captured edge | markout a share | fees USD | of which the floor | gross USD | net USD |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| AMD, own side | 722 | 1.1% | +7.63 ticks | **-0.75 ticks** | 229.24 | 102.10 | -24.07 | -253.31 |
+| AAPL, own side | 652 | 2.9% | +1.67 ticks | **-0.33 ticks** | 157.68 | 82.96 | -135.17 | -292.85 |
+| AMD, touch (control) | 11,597 | 55.7% | -12.74 ticks | +13.02 ticks | 6,779.98 | 2,347.14 | -56,731.9 | -63,511.9 |
+
+Four things the runs say, and the second is why the flag had to exist before the question could be answered.
+
+1. **The passive entry works mechanically.** `taker_trade_count=0` in both own-side runs: the clip rests, the fee is the
+   maker rate plus the per-order floor, and nothing reaches the book as an aggressor.
+2. **The fill is adversely selected, which is the whole question.** The capture at the fill is positive (+7.63 and +1.67
+   ticks) and the markout after it is negative (-0.75 and -0.33): the fill arrives when the move is about to stop. That
+   is the conditional-fill bias, and it is now a printed field rather than an argument.
+3. **The floor, not the rate, is half the bill.** 20-share average fills leave 380 of 722 and 326 of 652 order instances
+   under the 0.35 commission floor -- 45 and 53 percent of the fee. A clip has to fill 100 shares before the rate is the
+   whole cost.
+4. **The touch entry is a warning rather than a control.** Eleven thousand taker fills lose 56,732 USD gross on the same
+   window and the run reports `invalid_order_transitions=5889`: a partial taker fill answered by a cancel is a state this
+   line does not model, so the comparison is between the two passive runs and the closing rule, not with that run.
+
+By the criterion registered before the run -- net at least +2 bps, markout at least +4 bps, three windows -- this square
+does not clear it: the markout is negative on both names, and the net is negative on both. Two names and one session each
+is not three windows, so the honest sentence is "the pair that was measured fails on the markout", not "the family is
+closed"; a third name and a second session are what would close it. `fee_gate_table.py` is how the names are chosen.
+
+```bash
+python3 tools/study/fee_gate_table.py --input 'data/v2/equities/xnas_mbp10_*.csv*' --clip 1,100
+out/build/linux-debug/toy_quant l2_replay \
+    data/v2/equities/xnas_AMD_trades_2026-09-29_1330_1530.csv.gz \
+    data/v2/equities/xnas_AMD_depth_2026-09-29_1330_1530.csv.gz AMD 0 trend_l2 1 conservative \
+    --fast-validation --order-size=100 --inventory-limit=1000 --starting-cash=1000000 \
+    --fee-schedule=min=0.35,regulatory=0.0000206,clearing=0.0002,audit=0.000003,rebate=0.0013 \
+    --trend-entry=side=own,ticks=1,max_age=200,cooldown=60 --post-only
+```
+
 ## The Ratio, Across the Markets This Repository Owns
 
 One ratio decides the sign before any strategy does: the fee per side divided by the half-spread a fill can collect. It

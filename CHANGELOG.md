@@ -7,6 +7,23 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## A passive entry for the trend line, and what the conditional fill costs (2026-11-23)
+
+- **`--trend-entry=side=own[,ticks=N][,max_age=VIEWS][,cooldown=VIEWS]`.** The trend line's clip is priced on our own
+  side of the book, `ticks` inside the touch and clamped so it never reaches the opposite one, so the order rests and
+  the fill pays the maker rate; an entry older than `max_age` views is cancelled and the next one waits `cooldown`
+  views. Placing and cancelling read one `entry_price()`, because a cancel rule written against the touch fires on the
+  order's own improve distance. The defaults are the touch entry, so every recorded trend number keeps its behaviour.
+- **The bias is now a printed field.** AMD 722 passive fills (1.1% of quotes) captured +7.63 ticks and marked out
+  -0.75; AAPL 652 (2.9%) captured +1.67 and marked out -0.33, with `taker_trade_count=0` in both. Fills arrive when the
+  move is about to stop, which is the conditional-fill bias the design predicted.
+- **The commission floor is half the fee at this clip.** The average fill was 20 shares, so 380 of 722 and 326 of 652
+  order instances paid the 0.35 floor: 45 and 53 percent of the fee bill. The rate is the whole cost only from 100
+  shares upward.
+- **The touch control is a warning, not a baseline**: 11,597 taker fills lost 56,732 USD gross and the run reported
+  `invalid_order_transitions=5889`, a state the line does not model (a partial taker fill answered by a cancel).
+- Pinned by `tests/trend_l2_test.cpp` (the own-side price, the one-tick clamp, the age cancel and the cooldown).
+
 ## The two gates in one command, and the terminal out of the path (2026-11-23)
 
 - **`tools/study/fee_gate_table.py`.** One row per instrument with both gates a strategy review asks about: the fee

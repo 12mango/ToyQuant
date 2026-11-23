@@ -83,6 +83,7 @@ constexpr std::string_view kCloseOutFlag = "--close-out";
 // book is not the market leg's last snapshot.
 constexpr std::string_view kCloseOutCrossPrefix = "--close-out-cross-bps=";
 constexpr std::string_view kTrendParamsPrefix = "--trend-params=";
+constexpr std::string_view kTrendEntryPrefix = "--trend-entry=";
 constexpr std::string_view kBaseSpreadPrefix = "--base-spread-ticks=";
 constexpr std::string_view kInventoryShiftPrefix = "--inventory-shift-ticks=";
 constexpr std::string_view kRefreshPrefix = "--refresh-price-ticks=";
@@ -257,6 +258,9 @@ void print_usage(const char* executable)
         std::cerr << "   trend: --trend-params=FAST,SLOW,ENTRY_TICKS,EXIT_TICKS,STOP_TICKS[,COOLDOWN_VIEWS"
                      "[,HOLDING_VIEWS]] sets the non-market-making signal; the view counts are decisions and "
                      "the bands are ticks\n";
+        std::cerr << "   trend entry: --trend-entry=side=touch|own[,ticks=N][,max_age=VIEWS][,cooldown=VIEWS] prices "
+                     "that line's clip on our own side of the book so it rests and pays the maker rate; an entry "
+                     "older than max_age views is cancelled and the next one waits cooldown views\n";
         std::cerr << "   strategy: ";
         for (const std::string_view name : kStrategyNames)
         {
@@ -1070,6 +1074,59 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                 if (values.size() > 6)
                     cfg.trend.max_holding_views = static_cast<uint64_t>(values[6]);
                 cfg.trend.set = true;
+            }
+            else if (flag.compare(0, kTrendEntryPrefix.size(), kTrendEntryPrefix) == 0)
+            {
+                // `side=own` is the point of the flag; the other keys are optional, so naming the flag without them
+                // asks for the passive entry with the strategy's own improve distance and no age limit.
+                const std::string text = flag.substr(kTrendEntryPrefix.size());
+                std::istringstream fields(text);
+                std::string field;
+                while (std::getline(fields, field, ','))
+                {
+                    const std::size_t equals = field.find('=');
+                    if (equals == std::string::npos)
+                    {
+                        error = "--trend-entry is side=touch|own,ticks=N,max_age=VIEWS,cooldown=VIEWS";
+                        return false;
+                    }
+                    const std::string key = field.substr(0, equals);
+                    const std::string value = field.substr(equals + 1);
+                    if (key == "side")
+                    {
+                        if (value != "own" && value != "touch")
+                        {
+                            error = "--trend-entry side is touch or own";
+                            return false;
+                        }
+                        cfg.trend_entry.own_side = value == "own";
+                        continue;
+                    }
+                    if (key != "ticks" && key != "max_age" && key != "cooldown")
+                    {
+                        error = "--trend-entry does not know '" + key + "'";
+                        return false;
+                    }
+                    const bool views = key != "ticks";
+                    std::istringstream item(value);
+                    double parsed = 0.0;
+                    item >> parsed;
+                    // A number extracted at the end of the piece already sets eofbit; asking std::ws for more would
+                    // set failbit on that eof and reject every well-formed value.
+                    if (!item.eof()) item >> std::ws;
+                    const bool whole = parsed == static_cast<double>(static_cast<uint64_t>(parsed));
+                    const bool valid = !item.fail() && item.eof() && parsed >= 0.0 && parsed <= 1000000.0 &&
+                                       (!views || whole) && (views || parsed > 0.0);
+                    if (!valid)
+                    {
+                        error = "--trend-entry " + key + " must be a " +
+                                (views ? "non-negative whole number of views" : "positive number of ticks");
+                        return false;
+                    }
+                    if (key == "ticks") cfg.trend_entry.improve_ticks = parsed;
+                    else if (key == "max_age") cfg.trend_entry.max_age_views = static_cast<uint64_t>(parsed);
+                    else cfg.trend_entry.cooldown_views = static_cast<uint64_t>(parsed);
+                }
             }
             else if (flag.compare(0, kBaseSpreadPrefix.size(), kBaseSpreadPrefix) == 0)
             {

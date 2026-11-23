@@ -170,6 +170,10 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
             trend_config.exit_cooldown_views = config.trend.exit_cooldown_views;
             trend_config.max_holding_views = config.trend.max_holding_views;
         }
+        trend_config.own_side_entry = config.trend_entry.own_side;
+        trend_config.entry_improve_ticks = config.trend_entry.improve_ticks;
+        trend_config.max_order_age_views = config.trend_entry.max_age_views;
+        trend_config.entry_cooldown_views = config.trend_entry.cooldown_views;
         return std::make_unique<TrendL2Strategy>(trend_config);
     }
     if (strategy_name == "l2" || strategy_name == "passive_l2" ||

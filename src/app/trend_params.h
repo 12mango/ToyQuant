@@ -17,3 +17,15 @@ struct TrendParams
     uint64_t max_holding_views{2000};
     bool set{false};
 };
+
+// Where the non-market-making line's entry is priced, from `--trend-entry`. The defaults are the behaviour every
+// recorded trend run had: the opposite touch, a taker fill, and an order that lives until it fills or the market moves
+// away from it. `own_side` puts the clip on our own side of the book, `improve_ticks` inside the touch and never
+// through it; `max_age_views` cancels an entry nobody hit and `cooldown_views` is the wait afterwards.
+struct TrendEntryParams
+{
+    bool own_side{false};
+    double improve_ticks{1.0};
+    uint64_t max_age_views{0};
+    uint64_t cooldown_views{0};
+};
