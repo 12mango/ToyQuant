@@ -770,13 +770,16 @@ Four things the runs say, and the second is why the flag had to exist before the
    5,889 -- the queue readings those acknowledgements carry, of which 517 joined a level that was already cleared. The
    56,732 USD is therefore a clean measurement of a taker entry, not a defective one.
 
-By the criterion registered before the run -- net at least +2 bps, markout at least +4 bps, three windows -- this square
-does not clear it, and the five runs say why in one line: **the gross is negative on every name** (-0.45 to -0.79 bps of
-maker notional) while the fee is 2.2 to 3.2 bps, of which 37 to 53 percent is the per-order floor. So the passive entry
-moved the question from "the fee eats a positive capture" to "the signal's capture is negative and the fee is on top",
-which is the shape the low-turnover reversion line was already closed on. Five runs on three names with one session each
-is still not the "three windows" the criterion asks for, so the recorded sentence is "the measured runs fail on the
-gross and the markout", not "the family is closed".
+**The square is closed.** By the bar registered before the run -- net at least +2 bps, markout at least +4 bps, three
+windows -- the five runs fail on the two conditions a window cannot have too few of: **the gross is negative on every name**
+(-0.45 to -0.79 bps of maker notional) while the fee is 2.2 to 3.2 bps, of which 37 to 53 percent is the per-order floor,
+and the markout after the fill is negative on four of the five (-0.05 to -0.75 ticks), so the handoff a passive entry buys
+is one the other side chose. The third condition -- three windows -- is unmet for a reason outside the strategy: the tracked
+data is one session per name, so a second one is a fetch. It cannot change the verdict either, because the first two
+conditions are signs and both point the wrong way on every run: the passive entry moved the question from "the fee eats a
+positive capture" to "the signal's capture is negative and the fee is on top", which is the shape the low-turnover reversion
+line was already closed on. What would reopen it is a measurement rather than a parameter -- a markout that is positive in
+the same test, which would say the fill is informed rather than selected -- and not a width, an age or a clip.
 
 ```bash
 python3 tools/study/fee_gate_table.py --input 'data/v2/equities/xnas_mbp10_*.csv*' --clip 1,100

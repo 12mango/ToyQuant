@@ -50,6 +50,7 @@ own payoff rather than on a cost.
 | The same shift, at the scale the model asks for | free | it made both columns worse at every width, which closed the quote-placement axis |
 | A MES hedge of a MU inventory | free | MES explains 9.4 percent of MU's one second variance, so the hedge removes 8 percent of the inventory term at the horizon a fill lives on against 61 percent at five minutes: the common factor is slower than a quote |
 | Reading a table by its sums | free | the summed ratio read as a sevenfold improvement where the dispersion said twenty percent, because the mean of the position term is not its risk |
+| A passive entry for the trend line (`--trend-entry=side=own`) | free, five replays on tracked data | the fill is adversely selected: the markout is -0.75, -0.33, -0.29 and -0.05 ticks on four of five runs (+0.76 on TSLA), and the gross is -0.45 to -0.79 bps of maker notional on every name against 2.2 to 3.2 bps of fee, 37 to 53 percent of it the per-order floor. The bar registered before the run (net +2 bps, markout +4 bps, three windows) fails on the two signs; the third is a data condition -- one tracked session per name -- and cannot flip a sign the fee already fixes |
 
 ## The rules that came out of it
 
@@ -96,6 +97,13 @@ own payoff rather than on a cost.
   every fault named in a field of its own (`late_fill_reports`, `duplicates`, `refused=1`, `grew=<units>`). A cost
   boundary measured by an instrument that agrees with the venue to a third of a cent is a result, not a failure of the
   measurement.
+* **A passive entry does not rescue that line, and the reason is the fill rather than the fee.** Five own-side runs on
+  AMD, AAPL and TSLA put the clip inside our own touch, so the fee is the maker rate and `taker_trade_count=0`, and the
+  fill probability is the one the queue model grants; the markout after the fill is -0.75, -0.33, -0.29 and -0.05 ticks
+  on four of the five (+0.76 on TSLA), and the gross is -0.45 to -0.79 bps on every name against 2.2 to 3.2 bps charged,
+  a third to a half of it the 0.35 per-order floor. The bar registered before the run (net +2 bps, markout +4 bps, three
+  windows) fails on the two signs, and the third is one tracked session per name, which cannot move them.
+
 * **The equity line is placed in hibernation rather than continued**, and its reasons are numbers rather than a
   shortage of effort: the fee floor binds on seventy-nine percent of order instances, no swept parameter moves the
   ratio by more than twenty percent, and separating a 941 USD capture from a 10,588 USD position term would take five

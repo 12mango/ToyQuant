@@ -7,6 +7,17 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The passive entry is closed by measurement (2026-11-23)
+
+- **The bar registered before the run fails on its two sign conditions.** Five own-side runs on AMD, AAPL and TSLA
+  marked out -0.75, -0.33, -0.29, -0.05 and +0.76 ticks, and gross -0.45 to -0.79 bps of maker notional against 2.2 to
+  3.2 bps of fee: the fill is adversely selected on four of the five and the gross is negative on all five.
+- **The third condition is a data question and cannot move a sign.** The bar asked for three windows; the tracked data
+  holds one session per name, and a second session would be a fetch. It cannot pass the bar either, because the first
+  two conditions are signs and both point the same way on every run.
+- **What would reopen it is a measurement, not a parameter**: a markout that is positive in the same test, which would say
+  the fill is informed rather than selected. Width, age and clip have all been moved and none of them touches the sign.
+
 ## An acknowledgement that trails a fill is not a fault (2026-11-23)
 
 - **`OrderLedger::mark_resting` no longer refuses an acknowledgement of an order that already filled part of itself.**
@@ -34,8 +45,9 @@ site now points at `ToyQuant`.
 - **The commission floor is half the fee at this clip.** The average fill was 20 shares, so 380 of 722 and 326 of 652
   order instances paid the 0.35 floor: 45 and 53 percent of the fee bill. The rate is the whole cost only from 100
   shares upward.
-- **The touch control is a warning, not a baseline**: 11,597 taker fills lost 56,732 USD gross and the run reported
-  `invalid_order_transitions=5889`, a state the line does not model (a partial taker fill answered by a cancel).
+- **The touch control is a warning, not a baseline**: 11,597 taker fills lost 56,732 USD gross. The run also reported
+  `invalid_order_transitions=5889`, which was a defect rather than the taker path's shape -- an acknowledgement that
+  trailed a fill -- and is fixed in a later entry.
 - Pinned by `tests/trend_l2_test.cpp` (the own-side price, the one-tick clamp, the age cancel and the cooldown).
 
 ## The two gates in one command, and the terminal out of the path (2026-11-23)
