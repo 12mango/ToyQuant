@@ -14,7 +14,9 @@
 #
 # Environment: STARTING_CASH (required -- a live run that opens on a guess prints a `break` in its first equity line),
 # DURATION (300), OUT (/tmp/tq/soak), PORT (8841), ORDER_PORT (8842), PROXY (`` dials the venue directly, which is the
-# normal way in; `host:port` tunnels both legs), VENUE, INST_CODE, ORDER_SIZE (10000 engine units = one contract),
+# normal way in; `host:port` tunnels both legs), VENUE, INST (BTC-USDT-SWAP), INST_CODE (10459, the venue's own contract
+# code), MARKET_DEMO (1: the market leg reads the demo's public stream; 0: the real one, for a symbol the demo does not
+# quote, with the order leg still on the demo account), ORDER_SIZE (10000 engine units = one contract),
 # INVENTORY_LIMIT (10000), MAX_EXPOSURE_USD (1000), MAX_ORDERS (4000), RATE (2), CLOSE_OUT_CROSS_BPS (20).
 #
 # Two knobs exist for the scan this tool was written for: STRATEGY (default `passive_l2`; `active_l2` is the mainline,
@@ -70,6 +72,10 @@ CLOSE_OUT_CROSS_BPS="${CLOSE_OUT_CROSS_BPS:-20}"
 STRATEGY="${STRATEGY:-passive_l2}"
 SPREAD_TICKS="${SPREAD_TICKS:-}"
 TAG="${TAG:-}"
+# The market leg is the demo venue's public stream by default, which is the only one that carries BTC and ETH. A symbol
+# the demo does not quote has to take its market leg from the real public stream while the order leg stays on the demo
+# account, so the two are separate switches: MARKET_DEMO=0 reads the real book.
+MARKET_DEMO="${MARKET_DEMO:-1}"
 NAME="${MODE}${TAG}"
 ARTIFACT="${OUT}/${NAME}"
 
@@ -80,7 +86,11 @@ mkdir -p "$OUT"
 # The relays outlive the engine by a margin: the winner is whichever exits first, and a relay that dies early turns a
 # working session into `frames_received=0`.
 LIFETIME=$((DURATION + 120))
-"$RELAY" --instrument "$INST" --venue-demo --proxy="$PROXY" --listen "127.0.0.1:${PORT}" \
+MARKET_FLAGS=()
+if [ "$MARKET_DEMO" = "1" ]; then
+    MARKET_FLAGS+=(--venue-demo)
+fi
+"$RELAY" --instrument "$INST" ${MARKET_FLAGS[@]+"${MARKET_FLAGS[@]}"} --proxy="$PROXY" --listen "127.0.0.1:${PORT}" \
     --max-seconds "$LIFETIME" > "${ARTIFACT}_market_relay.log" 2>&1 &
 market_relay=$!
 "$RELAY" --instrument "$INST" --order-listen "127.0.0.1:${ORDER_PORT}" --order-rest "$VENUE" \

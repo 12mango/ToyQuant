@@ -206,6 +206,18 @@ int main()
         assert(eth_swap.exchange == btc_swap.exchange);
     }
 
+    // The swap the screen passed after them: a tenth of a cent tick, ten units a contract, and the same venue schedule.
+    // Its minimum is one contract, which is ten times the scale rather than a hundredth of a coin.
+    {
+        InstrumentSpec up_swap;
+        assert(instrument_spec_of("UP-USDT-SWAP", up_swap));
+        assert(std::abs(up_swap.tick_size - 0.0001) < 1e-12);
+        assert(std::abs(up_swap.contract_size - 10.0) < 1e-12);
+        assert(up_swap.min_order_quantity == 10000000);
+        assert(std::abs(up_swap.maker_fee_rate - 0.0002) < 1e-12);
+        assert(std::abs(up_swap.taker_fee_rate - 0.0005) < 1e-12);
+    }
+
     // The broker's monthly volume tier is a commission a share, and it is the one schedule term whose zero
     // means "the venue's own rate" rather than "free". Naming it has to replace the instrument's figure, and
     // naming any other key has to leave it alone, because a run that asks for a floor and nothing else still

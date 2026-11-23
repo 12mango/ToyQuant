@@ -1425,6 +1425,18 @@ what a quote on the real venue faces by about ten times. A demo number is about 
 A live snapshot is not a series, and none of the four rows above is a marked block: the book sample is taken by hand and
 the trade archive is a download, so both are reproducible by a reader and neither is a number the gate can re-derive.
 
+**The passer, taken to a session (2026-11-23).** `UP-USDT-SWAP` is registered in
+`src/common/instrument_spec.h` from the venue's own metadata -- a 0.0001 tick, one contract carrying ten UP, a minimum
+of one contract and the same 2/5 bps schedule -- and `l2_replay_test` pins those five numbers. Two sixty-second sessions
+followed: the demo's public feed delivered **no market events at all** for it (`Error: L2 replay input contains no market
+events`), and with the market leg moved to the real public stream the engine quoted 62 times and got 62 reports back
+from the demo account with **no refusals** -- so the venue knows the instrument and accepts orders on it -- while
+`bbo_quote_observations=0` says the book never arrived and nothing filled. That is a relay coverage gap for a symbol the
+demo does not quote, not a strategy result: the queue-model question this instrument was registered for still needs a
+book, either from the venue's L2 archive (portal-only) or from the relay's market leg for this symbol. `soak.sh` grew
+`INST`, `INST_CODE` and `MARKET_DEMO` so that the two legs can point at different venues while the order leg stays on the
+demo account.
+
 ### Line 8 executed: the low turnover rule, and the dispersion that replaces the verdict
 
 The rule was fixed before any window was read, because the point of it is to be falsifiable rather than tuned: a one

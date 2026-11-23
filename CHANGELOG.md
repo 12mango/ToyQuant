@@ -7,6 +7,19 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The screen's passer, and the session that could not measure it (2026-11-23)
+
+- **`UP-USDT-SWAP` is registered** from the venue's own metadata: a 0.0001 tick, one contract carrying ten UP, a minimum
+  order of one contract, the venue's 2/5 bps schedule. `l2_replay_test` pins those five numbers, because registering a
+  symbol is a claim that its numbers are re-derivable.
+- **`tools/live/soak.sh` grew `INST`, `INST_CODE` and `MARKET_DEMO`**, so the two legs can point at different venues: a
+  symbol the demo does not quote takes its book from the real public stream while its orders still go to the demo account.
+- **What the sessions said.** The demo's public feed delivered no market events for the symbol at all; with the market leg
+  on the real stream the engine quoted 62 times and got 62 reports back with no refusals -- the venue knows the
+  instrument -- while `bbo_quote_observations=0` says the book never arrived and nothing filled. The queue-model question
+  the instrument was registered for still needs a book: the venue's L2 archive (portal-only) or the relay's market leg for
+  this symbol.
+
 ## The two screen cells that had never been run (2026-11-23)
 
 - **Small caps: the spread half passes, the activity floor does not.** Seven names under twenty dollars for 0.053662 USD of

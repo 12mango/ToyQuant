@@ -258,6 +258,24 @@ inline InstrumentSpec okx_eth_swap_spec(uint64_t quantity_scale = 1000000)
                           .maker_fee_rate = 0.0002,
                           .taker_fee_rate = 0.0005};
 }
+// The first swap the pre-registered screen passed on both halves (`docs/archive/studies.md`): a tenth of a cent tick on
+// a token under a dollar, one contract carrying ten of them, and a half spread the venue's own book quotes at 8.51 bps
+// against the 2 it charges to rest -- 4.25 times the fee, where BTC quotes 0.01. The two symbols that screen passed
+// before this one are equities (AAPL and TSLA) and both failed the measurement that followed, so this instrument is
+// registered to be measured and not because it is expected to pass. One contract is ten units at the venue's millionth
+// scale, so the minimum order is 10,000,000 units.
+inline InstrumentSpec okx_up_swap_spec(uint64_t quantity_scale = 1000000)
+{
+    return InstrumentSpec{.exchange = "okx",
+                          .symbol = "UP-USDT-SWAP",
+                          .tick_size = 0.0001,
+                          .quantity_scale = quantity_scale,
+                          .lot_size = 1,
+                          .min_order_quantity = 10000000,
+                          .contract_size = 10.0,
+                          .maker_fee_rate = 0.0002,
+                          .taker_fee_rate = 0.0005};
+}
 // in this repository where the fee is not a multiple of a tick — one tick on a hundred dollar share is one
 // basis point, and a retail commission of a few tenths of a cent a share is a fraction of it, where the
 // perpetuals this repository traded before paid tens of ticks or more. The commission is per share and the rate
@@ -338,6 +356,11 @@ inline bool instrument_spec_of(const std::string& symbol, InstrumentSpec& out)
     if (symbol == "ETH-USDT-SWAP")
     {
         out = okx_eth_swap_spec();
+        return true;
+    }
+    if (symbol == "UP-USDT-SWAP")
+    {
+        out = okx_up_swap_spec();
         return true;
     }
     if (symbol == "SPY")
