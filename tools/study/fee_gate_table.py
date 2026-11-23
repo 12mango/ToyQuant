@@ -81,7 +81,7 @@ def main():
         passed["both"] += bool(spread_ok and ratio_ok)
         print(f"| {symbol} | {half_trade:.3f} ticks | {fee_ticks:.3f} ticks | {fee_ticks / half_trade:.2f} | "
               f"{'pass' if spread_ok else 'fail'} | "
-              f"{stats['best']:.0f} | {'pass' if ratio_ok else 'fail'} |")
+              f"{stats['best']:.0f} | {'pass' if ratio_ok else 'fail'} |", flush=True)
 
     total = len(paths)
     print()

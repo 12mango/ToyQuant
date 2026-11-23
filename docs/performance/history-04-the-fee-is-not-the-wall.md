@@ -785,4 +785,21 @@ moves is a different instrument from a tight one that moves. And the two ratios 
 `R_max` uses the median of the book -- SPY's two ticks -- while the spread gate uses the rows where trades print, one
 tick, because a resting quote is filled where trades print rather than at the median of the book.
 
+Run over the sixty screened windows (`--input 'data/v2/screen/*.csv'`, the same window and the same commission), the
+filter narrows the universe to fourteen: **17 of 60 clear the spread gate, 33 clear the capture gate, 14 clear both**.
+The fourteen are the names whose spread is several ticks wide -- MU 14.5 ticks (fee/half-spread 0.02, `R_max` 1479),
+AMD 11.0 (0.03, 1084), COIN 8.0 (0.04, 541), SHOP 5.5 (0.06, 441), BA 5.0 (0.07, 392), UAL 4.75 (0.07, 279), MSTR and
+PLTR 3.0 (0.12, 577 and 616), TSLA 2.5 (0.14, 1139), HOOD 2.5 (0.14, 347), DAL 2.0 (0.18, 119), AAPL and XOM 1.5 (0.23,
+1205 and 265), GM 1.5 (0.23, 254). The one-cent books -- SPY at 0.5 ticks, AAL, AMC, KWEB, T, VXX and the rest -- fail
+the spread gate however well their capture ratio reads, and twenty-four names fail both (BB, BOIL, EPI, TZA, VNM, VXX
+and the rest of the one-cent list).
+
+**The filter is necessary, not sufficient, and MU is the proof.** It passes both statics better than anything else in
+the sixty -- 14.5 ticks of half-spread against 0.35 of fee, `R_max` 1479 against a 71 reference -- and it is also the
+instrument whose *measured* windows were closed in [`docs/RETROSPECTIVE.md`](../RETROSPECTIVE.md): a static
+half-spread is not the capture a quote keeps, and a screen that stopped at the statics would have reopened a line the
+measurements had already closed. What the screen is for is the order to measure in, and on that order MU was already
+first.
+
+
 
