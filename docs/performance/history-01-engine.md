@@ -496,10 +496,13 @@ maker notional to divide by. `--post-only` does not make that entry passive; it 
 
 <!-- toyquant:check
 run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 trend_l2 1 prorata --fast-validation --inventory-limit=10 --maker-fee-rate=0.0002
-then: submitted_orders=514 trade_reports=514 fees_paid=2.57 maker_fees=0 taker_fees=2.57 maker_trade_count=0 taker_trade_count=514 maker_notional_usd=0 gross_pnl_usd=-0.318271 net_pnl_usd=-2.88827 breakeven_maker_rate=0
+then: submitted_orders=514 trade_reports=514 fees_paid=2.57 maker_fees=0 taker_fees=2.57 maker_trade_count=0 taker_trade_count=514 maker_notional_usd=0 gross_pnl_usd=-0.318271 net_pnl_usd=-2.88827 breakeven_maker_rate=0 captured_edge_per_unit_ticks=-1.02724 markout_per_unit_ticks=1.01654 markout_count=514
 
 run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 trend_l2 1 prorata --fast-validation --inventory-limit=10 --maker-fee-rate=0.0002 --post-only
 then: submitted_orders=1814 trade_reports=0 post_only_cancels=1814 fees_paid=0 realized_pnl=0
+
+run: l2_replay data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz /tmp/depth_200k_base.csv BTC-PERPETUAL 0 trend_l2 1 prorata --fast-validation --inventory-limit=10 --maker-fee-rate=0.0002 --trend-entry=side=own,ticks=1 --post-only
+then: submitted_orders=61 trade_reports=1 fill_rate=0.0163934 captured_edge_per_unit_ticks=0.5 markout_count=0 taker_trade_count=0 fees_paid=0.002
 -->
 
 Two things follow, and the second is why the flag is not the answer here.
@@ -511,4 +514,12 @@ Two things follow, and the second is why the flag is not the answer here.
    quote is priced where the trade happens. A passive version has to rest behind the touch and accept a fill probability,
    which is a strategy with its own entry rule and its own measurement -- the queue model measured in
    [part 2](history-02-l2.md) is what would price it.
+3. **That order exists now, and on this window the queue never reaches it.** `--trend-entry=side=own` prices the same clip
+   one tick inside our own touch and never through it, so it rests: **one fill in sixty-one quotes** (the age cancel ends
+   the other sixty), capture +0.5 ticks and no markout to resolve, because a single fill is not a distribution. The touch
+   entry on the same window is the mirror image of it -- the average fill gives up 1.03 ticks at the touch and the mid then
+   moves 1.02 ticks further away, so the two effects cancel and the fee is the loss. The pair is the answer to the cascade
+   question rather than a new number about it: the +6.09 bps at 30 s is a study of mid prices, the taker pays a round trip
+   the gross does not cover, and the maker is not hit -- so a cascade that is *traded* needs an entry rule keyed on the
+   cascade, which is a new signal row and not a flag on this one.
 

@@ -7,6 +7,17 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The fee tier, and the cascade window (2026-11-23)
+
+- **A one-basis-point maker tier does not save the demo line.** The breakeven maker rate is the gross minus the exit's
+  0.21 bps: four of six windows need a rebate to reach zero, the best needs 0.86 bps against the 2.00 charged, and at a
+  retail 1.00 the six read -1.62 to -0.14 bps. Arithmetic on the recorded windows, not a new run.
+- **The cascade window is not reachable from the entry modes this tree has.** Measured on the 2020-04-01 BTC slice: a
+  passive entry fills once in 61 quotes (fill rate 0.0164, no markout resolving), and the touch entry at the same inventory
+  limit fills all 514 while giving up 1.03 ticks at the touch and a further 1.02 to the mid's drift -- gross -0.318 USD
+  against 2.57 USD of taker fees. A traded cascade needs an entry rule keyed on the cascade, which is a new signal row.
+- Pinned by `history-01`'s block (three runs) and by the live page's fee table.
+
 ## The passive entry is closed by measurement (2026-11-23)
 
 - **The bar registered before the run fails on its two sign conditions.** Five own-side runs on AMD, AAPL and TSLA

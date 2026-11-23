@@ -482,6 +482,26 @@ half-spread is the fee, does. The windows agree with the arithmetic -- the best 
 against 3.80 charged -- but the gross figure is a whole-window mark that includes the inventory's own drift, so the
 half-spread ratio, not the gross, is the bound that no strategy work moves.
 
+**What a cheaper maker tier would do, as arithmetic on the six windows.** The breakeven maker tier is the gross minus the
+exit's 0.21 bps -- the closing order is a taker, so a cheaper maker tier does not touch it:
+
+| window | gross | breakeven maker tier |
+|---|---|---|
+| 2026-11-21 #1 | -0.41 bps | -0.62 bps |
+| 2026-11-21 #2 | +0.92 bps | +0.71 bps |
+| 2026-11-21 #3 | +1.07 bps | +0.86 bps |
+| 2026-11-23 post-only | +0.085 bps | -0.13 bps |
+| 2026-11-23 baseline | -0.633 bps | -0.84 bps |
+| 2026-11-23, 6 ticks | -1.045 bps | -1.26 bps |
+
+Four of the six need a **rebate** -- a negative maker rate -- to reach zero, and the best needs 0.86 bps against the 2.00
+the venue charges. A retail tier of one basis point is not enough either: at 1.00 of maker plus the same 0.21 of exit, the
+six windows read **-1.620, -0.290, -0.140, -1.125, -1.843 and -2.255 bps** -- one subtraction per row on the gross column
+above, not a run, which is why it is stated as arithmetic rather than pinned by a block. So the fee-tier question has a
+number rather than a hope: this line needs a venue that pays for liquidity, and even then its best window earns about
+0.2 bps of gross before that payment. It is an account question rather than a code one, and it is the last one of this
+line's that a flag could answer.
+
 
 The session above is one command now: `bash .run.sh soak post-only` runs `tools/live/soak.sh`, which starts both relays,
 requires `STARTING_CASH` (the probe's `eq`), records the market and the order leg under `<OUT>/<mode>`, and refuses to
