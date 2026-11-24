@@ -7,6 +7,34 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The engine stops dropping a cancel that races its placement (2026-11-25)
+
+- **`MatchingEngine::cancel_order` now holds a cancel that names an order still in flight and applies it when the
+  order lands**, instead of returning silently because `order_index_` did not contain the id yet. The cancel's own
+  delay is still measured from the request (`event_counter_ + cancel_delay_events_`, `now_us_ + cancel_latency_us_`);
+  what changed is that a venue which cannot cancel what it has not received waits for the order rather than
+  discarding the request. `in_flight_ids_` is the table that answers "has the venue received this order", filled by
+  `send_order` and emptied at the landing in `advance_to`, so from then on `order_index_` is the single answer for a
+  cancel that arrives afterwards. A cancel naming an id the engine was never given is still dropped: parking it
+  would fire the cancel against a later order that reused the id.
+- **Pinned by three cases in `matching_engine_test`**: a cancel whose own latency expires before the order lands (the
+  request is held, and applied in the event that delivers the order), the measured shape where both legs share the
+  link and the cancel is decided while the order is in flight (the quote is a working order until the cancel's own
+  due time), and a cancel that arrives after a fill (nothing is reported and nothing is carried over).
+- **The recorded latency table moved, and the movement is the defect being removed.** `tools/sweep/latency_sweep.sh`
+  re-derived: SPY at 1 ms each way reads 923 fills and +9.6455 USD net (was 921 and +1.8855), at 5 ms each way 901
+  fills and -179.947 (was 9 fills and -1143.75), at 20 ms -171.173 (was -755.1) and at 50 ms +254.603 (was -1044.07).
+  The synchronous rows, the cancel-only row and both MES rows are unchanged. Above one millisecond the window's own
+  mark dominates the column now, so `docs/performance/history-04` rests its verdict on the one-millisecond row and
+  says why the rows above it cannot price the delay.
+- **The OKX maker's 30 ms collapse was this defect, not the link.** On the seven UP-USDT-SWAP days the baseline
+  configuration's median net reads -2.28, -2.12, -2.64, -2.68 and -2.00 bps at 0/10/30/50/80 ms, with one positive
+  day of seven at every setting; the 30 ms run that used to place one to forty-four fills across the seven days now
+  places 240 to 777. `--base-spread-ticks=3 --refresh-price-ticks=1 --edge-cover-ticks=1` keeps 76 to 358 fills a day
+  at zero latency and 90 to 396 across the four delays, with closed capture +3.12 bps falling to +1.95 at 80 ms.
+  `docs/archive/studies.md` carries the grid and says what the old number was.
+- `docs/performance/history-04`'s marked block re-derives to the new `then:` values; `code`, `docs` and `fast` green.
+
 ## The screen gains the tick width, and its readings move out of /tmp (2026-11-25)
 
 - **`okx_spread_screen.py` reports the median spread in ticks beside the half-spread**, joining the venue's instrument

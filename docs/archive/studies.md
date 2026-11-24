@@ -667,9 +667,12 @@ Hong Kong account actually gets is unverified**, and a zero commission tier woul
 model does not include the **venue's own maker rebate**, which on this market is of the same order as the
 commission, so the number understates the economics on that side — and it also does not include the regulatory
 fees of a few hundredths of a cent a share on the other. **And the window does not survive latency**: one
-millisecond of one-way delay takes it from +262.51 to +1.89 and five milliseconds ends the run holding a position
-marked at -1143.75, which is the sixth gate of phase 2b failing and is recorded in
-[Performance History](../performance/history-04-the-fee-is-not-the-wall.md#the-latency-that-window-would-have-needed)
+millisecond of one-way delay takes it from +262.51 to +9.65, so it is the margin and not the sign that goes, and
+above one millisecond the column is dominated by the position two hours of one session carries — which is the sixth
+gate of phase 2b failing and is recorded in
+[Performance History](../performance/history-04-the-fee-is-not-the-wall.md#the-latency-that-window-would-have-needed).
+The -1143.75 row this page used to quote at five milliseconds was not the link: it was the replay dropping the
+cancels of orders still in flight, and with that fixed the same cell reads -179.95 on 901 fills.
 
 ## From a Positive Window to a Running System
 
@@ -907,9 +910,10 @@ tidier reason into this document would have been the third error of the three.
 what it is best at, which is auditing the execution and the fee of a strategy developed elsewhere. That is a
 result rather than a setback, and it is the reason these seven come before any live plumbing.
 
-**The sixth gate has now been run, and it returned a failure.** The positive window goes to zero at one
-millisecond each way and gives the price away at five, the tolerance is not a personal account's to control, and
-the reflex fix of quoting more slowly measures worse rather than better. The rows and the mechanism are in
+**The sixth gate has now been run, and it returned a failure.** The positive window loses its margin at one
+millisecond each way (+262.51 to +9.65), and above that the column is the position two hours of one session
+carries rather than the delay, so the tolerance is not a personal account's to control; the reflex fix of quoting
+more slowly measures worse rather than better. The rows and the mechanism are in
 [Performance History](../performance/history-04-the-fee-is-not-the-wall.md#the-latency-that-window-would-have-needed) and the sweep that
 reproduces them is `tools/sweep/latency_sweep.sh`. That sweep's own last paragraph says the one cheap test left is a
 symbol whose spread is wide enough to absorb the same delay, and that test is the screen.
@@ -1580,36 +1584,38 @@ about 1.5 bps: at 1.5 the four windows read +0.51, +1.09, +0.02 and +1.62 in the
 +1.01, +1.59, +0.52 and +2.12. That is an account-tier question rather than a code one, and it is the same shape of
 answer the crypto line reached from the other direction.
 
-**The same configuration behind a network does not survive it (2026-11-25).** The measurement above is a zero-latency
+**The link does not decide, and the 30 ms collapse was the replay (2026-11-25).** The measurement above is a zero-latency
 replay, and the demo venue's own round trip is 30-80 ms, so the replayer was asked to hold every order and cancel for that
-long (`--order-latency-us` / `--cancel-latency-us`, now reachable from the sweep as `--latency-us`). Two things happen, and
-only the first is reconciled:
+long (`--order-latency-us` / `--cancel-latency-us`, reachable from the sweep as `--latency-us`). The first run said the
+configuration did not survive: on 2026-11-16 the baseline submitted 1,275 quotes at zero latency and 31 at 30 ms, 29 of the
+31 filled, the fee rose to 4.25 bps because a stale quote is marketable on arrival, and `max_quote_lifetime` went from 684
+to 26,570 cycles. The deep-quote configuration behaved the same way, one to forty-four fills across the seven days against
+183, and `quote_observations` equalled `submitted_orders`, so it read as the strategy's own decision.
 
-| 2026-11-16 alone, the baseline configuration (touch, refresh 4) | quotes submitted | fills | fees bps | closed bps | net bps |
+It was not. `MatchingEngine::cancel_order` parked a cancel only when the order was already in `order_index_` and returned
+silently otherwise, so a cancel issued while its order was still waiting out the *placement* latency was discarded -- and
+with both legs on the same link that is the common case, not an edge. The strategy then waited for quotes it had already
+tried to pull (`longest_wait_filled_cycles=26570` is a fill wait, not an age refresh). The engine now holds such a cancel
+and applies it when the order lands, and the same seven days, conservative fill, one command per latency, read:
+
+| reading, bps | 0 ms | 10 ms | 30 ms | 50 ms | 80 ms |
 |---|---:|---:|---:|---:|---:|
-| zero latency | 1,275 | 535 | 2.00 | +1.23 | -1.13 |
-| 30 ms | **31** | 29 | **4.25** | n/a (29 fills) | n/a (29 fills) |
+| baseline (touch, refresh 4), net median | -2.28 | -2.12 | -2.64 | -2.68 | -2.00 |
+| rescue (3 ticks, refresh 1, edge cover 1), closed mean | +3.12 | +2.92 | +2.40 | +2.66 | +1.95 |
+| rescue, net mean | +1.16 | +1.11 | +0.38 | +0.61 | -0.12 |
+| rescue, net median | +1.14 | +0.99 | -0.47 | +0.41 | -0.34 |
 
-The flow is what disappears, not merely the edge: at 30 ms the same configuration submits **31 quotes in a two-hour window**
-where zero latency gives **1,275**, and 29 of the 31 fill -- so nearly every quote it manages to place is taken, and the fee
-rises above the maker's 2.00 bps because a quote that lands stale is marketable on arrival. The deep-quote configuration
-behaves the same way (one to forty-four fills across the seven days against 183), and `quote_observations` equals
-`submitted_orders` on the run that was read, so the collapse is the strategy's own decision and not a pipeline refusal.
-`max_quote_lifetime` rises from 684 cycles to 26,570: one quote now lives through a quarter of the window's updates.
+**The baseline loses to its fee at every latency and the link is not why.** It has exactly one positive day of seven at
+0, 10, 30, 50 and 80 ms, and its median moves by less than half a basis point across that range while the day-to-day spread
+is 14 -- so a 30-80 ms link is below this window's own noise, and the -2.3 the fee table above shows is the gap, not the
+delay. The 30 ms run that used to read one to forty-four fills now reads 240 to 777.
 
-**What is not a property of the strategy: the replay drops a cancel whose order is still in the latency queue.** The collapse
-looked like a strategy that stops quoting, and the trace says otherwise. `MatchingEngine::cancel_order` parks a cancel only
-when `order_index_.contains(order_id)` and returns silently when it does not, so a cancel issued while the order it names is
-still waiting out the *placement* latency is discarded. With the order and the cancel delayed by the same amount this is the
-common case rather than an edge: the strategy sends a cancel, believes the order is gone, never retries, and the order rests
-until it fills. `[TRACE_HINTS]` names exactly that order -- `longest_wait_filled_cycles=26570`, a fill wait and not an age
-refresh -- and it is why the quote count falls rather than the fill rate: the strategy is waiting for an order it already
-tried to pull.
-
-The fix is not a strategy change: a cancel that names an unknown order has to wait for that order to arrive and then take
-its own latency, which is what a venue does with a request it can answer rather than ignore. Until that lands, the 30 ms
-number is a statement about the replay's cancel path and not about the configuration, and the zero-latency table above stays
-the only measurement this instrument has.
+**The rescue configuration keeps its fills and loses about a basis point at the far end.** 76 to 358 fills a day at zero
+latency and 90 to 396 across the four delays, with closed capture falling from +3.12 to +1.95 bps between 0 and 80 ms:
+that fall is the link's whole measurable cost at this size, and it is inside the 2.00 bps the row is measured against. What
+the latency also moves is the net, which is a mark: its median crosses zero somewhere between 10 and 30 ms (+0.99 to -0.47)
+and comes back at 50 ms, so the honest statement is that the link moves the net's sign by a few tenths of a basis point
+without a monotone relation to the delay, while the closed capture stays above the fee from 0 to 80 ms.
 
 **What is next, and what would qualify another instrument.** The next measurement is a tiered re-screen of every swap
 inside the same 13:30-15:30 UTC window -- thirty ticker reads twenty seconds apart -- with the book's median width reported
@@ -1617,7 +1623,7 @@ beside the half-spread, because a one-tick book cannot hold a quote three ticks 
 says. A candidate has to clear **1.2, 2.0 and 2.5 bps** under two more floors: a median spread of at least **two ticks** and
 a median **500,000 USD** of daily notional. Anything that passes gets the same seven-day treatment this instrument got: the
 window cut by `tools/study/okx_book_window.py`, the maker run by `tools/sweep/okx_maker_baseline.py` under the conservative
-fill model, and then `--latency-us` once the engine's cancel race above is fixed.
+fill model, and then `--latency-us` at 10, 30, 50 and 80 ms, which this instrument has now had.
 
 One measurement error belongs in this record because it produced a table of zeros: OKX cuts its trade archive on midnight
 UTC+8 and its book archive on UTC, so a window starting at or after 16:00 UTC lives in the *next* trade file. Reading the

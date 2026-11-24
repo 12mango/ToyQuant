@@ -140,6 +140,10 @@ compatibility path. Everything below assumes that page.
   refused and the work needed a VS Code restart. Enqueuing is a write and polling is a read, so a task can finish with no
   shell in the loop at all; that is the point of `.run.sh queue`, and using it to start a job and then timing it with
   `sleep` in the same shell throws the property away.
+  A request written **by hand** is written to `queue/<name>.req.tmp` and renamed, or it will be read mid-write: measured
+  2026-11-25, an editor-written `docs2.req` was taken while it was still empty, the daemon's `set --` ran with no
+  arguments, and a bare `status` executed instead of the gate -- with no `docs2.out` to read. `bash .run.sh queue <verb>`
+  already does the rename; a hand-written file has to copy it.
 - **One shell command at a time.** The shell is single-threaded: a command still running blocks the next one or is
   killed by it. After launching a detached command, ask the shell nothing until its exit file appears. A shell that
   cannot answer `echo` is wedged; recovery is closing the terminal tab, and the state that counts afterwards is what

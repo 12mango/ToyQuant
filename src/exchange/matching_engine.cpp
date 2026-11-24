@@ -63,6 +63,9 @@ void MatchingEngine::send_order(const exchange::Order& order)
     // Held until the clock reaches it. The delivery time is taken from the order's own timestamp, so a
     // replay of a feed at a different rate injects the same latency rather than a different one.
     in_flight_orders_.emplace_back(order.ts + order_latency_us_, order);
+    // Also remembered by id, because a cancel that names this order before it lands is the race the next line
+    // of the lifecycle makes common: see `cancel_order`.
+    in_flight_ids_.insert(order.id);
 }
 
 void MatchingEngine::advance_to(uint64_t ts)
@@ -77,6 +80,10 @@ void MatchingEngine::advance_to(uint64_t ts)
     {
         const exchange::Order order = in_flight_orders_.front().second;
         in_flight_orders_.erase(in_flight_orders_.begin());
+        // Forgotten before the delivery, so that from here on the only question a cancel has to answer is whether
+        // the order is in `order_index_`: either it rests there, or it was filled on arrival, or it was refused,
+        // and the last two mean there is nothing left to cancel.
+        in_flight_ids_.erase(order.id);
         // The landing is the synchronous path, so latency decides when an order exists and nothing
         // about how it behaves once it does.
         send_order_now(order);
@@ -500,14 +507,35 @@ void MatchingEngine::process_market_order(SymbolId id, const std::string& symbol
 
 void MatchingEngine::cancel_order(uint64_t order_id)
 {
-    if (cancel_delay_events_ > 0 || cancel_latency_us_ > 0)
+    // Two cases, and the second one is the fix. An order the venue is holding is a cancel's normal target. An order
+    // still waiting out its own placement latency is one the venue has not received, so it cannot be cancelled yet
+    // and must not be forgotten either: the request is parked and applied when the order lands.
+    //
+    // It was discarded here, and that is the defect this method now does not have. Measured 2026-11-25 on the OKX
+    // maker with the order and the cancel on the same 30 ms link: the baseline configuration submitted 1,275 quotes
+    // at zero latency and 31 at 30 ms, and `longest_wait_filled_cycles` went from 684 to 26,570 -- the strategy was
+    // waiting for quotes it had already tried to pull, so the collapse read as a property of the configuration
+    // rather than as an artefact of the replay.
+    const bool working = order_index_.contains(order_id);
+    if (!working && !in_flight_ids_.contains(order_id))
     {
-        if (order_index_.contains(order_id))
-            pending_cancels_[order_id] = {event_counter_ + cancel_delay_events_,
-                                          now_us_ + cancel_latency_us_};
+        // Nothing this cancel can name: the order filled, was cancelled, or was refused. Dropping the request is the
+        // same answer `cancel_order_immediate` gives, and parking it would fire the cancel against a later order
+        // that reused the id.
         return;
     }
-    cancel_order_immediate(order_id);
+
+    // A synchronous engine answers inside the call, which is the shape every recorded run without a latency has.
+    if (working && cancel_delay_events_ == 0 && cancel_latency_us_ == 0)
+    {
+        cancel_order_immediate(order_id);
+        return;
+    }
+    // Both delays are measured from the request rather than from the order's arrival -- `now_us_` is the market event
+    // the strategy decided on and `event_counter_` is the event it decided at -- so a cancel is due when its own link
+    // says so, and `apply_pending_cancels` is what makes it wait for the landing if that is later.
+    pending_cancels_[order_id] = {event_counter_ + cancel_delay_events_,
+                                  now_us_ + cancel_latency_us_};
 }
 
 void MatchingEngine::apply_pending_cancels()
@@ -515,6 +543,14 @@ void MatchingEngine::apply_pending_cancels()
     for (auto it = pending_cancels_.begin(); it != pending_cancels_.end();)
     {
         if (it->second.due_event > event_counter_ || it->second.due_time > now_us_)
+        {
+            ++it;
+            continue;
+        }
+        // Arrived, but the order it names has not: a venue cannot cancel what it does not hold, so the entry waits
+        // for the landing instead of being spent. This is where a cancel that raced its own placement used to
+        // disappear; `advance_to` delivers the landing, so the next event that follows it applies the cancel.
+        if (!order_index_.contains(it->first) && in_flight_ids_.contains(it->first))
         {
             ++it;
             continue;

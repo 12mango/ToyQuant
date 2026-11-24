@@ -484,6 +484,67 @@ int main()
                          [](const ExecutionReport& report)
                          { return report.exec_type == ExecType::Cancelled; }) == 1);
 
+    // A cancel that names an order the engine has not delivered yet. The venue cannot cancel what it has not
+    // received, and the engine used to discard the request here, so the quote rested until something filled it
+    // while the strategy waited for an order it had already tried to pull (`longest_wait_filled_cycles` 26,570 on
+    // the OKX maker at 30 ms, against 684 at zero latency). A cancel now waits for the landing and is applied at
+    // whichever comes later, the end of its own latency or the order's arrival.
+    const auto cancelled_count = [](const std::vector<ExecutionReport>& seen)
+    {
+        return std::count_if(seen.begin(), seen.end(), [](const ExecutionReport& report)
+                             { return report.exec_type == ExecType::Cancelled; });
+    };
+
+    MatchingEngine racing_engine(0.1, {}, {.order_latency_us = 30, .cancel_latency_us = 10});
+    std::vector<ExecutionReport> racing_reports;
+    racing_engine.set_report_callback([&racing_reports](const ExecutionReport& report)
+                                      { racing_reports.push_back(report); });
+    racing_engine.process_bbo({1000, "RACING", 100.0, 10, 100.1, 10, 1, "test"});
+    racing_engine.send_order({80, "RACING", exchange::Side::Buy, exchange::OrderType::Limit, 100.0, 10, 10,
+                              1000, "MarketMaker"});
+    racing_engine.cancel_order(80);
+    // The cancel's own latency expired at 1010 and the order arrives at 1030, so nothing may be cancelled yet.
+    racing_engine.process_bbo({1010, "RACING", 100.0, 10, 100.1, 10, 2, "test"});
+    assert(cancelled_count(racing_reports) == 0);
+    // The order lands and the held cancel is applied in the same event.
+    racing_engine.process_bbo({1030, "RACING", 100.0, 10, 100.1, 10, 3, "test"});
+    assert(cancelled_count(racing_reports) == 1);
+    assert(has_report(racing_reports, 80, ExecType::Cancelled, 10));
+
+    // The shape the measurement showed: both legs on the same 30 ms link, the cancel decided 10 ms after the
+    // placement while the order is still in flight. The order lands at 1030 and the cancel is due at 1040, so the
+    // quote is a working order for one event before the cancel reaches it -- which is the truth of the link.
+    MatchingEngine equal_latency_engine(0.1, {}, {.order_latency_us = 30, .cancel_latency_us = 30});
+    std::vector<ExecutionReport> equal_latency_reports;
+    equal_latency_engine.set_report_callback(
+        [&equal_latency_reports](const ExecutionReport& report)
+        { equal_latency_reports.push_back(report); });
+    equal_latency_engine.process_bbo({1000, "EQUAL", 100.0, 10, 100.1, 10, 1, "test"});
+    equal_latency_engine.send_order({81, "EQUAL", exchange::Side::Buy, exchange::OrderType::Limit, 100.0, 10,
+                                     10, 1000, "MarketMaker"});
+    equal_latency_engine.process_bbo({1010, "EQUAL", 100.0, 10, 100.1, 10, 2, "test"});
+    equal_latency_engine.cancel_order(81);
+    equal_latency_engine.process_bbo({1030, "EQUAL", 100.0, 10, 100.1, 10, 3, "test"});
+    assert(cancelled_count(equal_latency_reports) == 0);
+    assert(equal_latency_engine.query_order(81) == OrderQuery::Working);
+    equal_latency_engine.process_bbo({1040, "EQUAL", 100.0, 10, 100.1, 10, 4, "test"});
+    assert(has_report(equal_latency_reports, 81, ExecType::Cancelled, 10));
+
+    // A cancel that arrives after a fill cancels nothing and reports nothing: the entry is spent against an order
+    // that is no longer there, and it is not carried over to a later order that reuses the id.
+    MatchingEngine late_cancel_engine(0.1, {}, {.order_latency_us = 30, .cancel_latency_us = 50});
+    std::vector<ExecutionReport> late_cancel_reports;
+    late_cancel_engine.set_report_callback([&late_cancel_reports](const ExecutionReport& report)
+                                           { late_cancel_reports.push_back(report); });
+    late_cancel_engine.process_bbo({1000, "LATE", 100.0, 10, 100.1, 10, 1, "test"});
+    late_cancel_engine.send_order({82, "LATE", exchange::Side::Buy, exchange::OrderType::Limit, 100.0, 10, 10,
+                                   1000, "MarketMaker"});
+    late_cancel_engine.cancel_order(82);
+    late_cancel_engine.process_market_trade({1040, "LATE", 100.0, 10, Side::Sell, 0, "test"});
+    assert(has_report(late_cancel_reports, 82, ExecType::Filled, 0));
+    late_cancel_engine.process_bbo({1060, "LATE", 100.0, 10, 100.1, 10, 3, "test"});
+    assert(cancelled_count(late_cancel_reports) == 0);
+
     const auto trade_report = std::find_if(queued_reports.begin(), queued_reports.end(),
                                            [](const ExecutionReport& report)
                                            { return report.exec_type == ExecType::Trade; });

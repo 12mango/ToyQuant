@@ -86,62 +86,76 @@ problem.
 | Window | order/cancel | fills | shares | cancels | capture ticks | gross USD | net USD | net/fill USD | breakeven rate |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | SPY fast, synchronous | 0/0 | 799 | 33352 | 51903 | 0.267855 | 379.24 | 262.508 | 0.328546 | 1.48655e-05 |
-| SPY fast, 1 ms each way | 1000/1000 | 921 | 38487 | 52262 | 0.213825 | 136.59 | 1.8855 | 0.00204723 | 4.6397e-06 |
-| SPY fast, 5 ms each way | 5000/5000 | 9 | 500 | 113 | -0.08 | -1142 | -1143.75 | -127.083 | -0.00297873 |
-| SPY fast, 20 ms each way | 20000/20000 | 13 | 600 | 77 | -0.166667 | -753 | -755.1 | -58.0846 | -0.00163672 |
-| SPY fast, 50 ms each way | 50000/50000 | 23 | 918 | 51 | -0.533769 | -1040.86 | -1044.07 | -45.3945 | -0.00147879 |
-| SPY fast, 20 ms order only | 20000/0 | 12 | 500 | 78 | -0.6 | -371 | -372.75 | -31.0625 | -0.000967678 |
+| SPY fast, 1 ms each way | 1000/1000 | 923 | 38727 | 52541 | 0.210951 | 145.19 | 9.6455 | 0.0104502 | 4.90124e-06 |
+| SPY fast, 5 ms each way | 5000/5000 | 901 | 38525 | 52294 | 0.250876 | -45.11 | -179.947 | -0.19972 | -1.53085e-06 |
+| SPY fast, 20 ms each way | 20000/20000 | 877 | 37638 | 51662 | 0.193156 | -39.44 | -171.173 | -0.19518 | -1.36993e-06 |
+| SPY fast, 50 ms each way | 50000/50000 | 881 | 38999 | 50188 | 0.224288 | 391.1 | 254.603 | 0.288994 | 1.31175e-05 |
+| SPY fast, 20 ms order only | 20000/0 | 768 | 32091 | 51910 | 0.230797 | 201.04 | 88.7215 | 0.115523 | 8.19019e-06 |
 | SPY fast, 20 ms cancel only | 0/20000 | 928 | 39588 | 51632 | 0.213082 | 232.92 | 94.362 | 0.101683 | 7.69175e-06 |
 | SPY slow refresh 8, synchronous | 0/0 | 1720 | 66409 | 16599 | -0.354929 | 5.22 | -227.212 | -0.1321 | 1.02766e-07 |
-| SPY slow refresh 8, 5 ms each way | 5000/5000 | 1510 | 58240 | 12899 | -0.445167 | -567.25 | -771.09 | -0.510656 | -1.27345e-05 |
+| SPY slow refresh 8, 5 ms each way | 5000/5000 | 1754 | 67950 | 16630 | -0.359272 | -143.75 | -381.575 | -0.217546 | -2.76583e-06 |
 | SPY slow refresh 16, synchronous | 0/0 | 1710 | 65571 | 16630 | -0.40553 | 106.01 | -123.489 | -0.0722155 | 2.11372e-06 |
-| SPY slow refresh 8, two ticks wide, 5 ms each way | 5000/5000 | 890 | 35043 | 13986 | -0.253874 | 333.69 | 211.04 | 0.237123 | 1.24485e-05 |
+| SPY slow refresh 8, two ticks wide, 5 ms each way | 5000/5000 | 1010 | 40746 | 17931 | -0.148211 | 203.91 | 61.299 | 0.0606921 | 6.54212e-06 |
 | MES fast, synchronous | 0/0 | 1675 | 3934 | 23823 | 0.013091 | -387.5 | -2826.58 | -1.68751 | -2.54567e-06 |
 | MES fast, 5 ms each way | 5000/5000 | 1671 | 3941 | 23639 | 0.0185232 | -610.625 | -3054.04 | -1.82768 | -4.00432e-06 |
 
 <!-- toyquant:check
 run: l2_replay data/v2/equities/xnas_SPY_trades_2026-09-29_1330_1530.csv.gz data/v2/equities/xnas_SPY_depth_2026-09-29_1330_1530.csv.gz SPY 0 active_l2 1 conservative --order-size=100 --inventory-limit=1000 --base-spread-ticks=1 --order-latency-us=1000 --cancel-latency-us=1000
-then: trade_reports=921 trade_report_quantity=38487 cancel_requests=52262 captured_edge_per_unit_ticks=0.213825 gross_pnl_usd=136.59 net_pnl_usd=1.8855 net_per_fill_usd=0.00204723 breakeven_maker_rate=4.6397e-06
+then: trade_reports=923 trade_report_quantity=38727 cancel_requests=52541 captured_edge_per_unit_ticks=0.210951 gross_pnl_usd=145.19 net_pnl_usd=9.6455 net_per_fill_usd=0.0104502 breakeven_maker_rate=4.90124e-06
 run: l2_replay data/v2/equities/xnas_SPY_trades_2026-09-29_1330_1530.csv.gz data/v2/equities/xnas_SPY_depth_2026-09-29_1330_1530.csv.gz SPY 0 active_l2 1 conservative --order-size=100 --inventory-limit=1000 --base-spread-ticks=1 --order-latency-us=5000 --cancel-latency-us=5000
-then: trade_reports=9 trade_report_quantity=500 cancel_requests=113 captured_edge_per_unit_ticks=-0.08 gross_pnl_usd=-1142 net_pnl_usd=-1143.75 net_per_fill_usd=-127.083 breakeven_maker_rate=-0.00297873
+then: trade_reports=901 trade_report_quantity=38525 cancel_requests=52294 captured_edge_per_unit_ticks=0.250876 gross_pnl_usd=-45.11 net_pnl_usd=-179.947 net_per_fill_usd=-0.19972 breakeven_maker_rate=-1.53085e-06
 -->
 
-Re-deriving all thirteen rows costs about a minute and a half, so only the crossing and the collapse are pinned
-and the script prints the rest.
+Re-deriving all thirteen rows costs about a minute and a half, so only the crossing and the first loss are pinned
+and the script prints the rest. The rows were re-derived on 2026-11-25, after the engine stopped dropping a cancel
+that named an order still waiting out its own placement latency; the earlier version of this table carried that
+defect, and the row it produced at five milliseconds is discussed below.
 
-**One millisecond each way is where the positive row goes to zero**, and the mechanism is not that latency stops
-you trading: fills *rise*, from 799 to 921, while the capture per fill falls from 0.267855 to 0.213825 ticks, so
-the delay changes which fills you get rather than how many. The margin the window had was 0.328546 USD a fill,
-and the delay cost is of the same order, which is what a margin of a third of a cent a share means against a one
-cent tick.
+**One millisecond each way is where the positive row loses its margin**, and the mechanism is not that latency
+stops you trading: fills *rise*, from 799 to 923, while the capture per fill falls from 0.267855 to 0.210951 ticks,
+so the delay changes which fills you get rather than how many. The margin the window had was 0.328546 USD a fill,
+and at one millisecond it is 0.0104502 — the sign survives at +9.6455 USD and the size does not, which is what a
+margin of a third of a cent a share means against a one cent tick.
 
-**Five milliseconds gives the price away.** Fills collapse from 799 to 9, because a quote that arrives late
-arrives while the market is already somewhere else, and the run ends holding 500 shares marked at -1142, which is
-where its -1143.75 comes from: the position again rather than the quoting.
+**Five milliseconds used to give the price away, and that reading was the engine's rather than the link's.** The
+row measured -1143.75 on nine fills and five hundred shares, and it read as a strategy whose quotes arrive too late
+to be useful. With the cancel race fixed the same cell is 901 fills of 38,525 shares and -179.947 USD: the quote
+that arrives late can now be pulled, so the fills are still there, the capture falls from 0.267855 to 0.250876
+ticks, and the rest of the loss is a gross mark of -45.11. The old row was the strategy's own cancels being
+discarded at the placement, which left every quote resting until something filled it.
 
-**The two latencies are not symmetric, and order latency is the damaging one.** Twenty milliseconds on orders
-alone is as bad as both at once, at 12 fills and -372.75, because an order that becomes live late becomes live at
-the wrong price. Twenty milliseconds on cancels alone is far milder, at 928 fills and +94.36: stale quotes get
-filled more often and each of them slightly worse, which is a cost rather than a cliff.
+**The two legs are not separable on this window, and that is the honest reading of the next three rows.** Twenty
+milliseconds on orders alone reads +88.7215 (768 fills) and on cancels alone +94.362 (928 fills), while both at once
+reads -171.173 (877 fills). A cost that appears when two delays are applied together and not when either is applied
+alone is not a per-leg latency cost: at that scale the number is which fills the delay admits and how 38,000 shares
+are marked at the end of two hours. What the window separates cleanly is the synchronous row and the first
+millisecond.
 
 **Slowing the quotes down does not rescue it, and this is the result worth keeping.** A policy that re-quotes
 only after eight or sixteen ticks of fair-price movement, at zero latency, earns -227.212 and -123.489 with a
 capture of -0.354929 and -0.40553 ticks: the frequent cancelling was itself doing the fill selection, and a quote
-that waits longer is a quote that gets adversely filled. The reflex answer to latency, which is to trade more
-slowly, is measured here and it is wrong.
+that waits longer is a quote that gets adversely filled. At five milliseconds each way the same slow policy is
+worse again, at -381.575, so the reflex answer to latency -- trade more slowly -- is measured twice and is wrong
+both times.
 
-**One cell of the table is positive and it is not evidence.** At two ticks wide, with a slow refresh, at five
-milliseconds each way, the run makes +211.04 — and its capture is still negative at -0.253874 with a closing
-position of -237 shares, so the gross came from the position carried into a favourable mark, which is the shape
-of the row [the flatten band](history-03-studies.md#the-flatten-band) ends on. Picking that cell after seeing the others
-is exactly the window selection this repository refuses to do.
+**Four cells are positive and none of them is evidence.** They are fifty milliseconds each way (+254.603), twenty
+milliseconds on orders alone (+88.7215), twenty milliseconds on cancels alone (+94.362) and the two-tick-wide
+slow-refresh cell at five milliseconds (+61.299), against a synchronous row of +262.508. The first is within three
+percent of that row's gross (+391.1 against +379.24) on 881 fills of 38,999 shares against 799 of 33,352: a hundred
+extra shares and a different mark at the end of two hours, not a quoting advantage at fifty milliseconds. The
+two-tick-wide cell is the other shape of the same thing -- its capture is still negative at -0.148211, so the gross
+came from the position carried into a favourable mark, which is the shape of the row
+[the flatten band](history-03-studies.md#the-flatten-band) ends on. Picking any of them after seeing the others is
+exactly the window selection this repository refuses to do.
 
-**Verdict: the sixth gate fails.** The tolerance of this policy on this window is about one millisecond one way,
-which is not a personal account's to control, and the feed latency a real deployment adds on top of it is not
-modelled at all, so a live result would be worse than the worst row above. What this does not yet close is the
-one cheap test the arithmetic leaves open: a symbol whose spread is three or more ticks wide has a larger capture
-per fill to absorb the same delay. That is the screen in gate 1, and it is the last thing to try before the
-quoting line is written down as a research result rather than as a plan.
+**Verdict: the sixth gate fails.** The margin, not the sign, is what one millisecond takes — 262.508 USD to
+9.6455 — and that is not a personal account's to control; the feed latency a real deployment adds on top of it is
+not modelled at all. Above one millisecond the table cannot price the delay: 5, 20 and 50 ms read -179.947,
+-171.173 and +254.603 while fills stay between 877 and 923, which says the two-hour window's inventory decides that
+column and not the link. What this does not yet close is the one cheap test the arithmetic leaves open: a symbol
+whose spread is three or more ticks wide has a larger capture per fill to absorb the same delay. That is the screen
+in gate 1, and it is the last thing to try before the quoting line is written down as a research result rather than
+as a plan.
 
 ## The Screen, Run: the First Two Symbols That Pass It
 

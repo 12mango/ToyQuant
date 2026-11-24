@@ -397,6 +397,10 @@ class MatchingEngine : public IMatchingEngine
     // because a strategy only ever acts on a market event.
     uint64_t now_us_{0};
     std::vector<std::pair<uint64_t, exchange::Order>> in_flight_orders_;
+    // The same orders, by id. The queue is ordered by delivery and is popped once per event; a cancel arrives
+    // once per refresh, so the question "has the venue received this order yet" has to be a lookup rather than
+    // a scan. This is the table `cancel_order` reads to tell "the venue holds it" from "the venue will hold it".
+    std::unordered_set<uint64_t> in_flight_ids_;
     uint64_t event_counter_{0};
     struct PendingCancel
     {
