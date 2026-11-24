@@ -7,6 +7,21 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The rescue configuration does not survive a 30 ms link (2026-11-25)
+
+- **`okx_maker_baseline.py` grew `--latency-us`**, which sets `--order-latency-us` and `--cancel-latency-us` together, so a
+  sweep can ask the same question the demo venue answers by existing: 30-80 ms of round trip.
+- **At 30 ms the flow collapses, not merely the edge.** On one measured day the baseline configuration submits **31 quotes
+  in a two-hour window** where zero latency gives **1,275**, and 29 of the 31 fill; the fee rises from 2.00 bps to **4.25**
+  because a quote that lands stale is marketable on arrival, and `max_quote_lifetime` goes from 684 cycles to **26,570**.
+  The deep-quote configuration behaves the same way (one to forty-four fills across seven days against 183), so what this
+  exposes is the link and not the deep quote.
+- **The mechanism is not yet reconciled, and the record says so.** A 30 ms round trip should cost a quote one replace
+  cycle, not the two hours these counters imply; something between the delayed acknowledgement and the working-order
+  bookkeeping is holding the strategy out of the book between fills. What is settled is the direction: a configuration
+  whose quote cycle is shorter than the link cannot be credited with the zero-latency number.
+- No recorded number moved; `docs` and `fast` green.
+
 ## The burst family's passive legs are measured, and they make it worse (2026-11-25)
 
 - **`cascade_probe.py` grew the two leg modes** (`--entry-mode`, `--exit-mode`, `--maker-bps`, `--tick`,

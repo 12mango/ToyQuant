@@ -294,7 +294,11 @@ def main():
                         # volume distribution), which side of the move the trade takes, whether the condition is the
                         # trade tape or the book thinning, and the two numbers that condition is stated with. They are
                         # the study's arguments rather than the engine's knobs, and the studies record names them.
-                        "--condition", "--momentum", "--vacuum-fraction", "--trailing-seconds", "--depth-file"}:
+                        "--condition", "--momentum", "--vacuum-fraction", "--trailing-seconds", "--depth-file",
+                        # `tools/sweep/okx_maker_baseline.py` owns this one: it sets `--order-latency-us` and
+                        # `--cancel-latency-us` together so a sweep can ask one latency question across a window. The
+                        # engine still takes the two halves separately; the studies record names the tool's spelling.
+                        "--latency-us"}:
             problems.append(f"{flag} is mentioned in a document and is not a flag the binary accepts")
     for model in sorted(models):
         if model not in text.lower():

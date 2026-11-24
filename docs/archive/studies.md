@@ -1580,6 +1580,30 @@ about 1.5 bps: at 1.5 the four windows read +0.51, +1.09, +0.02 and +1.62 in the
 +1.01, +1.59, +0.52 and +2.12. That is an account-tier question rather than a code one, and it is the same shape of
 answer the crypto line reached from the other direction.
 
+**The same configuration behind a network does not survive it (2026-11-25).** The measurement above is a zero-latency
+replay, and the demo venue's own round trip is 30-80 ms, so the replayer was asked to hold every order and cancel for that
+long (`--order-latency-us` / `--cancel-latency-us`, now reachable from the sweep as `--latency-us`). Two things happen, and
+only the first is reconciled:
+
+| 2026-11-16 alone, the baseline configuration (touch, refresh 4) | quotes submitted | fills | fees bps | closed bps | net bps |
+|---|---:|---:|---:|---:|---:|
+| zero latency | 1,275 | 535 | 2.00 | +1.23 | -1.13 |
+| 30 ms | **31** | 29 | **4.25** | n/a (29 fills) | n/a (29 fills) |
+
+The flow is what disappears, not merely the edge: at 30 ms the same configuration submits **31 quotes in a two-hour window**
+where zero latency gives **1,275**, and 29 of the 31 fill -- so nearly every quote it manages to place is taken, and the fee
+rises above the maker's 2.00 bps because a quote that lands stale is marketable on arrival. The deep-quote configuration
+behaves the same way (one to forty-four fills across the seven days against 183), and `quote_observations` equals
+`submitted_orders` on the run that was read, so the collapse is the strategy's own decision and not a pipeline refusal.
+`max_quote_lifetime` rises from 684 cycles to 26,570: one quote now lives through a quarter of the window's updates.
+
+**What is not yet reconciled, and why this is a counter and not a verdict.** A 30 ms round trip should cost a quote at most
+one replace cycle, not the two hours the numbers imply; something in the path between the delayed ack, the working-order
+bookkeeping and the `max_quote_age` rule is holding the strategy out of the book between fills, and until that is read the
+honest statement is "the flow collapses under latency", not "the strategy would trade thirty times a day". The direction is
+settled either way: a configuration whose quote cycle is shorter than the link cannot be credited with the zero-latency
+number, and that is the point this check exists to settle.
+
 One measurement error belongs in this record because it produced a table of zeros: OKX cuts its trade archive on midnight
 UTC+8 and its book archive on UTC, so a window starting at or after 16:00 UTC lives in the *next* trade file. Reading the
 file named for the book's day gave two hours of book against zero trades, and the engine answered with zero quotes on

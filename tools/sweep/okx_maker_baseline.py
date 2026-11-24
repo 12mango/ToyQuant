@@ -39,7 +39,7 @@ ROOT = Path(__file__).resolve().parents[2]
 BIN = ROOT / "out/build/linux-debug/toy_quant"
 WINDOW_TOOL = ROOT / "tools/study/okx_book_window.py"
 SLICE_TOOL = ROOT / "tools/fetch/slice.py"
-COLUMNS = ["day", "model", "base", "refresh", "fills", "fill_rate", "fees_bps", "gross_bps", "closed_bps",
+COLUMNS = ["day", "model", "base", "refresh", "latency_us", "fills", "fill_rate", "fees_bps", "gross_bps", "closed_bps",
            "closed_per_fill_bps", "net_bps", "breakeven_bps", "capture_ticks", "markout_ticks", "zero_queue",
            "max_inv", "net_pos", "stale"]
 
@@ -146,6 +146,8 @@ def main():
                         help="how far the fair price must move to requote, in ticks, comma separated")
     parser.add_argument("--inv-limit", default="100000000", help="engine units of net position; one contract is ten million")
     parser.add_argument("--order-size", default="10000000")
+    parser.add_argument("--latency-us", type=int, default=0,
+                        help="order and cancel latency the replayer holds each leg for, in microseconds")
     parser.add_argument("--extra", default="", help="further l2_replay flags, space separated")
     parser.add_argument("--out", default="/tmp/tq/baseline.csv")
     args = parser.parse_args()
@@ -174,6 +176,9 @@ def main():
                         shape.append(f"--base-spread-ticks={base:g}")
                     if refresh is not None:
                         shape.append(f"--refresh-price-ticks={refresh:g}")
+                    if args.latency_us > 0:
+                        shape.append(f"--order-latency-us={args.latency_us}")
+                        shape.append(f"--cancel-latency-us={args.latency_us}")
                     command = [str(BIN), "l2_replay", str(trades), str(cut), args.symbol, "0", "active_l2", "1", model,
                                "--fast-validation", f"--order-size={args.order_size}",
                                f"--inventory-limit={args.inv_limit}"] + shape + [p for p in args.extra.split() if p]
@@ -188,6 +193,7 @@ def main():
                     row = {"day": day_text, "model": model,
                            "base": "" if base is None else f"{base:g}",
                            "refresh": "" if refresh is None else f"{refresh:g}",
+                           "latency_us": str(args.latency_us),
                            "fills": fields.get("trade_reports", "?"),
                            "fill_rate": fields.get("fill_rate", "?"), "fees_bps": bps("fees_paid"),
                            "gross_bps": bps("gross_pnl_usd"), "closed_bps": bps("gross_closed_pnl_usd"),
