@@ -223,22 +223,32 @@ inline InstrumentSpec deribit_eth_perpetual_spec()
                           .taker_fee_rate = 0.0005};
 }
 
+// One venue, three symbols, and one invariant: one contract is the venue's minimum order, so the minimum is the contract
+// value times the scale rather than a figure copied from the symbol above it. The copy is not hypothetical -- the first
+// version of the ETH factory carried BTC's 10000 and was ten times too small, and `l2_replay_test` pins all three minima
+// so that the arithmetic, not the memory, is what a reader checks.
+inline InstrumentSpec okx_swap_spec(const std::string& symbol, double tick_size, double contract_size,
+                                    uint64_t quantity_scale = 1000000)
+{
+    return InstrumentSpec{.exchange = "okx",
+                          .symbol = symbol,
+                          .tick_size = tick_size,
+                          .quantity_scale = quantity_scale,
+                          .lot_size = 1,
+                          .min_order_quantity =
+                              static_cast<uint64_t>(contract_size * static_cast<double>(quantity_scale) + 0.5),
+                          .contract_size = contract_size,
+                          .maker_fee_rate = 0.0002,
+                          .taker_fee_rate = 0.0005};
+}
+
 // A linear swap, so the unit value is the traded price times the base amount the contract carries, which is
 // what the zero in unit_notional_usd means. The derived order size that strategy_factory computes from
 // quantity_scale is a thousandth of a base unit here and therefore below the venue's one contract minimum,
 // so a run on this instrument sets --order-size and --inventory-limit explicitly.
 inline InstrumentSpec okx_btc_swap_spec(uint64_t quantity_scale = 1000000)
 {
-    return InstrumentSpec{.exchange = "okx",
-                          .symbol = "BTC-USDT-SWAP",
-                          .tick_size = 0.1,
-                          .quantity_scale = quantity_scale,
-                          .lot_size = 1,
-                          .min_order_quantity = 10000,
-                          // One contract is 0.01 BTC, so with this scale the minimum order is 10000 units.
-                          .contract_size = 0.01,
-                          .maker_fee_rate = 0.0002,
-                          .taker_fee_rate = 0.0005};
+    return okx_swap_spec("BTC-USDT-SWAP", 0.1, 0.01, quantity_scale);
 }
 
 // The same venue's ETH swap: one contract carries 0.1 ETH against BTC's 0.01, the tick is a cent instead of a tenth
@@ -247,34 +257,16 @@ inline InstrumentSpec okx_btc_swap_spec(uint64_t quantity_scale = 1000000)
 // almost the same fraction of a basis point per tick, so a difference between them cannot be the tick.
 inline InstrumentSpec okx_eth_swap_spec(uint64_t quantity_scale = 1000000)
 {
-    return InstrumentSpec{.exchange = "okx",
-                          .symbol = "ETH-USDT-SWAP",
-                          .tick_size = 0.01,
-                          .quantity_scale = quantity_scale,
-                          .lot_size = 1,
-                          .min_order_quantity = 100000,
-                          // One contract is 0.1 ETH, so with this scale the minimum order is 100000 units.
-                          .contract_size = 0.1,
-                          .maker_fee_rate = 0.0002,
-                          .taker_fee_rate = 0.0005};
+    return okx_swap_spec("ETH-USDT-SWAP", 0.01, 0.1, quantity_scale);
 }
 // The first swap the pre-registered screen passed on both halves (`docs/archive/studies.md`): a tenth of a cent tick on
 // a token under a dollar, one contract carrying ten of them, and a half spread the venue's own book quotes at 8.51 bps
 // against the 2 it charges to rest -- 4.25 times the fee, where BTC quotes 0.01. The two symbols that screen passed
 // before this one are equities (AAPL and TSLA) and both failed the measurement that followed, so this instrument is
-// registered to be measured and not because it is expected to pass. One contract is ten units at the venue's millionth
-// scale, so the minimum order is 10,000,000 units.
+// registered to be measured and not because it is expected to pass.
 inline InstrumentSpec okx_up_swap_spec(uint64_t quantity_scale = 1000000)
 {
-    return InstrumentSpec{.exchange = "okx",
-                          .symbol = "UP-USDT-SWAP",
-                          .tick_size = 0.0001,
-                          .quantity_scale = quantity_scale,
-                          .lot_size = 1,
-                          .min_order_quantity = 10000000,
-                          .contract_size = 10.0,
-                          .maker_fee_rate = 0.0002,
-                          .taker_fee_rate = 0.0005};
+    return okx_swap_spec("UP-USDT-SWAP", 0.0001, 10.0, quantity_scale);
 }
 // in this repository where the fee is not a multiple of a tick — one tick on a hundred dollar share is one
 // basis point, and a retail commission of a few tenths of a cent a share is a fraction of it, where the

@@ -7,6 +7,14 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## One invariant instead of three hand-copied minima (2026-11-23)
+
+- The three OKX swap factories repeated the same seven fields, and `min_order_quantity` was a figure copied by hand --
+  the copy that once put BTC's 10000 on ETH and was ten times too small. `okx_swap_spec` computes the minimum from the
+  contract value and the scale, and each symbol is one line: `common` 989 -> 981 lines, while the three minima
+  `l2_replay_test` pins are unchanged.
+- No behaviour: `code` and `fast` green and no recorded number moved.
+
 ## The screen's passer, and the session that could not measure it (2026-11-23)
 
 - **`UP-USDT-SWAP` is registered** from the venue's own metadata: a 0.0001 tick, one contract carrying ten UP, a minimum
