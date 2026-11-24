@@ -65,8 +65,26 @@ int main()
                 {.exchange_ts = 302, .local_ts = 303, .is_snapshot = true,
                  .side = Side::Sell, .price = 100.0, .amount = 20}},
         .exchange = "deribit"});
-    assert(std::abs(book.top_of_book().bid_price - 98.0) < 1e-9);
-    assert(std::abs(book.top_of_book().ask_price - 99.0) < 1e-9);
+    // A snapshot at a new timestamp replaces what the previous one left: the level it does not state is gone rather
+    // than carried forward. A stream that sends one snapshot per top-of-book change depends on exactly this, and with
+    // the older semantics the superseded ask stood under a risen bid and the book was reported crossed.
+    assert(std::abs(book.top_of_book().bid_price - 97.0) < 1e-9);
+    assert(std::abs(book.top_of_book().ask_price - 100.0) < 1e-9);
+    assert(book.crossed_batches() == 0);
+
+    // The complementing half of one snapshot shares its timestamp, so the side that already arrived survives it: the
+    // bid the first piece stated is still the touch and the second piece's ask sits behind the first piece's.
+    book.apply_incremental_batch(IncrementalBookBatch{
+        .ts = 302,
+        .exchange_ts = 302,
+        .local_ts = 303,
+        .symbol = "BTC-PERPETUAL",
+        .updates = {{.exchange_ts = 302, .local_ts = 303, .is_snapshot = true,
+                     .side = Side::Sell, .price = 100.5, .amount = 5}},
+        .exchange = "deribit"});
+    assert(std::abs(book.top_of_book().bid_price - 97.0) < 1e-9);
+    assert(std::abs(book.top_of_book().ask_price - 100.0) < 1e-9);
+    assert(book.depth(Side::Sell) == 2);
 
     bool rejected_incremental_time = false;
     try

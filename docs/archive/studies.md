@@ -1437,29 +1437,36 @@ book, either from the venue's L2 archive (portal-only) or from the relay's marke
 `INST`, `INST_CODE` and `MARKET_DEMO` so that the two legs can point at different venues while the order leg stays on the
 demo account.
 
-**The book arrived, and two relay gaps came with it (2026-11-25).** The same diagnostic one session later, with the relay's
-frame dump on (`bbo-tbt`, `MARKET_DEMO=0`, 60 s), settles what the first two could not: the venue does serve this symbol
-and its book is on the wire -- the raw frames read bid 0.1893 against ask 0.1896, a three-tick spread, and the engine
-recorded 188 depth rows that are not crossed. Three things then happened, and only the first is about this instrument:
+**The book arrived, and reading it took a defect (2026-11-25).** Three sixty-second sessions on the same instrument, each
+answering the previous one's question.
 
-- **The depth channel matters.** `books` delivered nothing for this symbol and `bbo-tbt` delivers its top of book, so the
-  earlier reading ("the book never arrived") was a channel choice rather than a venue gap. It now costs one flag:
-  `BOOKS_CHANNEL`.
-- **The engine still formed no quotable market.** `incremental_batches=94`, `crossed_book_batches=84`,
-  `bbo_quote_observations=0`, `queue_profile_orders=0`; six quotes all `quote_behind_touch`, six reports, no fill, no fee,
-  equity unchanged (`[RECON] at=end status=ok`). A clean session that measured nothing. Each `bbo-tbt` message becomes two
-  `DEPTH` rows with `is_snapshot=1`, and since the recording shows those rows uncrossed, the open question is what the
-  engine holds *between* them rather than what the venue sent.
-- **The order leg was sized against BTC's contract, 1000 times too large.** The relay's mapping defaults are BTC's (0.01
-  of the coin a contract, 10,000 engine units a contract), and `soak.sh` passed `--instrument` without the four mapping
-  flags -- so one UP contract became a thousand: each of the six orders the relay built asked for 1000 contracts, about
-  1,895 USD at 0.1895, where the strategy believed it had sent 1.90. That the venue's own check is what ended them, and not
-  ours: `audited_rejected_orders=6` with `audited_cancelled_orders=0` and `orders_that_filled=0` says all six came back as
-  rejects, so what stood between the harness and a thousand-fold position was the venue's margin check --
-  `--max-exposure-usd` checks the engine's units, not the venue's. `soak.sh` now holds a per-instrument mapping table
-  (`BTC`, `ETH`, `UP`) and **refuses** an instrument it does not know, naming `src/common/instrument_spec.h` as the
-  authority. The guard is the arithmetic itself: the table is shell and the relay's `--self-test` has no case for a
-  non-BTC mapping, which is the open half of this fix.
+- **The channel was the first gap.** `books` delivered nothing for this symbol and `bbo-tbt` delivers its top of book: the
+  capture's raw frames read bid 0.1893 against ask 0.1896, with 103 trades in the minute. `BOOKS_CHANNEL` is the flag that
+  says which channel a session reads.
+- **The book then arrived and still could not be quoted, because of a defect in the book.** The engine counted
+  `crossed_book_batches=84` of 94 batches while every row of its own recording was uncrossed, which points at what the
+  book holds rather than what the venue sent: `apply_incremental_batch` cleared on the *first* snapshot batch and treated
+  the rest of the run as increments. That is right for a cumulative snapshot delivered in pieces and wrong for a stream
+  that sends one top-of-book snapshot per change, where the superseded level must go. A snapshot that arrives at a new
+  exchange timestamp now clears the book. `code` re-derives every recorded number unchanged -- the archived windows open
+  with one snapshot per connect -- and the same session then reads `crossed_book_batches` absent, `bbo_quote_observations`
+  2 of 14 quotes, `working_orders=2` and `total_order_lifetime_cycles=84` where it read 0, 0, 0 and 14.
+- **The order leg cannot trade this symbol on the demo account, and the reason is now named rather than guessed.** Every
+  order is answered `sCode=51001 Instrument ID, Instrument ID code, or Spread ID doesn't exist` -- twelve of fourteen
+  reports in the session above, and the same answer the two earlier sessions' six orders received. The demo account does
+  not carry the instrument at all, so a measurable market plus a demo order leg is still not a measurable instrument:
+  what this queue-model question needs is the venue's own fills, which means the portal's L2 archive or an account that
+  carries the symbol.
+- **The harness had a thousand-fold sizing defect, which the same sessions exposed.** The relay's contract mapping
+  defaults to BTC's and `soak.sh` passed none of its four flags, so one UP contract became a thousand: each order asked for
+  1000 contracts, about 1,895 USD at 0.1895, where the strategy believed it had sent 1.90. `soak.sh` now holds a
+  per-instrument mapping table (`BTC`, `ETH`, `UP`) and **refuses** an instrument it does not know, naming
+  `src/common/instrument_spec.h` as the authority. That the 51001 answer blocked the order is luck about this symbol and
+  not a bound: `--max-exposure-usd` checks the engine's units, not the venue's. The guard is the arithmetic itself -- the
+  table is shell and the relay's `--self-test` has no case for a non-BTC mapping, which is the open half of this fix.
+- **One earlier reading here was wrong and is corrected.** This page said the venue's margin check was what stood between
+  the harness and a thousand-fold position; the order log shows the six orders were answered `51001`, so they never
+  reached a sizing check.
 
 
 ### Line 8 executed: the low turnover rule, and the dispersion that replaces the verdict

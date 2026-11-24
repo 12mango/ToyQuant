@@ -75,8 +75,15 @@ void L2OrderBook::apply_incremental_batch(const IncrementalBookBatch& batch)
     if (local_timestamp_ != 0 && batch.local_ts < local_timestamp_)
         throw std::invalid_argument("L2 incremental local timestamp moved backwards");
 
+    // A snapshot batch replaces the book, and "one snapshot" is every batch carrying the same exchange timestamp: a
+    // venue sends one message per snapshot and the validator makes one batch of its rows, so a second batch with the
+    // same ts is the same snapshot delivered in pieces, where re-applying the rows is idempotent. A snapshot that arrives
+    // at a *new* timestamp supersedes the book and must clear it. Measured 2026-11-25: OKX's `bbo-tbt` channel sends one
+    // such message per top-of-book change, so there every batch is a snapshot -- clearing only on the first transition
+    // left the superseded ask standing, the book was crossed in 84 of 94 batches, and the strategy never saw a quotable
+    // market while the feed itself was intact.
     const bool reset = batch.has_snapshot();
-    if (reset && !snapshot_batch_active_)
+    if (reset && (!snapshot_batch_active_ || batch.exchange_ts != timestamp_))
     {
         bids_.clear();
         asks_.clear();

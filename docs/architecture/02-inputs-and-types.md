@@ -162,7 +162,11 @@ is the feed's own sequence on the snapshot path and a batch counter on the incre
 incremental message carries no sequence of its own, so a caller that compares sequences has to know which
 path it is on. What the incremental rows do carry is a snapshot flag per row, so a burst of rows belonging
 to one snapshot is recognised as a burst and the book is cleared once at its start rather than once per
-row.
+row -- and *one burst is one exchange timestamp*: a second snapshot arrives with a new timestamp, starts a
+new burst and clears again. That second half is what a top-of-book snapshot stream needs. OKX's `bbo-tbt`
+channel sends one snapshot per best-bid-or-offer change, so every batch there is a snapshot; clearing only on
+the first burst left the level each snapshot superseded standing, the book read crossed in 84 of 94 batches
+of a measured session, and the strategy never saw a quotable market while the feed itself was intact.
 
 A replay is delivered as fast as the file reads unless the run asks for pacing. `ReplayPacing` maps the file's
 timestamps onto the wall clock, optionally at a speed, and `L2ReplayFeed` reports how late each delivery was

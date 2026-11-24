@@ -7,18 +7,26 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
-## The passer's book arrives, and two relay gaps arrive with it (2026-11-25)
+## A snapshot at a new timestamp replaces the book (2026-11-25)
 
-- **`UP-USDT-SWAP`'s book is on the wire on `bbo-tbt`, not on `books`**: 188 uncrossed depth rows and 103 trades in 60 s,
-  a three-tick spread at 0.1895. The session still measured nothing -- `bbo_quote_observations=0`,
-  `crossed_book_batches=84` of 94, no fill, no fee, equity unchanged -- so what remains is what the engine holds between
-  the two `DEPTH` rows one `bbo-tbt` message becomes.
-- **A thousand-fold sizing defect, closed in the harness**: the relay's contract mapping defaults to BTC's and `soak.sh`
-  passed none of its four flags, so each of the six UP orders asked for 1000 contracts (~1,895 USD) where the strategy
-  believed it sent 1.90. All six came back rejected (`audited_rejected_orders=6`), so the venue's margin check is what
-  stood between the harness and a thousand-fold position. `soak.sh` now carries the per-instrument mapping and refuses an
-  unknown one.
-- No C++ changed; `fast` green, no recorded number moved.
+- **The book clears when a snapshot arrives at a new exchange timestamp** (`l2_orderbook.cpp`): clearing only on the first
+  snapshot batch is right for a cumulative snapshot delivered in pieces and wrong for a top-of-book stream where every
+  message is a snapshot. OKX's `bbo-tbt` therefore left the level each snapshot superseded standing, and the book read
+  crossed in 84 of 94 batches of an `UP-USDT-SWAP` session; after the change the same session reads no crossed batch,
+  `bbo_quote_observations` 2 of 14 quotes, `working_orders=2` and `total_order_lifetime_cycles=84` against 0, 0 and 14. No
+  recorded number moved -- `code` re-derives them all, because every archived window opens with one snapshot per connect.
+  Pinned by `l2_orderbook_test`, which also asserts that the second piece of one snapshot, sharing its timestamp, keeps
+  the side that already arrived.
+- **`soak.sh` sizes a non-BTC instrument by its own contract and refuses an instrument it does not know**: the relay's
+  mapping defaults to BTC's, so six UP orders asked for 1000 contracts (~1,895 USD) where the strategy believed it sent
+  1.90. The order leg carries only the two size flags; `--tick-size` and `--lot-size` stay with the leg that owns the price
+  grid, which a relay without `--order-listen` refuses.
+- **The demo account does not carry `UP-USDT-SWAP`**: every order is answered `sCode=51001` in all three sessions. A
+  measurable market from the real stream plus an order leg the demo refuses is not a measurable instrument, so this
+  instrument's queue-model question needs the venue's L2 archive or an account that carries it.
+- **A correction to what this file said an hour earlier.** The six rejects were recorded as the venue's margin check
+  standing between the harness and a thousand-fold position; the order log shows `51001`, so no sizing check was ever
+  reached, and the record now says so in `docs/archive/studies.md` too.
 
 ## One invariant instead of three hand-copied minima (2026-11-23)
 

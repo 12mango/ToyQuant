@@ -236,7 +236,9 @@ compatibility path. Everything below assumes that page.
   derives, and a number that moved.
 - **Maintenance is reported as an outcome, not as a transcript.** A push, a sync's four `ok` lines, a commit hash: name
   the result (`90172f0 pushed and synced`) and stop. No step-by-step account of `git`, the hook or the Drive copy unless
-  one of them failed or the owner asks.
+  one of them failed or the owner asks. The owner said it twice and it is the same rule both times: **a clean working
+  tree is not a finding.** A green push and sync are one clause of the closing sentence, never a table, and a routine
+  commit gets one line with its hash.
 - **A mistake of the agent's own is corrected quietly.** Fix it, say in one sentence what it was and that it is fixed,
   and record the rule where the claim lives if the mistake repeated a class -- no apology, no reconstruction of the
   sequence, and no recounting unless the mistake moved a number.
@@ -247,7 +249,10 @@ compatibility path. Everything below assumes that page.
 - **A status is not an answer.** "The gate is running" is a state, not a result: launch it detached, and end the reply
   only when the exit file and the log say what it said.
 - **Close with the ledger**: what was done, what the evidence now says, what is still open and who owns it. A task
-  without that list is not finished.
+  without that list is not finished -- but **when every line of it is green the ledger is one line**: the hash, what it
+  proves, and what is open. A green gate, a clean tree and a landed sync need no table between them; three tables of
+  green checks is the transcript the bullet above forbids, and the owner has said so more than once. Length is earned by
+  a failure, a number that moved, or a decision the reader has to make -- never by thoroughness.
 
 ## 5. Documentation shape
 
