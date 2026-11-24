@@ -204,6 +204,26 @@ compatibility path. Everything below assumes that page.
 - **Reply in the language the user writes in; write repository artifacts in English.** The documents, code comments and
   commit messages are English for the same reason the citations are: the evidence has to be readable by whoever checks
   it.
+- **Report in the owner's vocabulary, never a literal rendering.** The owner reads Chinese trading and engineering
+  Chinese; a word translated from its English shape costs a sentence of explanation and reads as not knowing the domain.
+  This is a rule about the reply only -- the repository's own artifacts stay English, as the bullet above says. The map
+  below is the authority and is extended whenever a term confuses a reply, rather than re-argued each session.
+
+  | English | not this | say this |
+  |---|---|---|
+  | book, order book | 书 | 盘口 / 订单簿（深度） |
+  | venue | 场馆、场地 | 交易所 / 撮合市场 |
+  | gate (a CI gate, a screen) | 门 | 质量门禁 / 筛选阈值 |
+  | tree, working tree | 树 | 代码库 / 本地工作区 |
+  | line (a research line) | 线、开行 | 研究方向 / 支线；开启一个新方向 |
+  | closure | 闭包 | 结项 / 正式关闭 |
+  | leg | 腿 | 子链路（行情链路、下单链路）/ 单边 |
+  | pinned | 钉住 | 固化 / 用测试锁定 |
+  | marketable | 到达即可成交 | 激进限价（到即吃单，被动方成 Taker） |
+  | floor, ceiling | 地板、天花板 | 下限 / 上限（准入门槛、费率下限） |
+  | soak (test) | SOAK | 长稳测试 / 持续挂机测试 |
+  | run, window | 跑、窗 | 单次运行 / 时间窗口 |
+
 - **Quote only numbers that are pinned.** A number in the reply either names the block that re-derives it, or is
   labelled as not quotable and says why. "Measured but not committed to the gate" is an honest answer; a clean-looking
   figure with no derivation is not.
