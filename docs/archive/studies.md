@@ -1452,11 +1452,11 @@ answering the previous one's question.
   with one snapshot per connect -- and the same session then reads `crossed_book_batches` absent, `bbo_quote_observations`
   2 of 14 quotes, `working_orders=2` and `total_order_lifetime_cycles=84` where it read 0, 0, 0 and 14.
 - **The order leg cannot trade this symbol on the demo account, and the reason is now named rather than guessed.** Every
-  order is answered `sCode=51001 Instrument ID, Instrument ID code, or Spread ID doesn't exist` -- twelve of fourteen
-  reports in the session above, and the same answer the two earlier sessions' six orders received. The demo account does
-  not carry the instrument at all, so a measurable market plus a demo order leg is still not a measurable instrument:
-  what this queue-model question needs is the venue's own fills, which means the portal's L2 archive or an account that
-  carries the symbol.
+  order the venue answered came back `sCode=51001 Instrument ID, Instrument ID code, or Spread ID doesn't exist`: six of
+  six in one session's order log and ten refusal lines in the next, and the earlier 62-order session recorded no adapter
+  refusal without its answers being re-read here. The demo account does not carry the instrument, so a measurable market
+  plus a demo order leg is still not a measurable instrument: what this queue-model question needs is the venue's own
+  fills, which means the portal's L2 archive or an account that carries the symbol.
 - **The harness had a thousand-fold sizing defect, which the same sessions exposed.** The relay's contract mapping
   defaults to BTC's and `soak.sh` passed none of its four flags, so one UP contract became a thousand: each order asked for
   1000 contracts, about 1,895 USD at 0.1895, where the strategy believed it had sent 1.90. `soak.sh` now holds a
