@@ -71,6 +71,7 @@ does not.
 | `tools/study/lowturnover_test.py` | the pre-registered rule on sixty equity windows | hand |
 | `tools/study/measure_l2_baseline.py` | replay seconds, and the hash of the output | hand |
 | `tools/study/okx_book_window.py` | a day archive's time-weighted half-spread inside a UTC window, and the window cut that opens on a snapshot | hand |
+| `tools/study/okx_spread_screen.py` | every swap's median half-spread over repeated ticker reads, against a volume floor | hand |
 | `tools/study/plot_report.py` | quotes, distance, inventory and equity as one PNG | hand |
 | `tools/study/pnl_interval.py` | a mean beside the interval it carries | both |
 | `tools/study/ring_bench_table.py` | the ring hand-off over several sessions | hand |
