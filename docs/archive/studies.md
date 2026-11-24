@@ -1357,8 +1357,38 @@ never came back. No horizon on either instrument produces a positive net for eit
 26 to 29 fills, below the thirty this repository treats as a conclusion. It conditions on the trade tape alone, so
 "liquidity vacuum" is a burst of aggressive volume and not a measured withdrawal of depth -- the 1.5 GB book file is
 there for the version of this question that conditions on depth, and that is a separate run rather than a better reading
-of this one. And the entry is a taker at the next print by construction, so it prices the family at the worse of the two
-ways to join it.
+of this one. And the entry is a taker at the next print by construction, which looks like pricing the family at the worse
+of the two ways to join it -- and is not, as the next two paragraphs measure.
+
+**Both legs passive makes it worse, and that is the mechanism rather than a detail (2026-11-25).** The tool now carries
+the rule the taker-only version never needed: a passive leg is not filled because the price touched it. It fills only when
+the tape prints at least one tick *through* the limit, and the fill is at the limit. With that rule, on the same day and
+the same events:
+
+| BTC 2020-04-01, momentum | fills | gross at 5 s | gross at 30 s | net at 30 s | cost a round trip |
+|---|---:|---:|---:|---:|---:|
+| taker entry, taker exit | 80 | +4.70 | **+6.09** | -3.91 | 10 bps |
+| taker entry, passive exit | 80 | -1.11 | +2.50 | -4.73 | 7 bps |
+| passive entry, passive exit | 68 | **-5.87** | **-5.23** | -9.45 | 4 bps |
+
+The fee falls by six basis points and the gross falls by eleven, because a passive entry is filled *only when the market
+comes back through the price the burst printed at* -- which is the moment the continuation has failed. P_fill is therefore
+not an independent probability to be traded against a fee; it is negatively correlated with the outcome, and a reading
+that prices the two passive legs as a fee saving alone overstates the result in exactly the direction a researcher wants
+it to. Sixteen of the eighty-four events never fill at all, and the sixty-eight that do are the adverse selection.
+
+One row of the middle line does look positive and is not yet a measurement: at a 900 s horizon the taker-entry/passive-exit
+run reads **+14.44 bps gross and +7.40 net**, on a median of **-9.34** and 76 fills -- a mean carried by two or three
+events, which is the "let the winners run" shape rather than an edge. It is the row to test on more days, not to quote.
+
+<!-- toyquant:check
+tool: tools/study/cascade_probe.py --instrument BTC-PERPETUAL --momentum --entry-mode passive --exit-mode passive --horizons 5,30 --tick 0.5
+then: best_net_bps=-9.4493 gross_at_best_bps=-5.2287
+-->
+
+The two tables above are the tool's own output for one day, and the block pins the passive pair so the mechanism cannot
+drift silently; the taker-only numbers stay pinned by the block that was already at the top of this section, which the
+taker/taker default still reproduces to the digit.
 
 ### The depth-conditioned version, which weakens the family rather than rescuing it
 

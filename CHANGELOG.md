@@ -7,6 +7,23 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The burst family's passive legs are measured, and they make it worse (2026-11-25)
+
+- **`cascade_probe.py` grew the two leg modes** (`--entry-mode`, `--exit-mode`, `--maker-bps`, `--tick`,
+  `--patience-s`) with the conservative fill rule the question needs: a passive leg is not filled because the price
+  touched it, only when the tape prints at least one tick *through* the limit, and the fill is at the limit. The defaults
+  are unchanged and the default run reproduces the recorded marks to the digit (`best_net_bps=-3.9088
+  gross_at_best_bps=6.0912`), so the block that was already there still pins the taker/taker shape.
+- **Both legs passive costs six basis points of fee and eleven of gross**: on BTC 2020-04-01 the 30 s gross falls from
+  +6.09 to **-5.23** (net -9.45), with 16 of 84 events never filling at all. A passive entry is filled only when the
+  market comes back through the price the burst printed at, which is the moment the continuation has failed -- so P_fill
+  is negatively correlated with the outcome, and pricing two passive legs as a fee saving overstates the result.
+- **A taker entry with a passive exit reads +2.50 gross at 30 s and +14.44 at 900 s**, the latter on a median of -9.34
+  and 76 fills: a mean carried by two or three events, recorded as the next row to test on more days rather than quoted.
+- **The section's own earlier sentence is corrected in place**: the taker entry was written as "the worse of the two ways
+  to join it", and it is the better one in outcome for the reason above.
+- No recorded number moved; the new block pins the passive pair. `docs` and `fast` green.
+
 ## The quote geometry is swept, and one configuration reaches the fee (2026-11-25)
 
 - **A 3x3 grid over `--base-spread-ticks` and `--refresh-price-ticks`** (seven windows, conservative fill) says the

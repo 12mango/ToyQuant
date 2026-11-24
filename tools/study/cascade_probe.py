@@ -26,6 +26,7 @@ Usage:
 """
 
 import argparse
+import bisect
 import csv
 import gzip
 import heapq
@@ -142,6 +143,37 @@ def first_price_at_or_after(trades, target, tolerance):
     return best
 
 
+def first_through(trades, times, start_ts, limit_price, side, tick, patience_us):
+    """Where a resting order at `limit_price` fills, or None.
+
+    The conservative rule, and the reason this mode exists: a passive order is not filled because the price touched it.
+    It fills when the market trades *through* it by at least one tick -- a buy needs a print at or below
+    `limit_price - tick`, a sell one at or above `limit_price + tick` -- and the fill is at the limit, which is what a
+    resting order gets. A model that fills on the touch is the one that overstates P_fill, and on this tape a print at
+    the touch is the common case rather than an edge.
+    """
+    threshold = limit_price - side * tick
+    index = bisect.bisect_left(times, start_ts)
+    end_ts = start_ts + patience_us
+    while index < len(trades) and trades[index][0] <= end_ts:
+        price = trades[index][2]
+        if (side > 0 and price <= threshold) or (side < 0 and price >= threshold):
+            return limit_price, trades[index][0]
+        index += 1
+    return None
+
+
+def last_price_within(trades, times, start_ts, patience_us):
+    """The last print inside the patience window, which is where an exit that never filled is marked."""
+    index = bisect.bisect_left(times, start_ts)
+    end_ts = start_ts + patience_us
+    last = None
+    while index < len(trades) and trades[index][0] <= end_ts:
+        last = trades[index][2]
+        index += 1
+    return last
+
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -153,6 +185,12 @@ def main():
     parser.add_argument("--exit-tolerance-us", type=int, default=30_000_000)
     parser.add_argument("--cooldown-us", type=int, default=30_000_000)
     parser.add_argument("--taker-bps", type=float, default=5.0)
+    parser.add_argument("--maker-bps", type=float, default=2.0, help="the fee a passive leg pays")
+    parser.add_argument("--entry-mode", choices=("taker", "passive"), default="taker")
+    parser.add_argument("--exit-mode", choices=("taker", "passive"), default="taker")
+    parser.add_argument("--tick", type=float, default=0.5, help="the instrument's price step, for the through rule")
+    parser.add_argument("--patience-s", type=float, default=900.0,
+                        help="how long a passive leg waits for a print one tick through it")
     parser.add_argument("--momentum", action="store_true", help="follow the burst instead of fading it")
     parser.add_argument("--condition", choices=("trades", "depth"), default="trades",
                         help="trades: a burst of aggressive volume; depth: the top of book thins out")
@@ -217,26 +255,58 @@ def main():
         print(f"### {args.instrument} {args.day}, {label} after a P{args.percentile:.0f} one-second burst: "
               f"{len(trades)} trades, {len(buckets)} buckets, threshold {threshold:.1f} contracts, {len(events)} bursts")
     print()
-    print("| horizon s | fills | mean bps | median bps | share positive | mean at 0 bps |")
-    print("|---:|---:|---:|---:|---:|---:|")
+    passive = args.entry_mode == "passive" or args.exit_mode == "passive"
+    print("| horizon s | fills | mean bps | median bps | share positive | mean at 0 bps |" +
+          (" unfilled |" if passive else ""))
+    print("|---:|---:|---:|---:|---:|---:|" + ("---:|" if passive else ""))
+    times = [trade[0] for trade in trades]
+    patience_us = int(args.patience_s * 1_000_000)
     best = None
     for horizon in [float(part) for part in args.horizons.split(",") if part.strip()]:
         nets, gross = [], []
+        unfilled = 0
         for entry, direction in events:
-            exit_trade = first_price_at_or_after(trades, entry[0] + int(horizon * 1_000_000), args.exit_tolerance_us)
+            entry_price, entry_ts, entry_fee = entry[2], entry[0], args.taker_bps
+            if args.entry_mode == "passive":
+                # Rest at the price the burst printed at and wait for the market to come through it.
+                filled = first_through(trades, times, entry[0], entry[2], direction, args.tick, patience_us)
+                if filled is None:
+                    unfilled += 1
+                    continue
+                entry_price, entry_ts = filled
+                entry_fee = args.maker_bps
+            exit_trade = first_price_at_or_after(trades, entry_ts + int(horizon * 1_000_000),
+                                                 args.exit_tolerance_us)
             if exit_trade is None:
                 continue
-            move = (exit_trade[2] / entry[2] - 1.0) * 10_000.0 * direction
+            exit_price, exit_fee = exit_trade[2], args.taker_bps
+            if args.exit_mode == "passive":
+                # The exit is the opposite side of the position, and it is also charged the through rule.
+                filled = first_through(trades, times, exit_trade[0], exit_trade[2], -direction, args.tick,
+                                       patience_us)
+                if filled is None:
+                    # Nothing came through: the position is marked at the last print it could have been closed at
+                    # and pays the taker fee, which is what an unfilled exit costs in practice.
+                    unfilled += 1
+                    mark = last_price_within(trades, times, exit_trade[0], patience_us)
+                    if mark is None:
+                        continue
+                    exit_price, exit_fee = mark, args.taker_bps
+                else:
+                    exit_price = filled[0]
+                    exit_fee = args.maker_bps
+            move = (exit_price / entry_price - 1.0) * 10_000.0 * direction
             gross.append(move)
-            nets.append(move - 2.0 * args.taker_bps)
+            nets.append(move - entry_fee - exit_fee)
         if not nets:
-            print(f"| {horizon:g} | 0 | -- | -- | -- | -- |")
+            print(f"| {horizon:g} | 0 | -- | -- | -- | -- |" + (" -- |" if passive else ""))
             continue
         mean = statistics.mean(nets)
         if best is None or mean > best[0]:
             best = (mean, horizon, statistics.mean(gross), len(nets))
+        suffix = f" {unfilled} |" if passive else ""
         print(f"| {horizon:g} | {len(nets)} | {mean:.2f} | {statistics.median(nets):.2f} | "
-              f"{sum(1 for value in nets if value > 0) / len(nets):.2f} | {statistics.mean(gross):.2f} |")
+              f"{sum(1 for value in nets if value > 0) / len(nets):.2f} | {statistics.mean(gross):.2f} |{suffix}")
     print()
     if best is None:
         print(f"[CASCADE] instrument={args.instrument} mode={label} condition={args.condition} "
