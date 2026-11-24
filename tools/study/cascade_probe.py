@@ -23,6 +23,12 @@ repository's rule is that a single window is not evidence for a line.
 Usage:
     python3 tools/study/cascade_probe.py --instrument BTC-PERPETUAL
     python3 tools/study/cascade_probe.py --instrument ETH-PERPETUAL --percentile 99.5 --momentum
+    python3 tools/study/cascade_probe.py --instrument BTC-PERPETUAL --days 2020-04-01,2020-05-01 --momentum \
+        --exit-mode passive --horizons 30,900
+
+`--days` is the multi-day form of the same run, because "test the row on more days" is the only thing a probe is for and
+a shell loop around one command is not a reproducible record of it. One `###` table and one `[CASCADE]` line are printed
+per day, and a day whose file is missing stops the run naming the file rather than being skipped.
 """
 
 import argparse
@@ -175,10 +181,13 @@ def last_price_within(trades, times, start_ts, patience_us):
 
 
 
-def main():
+def parse_args():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--instrument", required=True)
     parser.add_argument("--day", default=DAY)
+    # Comma separated days for the multi-day form; empty means `--day` alone. The runs are independent, so this is a
+    # loop rather than an average: a row that replicates prints five tables and a row that does not prints the same.
+    parser.add_argument("--days", default="", help="comma separated days; overrides --day")
     parser.add_argument("--percentile", type=float, default=99.0)
     parser.add_argument("--horizons", default="1,5,30,60", help="seconds")
     parser.add_argument("--entry-tolerance-us", type=int, default=5_000_000)
@@ -204,10 +213,13 @@ def main():
     # trades only, so the path is taken and unused rather than a second argument name that the gate would not pass.
     parser.add_argument("--binary", default="", help="accepted for the document gate, which asserts it; unused here")
     args = parser.parse_args()
+    return args
 
-    trades = load(args.instrument, args.day)
+
+def run_day(args, day):
+    trades = load(args.instrument, day)
     if not trades:
-        raise SystemExit(f"no trades in {args.instrument} on {args.day}")
+        raise SystemExit(f"no trades in {args.instrument} on {day}")
 
     buckets = {}
     for ts, side, _price, amount in trades:
@@ -219,9 +231,9 @@ def main():
     vacuum_seconds = set()
     overlap = 0
     if args.condition == "depth":
-        series = top_of_book_by_second(Path(args.depth_file) if args.depth_file else depth_file(args.instrument, args.day))
+        series = top_of_book_by_second(Path(args.depth_file) if args.depth_file else depth_file(args.instrument, day))
         if not series:
-            raise SystemExit(f"no book in {args.instrument} on {args.day}")
+            raise SystemExit(f"no book in {args.instrument} on {day}")
         for second in sorted(series):
             window = [series[other][0] + series[other][1]
                       for other in range(second - args.trailing_seconds, second) if other in series]
@@ -247,12 +259,12 @@ def main():
 
     label = "momentum" if args.momentum else "contrarian"
     if args.condition == "depth":
-        print(f"### {args.instrument} {args.day}, {label} after a depth vacuum: {len(trades)} trades, "
+        print(f"### {args.instrument} {day}, {label} after a depth vacuum: {len(trades)} trades, "
               f"{len(vacuum_seconds)} vacuum seconds (top size at or below "
               f"{args.vacuum_fraction:.2f} x its {args.trailing_seconds} s median, {overlap} of them also P99 bursts), "
               f"{len(events)} events")
     else:
-        print(f"### {args.instrument} {args.day}, {label} after a P{args.percentile:.0f} one-second burst: "
+        print(f"### {args.instrument} {day}, {label} after a P{args.percentile:.0f} one-second burst: "
               f"{len(trades)} trades, {len(buckets)} buckets, threshold {threshold:.1f} contracts, {len(events)} bursts")
     print()
     passive = args.entry_mode == "passive" or args.exit_mode == "passive"
@@ -317,6 +329,17 @@ def main():
           f"bursts={len(events)} best_net_bps={best[0]:.4f} best_horizon_s={best[1]:g} "
           f"gross_at_best_bps={best[2]:.4f} fills={best[3]}{extra}")
     return 0
+
+
+def main():
+    args = parse_args()
+    days = [part.strip() for part in args.days.split(",") if part.strip()] or [args.day]
+    status = 0
+    for index, day in enumerate(days):
+        if index:
+            print()
+        status = max(status, run_day(args, day))
+    return status
 
 
 if __name__ == "__main__":

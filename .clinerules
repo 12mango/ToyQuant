@@ -49,6 +49,18 @@ compatibility path. Everything below assumes that page.
   sampling resolution, the execution mechanism, the holding period, the state gate or the fee tier -- never by
   re-running the same window with a different numeric threshold, which is window selection wearing a new flag. The bar
   that would close it again is registered before the run, in the section that opens the line.
+- **A workflow problem is persisted where the workflow lives, not remembered.** Every failure that cost a session time
+  -- a wedged pty, a command that ran against the wrong directory, a file read twice and taken for a loop, a request
+  read mid-write -- leaves its form here (`.clinerules`) or in the tool's own header, with the **measured date and the
+  observable tell**, because the next session does not inherit this one's memory and a rule that lives only in a
+  transcript is a rule that is already lost. A one-off typo is fixed quietly; a class of failure gets a rule. The test is
+  whether a reader who was not present could have avoided it: if yes, it goes in the file it belongs to.
+- **A structural problem is fixed when it is found, not when the tree is full.** If a workflow script, a page's shape, a
+  table that has outgrown its medium or a module boundary is wrong, the fix is part of the current task rather than a
+  backlog item -- the cost of a refactor is roughly linear in how much has been built on top of the wrong shape, and a
+  "clean it all up at the end" pass is a second tree nobody reviewed. The guardrails still hold: one page, one table,
+  one flag, one figure at a time; `data/` never moves; every recorded number is re-derived by its block; and a
+  restructure that moves a claim has to move it everywhere it appears in the same change.
 - **The answer "closed, and here is why" is a deliverable.** Do not manufacture work to avoid delivering it.
 - **Exploration has a buffer, and the guides are not it.** A new direction is tried with a rough note in the studies
   record (`docs/archive/studies.md`) or an ADR if it closes a decision; it does not enter the guide, the front doors or

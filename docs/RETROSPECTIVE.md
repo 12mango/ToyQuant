@@ -2,9 +2,9 @@
 
 This is the record of what this project tried, what each attempt cost, why the ones that failed failed, and what is
 left. It exists because the value of a negative result is the reason for it, and because the same wrong turns are
-cheap to repeat: every row below is a question that has been answered and no longer needs asking -- and the last
-section says which of them could still be asked *differently*, what that would cost, and what would have to change
-before it is worth asking at all.
+cheap to repeat: every row below is a question that has been answered and no longer needs asking -- and the frontier
+map near the end says which of them could still be asked *differently*, what that would cost, and what would have to
+change before it is worth asking at all.
 
 ## What the project was asking
 
@@ -207,7 +207,7 @@ for twice.
 | funding rate carry, BTC, twelve months | arithmetic | 0 of 12 months clear the level and payback gates; no positive run earns the 36 USD round trip | a month whose differential clears it. The archives are free, so the scan is re-run rather than argued |
 | **the wide-spread screen, and the UP instrument** | **method** | one REST read per symbol, ranked by half-spread alone, which read 8.51 bps and missed 10 to 90 percent of the width | the tiered screen: thirty reads twenty seconds apart, a two-tick width floor and a 500,000 USD notional floor, inside one 13:30-15:30 UTC window. Free, and the window is the only gate |
 | **the UP configuration** | **method** | quoting at the touch, where a 2 to 3 tick half-spread cannot pay 2.00 bps | `--base-spread-ticks=3 --refresh-price-ticks=1 --edge-cover-ticks=1`, which reads +2.01, +2.59, +1.52 and +3.12 closed on four windows. The open half is the fee tier, not the method |
-| **burst and trend, the horizon** | **method** | a 30 s horizon against a 10 bps taker round trip, then the same burst with both legs passive | the 900 s taker-entry/passive-exit row (+14.44 gross, +7.40 net, median -9.34, 76 fills) on more burst days: free, on data already on disk, and it needs the median to stop being carried by two or three events |
+| **burst and trend, the horizon** | **method, tested and closed** | a 30 s horizon against a 10 bps taker round trip, then the same burst with both legs passive and a longer hold | done on the five BTC days on disk: each day's best horizon pays +1.33 to +6.09 bps of gross against the 10 bps toll, so all five net -3.91 to -8.67, and one net cell of the fifteen the three-horizon run prints is positive -- the 2020-04-01 one -- with a negative median on all five. The direction is real and its size is a fraction of the fee, so nothing here is left to try at this cost |
 | **the latency column** | **a defect in the instrument** | the replay dropped a cancel that raced its placement, and the collapse it produced was read as a property of the configuration | done, 2026-11-25: the 5 ms row went from 9 fills to 901. What is left is that a two-hour window cannot price one millisecond and above |
 
 **A reopen changes the method, never the margin.** The method is the sampling resolution, the execution mechanism (taker

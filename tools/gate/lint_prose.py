@@ -290,11 +290,13 @@ def main():
                         # `tools/sweep/compare_runs.sh` owns this one: it is what turns a comparison into a table and
                         # the marked block beside it, and the tools page is where it is described.
                         "--markdown",
-                        # `tools/study/cascade_probe.py` owns the next five: what the burst is (a band of the day's own
+                        # `tools/study/cascade_probe.py` owns the next six: what the burst is (a band of the day's own
                         # volume distribution), which side of the move the trade takes, whether the condition is the
-                        # trade tape or the book thinning, and the two numbers that condition is stated with. They are
-                        # the study's arguments rather than the engine's knobs, and the studies record names them.
+                        # trade tape or the book thinning, the two numbers that condition is stated with, and the day
+                        # list that makes the multi-day test one command. They are the study's arguments rather than the
+                        # engine's knobs, and the studies record names them.
                         "--condition", "--momentum", "--vacuum-fraction", "--trailing-seconds", "--depth-file",
+                        "--days",
                         # `tools/sweep/okx_maker_baseline.py` owns this one: it sets `--order-latency-us` and
                         # `--cancel-latency-us` together so a sweep can ask one latency question across a window. The
                         # engine still takes the two halves separately; the studies record names the tool's spelling.

@@ -1362,7 +1362,9 @@ never came back. No horizon on either instrument produces a positive net for eit
 "liquidity vacuum" is a burst of aggressive volume and not a measured withdrawal of depth -- the 1.5 GB book file is
 there for the version of this question that conditions on depth, and that is a separate run rather than a better reading
 of this one. And the entry is a taker at the next print by construction, which looks like pricing the family at the worse
-of the two ways to join it -- and is not, as the next two paragraphs measure.
+of the two ways to join it -- and is not, as the next two paragraphs measure. **The one-day half of that caveat is
+answered further down**, where the burst rows are re-run on the five BTC days on disk; ETH is still one day, and the
+depth-conditioned version is its own section.
 
 **Both legs passive makes it worse, and that is the mechanism rather than a detail (2026-11-25).** The tool now carries
 the rule the taker-only version never needed: a passive leg is not filled because the price touched it. It fills only when
@@ -1381,18 +1383,51 @@ not an independent probability to be traded against a fee; it is negatively corr
 that prices the two passive legs as a fee saving alone overstates the result in exactly the direction a researcher wants
 it to. Sixteen of the eighty-four events never fill at all, and the sixty-eight that do are the adverse selection.
 
-One row of the middle line does look positive and is not yet a measurement: at a 900 s horizon the taker-entry/passive-exit
-run reads **+14.44 bps gross and +7.40 net**, on a median of **-9.34** and 76 fills -- a mean carried by two or three
-events, which is the "let the winners run" shape rather than an edge. It is the row to test on more days, not to quote.
+**The 30 s row replicates and the 900 s row does not (2026-11-25).** Five BTC days are on disk, so both questions were put
+to all of them with the same percentile, cooldown and fill rules, one command a day. The continuation is real and it is
+small -- each day's own best horizon, taker both legs, against a 10 bps round trip:
+
+| BTC-PERPETUAL, momentum, taker/taker | 04-01 | 05-01 | 06-01 | 07-01 | 08-01 |
+|---|---:|---:|---:|---:|---:|
+| best horizon, s | 30 | 5 | 5 | 30 | 5 |
+| gross bps at it | **+6.09** | +1.33 | +3.79 | +2.92 | +1.98 |
+| net bps at it | -3.91 | -8.67 | -6.21 | -7.08 | -8.02 |
+
+So the direction holds on every day and the size does not run it: the best day is 3.91 bps short of the toll and the other
+four are 6.21 to 8.67 short. Those five rows are the tool's `[CASCADE]` best-horizon line, one run a day and five runs in
+all, which is why they are printed here and not carried in the gate; the command is the tool's own header, `--days` over
+the five days with `--momentum --horizons 5,30`. The 900 s taker-entry/passive-exit row is the opposite case, and it is
+one day:
+
+| BTC-PERPETUAL, momentum, 900 s | 04-01 | 05-01 | 06-01 | 07-01 | 08-01 |
+|---|---:|---:|---:|---:|---:|
+| fills | 76 | 101 | 50 | 51 | 117 |
+| gross bps | **+14.44** | -9.77 | -19.96 | -0.24 | -8.76 |
+| net bps | **+7.40** | -17.16 | -27.14 | -7.83 | -16.01 |
+| median net bps | -9.34 | -17.88 | -18.24 | -10.00 | -14.39 |
+
+One cell of the fifteen the three-horizon run prints (five days at 5, 30 and 900 s) has a positive net, and it is the cell
+the single-day probe landed on; the median is negative on all five, including that one. So the family is closed on its
+**gross at the horizons that pay** and on its **mean at the horizon that does not**: letting the winners run produces a
+number on 2020-04-01 and loses money on the four days around it, which is the shape of a day rather than of a rule.
+
+<!-- toyquant:check
+tool: tools/study/cascade_probe.py --instrument BTC-PERPETUAL --momentum --exit-mode passive --horizons 900 --patience-s 900 --tick 0.5
+then: best_net_bps=7.3956 gross_at_best_bps=14.4351 fills=76
+tool: tools/study/cascade_probe.py --instrument BTC-PERPETUAL --day 2020-06-01 --momentum --exit-mode passive --horizons 900 --patience-s 900 --tick 0.5
+then: best_net_bps=-27.1385 gross_at_best_bps=-19.9585 fills=50
+-->
 
 <!-- toyquant:check
 tool: tools/study/cascade_probe.py --instrument BTC-PERPETUAL --momentum --entry-mode passive --exit-mode passive --horizons 5,30 --tick 0.5
 then: best_net_bps=-9.4493 gross_at_best_bps=-5.2287
 -->
 
-The two tables above are the tool's own output for one day, and the block pins the passive pair so the mechanism cannot
-drift silently; the taker-only numbers stay pinned by the block that was already at the top of this section, which the
-taker/taker default still reproduces to the digit.
+The tables above are the tool's own output, and the three blocks pin what would drift silently: the passive pair, the
+900 s day the table's one positive cell belongs to, and the worst of the four days that disagree with it. The taker-only
+numbers stay pinned by the block at the top of this section, which `--days` reproduces to the digit on its first day.
+The other three 900 s days and the five 30 s days are one run each, which is about two minutes, so they are printed in
+the tables above and not carried in the gate.
 
 ### The depth-conditioned version, which weakens the family rather than rescuing it
 

@@ -7,6 +7,21 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The burst row was one day of five, and the tool now takes a day list (2026-11-25)
+
+- **`cascade_probe.py` takes `--days`**, so the multi-day test of a row is one command rather than a shell loop around
+  one: one `###` table and one `[CASCADE]` line per day, and a day whose file is missing stops the run naming the path.
+  `--day` and its default are unchanged, so the two pinned tool blocks reproduce to the digit.
+- **The 900 s taker-entry/passive-exit row was 2020-04-01 and nothing else.** The same run on the five BTC days on disk
+  reads net +7.40, -17.16, -27.14, -7.83 and -16.01 bps, with a negative median on all five (-9.34 on the day that
+  produced the +7.40): one positive net cell out of the fifteen the three-horizon run prints.
+- **The 30 s continuation replicates and is still inside the toll.** Each day's best horizon pays +6.09, +1.33, +3.79,
+  +2.92 and +1.98 bps of gross against a 10 bps taker round trip, so every day nets -3.91 to -8.67. The direction is
+  real and its size is a fraction of the fee, which is the stronger closure and the one a single day could not make.
+- The 900 s day and the worst of the four that disagree with it are pinned in `docs/archive/studies.md`, which carries
+  the five-day table; the frontier map's burst row now records the test as done rather than as the next thing to run.
+- `docs` and `fast` green; the two blocks that were already pinned reproduce to the digit.
+
 ## The engine stops dropping a cancel that races its placement (2026-11-25)
 
 - **`MatchingEngine::cancel_order` now holds a cancel that names an order still in flight and applies it when the
