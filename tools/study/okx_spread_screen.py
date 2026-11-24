@@ -28,6 +28,10 @@ first and last read so a table cannot be quoted without them.
 Usage:
     python3 tools/study/okx_spread_screen.py --samples 30 --interval 20
     python3 tools/study/okx_spread_screen.py --read data/v2/crypto/okx_tickers_20261125T133000Z.json
+
+The run prints the passers at the thresholds, the widest rows pass or fail, and the count that clears 1.2, 2.0 and 2.5 bps
+under the same tick and volume floors -- three tiers rather than one verdict, because which tier a symbol lands in is the
+first thing a reader asks and a table sorted by width does not answer it.
 """
 
 import argparse
@@ -181,6 +185,14 @@ def main():
     print(f"reads from {first} to {last}, {len(samples)} instruments with a two-sided book at least once")
     print(f"screen: median half spread >= {args.min_half_spread_bps:g} bps, median spread >= "
           f"{args.min_spread_ticks:g} ticks and median 24h notional >= {args.min_volume_usd:,.0f} USD")
+    # The tiers are printed as counts as well as rows: a reader wants to know how many instruments clear 1.2, 2.0 and
+    # 2.5 bps under the same tick and volume floors, and a table sorted by width does not answer that at a glance.
+    tiers = [1.2, 2.0, 2.5]
+    counts = {tier: sum(1 for row in rows if row["median"] >= tier and row["ticks_ok"] and row["volume_ok"])
+              for tier in tiers}
+    print("tiers (all with median spread >= {:g} ticks and notional >= {:.0f} USD): ".format(
+        args.min_spread_ticks, args.min_volume_usd) +
+        ", ".join(f"{tier:g} bps: {counts[tier]}" for tier in tiers))
     print()
     print_table(passers, f"the screen's passers ({len(passers)} of {len(rows)})")
     print_table(rows[:args.top], f"the {min(args.top, len(rows))} widest, pass or fail")

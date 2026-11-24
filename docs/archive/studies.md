@@ -1611,6 +1611,14 @@ its own latency, which is what a venue does with a request it can answer rather 
 number is a statement about the replay's cancel path and not about the configuration, and the zero-latency table above stays
 the only measurement this instrument has.
 
+**What is next, and what would qualify another instrument.** The next measurement is a tiered re-screen of every swap
+inside the same 13:30-15:30 UTC window -- thirty ticker reads twenty seconds apart -- with the book's median width reported
+beside the half-spread, because a one-tick book cannot hold a quote three ticks behind the touch whatever its bps figure
+says. A candidate has to clear **1.2, 2.0 and 2.5 bps** under two more floors: a median spread of at least **two ticks** and
+a median **500,000 USD** of daily notional. Anything that passes gets the same seven-day treatment this instrument got: the
+window cut by `tools/study/okx_book_window.py`, the maker run by `tools/sweep/okx_maker_baseline.py` under the conservative
+fill model, and then `--latency-us` once the engine's cancel race above is fixed.
+
 One measurement error belongs in this record because it produced a table of zeros: OKX cuts its trade archive on midnight
 UTC+8 and its book archive on UTC, so a window starting at or after 16:00 UTC lives in the *next* trade file. Reading the
 file named for the book's day gave two hours of book against zero trades, and the engine answered with zero quotes on

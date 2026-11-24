@@ -19,6 +19,9 @@ site now points at `ToyQuant`.
   git-ignored, so archiving costs no repository bytes, and `--read` replays it to the same table.
 - Validated live with two reads at 04:00 UTC: the tick column joins against the instrument table (HYPE-USD-SWAP 16 ticks,
   RAVE-USDT-SWAP and CT-USDT-SWAP 3) and the archived set re-derives to the same numbers.
+- **The run prints three tier counts** -- 1.2 / 2.0 / 2.5 bps under the same tick and volume floors (99 / 76 / 66 at
+  20:11 UTC on 2026-11-24) -- so one run answers "how many candidates at each width" rather than leaving a reader to count
+  rows in a table sorted by width.
 
 ## The rescue configuration does not survive a 30 ms link (2026-11-25)
 
