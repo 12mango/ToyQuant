@@ -63,6 +63,33 @@ PROXY="${PROXY:-}"
 VENUE="${VENUE:-https://www.okx.com}"
 INST="${INST:-BTC-USDT-SWAP}"
 INST_CODE="${INST_CODE:-10459}"
+# The relay's mapping numbers are venue facts **per instrument** and they default to BTC's, so a session on a symbol
+# whose contract is not 0.01 of the coin must pass them or every size on both legs is off by the ratio:
+# `src/common/instrument_spec.h` is the authority. Two arrays rather than four flags everywhere, because the relay's order
+# leg owns the price grid: `--tick-size` and `--lot-size` are refused by a relay started without `--order-listen`
+# (`src/lines/venue_relay_main.cpp`), so the market leg takes only the two that convert a size. Measured 2026-11-25:
+# without them, `UP-USDT-SWAP` asked for 1000 contracts where one was intended, because the order leg divided the engine's
+# units by BTC's 10,000 a contract instead of the 10,000,000 a UP contract carries. The refusal is the point of the table:
+# an unknown instrument must stop the session rather than run it on a mapping nobody checked.
+case "$INST" in
+    BTC-USDT-SWAP)
+        SIZE_FLAGS=(--contract-size=0.01 --quantity-scale=1000000)
+        GRID_FLAGS=(--tick-size=0.1 --lot-size=1)
+        ;;
+    ETH-USDT-SWAP)
+        SIZE_FLAGS=(--contract-size=0.1 --quantity-scale=1000000)
+        GRID_FLAGS=(--tick-size=0.01 --lot-size=1)
+        ;;
+    UP-USDT-SWAP)
+        SIZE_FLAGS=(--contract-size=10 --quantity-scale=1000000)
+        GRID_FLAGS=(--tick-size=0.0001 --lot-size=1)
+        ;;
+    *)
+        echo "no contract mapping for $INST: add its four numbers to this table and to src/common/instrument_spec.h" >&2
+        echo "first. The relay's defaults are BTC's, and a size converted against them is wrong by the contract ratio." >&2
+        exit 2
+        ;;
+esac
 ORDER_SIZE="${ORDER_SIZE:-10000}"
 INVENTORY_LIMIT="${INVENTORY_LIMIT:-10000}"
 MAX_EXPOSURE_USD="${MAX_EXPOSURE_USD:-1000}"
@@ -74,8 +101,12 @@ SPREAD_TICKS="${SPREAD_TICKS:-}"
 TAG="${TAG:-}"
 # The market leg is the demo venue's public stream by default, which is the only one that carries BTC and ETH. A symbol
 # the demo does not quote has to take its market leg from the real public stream while the order leg stays on the demo
-# account, so the two are separate switches: MARKET_DEMO=0 reads the real book.
+# account, so the two are separate switches: MARKET_DEMO=0 reads the real book. BOOKS_CHANNEL names the depth channel the
+# relay subscribes to (`books` by default, `books5` or `bbo-tbt` for a book the venue serves differently), and CAPTURE=1
+# writes the venue's raw messages beside the artifact so a session that saw no book can be read rather than guessed at.
 MARKET_DEMO="${MARKET_DEMO:-1}"
+BOOKS_CHANNEL="${BOOKS_CHANNEL:-}"
+CAPTURE="${CAPTURE:-}"
 NAME="${MODE}${TAG}"
 ARTIFACT="${OUT}/${NAME}"
 
@@ -90,11 +121,19 @@ MARKET_FLAGS=()
 if [ "$MARKET_DEMO" = "1" ]; then
     MARKET_FLAGS+=(--venue-demo)
 fi
-"$RELAY" --instrument "$INST" ${MARKET_FLAGS[@]+"${MARKET_FLAGS[@]}"} --proxy="$PROXY" --listen "127.0.0.1:${PORT}" \
+if [ -n "$BOOKS_CHANNEL" ]; then
+    MARKET_FLAGS+=(--books-channel="$BOOKS_CHANNEL")
+fi
+if [ -n "$CAPTURE" ]; then
+    MARKET_FLAGS+=(--capture="${ARTIFACT}_market.jsonl")
+fi
+"$RELAY" --instrument "$INST" ${MARKET_FLAGS[@]+"${MARKET_FLAGS[@]}"} ${SIZE_FLAGS[@]+"${SIZE_FLAGS[@]}"} \
+    --proxy="$PROXY" --listen "127.0.0.1:${PORT}" \
     --max-seconds "$LIFETIME" > "${ARTIFACT}_market_relay.log" 2>&1 &
 market_relay=$!
-"$RELAY" --instrument "$INST" --order-listen "127.0.0.1:${ORDER_PORT}" --order-rest "$VENUE" \
-    --order-inst-code="$INST_CODE" --proxy="$PROXY" --max-seconds "$LIFETIME" \
+"$RELAY" --instrument "$INST" ${SIZE_FLAGS[@]+"${SIZE_FLAGS[@]}"} ${GRID_FLAGS[@]+"${GRID_FLAGS[@]}"} \
+    --order-listen "127.0.0.1:${ORDER_PORT}" \
+    --order-rest "$VENUE" --order-inst-code="$INST_CODE" --proxy="$PROXY" --max-seconds "$LIFETIME" \
     > "${ARTIFACT}_order_relay.log" 2>&1 &
 order_relay=$!
 trap 'kill "$market_relay" "$order_relay" 2>/dev/null; wait 2>/dev/null' EXIT

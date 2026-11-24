@@ -7,6 +7,19 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The passer's book arrives, and two relay gaps arrive with it (2026-11-25)
+
+- **`UP-USDT-SWAP`'s book is on the wire on `bbo-tbt`, not on `books`**: 188 uncrossed depth rows and 103 trades in 60 s,
+  a three-tick spread at 0.1895. The session still measured nothing -- `bbo_quote_observations=0`,
+  `crossed_book_batches=84` of 94, no fill, no fee, equity unchanged -- so what remains is what the engine holds between
+  the two `DEPTH` rows one `bbo-tbt` message becomes.
+- **A thousand-fold sizing defect, closed in the harness**: the relay's contract mapping defaults to BTC's and `soak.sh`
+  passed none of its four flags, so each of the six UP orders asked for 1000 contracts (~1,895 USD) where the strategy
+  believed it sent 1.90. All six came back rejected (`audited_rejected_orders=6`), so the venue's margin check is what
+  stood between the harness and a thousand-fold position. `soak.sh` now carries the per-instrument mapping and refuses an
+  unknown one.
+- No C++ changed; `fast` green, no recorded number moved.
+
 ## One invariant instead of three hand-copied minima (2026-11-23)
 
 - The three OKX swap factories repeated the same seven fields, and `min_order_quantity` was a figure copied by hand --
