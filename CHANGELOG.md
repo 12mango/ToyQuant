@@ -13,16 +13,17 @@ site now points at `ToyQuant`.
   geometry alone cannot turn the sign: the best cell is -0.46 bps mean against the baseline's -3.43, and no cell has a
   positive median. A refresh on every tick beats 2 and 4 in every column, which is the opposite of the advice a deep
   book gives.
-- **The engine's own quote gate plus a deep quote does reach it**: `--edge-cover-ticks=1` with `--base-spread-ticks=3`
-  earns **+3.12 bps closed** on the 13:30-15:30 window (net +1.16, five of seven positive) and **+1.52** on the
-  09:30-11:30 window (net -0.48, three of seven) against a 2.00 bps fee. So the round trip earns most of the 5 bps
-  half-spread instead of a quarter of it, and the net straddles zero by the hour of the day -- the two windows differ by
-  1.6 bps on the same seven days and the same configuration.
-- **The break-even fee that implies is about 1.5 bps**: at 1.5 the morning window is +0.02 and the US one +1.62, at 1.0
-  they are +0.52 and +2.12. That is an account-tier question, not a code one.
-- **`okx_maker_baseline.py` grew the two columns that separate those readings** -- `closed_bps` counts realised round
-  trips only, and the grid mode asks both quote flags together -- and a window cut left half-written by a concurrent run
-  is now detected and re-cut instead of trusted.
+- **One configuration earns 1.5 to 3.1 bps of a 5 bps half-spread in all three windows measured**: a quote three ticks
+  deep behind `--edge-cover-ticks=1`, with a refresh on every tick. `closed bps` -- round trips only -- reads +3.12 at
+  13:30-15:30, +1.52 at 09:30-11:30 and +2.01 at 20:00-22:00, mean **+2.2** against a 2.00 bps fee, so the instrument is
+  a break-even maker at the retail schedule rather than a losing one. `--min-spread-ticks=2` instead earns +3.01 in the
+  US window and -1.69 in the morning one, which is why the two gates are reported separately.
+- **The implied break-even fee is about 1.5 bps**: at 1.5 the three windows read +1.62, +0.02 and +0.51; at 1.0, +2.12,
+  +0.52 and +1.01. That is an account-tier question, not a code one.
+- **`okx_maker_baseline.py` grew `closed_bps` and the grid mode**, and two defects are fixed with it: a window cut left
+  half-written by a concurrent run is now detected and re-cut, and the trade file is chosen by the window rather than by
+  the book's day, because OKX cuts trades on midnight UTC+8 -- reading the book's day gave an evening window two hours of
+  book against zero trades and seven days of zero quotes that looked like a gate blocking a quiet market.
 - No recorded number moved; `docs` and `fast` green.
 
 ## The venue's own archive answers the fee question (2026-11-25)

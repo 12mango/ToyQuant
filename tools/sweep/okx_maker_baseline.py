@@ -32,7 +32,7 @@ import argparse
 import csv
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -104,9 +104,23 @@ def ensure_cut(archive, cuts, start, end, tick):
     return cut
 
 
+def trade_source(day_text, symbol, start_ms):
+    """The trade file whose UTC+8 day covers `start_ms`.
+
+    OKX cuts its trade archive on midnight UTC+8 while the book archive is cut on UTC, so a window that starts at or
+    after 16:00 UTC on day D lives in the file named D+1. Reading only the file named D made an evening window
+    two hours of book against zero trades, which the engine answered with zero quotes -- measured 2026-11-25, and the
+    reason `trades=0` appears in a run whose book was intact.
+    """
+    day = datetime.strptime(day_text, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    sixteen = int(day.replace(hour=16).timestamp() * 1000)
+    name = day_text if start_ms < sixteen else (day + timedelta(days=1)).strftime("%Y-%m-%d")
+    return ROOT / f"data/v2/crypto/okx_trades_{name}_{symbol}.csv"
+
+
 def slice_trades(day_text, symbol, start_ms, end_ms, cuts):
-    """The day's trades inside the same window, which is what keeps `stale_trades` from appearing at all."""
-    source = ROOT / f"data/v2/crypto/okx_trades_{day_text}_{symbol}.csv"
+    """The window's trades, which is what keeps `stale_trades` from appearing at all."""
+    source = trade_source(day_text, symbol, start_ms)
     if not source.exists():
         return None
     target = Path(cuts) / f"trades_{day_text}.csv"

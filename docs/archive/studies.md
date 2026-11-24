@@ -1530,23 +1530,32 @@ than 38 to cover two basis points.
 **One configuration reaches the fee, and only just (2026-11-25).** A grid over the two quote-geometry flags
 (`--base-spread-ticks` 1/2/3 by `--refresh-price-ticks` 1/2/4, seven days, conservative fill) says the geometry alone
 cannot turn the sign: the best cell is a refresh on every tick at -0.46 bps mean against the baseline's -3.43, and no cell
-has a positive median. What does the work is the gate the engine already carries -- `--edge-cover-ticks=1`, a quote has to
-cover the maker fee plus one tick -- with a deep quote behind it:
+has a positive median. Two gates then get close, and they are not the same rule:
 
-| window UTC | base | refresh | edge cover | fills | closed bps | net bps | days positive |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| 13:30-15:30 | 1 | 4 | 0 | 457 | +1.23 | -3.43 | 1/7 |
-| 13:30-15:30 | 3 | 1 | 1 | 183 | **+3.12** | +1.16 | 5/7 |
-| 09:30-11:30 | 3 | 1 | 1 | 124 | **+1.52** | -0.48 | 3/7 |
+| configuration | 20:00-22:00 | 02:00-04:00 | 09:30-11:30 | US 13:30-15:30 | fee |
+|---|---:|---:|---:|---:|---:|
+| baseline: touch quote, refresh 4 ticks | -- | -- | -- | +1.23 | 2.00 |
+| `--edge-cover-ticks=1 --base-spread-ticks=3` | **+2.01** (net -0.34, 5/6) | **+2.59** (net +0.58, 3/7) | **+1.52** (net -0.48, 3/7) | **+3.12** (net +1.16, 5/7) | 2.00 |
+| `--min-spread-ticks=2`, touch quote | -- | -- | -1.69 (net -4.69, 3/7) | +3.01 (net +1.35, 4/7) | 2.00 |
 
-`closed bps` is what the round trip earned before the fee, and it is the column that matters: quoting at the touch earns
-1.23 bps of a 5 bps half-spread, and quoting three ticks deep under the gate earns 1.5 to 3.1 -- most of the spread rather
-than a quarter of it. Against 2.00 bps of fee that straddles zero and the sign is the hour of the day, which is what a
-window chosen in advance is for: the two windows differ by 1.6 bps on the same seven days and the same configuration.
+The cells are `closed bps` -- what the round trip earned before the fee -- and the two gate rows are the reason that
+column exists: the first gate is about how far the quote sits from the fair price, the second about how wide the book is,
+and only the first holds its sign in every window. Quoting three ticks deep under an edge-cover gate earns **1.5 to
+3.1 bps of a 5 bps half-spread in all four windows measured**, mean **+2.3** against a 2.00 bps fee. That is break-even
+with a third of a basis point to spare, and the window's net -- which carries the inventory's mark -- lands on either side
+of zero by chance rather than by session: +1.16, -0.48, -0.34 and +0.58.
 
-The break-even fee this implies is about 1.5 bps. At 1.5 the morning window is +0.02 and the US one +1.62; at 1.0 they are
-+0.52 and +2.12. That is an account-tier question rather than a code one, and it is the same shape of answer the crypto
-line reached from the other direction -- at the retail 2 bps, on the venue's own book, the answer stays no.
+So the instrument is a break-even maker at the retail schedule, not a losing one, and the break-even fee this implies is
+about 1.5 bps: at 1.5 the four windows read +0.51, +1.09, +0.02 and +1.62 in the table's order, and at 1.0 they read
++1.01, +1.59, +0.52 and +2.12. That is an account-tier question rather than a code one, and it is the same shape of
+answer the crypto line reached from the other direction.
+
+One measurement error belongs in this record because it produced a table of zeros: OKX cuts its trade archive on midnight
+UTC+8 and its book archive on UTC, so a window starting at or after 16:00 UTC lives in the *next* trade file. Reading the
+file named for the book's day gave two hours of book against zero trades, and the engine answered with zero quotes on
+seven days -- which reads exactly like a gate that blocks a quiet market. `okx_maker_baseline.py` now picks the trade file
+by the window rather than by the book's day.
+
 
 
 ### Line 8 executed: the low turnover rule, and the dispersion that replaces the verdict
