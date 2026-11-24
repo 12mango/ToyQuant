@@ -104,13 +104,16 @@ compatibility path. Everything below assumes that page.
   | one line changed, does it still run | `bash tools/gate/verify_l2.sh smoke` | ~1 s |
   | a change under `src/` or `tests/` | `bash tools/gate/verify_l2.sh code` | ~26 s |
   | a change under `docs/` | `bash tools/gate/verify_l2.sh docs <the pages you touched>` | ~6 s a page, ~107 s for the set on this host |
-  | the task is finished, before the commit | `bash tools/gate/verify_l2.sh fast` | **~1-2 min on this host**, once (70 s and 1 min 47 s on two runs) |
+  | the task is finished, before the commit | `bash tools/gate/verify_l2.sh fast` | **~1.5-2.5 min on this host**, once (70 s and 1 min 47 s on 2026-11-16; 2 min 16 s, 1 min 43 s and 1 min 33 s on 2026-11-25, after the burst section gained two full-day probe runs) |
   | accepting a change for good | `bash tools/gate/verify_l2.sh full` then `... asan` | ~26 s for the hash, ~10 s for the sanitizers on a built tree and ~10 min for a cold one |
 
   Measured on 2026-11-16 with nothing else running, and these are the numbers the header of `verify_l2.sh` carries:
   tier 0 is 3 s, `code` 26 s, `full` 26 s, `asan` 6 s of tests plus 4 s of replay once the sanitizer tree exists (632 s
   when it does not), and `fast` 70 s to 1 min 50 s across two runs -- a spread wide enough that the rule is the range,
-  not a number. The document half is almost all two pages -- part 3 of the performance
+  not a number. Re-measured on 2026-11-25, after the burst section gained two full-day probe runs, `fast` read 2 min 16 s,
+  1 min 43 s and 1 min 33 s, against 70 s to 1 min 50 s on 2026-11-16. A pinned whole-day tool run costs about 15 s of
+  gate by the tool's own standalone time, so pinning one is a decision about every later commit rather than a free check.
+  The document half is almost all two pages -- part 3 of the performance
   history at 65 s and part 4 at 44 s -- so the whole set costs ~107 s here while a named page costs seconds. Running
   `fast` after every edit "to be safe" is the anti-pattern this table exists to stop: two minutes to learn nothing about
   the line just written, and a log long enough to bury the failure that matters.
