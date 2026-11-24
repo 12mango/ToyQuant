@@ -7,6 +7,24 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The quote geometry is swept, and one configuration reaches the fee (2026-11-25)
+
+- **A 3x3 grid over `--base-spread-ticks` and `--refresh-price-ticks`** (seven windows, conservative fill) says the
+  geometry alone cannot turn the sign: the best cell is -0.46 bps mean against the baseline's -3.43, and no cell has a
+  positive median. A refresh on every tick beats 2 and 4 in every column, which is the opposite of the advice a deep
+  book gives.
+- **The engine's own quote gate plus a deep quote does reach it**: `--edge-cover-ticks=1` with `--base-spread-ticks=3`
+  earns **+3.12 bps closed** on the 13:30-15:30 window (net +1.16, five of seven positive) and **+1.52** on the
+  09:30-11:30 window (net -0.48, three of seven) against a 2.00 bps fee. So the round trip earns most of the 5 bps
+  half-spread instead of a quarter of it, and the net straddles zero by the hour of the day -- the two windows differ by
+  1.6 bps on the same seven days and the same configuration.
+- **The break-even fee that implies is about 1.5 bps**: at 1.5 the morning window is +0.02 and the US one +1.62, at 1.0
+  they are +0.52 and +2.12. That is an account-tier question, not a code one.
+- **`okx_maker_baseline.py` grew the two columns that separate those readings** -- `closed_bps` counts realised round
+  trips only, and the grid mode asks both quote flags together -- and a window cut left half-written by a concurrent run
+  is now detected and re-cut instead of trusted.
+- No recorded number moved; `docs` and `fast` green.
+
 ## The venue's own archive answers the fee question (2026-11-25)
 
 - **Two tracked tools make an OKX day archive measurable.** `tools/study/okx_book_window.py` cuts a UTC window that

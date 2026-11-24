@@ -1527,6 +1527,28 @@ capture rather than shrink the position: quote depth and refresh cadence, where 
 than 38 to cover two basis points.
 
 
+**One configuration reaches the fee, and only just (2026-11-25).** A grid over the two quote-geometry flags
+(`--base-spread-ticks` 1/2/3 by `--refresh-price-ticks` 1/2/4, seven days, conservative fill) says the geometry alone
+cannot turn the sign: the best cell is a refresh on every tick at -0.46 bps mean against the baseline's -3.43, and no cell
+has a positive median. What does the work is the gate the engine already carries -- `--edge-cover-ticks=1`, a quote has to
+cover the maker fee plus one tick -- with a deep quote behind it:
+
+| window UTC | base | refresh | edge cover | fills | closed bps | net bps | days positive |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 13:30-15:30 | 1 | 4 | 0 | 457 | +1.23 | -3.43 | 1/7 |
+| 13:30-15:30 | 3 | 1 | 1 | 183 | **+3.12** | +1.16 | 5/7 |
+| 09:30-11:30 | 3 | 1 | 1 | 124 | **+1.52** | -0.48 | 3/7 |
+
+`closed bps` is what the round trip earned before the fee, and it is the column that matters: quoting at the touch earns
+1.23 bps of a 5 bps half-spread, and quoting three ticks deep under the gate earns 1.5 to 3.1 -- most of the spread rather
+than a quarter of it. Against 2.00 bps of fee that straddles zero and the sign is the hour of the day, which is what a
+window chosen in advance is for: the two windows differ by 1.6 bps on the same seven days and the same configuration.
+
+The break-even fee this implies is about 1.5 bps. At 1.5 the morning window is +0.02 and the US one +1.62; at 1.0 they are
++0.52 and +2.12. That is an account-tier question rather than a code one, and it is the same shape of answer the crypto
+line reached from the other direction -- at the retail 2 bps, on the venue's own book, the answer stays no.
+
+
 ### Line 8 executed: the low turnover rule, and the dispersion that replaces the verdict
 
 The rule was fixed before any window was read, because the point of it is to be falsifiable rather than tuned: a one

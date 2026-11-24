@@ -13,6 +13,13 @@ by construction. And a day whose depth cut is missing is built from the archive 
 
 Usage:
     python3 tools/sweep/okx_maker_baseline.py --days 2026-11-16,2026-11-17 --models conservative,prorata
+    python3 tools/sweep/okx_maker_baseline.py --days ... --base-spread-grid 1,2,3 --refresh-grid 1,2,4
+
+Two columns exist because the window's own P&L lies when a position is held: `gross_bps` marks the inventory and
+`closed_bps` counts only the round trips, and on a thin book with a capped position the first can be twenty times the
+second. `closed_bps` is the one to read against the fee, and the grid mode prints one row per cell so the two quote
+flags can be asked together. A window cut left half-written by a concurrent run is detected and re-cut rather than
+trusted, because a cut that starts mid-stream replays a book built from nothing.
 
 Measured with it (2026-11-25, `UP-USDT-SWAP`, seven days at 13:30-15:30 UTC): the median net is -2.28 bps under
 `conservative` and -2.49 under `prorata`, one day of seven positive either way, and the fee is 2.00 bps on every run
@@ -32,8 +39,15 @@ ROOT = Path(__file__).resolve().parents[2]
 BIN = ROOT / "out/build/linux-debug/toy_quant"
 WINDOW_TOOL = ROOT / "tools/study/okx_book_window.py"
 SLICE_TOOL = ROOT / "tools/fetch/slice.py"
-COLUMNS = ["day", "model", "fills", "fill_rate", "fees_bps", "gross_bps", "net_bps", "breakeven_bps",
-           "capture_ticks", "markout_ticks", "zero_queue", "max_inv", "net_pos", "stale"]
+COLUMNS = ["day", "model", "base", "refresh", "fills", "fill_rate", "fees_bps", "gross_bps", "closed_bps",
+           "closed_per_fill_bps", "net_bps", "breakeven_bps", "capture_ticks", "markout_ticks", "zero_queue",
+           "max_inv", "net_pos", "stale"]
+
+
+def number_list(text, cast=float):
+    """`1,2,3` -> [1.0, 2.0, 3.0]; an empty string is one cell meaning "the binary's own default"."""
+    parts = [part.strip() for part in (text or "").split(",") if part.strip()]
+    return [cast(part) for part in parts] or [None]
 
 
 def end_of_window(day_text, end):
@@ -43,10 +57,19 @@ def end_of_window(day_text, end):
 
 
 def first_timestamp(path):
-    """The cut's first record, which is the window's true start because the cut opens on a snapshot."""
-    with Path(path).open("rb") as source:
-        line = source.readline()
+    """The cut's first record, which is the window's true start because the cut opens on a snapshot.
+
+    None means the file is absent, empty, or was read while it was still being written -- a cut is made without a
+    temporary name, so a concurrent reader can see a truncated first line. The caller re-cuts rather than trusting it.
+    """
+    try:
+        with Path(path).open("rb") as source:
+            line = source.readline()
+    except OSError:
+        return None
     marker = b'"ts":"'
+    if marker not in line:
+        return None
     start = line.index(marker) + len(marker)
     return int(line[start:start + 13])
 
@@ -67,12 +90,16 @@ def ensure_cut(archive, cuts, start, end, tick):
     """The day's depth cut, made by the window tool when it is absent; returns its path or None."""
     day_text = archive.name.split("-400lv-")[-1].split(".tar.gz")[0]
     cut = Path(cuts) / f"okx_{day_text}_{start.replace(':', '')}.jsonl"
-    if cut.exists():
+    if cut.exists() and first_timestamp(cut) is not None:
         return cut
+    if cut.exists():
+        # A cut without a readable first line is a partial write from another run; re-cutting is the only way to
+        # know the book it replays starts from a snapshot.
+        cut.unlink()
     made = subprocess.run([sys.executable, str(WINDOW_TOOL), str(archive), "--start", start, "--end", end,
                            "--tick", str(tick), "--emit", str(cuts)], cwd=ROOT, capture_output=True, text=True)
-    if made.returncode != 0 or not cut.exists():
-        print(f"# {day_text}: no cut ({made.stderr.strip()[:160]})")
+    if made.returncode != 0 or first_timestamp(cut) is None:
+        print(f"# {day_text}: no usable cut ({made.stderr.strip()[:160]})")
         return None
     return cut
 
@@ -99,6 +126,10 @@ def main():
     parser.add_argument("--start", default="13:30")
     parser.add_argument("--end", default="15:30")
     parser.add_argument("--tick", type=float, default=0.0001)
+    parser.add_argument("--base-spread-grid", default="1",
+                        help="quote half width in ticks, comma separated; empty leaves the strategy's own default")
+    parser.add_argument("--refresh-grid", default="4",
+                        help="how far the fair price must move to requote, in ticks, comma separated")
     parser.add_argument("--inv-limit", default="100000000", help="engine units of net position; one contract is ten million")
     parser.add_argument("--order-size", default="10000000")
     parser.add_argument("--extra", default="", help="further l2_replay flags, space separated")
@@ -106,6 +137,8 @@ def main():
     args = parser.parse_args()
 
     Path(args.cuts).mkdir(parents=True, exist_ok=True)
+    bases = number_list(args.base_spread_grid)
+    refreshes = number_list(args.refresh_grid, cast=int)
     rows = []
     for day_text in [part.strip() for part in args.days.split(",") if part.strip()]:
         archive = ROOT / args.archives / f"{args.symbol}-L2orderbook-400lv-{day_text}.tar.gz"
@@ -120,29 +153,42 @@ def main():
             print(f"# {day_text}: no trades CSV for {args.symbol}")
             continue
         for model in args.models.split(","):
-            command = [str(BIN), "l2_replay", str(trades), str(cut), args.symbol, "0", "active_l2", "1", model,
-                       "--fast-validation", f"--order-size={args.order_size}", f"--inventory-limit={args.inv_limit}",
-                       "--base-spread-ticks=1", "--refresh-price-ticks=4"] + [p for p in args.extra.split() if p]
-            run = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
-            fields = summary_fields(run.stdout)
-            notional = float(fields.get("maker_notional_usd", 0.0) or 0.0)
+            for base in bases:
+                for refresh in refreshes:
+                    shape = []
+                    if base is not None:
+                        shape.append(f"--base-spread-ticks={base:g}")
+                    if refresh is not None:
+                        shape.append(f"--refresh-price-ticks={refresh:g}")
+                    command = [str(BIN), "l2_replay", str(trades), str(cut), args.symbol, "0", "active_l2", "1", model,
+                               "--fast-validation", f"--order-size={args.order_size}",
+                               f"--inventory-limit={args.inv_limit}"] + shape + [p for p in args.extra.split() if p]
+                    run = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
+                    fields = summary_fields(run.stdout)
+                    notional = float(fields.get("maker_notional_usd", 0.0) or 0.0)
 
-            def bps(name):
-                value = float(fields.get(name, 0.0) or 0.0)
-                return f"{value / notional * 1e4:.2f}" if notional else "n/a"
+                    def bps(name):
+                        value = float(fields.get(name, 0.0) or 0.0)
+                        return f"{value / notional * 1e4:.2f}" if notional else "n/a"
 
-            row = {"day": day_text, "model": model, "fills": fields.get("trade_reports", "?"),
-                   "fill_rate": fields.get("fill_rate", "?"), "fees_bps": bps("fees_paid"),
-                   "gross_bps": bps("gross_pnl_usd"), "net_bps": bps("net_pnl_usd"),
-                   "breakeven_bps": f"{float(fields.get('breakeven_maker_rate', 0.0) or 0.0) * 1e4:.2f}",
-                   "capture_ticks": fields.get("captured_edge_per_unit_ticks", "?"),
-                   "markout_ticks": fields.get("markout_per_unit_ticks", "?"),
-                   "zero_queue": fields.get("queue_zero_orders", "?"),
-                   "max_inv": fields.get("max_abs_inventory", "?"),
-                   "net_pos": fields.get("strategy_net_position", "?"),
-                   "stale": fields.get("stale_trades", "0")}
-            rows.append(row)
-            print(f"# {day_text} {model}: fills={row['fills']} gross_bps={row['gross_bps']} net_bps={row['net_bps']}")
+                    row = {"day": day_text, "model": model,
+                           "base": "" if base is None else f"{base:g}",
+                           "refresh": "" if refresh is None else f"{refresh:g}",
+                           "fills": fields.get("trade_reports", "?"),
+                           "fill_rate": fields.get("fill_rate", "?"), "fees_bps": bps("fees_paid"),
+                           "gross_bps": bps("gross_pnl_usd"), "closed_bps": bps("gross_closed_pnl_usd"),
+                           "closed_per_fill_bps": bps("gross_closed_per_fill_usd"),
+                           "net_bps": bps("net_pnl_usd"),
+                           "breakeven_bps": f"{float(fields.get('breakeven_maker_rate', 0.0) or 0.0) * 1e4:.2f}",
+                           "capture_ticks": fields.get("captured_edge_per_unit_ticks", "?"),
+                           "markout_ticks": fields.get("markout_per_unit_ticks", "?"),
+                           "zero_queue": fields.get("queue_zero_orders", "?"),
+                           "max_inv": fields.get("max_abs_inventory", "?"),
+                           "net_pos": fields.get("strategy_net_position", "?"),
+                           "stale": fields.get("stale_trades", "0")}
+                    rows.append(row)
+                    print(f"# {day_text} {model} base={row['base']} refresh={row['refresh']}: "
+                          f"fills={row['fills']} gross_bps={row['gross_bps']} net_bps={row['net_bps']}")
 
     if not rows:
         print("no rows: nothing measured")
@@ -156,6 +202,30 @@ def main():
     print("|" + "---|" * len(COLUMNS))
     for row in rows:
         print("| " + " | ".join(str(row[key]) for key in COLUMNS) + " |")
+    if len(bases) * len(refreshes) * len(args.models.split(",")) > 1:
+        print()
+        print("| model | base | refresh | days | mean net bps | median net bps | positive | mean fills |")
+        print("|---|---:|---:|---:|---:|---:|---:|---:|")
+        cells = {}
+        for row in rows:
+            cells.setdefault((row["model"], row["base"], row["refresh"]), []).append(row)
+
+        def as_float(text):
+            try:
+                return float(text)
+            except (TypeError, ValueError):
+                return None
+
+        for (model, base, refresh), members in sorted(cells.items()):
+            nets = [value for value in (as_float(member["net_bps"]) for member in members) if value is not None]
+            fills = [value for value in (as_float(member["fills"]) for member in members) if value is not None]
+            if not nets:
+                continue
+            nets.sort()
+            median = nets[len(nets) // 2] if len(nets) % 2 else (nets[len(nets) // 2 - 1] + nets[len(nets) // 2]) / 2
+            print(f"| {model} | {base or 'default'} | {refresh or 'default'} | {len(nets)} | "
+                  f"{sum(nets) / len(nets):.2f} | {median:.2f} | {sum(1 for value in nets if value > 0)} | "
+                  f"{sum(fills) / len(fills):.0f} |")
     return 0
 
 
