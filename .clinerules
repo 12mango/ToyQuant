@@ -40,6 +40,15 @@ compatibility path. Everything below assumes that page.
   measurement is not a gain.
 - **A result that looks too good is a bug until its decomposition reconciles.** Capture, markout, fee and `net_pnl_usd`
   have to add up; when they do not, say so and do not quote the number (the MU quoting rows are the standing example).
+- **A closure records what kind of boundary it was, and only one kind is reopened by trying again.**
+  `docs/RETROSPECTIVE.md`'s frontier map sorts every closure into four kinds: an **arithmetic** wall (a ratio between the
+  market's structure and the account's schedule, revisited only when the trigger written beside the row fires), a
+  **method** closure (the original gross was near the cost line, or the observation was too coarse -- this is the
+  research frontier), a **restriction** written before measurement (reopening it is an owner decision, not a
+  measurement), and a **defect in the instrument** (re-measured, never quoted). A method row is reopened by changing the
+  sampling resolution, the execution mechanism, the holding period, the state gate or the fee tier -- never by
+  re-running the same window with a different numeric threshold, which is window selection wearing a new flag. The bar
+  that would close it again is registered before the run, in the section that opens the line.
 - **The answer "closed, and here is why" is a deliverable.** Do not manufacture work to avoid delivering it.
 - **Exploration has a buffer, and the guides are not it.** A new direction is tried with a rough note in the studies
   record (`docs/archive/studies.md`) or an ADR if it closes a decision; it does not enter the guide, the front doors or

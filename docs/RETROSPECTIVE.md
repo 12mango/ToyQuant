@@ -2,7 +2,9 @@
 
 This is the record of what this project tried, what each attempt cost, why the ones that failed failed, and what is
 left. It exists because the value of a negative result is the reason for it, and because the same wrong turns are
-cheap to repeat: every row below is a question that has been answered and no longer needs asking.
+cheap to repeat: every row below is a question that has been answered and no longer needs asking -- and the last
+section says which of them could still be asked *differently*, what that would cost, and what would have to change
+before it is worth asking at all.
 
 ## What the project was asking
 
@@ -187,6 +189,42 @@ as the best of them either way. The option series that second measurement needs 
 gone; it cost 0.011938 USD and its print counts and R_max reproduce the table in `docs/ROADMAP.md` row for row. The
 campaign is not in the gate, because it needs the archives and takes minutes where the gate runs on every edit.
 
+
+## The frontier map: what kind of death each closure was
+
+A closure is a boundary with a condition on it, and the condition decides whether the line deserves another hour. The
+table above is the verdicts; this one is the same rows read by **why** each stopped, so that a reopen starts from the
+assumption instead of from the number. Four kinds are worth telling apart, and the fourth is the one this project paid
+for twice.
+
+| line | kind | the assumption it is bound to | the cheapest test, and its trigger |
+|---|---|---|---|
+| crypto perpetuals, symmetric quoting at retail | arithmetic | a fee of 2.00 bps against a 0.101 bps half-spread, so 19.8 half-spreads of fee per fill | none while the account is retail. Trigger: **a maker fee at or below about 1 bps, or a rebate tier** -- `breakeven_maker_rate` across the recorded windows runs from -4.09e-05 to 1.07135e-04, which is the price of that trigger |
+| micro E-mini | arithmetic | a commission of about half a tick against 0.0131 ticks captured a fill | none; the same wall one market over, and the row above is its general form |
+| US large cap equities, the position term | arithmetic | 941 USD of capture a window against 10,588 USD of the same window's sigma, which is 506 windows | an instrument that explains the inventory at a fill's horizon: MES removes 8 percent of that term there against 61 percent at five minutes, and the second column of that table is what remains |
+| options from fifteen days out | arithmetic | 5 to 264 prints in two hours, so the best `R_max` is 43 against the 71-print reference | a series that trades more at the same expiry; nothing cheap, and the row below is why the cheap alternative was refused |
+| options at one to three days | **restriction** | the tail-risk restriction pre-registered before the measurement, `DTE > 15` | reopening is the owner's decision and not a measurement. What it would cost is one series' fill ratio: those are the only expiries clearing `R_max` 71 (254, 203, 113, 111 and 104 prints a fill) |
+| funding rate carry, BTC, twelve months | arithmetic | 0 of 12 months clear the level and payback gates; no positive run earns the 36 USD round trip | a month whose differential clears it. The archives are free, so the scan is re-run rather than argued |
+| **the wide-spread screen, and the UP instrument** | **method** | one REST read per symbol, ranked by half-spread alone, which read 8.51 bps and missed 10 to 90 percent of the width | the tiered screen: thirty reads twenty seconds apart, a two-tick width floor and a 500,000 USD notional floor, inside one 13:30-15:30 UTC window. Free, and the window is the only gate |
+| **the UP configuration** | **method** | quoting at the touch, where a 2 to 3 tick half-spread cannot pay 2.00 bps | `--base-spread-ticks=3 --refresh-price-ticks=1 --edge-cover-ticks=1`, which reads +2.01, +2.59, +1.52 and +3.12 closed on four windows. The open half is the fee tier, not the method |
+| **burst and trend, the horizon** | **method** | a 30 s horizon against a 10 bps taker round trip, then the same burst with both legs passive | the 900 s taker-entry/passive-exit row (+14.44 gross, +7.40 net, median -9.34, 76 fills) on more burst days: free, on data already on disk, and it needs the median to stop being carried by two or three events |
+| **the latency column** | **a defect in the instrument** | the replay dropped a cancel that raced its placement, and the collapse it produced was read as a property of the configuration | done, 2026-11-25: the 5 ms row went from 9 fills to 901. What is left is that a two-hour window cannot price one millisecond and above |
+
+**A reopen changes the method, never the margin.** The method is the sampling resolution, the execution mechanism (taker
+against passive, a marketable limit), the holding period, the state gate on the entry, or the fee tier -- the five things
+the rows above say were changed. Re-running the same window with a different numeric threshold is not a reopen: it is the
+window selection this record refuses, and the only thing it reliably produces is a row that looks better. The bar is
+registered before the run, in the section that opens the line, the way the passive-entry bar (net +2 bps, markout +4 bps,
+three windows) was written before those five replays existed.
+
+**An arithmetic row is revisited when its trigger fires and not before.** The trigger is a number in the table -- a fee, a
+print count, a variance -- so "the market may have changed" is not one. That is what keeps a hard wall from consuming the
+compute that a method row can still turn into a measurement.
+
+**The fourth kind is the one to be afraid of.** A defect in the instrument looks exactly like a market boundary until
+someone traces it: the latency column closed the equity line on a row that was nine fills and -1143.75 USD, and the row
+was the replay discarding the strategy's own cancels. A row of that kind is re-measured, never quoted, and the first
+question about any row that looks too clean is which mechanism produced the number rather than which market produced it.
 
 **Three things survive all of them.** The engine: a market data handler, a matching engine, an order state machine, a
 queue model and a fee model, re-derived by four gate tiers on every commit. The criteria, which turned out to be the

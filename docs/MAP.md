@@ -34,6 +34,7 @@ claim.**
 | If you want to... | Read | Then |
 |---|---|---|
 | see what the project found | [Retrospective](RETROSPECTIVE.md) | [Design Review](DESIGN_REVIEW.md) for how each closure was measured |
+| see what could be reopened, and at what price | [The frontier map](RETROSPECTIVE.md#the-frontier-map-what-kind-of-death-each-closure-was) | the row's own cheap test, which is the only part of it that costs anything |
 | see what the engine work returned, and why it stopped | [Low-Latency Retrospective](LOW_LATENCY.md) | [Performance](PERFORMANCE.md#5-optimization-ledger) for the rows |
 | evaluate the design | [Design Review](DESIGN_REVIEW.md) | [Architecture](ARCHITECTURE.md) for what exists |
 | understand market making | [Learning Path](LEARNING.md) | [Design Review](DESIGN_REVIEW.md) section 4 for the gate |
@@ -55,7 +56,7 @@ document that starts explaining something in another document's row is the failu
 
 | Document | Tier | What it owns | Not the place for | Kept honest by |
 |---|---|---:|---|---|
-| [Retrospective](RETROSPECTIVE.md) | 1 | the eight closures, the number that closed each, the rules that came out of them | what exists in the code, or how to run it | prose linted |
+| [Retrospective](RETROSPECTIVE.md) | 1 | the eight closures, the number that closed each, the rules that came out of them, and the frontier map that sorts each closure by the kind of boundary it is | what exists in the code, or how to run it | prose linted |
 | [Low-Latency Retrospective](LOW_LATENCY.md) | 1 | the engine line as a whole: what it was for, the order the attempts came in, what returned, the condition that stopped it, and what it never measured | a number, the mechanism of a change, or the measurement record | prose linted; every figure it needs is a link to a block the gate re-runs |
 | [Design Review](DESIGN_REVIEW.md) | 1 | why the instrument is built this way, the C++ decisions with anchors, the headline results, the questions a reader asks, the limitations | the module reference, or the raw measurement records | prose linted; the size, test count, flags and tool paths it states are re-counted |
 | [User Guide](USER_GUIDE.md) | 1 | every mode, every flag, the data contracts, and the failure modes that waste an afternoon: an index over the eight pages in `docs/using/` | why anything is designed the way it is, or what a field means | prose linted, so a flag it forgets or invents fails the build |
