@@ -7,6 +7,19 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The screen gains the tick width, and its readings move out of /tmp (2026-11-25)
+
+- **`okx_spread_screen.py` reports the median spread in ticks beside the half-spread**, joining the venue's instrument
+  table for `tickSz`, and a candidate now has to pass three thresholds: half-spread >= 1.2 bps, **median spread >= 2
+  ticks**, and 24-hour notional >= 500,000 USD. The middle one is what decides whether a symbol is the same kind of
+  animal as `UP-USDT-SWAP`: a cheap coin can show 2.2 bps of half-spread with its bid and ask one tick apart, and the
+  rule that earns on this instrument -- three ticks behind the touch -- cannot be placed in a one-tick book at all.
+- **The raw reads are archived by default**, to `data/v2/crypto/okx_tickers_<utc>.json` rather than a `/tmp` path: a
+  screen whose readings are gone cannot be re-derived, and this tree has lost `/tmp` scratch twice. The file is input and
+  git-ignored, so archiving costs no repository bytes, and `--read` replays it to the same table.
+- Validated live with two reads at 04:00 UTC: the tick column joins against the instrument table (HYPE-USD-SWAP 16 ticks,
+  RAVE-USDT-SWAP and CT-USDT-SWAP 3) and the archived set re-derives to the same numbers.
+
 ## The rescue configuration does not survive a 30 ms link (2026-11-25)
 
 - **`okx_maker_baseline.py` grew `--latency-us`**, which sets `--order-latency-us` and `--cancel-latency-us` together, so a
@@ -16,10 +29,13 @@ site now points at `ToyQuant`.
   because a quote that lands stale is marketable on arrival, and `max_quote_lifetime` goes from 684 cycles to **26,570**.
   The deep-quote configuration behaves the same way (one to forty-four fills across seven days against 183), so what this
   exposes is the link and not the deep quote.
-- **The mechanism is not yet reconciled, and the record says so.** A 30 ms round trip should cost a quote one replace
-  cycle, not the two hours these counters imply; something between the delayed acknowledgement and the working-order
-  bookkeeping is holding the strategy out of the book between fills. What is settled is the direction: a configuration
-  whose quote cycle is shorter than the link cannot be credited with the zero-latency number.
+- **The collapse is a defect in the replay's cancel path, not a property of the strategy.**
+  `MatchingEngine::cancel_order` parks a cancel only when `order_index_.contains(order_id)` and returns silently
+  otherwise, so a cancel issued while its order is still waiting out the *placement* latency is dropped; with both legs
+  delayed equally that is the common case, and the strategy then waits for an order it already tried to pull.
+  `[TRACE_HINTS]` names that order -- `longest_wait_filled_cycles=26570`, a fill wait rather than an age refresh. The fix
+  belongs in the engine (a cancel that names an unknown order waits for it to arrive), and until it lands the 30 ms
+  number is a statement about the replay rather than about the configuration.
 - No recorded number moved; `docs` and `fast` green.
 
 ## The burst family's passive legs are measured, and they make it worse (2026-11-25)

@@ -1597,12 +1597,19 @@ behaves the same way (one to forty-four fills across the seven days against 183)
 `submitted_orders` on the run that was read, so the collapse is the strategy's own decision and not a pipeline refusal.
 `max_quote_lifetime` rises from 684 cycles to 26,570: one quote now lives through a quarter of the window's updates.
 
-**What is not yet reconciled, and why this is a counter and not a verdict.** A 30 ms round trip should cost a quote at most
-one replace cycle, not the two hours the numbers imply; something in the path between the delayed ack, the working-order
-bookkeeping and the `max_quote_age` rule is holding the strategy out of the book between fills, and until that is read the
-honest statement is "the flow collapses under latency", not "the strategy would trade thirty times a day". The direction is
-settled either way: a configuration whose quote cycle is shorter than the link cannot be credited with the zero-latency
-number, and that is the point this check exists to settle.
+**What is not a property of the strategy: the replay drops a cancel whose order is still in the latency queue.** The collapse
+looked like a strategy that stops quoting, and the trace says otherwise. `MatchingEngine::cancel_order` parks a cancel only
+when `order_index_.contains(order_id)` and returns silently when it does not, so a cancel issued while the order it names is
+still waiting out the *placement* latency is discarded. With the order and the cancel delayed by the same amount this is the
+common case rather than an edge: the strategy sends a cancel, believes the order is gone, never retries, and the order rests
+until it fills. `[TRACE_HINTS]` names exactly that order -- `longest_wait_filled_cycles=26570`, a fill wait and not an age
+refresh -- and it is why the quote count falls rather than the fill rate: the strategy is waiting for an order it already
+tried to pull.
+
+The fix is not a strategy change: a cancel that names an unknown order has to wait for that order to arrive and then take
+its own latency, which is what a venue does with a request it can answer rather than ignore. Until that lands, the 30 ms
+number is a statement about the replay's cancel path and not about the configuration, and the zero-latency table above stays
+the only measurement this instrument has.
 
 One measurement error belongs in this record because it produced a table of zeros: OKX cuts its trade archive on midnight
 UTC+8 and its book archive on UTC, so a window starting at or after 16:00 UTC lives in the *next* trade file. Reading the
