@@ -1469,6 +1469,64 @@ answering the previous one's question.
   reached a sizing check.
 
 
+**The archive answers, and the answer is no (2026-11-25).** Seven days of the venue's own L2 archive (`UP-USDT-SWAP`,
+2026-11-16 to 11-22, downloaded by hand from the portal) and the same days of trades from the public endpoint are now on
+disk, and two tracked tools make the measurement repeatable: `tools/study/okx_book_window.py` cuts a UTC window so a
+replay opens on a snapshot and reports the *time-weighted* half-spread, and `tools/sweep/okx_maker_baseline.py` runs the
+maker over one window per day per queue model. Neither number below is inside a marked block, because the archives are
+140 MB of input that git does not carry; the commands that produce them are in the two tools' headers.
+
+| day | median half spread bps | in ticks | fee / half spread |
+|---|---:|---:|---:|
+| 11-16 | 5.20 | 2 | 0.38 |
+| 11-17 | 6.05 | 2 | 0.33 |
+| 11-18 | 7.69 | 3 | 0.26 |
+| 11-19 | 4.43 | 2 | 0.45 |
+| 11-20 | 7.57 | 3 | 0.26 |
+| 11-21 | 4.87 | 2 | 0.41 |
+| 11-22 | 4.65 | 2 | 0.43 |
+
+So the screen's 8.51 bps was optimistic by 10 to 90 percent, and the premise it stood on survives in weakened form: the
+half-spread is 2.2 to 3.8 times the maker fee, not 4.25. No day carried a crossed batch.
+
+The maker, on the same windows, `active_l2`, one contract a quote, the fee it registered with:
+
+| day | conservative fills / net bps | prorata fills / net bps |
+|---|---|---|
+| 11-16 | 535 / -1.13 | 627 / -3.10 |
+| 11-17 | 235 / -8.44 | 268 / -9.05 |
+| 11-18 | 331 / -9.94 | 393 / -6.16 |
+| 11-19 | 764 / -2.51 | 844 / -2.49 |
+| 11-20 | 232 / -2.28 | 282 / +0.53 |
+| 11-21 | 360 / **+0.72** | 450 / -2.46 |
+| 11-22 | 744 / -0.46 | 869 / +2.35 |
+
+Median net **-2.28 bps** under the conservative fill and **-2.49** under the optimistic one; one day of seven positive
+either way; the fee is 2.00 bps on every run with no taker fill, so what the window loses is gross. The fill model moves
+the answer by about 0.4 bps on the mean and by up to 3.8 bps on a single day -- it is not the variable that decides,
+because 43 percent of the quotes join a level with nothing in front of them.
+
+What the gross is made of comes from the 11-16 decomposition: `gross_closed_per_fill_usd` is +1.23 bps of notional
+against a half-spread of 5.20, so the maker captures **24 percent** of what the book offers, and `breakeven_maker_rate`
+is +0.87 bps -- the fee would have to be under 0.87 for this window to pay. The capture quoted at the fill
+(`captured_edge_per_unit_ticks` 1.51, about 7.9 bps) is not the round trip: the exit and the inventory's path take the
+rest, which is the same decomposition lesson the crypto line already carries.
+
+Two inventory experiments followed, and both argue against the obvious fix:
+
+| variant | median net bps | mean net bps | ending position |
+|---|---:|---:|---|
+| cap ten contracts (baseline) | -2.28 | -3.43 | five to ten contracts |
+| cap **three** contracts | -3.22 | -4.42 | one to three |
+| cap three plus a taker close-out | -3.27 | -4.42 | zero |
+
+Tightening the cap makes it worse -- the strategy already stops quoting the adding side at its limit, so a tighter cap
+buys less turnover against the same adverse drift -- and closing out at the end changes nothing, because the loss was
+realised inside the window rather than carried to the mark. What is left unmeasured is the part that would raise the
+capture rather than shrink the position: quote depth and refresh cadence, where 24 percent would have to become more
+than 38 to cover two basis points.
+
+
 ### Line 8 executed: the low turnover rule, and the dispersion that replaces the verdict
 
 The rule was fixed before any window was read, because the point of it is to be falsifiable rather than tuned: a one

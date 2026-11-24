@@ -7,6 +7,24 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The venue's own archive answers the fee question (2026-11-25)
+
+- **Two tracked tools make an OKX day archive measurable.** `tools/study/okx_book_window.py` cuts a UTC window that
+  opens on a snapshot -- the reader refuses a depth file whose first record is an update -- and reports the
+  *time-weighted* half-spread, because a book that is one tick wide ninety percent of the time is not described by the
+  median of its records. `tools/sweep/okx_maker_baseline.py` runs the maker over one window per day per queue model.
+- **The seven-day answer, on `UP-USDT-SWAP` at 13:30-15:30 UTC**: the half-spread is 4.43 to 7.69 bps, two to three
+  ticks, so the fee is 0.26 to 0.45 of it. The maker's median net is **-2.28 bps** under the conservative fill model
+  (cancels never move a resting order forward) and -2.49 under prorata; one day of seven is positive either way; the fee
+  is exactly 2.00 bps with no taker fill, so what the window loses is gross.
+- **The capture is 24 percent of what the book offers**: `gross_closed_per_fill_usd` is +1.23 bps against a 5.20 bps
+  half-spread, and `breakeven_maker_rate` is +0.87 bps -- the fee would have to be under 0.87 for that window to pay.
+- **Two inventory experiments argue against the obvious fix**: tightening the cap from ten contracts to three made the
+  median worse (-2.28 to -3.22) and a taker close-out at the window's end changed nothing (-3.27, ending flat), so the
+  loss is realised inside the window rather than carried to the mark.
+- No C++ changed and no recorded number moved. These numbers are prose rather than marked blocks: they need 140 MB of
+  archive that git does not carry, and both headers state the commands that re-derive them.
+
 ## A snapshot at a new timestamp replaces the book (2026-11-25)
 
 - **The book clears when a snapshot arrives at a new exchange timestamp** (`l2_orderbook.cpp`): clearing only on the first
