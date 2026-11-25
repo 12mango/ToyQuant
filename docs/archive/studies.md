@@ -1706,6 +1706,30 @@ trip a `post_only` quote at the touch is still marketable on arrival every time,
 proxy produces. Its through-ask version rested six of six on the same direct route, which is the same staleness read
 from the other side: there the price quoted was one tick through the ask and the ask had moved up before it landed.
 
+**An amend is one round trip and cancel+place is two (2026-11-25).** A strategy that moves a resting quote either cancels
+and places again, or amends in place. `okx_probe.py amend` runs both in one process on one kept-alive tunnel, alternating
+which leg goes first, from a `post_only` buy two percent under the best bid to the same price one tick nearer, and times
+each call:
+
+| leg | p50 | p95 | what it costs |
+|---|---:|---:|---|
+| `POST /trade/amend-order` (n=12) | **83.2 ms** | 100.0 ms | one round trip, and the level never goes empty |
+| cancel, then place (n=12) | **163.1 ms** | 175.6 ms | two round trips, with the level empty between them |
+
+The decomposition reconciles, which is the check that makes it a measurement: the same run's cancel reads 80.2 ms and its
+place 80.8, so the two-call leg should cost 161.0 ms and reads 163.1. Every amend was applied -- the price read back from
+`/trade/order` moved on **12 of 12** -- with no `sCode` and no decline, so a `post_only` buy can be repriced in place.
+The saving is 79.9 ms, **49 per cent of a repricing decision**, and it removes the moment the level has no quote in it.
+What it does not do is shorten the reaction below the route: 83 ms is still eight times the 10 ms band where this
+configuration stops being a maker, so the direction stays unbuilt until a venue answers for the instrument that matters
+(`UP-USDT-SWAP` returns `51001` in the demo environment). The ruler was registered before the run -- inside 75 to 85 ms,
+half a repricing decision -- and it landed at 83.2.
+
+One defect came out of the first run and earns its line: the two prices were computed with `round` on the raw fraction,
+and a half-tick lands on a boundary where `round` answers to even, so the target came out equal to the start -- an amend
+asking for the price the order already had, reading 82.6 ms and meaning nothing. The prices are built from an integer
+tick count now, and the probe refuses a target equal to its start.
+
 **The band ends at 10 ms, not at 90.** The grid above is the whole ladder; the two measured paths sit far beyond it, and
 the 100 and 181 ms rows below are the same configuration without the flag, for the record:
 

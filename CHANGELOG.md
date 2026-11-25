@@ -7,6 +7,21 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## An amend is one round trip and cancel+place is two (2026-11-25)
+
+- **`okx_probe.py` gained `amend`**, which runs both ways of moving a resting quote in one process on one kept-alive
+  tunnel, alternating which leg goes first: a `post_only` buy two percent under the best bid, amended to the same price
+  one tick nearer, against the same order cancelled and placed again.
+- **Measured on `BTC-USDT-SWAP`: amend p50 83.2 ms (p95 100.0) against cancel+place 163.1 ms (p95 175.6)**, and the
+  decomposition reconciles -- the same run's cancel reads 80.2 and its place 80.8, so the two-call leg should cost 161.0
+  and reads 163.1. Every amend was applied (the price read back from `/trade/order` moved on 12 of 12) with no `sCode`
+  and no decline, so a `post_only` buy can be repriced in place: 79.9 ms saved, half a repricing decision, and no moment
+  with an empty level. The ruler was registered before the run -- inside 75 to 85 ms -- and it landed at 83.2.
+- **A defect in the probe's first version**: the two prices were computed with `round` on the raw fraction, and a
+  half-tick lands on a boundary where `round` answers to even, so the target came out equal to the start and the run
+  timed an amend that asked for the price the order already had (82.6 ms, meaning nothing). The prices are built from an
+  integer tick count now and the probe refuses a target equal to its start.
+
 ## The recording decorator handed every L2 update to the engine as a BBO one (2026-11-25)
 
 - **`--record-orders` really did change the run, and the cause was a virtual that was not forwarded.**

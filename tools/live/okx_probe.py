@@ -13,6 +13,17 @@ the ledger does not know about.
     python3 tools/live/okx_probe.py order B 1      # one contract long, IOC at the venue's own touch
     python3 tools/live/okx_probe.py rtt UP-USDT-SWAP 12   # place/cancel round trips and the post-only decline rate
     python3 tools/live/okx_probe.py warm BTC-USDT-SWAP 12 # the same two, on one kept-alive tunnel
+    python3 tools/live/okx_probe.py amend BTC-USDT-SWAP 12 # amend against cancel+place, one tunnel, alternating order
+
+`amend` is the repricing question rather than the link's: a strategy that moves a resting quote either cancels and
+places again, which is two round trips and leaves the level without our quote between them, or amends the order in
+place, which is one. Its ruler is registered before the run, because a number without one is a number nobody can act
+on: `rtt` and `warm` put a placement at 77.5 ms and a cancel at 78.0 ms p50 on this host's direct route, so
+cancel+place is about 155 ms, and **an amend whose p50 lands in one round trip -- the band 75 to 85 ms -- removes
+about half of a repricing decision**. A p50 above that band means the venue charges the amend a second round trip
+somewhere, and the direction stays unbuilt. Both legs run in one process, on one kept-alive tunnel, alternating which
+goes first, so a drift in the link over the run cannot favour either; every order rests `post_only` two percent under
+the best bid and neither leg's target can cross, so a fill is not part of this measurement.
 
 `rtt` is the link's own measurement rather than the account's: it places a `post_only` buy two percent under the best
 bid, so the order has to rest and the venue's reply is the placement's, times that reply and the cancel that follows it,
@@ -239,6 +250,153 @@ def warm_rtt(connection, inst, rounds, gap_s):
     return 0 if place_ms else 1
 
 
+def post_on(connection, path, body):
+    """One signed request on the kept-alive tunnel, and the wall time of its own round trip."""
+    headers = signed_headers("POST", path, body)
+    start = time.perf_counter()
+    connection.request("POST", path, body=body, headers=headers)
+    payload = json.loads(connection.getresponse().read().decode())
+    return (time.perf_counter() - start) * 1000.0, payload
+
+
+def place_post_only(connection, inst, price, lot, resting, codes):
+    """A `post_only` buy that has to rest, appended to `resting` when the venue answers with an id."""
+    body = json.dumps({"instId": inst, "tdMode": "cross", "side": "buy", "ordType": "post_only",
+                       "px": price, "sz": lot})
+    _, payload = post_on(connection, "/api/v5/trade/order", body)
+    row = (payload.get("data") or [{}])[0]
+    if payload.get("code") == "0" and row.get("sCode") == "0" and row.get("ordId"):
+        resting.append(row["ordId"])
+        return row["ordId"]
+    key = f"place {payload.get('code')}/{row.get('sCode')}"
+    codes[key] = codes.get(key, 0) + 1
+    return None
+
+
+def cancel_quietly(connection, inst, order_id, resting, codes):
+    """A cancel between samples: its own time is not a reading, but a failure is counted."""
+    _, payload = post_on(connection, "/api/v5/trade/cancel-order",
+                         json.dumps({"instId": inst, "ordId": order_id}))
+    row = (payload.get("data") or [{}])[0]
+    if payload.get("code") == "0" and row.get("sCode") == "0":
+        if order_id in resting:
+            resting.remove(order_id)
+        return True
+    key = f"cancel {payload.get('code')}/{row.get('sCode')}"
+    codes[key] = codes.get(key, 0) + 1
+    return False
+
+
+def order_snapshot(inst, order_id):
+    """The venue's own answer for one order: its state and its price.
+
+    The price is how an amend is *checked* rather than trusted: an amend the venue acknowledges and does not apply
+    would otherwise be read as a fast one.
+    """
+    query = urllib.parse.urlencode({"instId": inst, "ordId": order_id})
+    payload = request("GET", "/api/v5/trade/order?" + query)
+    row = (payload.get("data") or [{}])[0]
+    return row.get("state") or "?", row.get("px") or ""
+
+
+def amend_round_trip(connection, inst, rounds, gap_s):
+    """Amend against cancel+place, in one process on one kept-alive tunnel.
+
+    The ruler is in this module's docstring and it was written before the run: an amend that lands inside the
+    single-round-trip band -- 75 to 85 ms here, where a placement is 77.5 ms and a cancel 78.0 -- halves a repricing
+    decision and removes the moment the level has no quote in it. Above the band the venue is charging the amend a
+    second round trip somewhere, and the direction stays unbuilt. The two legs alternate which goes first, so drift in
+    the link over the run cannot favour either, and every price is two percent under the best bid, where a
+    `post_only` order has to rest: a fill is not part of this measurement.
+    """
+    spec = inst_spec(inst)
+    lot = one_lot(spec)
+    bid, _ask = best_quote(inst)
+    # Both prices from one integer tick count: a half-tick lands on a rounding boundary, where `round` answers to
+    # even, and the target then comes out equal to the start -- which times an amend that asks for the price the
+    # order already has. Measured once that way: it reads 82.6 ms and means nothing.
+    start_tick = round(bid * 0.98 / spec["tickSz"])
+    from_px = on_tick(start_tick * spec["tickSz"], spec)
+    to_px = on_tick((start_tick + 1) * spec["tickSz"], spec)
+    if to_px == from_px:
+        raise SystemExit(f"{inst}: the amend target equals the start ({from_px}); a probe that asks for the same "
+                         f"price times nothing")
+    amend_ms, cancel_ms, place_ms, cancel_place_ms = [], [], [], []
+    codes = {}
+    states = {}
+    moved, not_moved, declined = 0, 0, 0
+    resting = []
+    try:
+        for round_index in range(rounds):
+            legs = ("amend", "cancel_place") if round_index % 2 == 0 else ("cancel_place", "amend")
+            for leg in legs:
+                order_id = place_post_only(connection, inst, from_px, lot, resting, codes)
+                if order_id is None:
+                    continue
+                if leg == "amend":
+                    elapsed, payload = post_on(
+                        connection, "/api/v5/trade/amend-order",
+                        json.dumps({"instId": inst, "ordId": order_id, "newPx": to_px}))
+                    row = (payload.get("data") or [{}])[0]
+                    if payload.get("code") == "0" and row.get("sCode") == "0":
+                        amend_ms.append(elapsed)
+                        state, price = order_snapshot(inst, order_id)
+                        if price == to_px:
+                            moved += 1
+                        else:
+                            not_moved += 1
+                        if state != "live":
+                            states[state] = states.get(state, 0) + 1
+                    else:
+                        declined += 1
+                        key = f"amend {payload.get('code')}/{row.get('sCode')}"
+                        codes[key] = codes.get(key, 0) + 1
+                    cancel_quietly(connection, inst, order_id, resting, codes)
+                else:
+                    cancel_elapsed, cancel_payload = post_on(
+                        connection, "/api/v5/trade/cancel-order",
+                        json.dumps({"instId": inst, "ordId": order_id}))
+                    cancel_row = (cancel_payload.get("data") or [{}])[0]
+                    cancel_ok = cancel_payload.get("code") == "0" and cancel_row.get("sCode") == "0"
+                    if cancel_ok:
+                        resting.remove(order_id)
+                    else:
+                        key = f"cancel {cancel_payload.get('code')}/{cancel_row.get('sCode')}"
+                        codes[key] = codes.get(key, 0) + 1
+                    place_elapsed, place_payload = post_on(
+                        connection, "/api/v5/trade/order",
+                        json.dumps({"instId": inst, "tdMode": "cross", "side": "buy", "ordType": "post_only",
+                                    "px": to_px, "sz": lot}))
+                    place_row = (place_payload.get("data") or [{}])[0]
+                    place_ok = (place_payload.get("code") == "0" and place_row.get("sCode") == "0" and
+                                bool(place_row.get("ordId")))
+                    if place_ok:
+                        resting.append(place_row["ordId"])
+                    else:
+                        key = f"place {place_payload.get('code')}/{place_row.get('sCode')}"
+                        codes[key] = codes.get(key, 0) + 1
+                    if cancel_ok and place_ok:
+                        cancel_ms.append(cancel_elapsed)
+                        place_ms.append(place_elapsed)
+                        cancel_place_ms.append(cancel_elapsed + place_elapsed)
+                        cancel_quietly(connection, inst, place_row["ordId"], resting, codes)
+            time.sleep(gap_s)
+    finally:
+        # Nothing the probe placed may outlive it: a stray quote is a position waiting to happen.
+        swept = 0
+        for order_id in list(resting):
+            if cancel_quietly(connection, inst, order_id, resting, codes):
+                swept += 1
+        swept_failed = len(resting)
+    emit({"cmd": "amend", "instId": inst, "rounds": rounds, "lot": lot,
+          "from_px": from_px, "to_px": to_px,
+          "amend_ms": summary(amend_ms), "cancel_place_ms": summary(cancel_place_ms),
+          "cancel_ms": summary(cancel_ms), "place_ms": summary(place_ms),
+          "amended_and_moved": moved, "amend_not_moved": not_moved, "amend_declined": declined,
+          "amend_states": states, "errors": codes, "swept": swept, "swept_failed": swept_failed})
+    return 0 if amend_ms else 1
+
+
 def timed(method, path, body=""):
     """One signed request and the wall-clock time it took, in milliseconds.
 
@@ -411,6 +569,15 @@ def main():
         connection = tunnel(urllib.parse.urlsplit(BASE).hostname)
         try:
             return warm_rtt(connection, instrument, rounds, gap)
+        finally:
+            connection.close()
+    if command == "amend":
+        instrument = sys.argv[2] if len(sys.argv) > 2 else INST
+        rounds = int(sys.argv[3]) if len(sys.argv) > 3 else 12
+        gap = float(sys.argv[4]) if len(sys.argv) > 4 else 0.25
+        connection = tunnel(urllib.parse.urlsplit(BASE).hostname)
+        try:
+            return amend_round_trip(connection, instrument, rounds, gap)
         finally:
             connection.close()
     return 0
