@@ -1803,11 +1803,30 @@ buys is not the constraint. That is a closure of the lever at this size, not a c
 -- and the existing `--inventory-shift-ticks` already moves both quotes with the position, which is the version of this
 idea the recorded runs carried.
 
-**The third one is registered and not built.** Two passive layers (three and four ticks behind the touch) inside the same
-risk caps and the same asymmetric refresh would widen the capture without moving the touch, and it needs two orders a side
-where the strategy places one. Its bar, written here before the build: at 10 ms with `--post-only`, **fills rise above the
-one-layer row and the closed median stays positive on five of seven days**, with `max_abs_inventory` unchanged. A layer that
-raises fills and lowers the median is the closing-side result again, and would be closed the same way.
+**The third one was built, and it is the one that clears the bar (2026-11-25).** Two passive layers a side, the second
+one tick further out, the same size and the same asymmetric refresh: the fill *count* a window carries is bounded by the
+number of orders rather than by their size, which the clip sweep showed first.
+
+| configuration, 10 ms, `--post-only`, 40 ms refresh | fills a window, median (range) | fee bps | closed bps, median | days positive | `max_abs_inventory`, contracts |
+|---|---:|---:|---:|---:|---|
+| one layer, one contract | 17 (13-27) | 2.00 | +12.40 | 6 of 7 | 3 to 9 |
+| one layer, two contracts | 21 (15-24) | 2.00 | +20.46 | 6 of 7 | 4 to 9 |
+| one layer, four contracts | 24 (16-33) | 2.00 | +11.76 | 4 of 7 | 8 to 13 |
+| **two layers, one contract** | **26 (19-37)** | 2.00 | **+26.18** | **5 of 7** | 4 to 10 |
+| two layers, two contracts | 29 (22-54) | 2.00 | +4.53 | 5 of 7 | 4 to 13 |
+
+**The size does not buy fills, and the layers do.** Doubling the clip moves the notional and leaves the count near
+twenty-one; quadrupling it reaches twenty-four and costs the capture (the closed median falls from +20.46 to +11.76 and
+the positive days from six to four) -- more size through the same thin book is the closing-side result again. A second
+layer at the same size lifts the count to 26 with one day at 37 and raises the closed median to **+26.18**, which is the
+best cell in the table.
+
+**Its bar was three conditions and it meets two and a half.** Fills rose above the one-layer row (26 against 17), the
+closed median stayed positive on five of seven days, and `max_abs_inventory` did **not** stay unchanged: 3 to 9 contracts
+became 4 to 10, because a second resting order a side can also fill. That is not a defect of the rule but a correction to
+the bar -- the condition worth registering was "inside the configured cap", and at the default ten contracts the two-layer
+run reaches it exactly. On a venue where the cap is the risk budget, two layers is therefore a *sized* decision rather than
+a free one.
 
 
 **What is next, and what would qualify another instrument.** The next measurement is a tiered re-screen of every swap

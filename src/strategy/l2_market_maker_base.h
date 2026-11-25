@@ -112,6 +112,11 @@ struct L2MarketMakerBaseConfig
     // one that gets filled first. The adding side keeps `base_spread`, and both stay outside the touch. Zero, the
     // default, leaves the symmetric distance alone.
     double close_side_ticks{0.0};
+    // Extra passive layers behind the primary quote, each one tick further out. The fill *count* a window carries is
+    // bounded by the number of orders rather than by their size -- measured 2026-11-25, doubling the clip raised the
+    // notional and left the count near twenty-one -- so a second layer at the same size is the only way to quote more
+    // often at the same price. Zero, the default, leaves one layer a side.
+    uint64_t extra_layers{0};
     // Sides held back by the rule above, so a run can say how often it refused to chase.
     uint64_t advance_skips{0};
 };
@@ -550,16 +555,27 @@ class L2MarketMakerBase : public Strategy
             }
         }
 
-        if (buy_quantity > 0) orders.emplace_back(Side::Buy, symbol, bid_price, buy_quantity, 0);
-        if (sell_quantity > 0) orders.emplace_back(Side::Sell, symbol, ask_price, sell_quantity, 0);
+        if (buy_quantity > 0)
+        {
+            orders.emplace_back(Side::Buy, symbol, bid_price, buy_quantity, 0);
+            // The primary is what the next requote is compared against, whatever the layers behind it did.
+            last_placed_bid_ = bid_price;
+        }
+        if (sell_quantity > 0)
+        {
+            orders.emplace_back(Side::Sell, symbol, ask_price, sell_quantity, 0);
+            last_placed_ask_ = ask_price;
+        }
+        for (uint64_t layer = 1; layer <= config_.extra_layers; ++layer)
+        {
+            const double step = static_cast<double>(layer) * config_.tick_size;
+            if (buy_quantity > 0 && bid_price - step > 0.0)
+                orders.emplace_back(Side::Buy, symbol, bid_price - step, buy_quantity, 0);
+            if (sell_quantity > 0)
+                orders.emplace_back(Side::Sell, symbol, ask_price + step, sell_quantity, 0);
+        }
         if (!orders.empty())
         {
-            for (const auto& order : orders)
-            {
-                // What was actually sent, which is what the next requote is compared against.
-                if (order.side == Side::Buy) last_placed_bid_ = order.price;
-                else last_placed_ask_ = order.price;
-            }
             last_fair_price_ = fair_price;
             last_market_mid_ = (top.bid_price + top.ask_price) / 2.0;
             quote_age_ = 0;

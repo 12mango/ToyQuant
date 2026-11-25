@@ -61,6 +61,8 @@ struct StrategyFactoryConfig
     uint64_t advance_debounce_ms = 0;
     // The closing side's distance while the position is not flat, in ticks; 0 leaves the symmetric distance.
     double close_side_ticks_override = 0.0;
+    // Extra passive layers behind the primary quote; 0 leaves one layer a side.
+    uint64_t extra_layers = 0;
     // The non-market-making signal, from --trend-params. `set` false leaves the strategy's own defaults.
     TrendParams trend{};
     // Where that line's entry is priced, from --trend-entry. The defaults are the touch entry every recorded run had.

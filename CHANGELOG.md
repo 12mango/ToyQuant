@@ -7,6 +7,26 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The second layer is what buys fills, and the size is what sells them (2026-11-25)
+
+- **`--extra-layers=L`** quotes L further passive layers one tick behind the first, at the same size, inside the same
+  asymmetric refresh. Zero is the default, every recorded number is unchanged, and `l2_strategy_test` pins it: one extra
+  layer is four orders, the two behind the first by a tick each and at its size.
+- **The fill count is bounded by the number of orders, not by their size.** At 10 ms with `--post-only` and the 40 ms
+  refresh: one layer and one contract reads 17 fills a window, a median closed of +12.40 bps and 6 of 7 days positive;
+  two contracts reads 21 fills and **+20.46** with the same 6 of 7; four contracts reads 24 fills and **+11.76** with 4 of
+  7, which is more size through the same thin book and the closing-side result again.
+- **Two layers at one contract is the best cell**: **26 fills** a window (one day at 37) and a closed median of **+26.18**
+  on 5 of 7 days, at the maker's 2.00 bps.
+- **Two layers at two contracts lifts the count to 29 and drops the median to +4.53**, so the two levers do not add: the
+  layers buy the count and the size sells the capture back.
+- **The bar's third condition was written wrong and is corrected rather than bent.** It asked for `max_abs_inventory`
+  unchanged; a second resting order a side can also fill, so it goes from 3-9 contracts to 4-10 and reaches the default cap
+  of ten exactly. The condition worth registering is "inside the configured cap", and the layer is a sized decision because
+  of it.
+- `docs/archive/studies.md` carries the table; `docs/RETROSPECTIVE.md`'s multi-layer row moves from registered to built.
+- `docs` and `fast` green.
+
 ## Three ways to reach thirty fills, and only one of them was left standing (2026-11-25)
 
 - **`--close-side-ticks=N`** brings the side that reduces the position in to N ticks while the position is not flat, and

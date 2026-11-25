@@ -178,6 +178,7 @@ StrategyFactoryConfig Application::strategy_config(const InstrumentSpec& instrum
         .jump_cooldown_ms = cfg_.jump_cooldown_ms,
         .advance_debounce_ms = cfg_.advance_debounce_ms,
         .close_side_ticks_override = cfg_.close_side_ticks,
+        .extra_layers = cfg_.extra_layers,
         .trend = cfg_.trend,
         .trend_entry = cfg_.trend_entry,
         .execution = StrategyFactoryConfig::ExecutionParams{
@@ -419,6 +420,7 @@ void Application::run_replay_mode() const
                                       .jump_cooldown_ms = cfg_.jump_cooldown_ms,
                                       .advance_debounce_ms = cfg_.advance_debounce_ms,
                                       .close_side_ticks_override = cfg_.close_side_ticks,
+                                      .extra_layers = cfg_.extra_layers,
                                       .trend = cfg_.trend,
                                       .trend_entry = cfg_.trend_entry,
                                       .execution = StrategyFactoryConfig::ExecutionParams{

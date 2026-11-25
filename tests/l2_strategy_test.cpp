@@ -422,6 +422,23 @@ int main()
     assert(closing_orders[1].price < flat_orders[1].price);
     assert(closing_orders[1].price > flat_view.top.ask_price);
 
+    // Extra layers quote behind the primary one at the same size: the fill count a window carries is bounded by the
+    // number of orders, so a second layer a side is what raises it without moving the first layer's price.
+    L2MarketMakerBase layered(L2MarketMakerBaseConfig{.order_size = 1,
+                                                      .base_spread = 1.0,
+                                                      .inventory_limit = 100,
+                                                      .tick_size = 0.5,
+                                                      .extra_layers = 1});
+    L2MarketView layered_view = view;
+    layered_view.ts = 4000000;
+    const auto layered_orders = layered.on_l2_market_view(layered_view);
+    assert(layered_orders.size() == 4);
+    assert(layered_orders[0].side == Side::Buy);
+    assert(layered_orders[1].side == Side::Sell);
+    assert(std::abs(layered_orders[2].price - (layered_orders[0].price - 0.5)) < 1e-9);
+    assert(std::abs(layered_orders[3].price - (layered_orders[1].price + 0.5)) < 1e-9);
+    assert(layered_orders[2].quantity == layered_orders[0].quantity);
+
     // The adverse-selection gate: a side is quoted only when the edge that fill would capture covers the maker
     // fee plus what passive fills at that distance have actually cost. The estimate arrives from the pipeline,
     // which is the only component that sees the midpoint after a fill, and the gate waits for samples before it
