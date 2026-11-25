@@ -133,6 +133,9 @@ struct L2MarketMakerBaseConfig
     // the tick grid and floored at one tick, so a layer is never closer than the run asked for. Zero, the default,
     // leaves one tick a layer and every recorded number where it was.
     double layer_step_bps{0.0};
+    // Move a primary quote in place instead of pulling it and placing again, when the venue can amend. Off by default:
+    // this replay's engine does not amend, so a request becomes the cancel it replaced and the run is unchanged.
+    bool amend_instead_of_cancel{false};
 };
 
 // The L2 market maker. Strategies that add behaviour to it derive from it rather than holding one:
@@ -212,10 +215,24 @@ class L2MarketMakerBase : public Strategy
         if (!cancel_pending_) return {};
         std::vector<uint64_t> order_ids;
         order_ids.reserve(open_orders_.size());
-        for (const auto& entry : open_orders_) order_ids.push_back(entry.first);
+        for (const auto& entry : open_orders_)
+        {
+            // An order that is being moved in place is not pulled: the amend is the requote.
+            const bool amended = std::any_of(amend_requests_.begin(), amend_requests_.end(),
+                                             [&entry](const AmendRequest& request)
+                                             { return request.order_id == entry.first; });
+            if (!amended) order_ids.push_back(entry.first);
+        }
         cancel_pending_ = false;
         metrics_.cancel_count += order_ids.size();
         return order_ids;
+    }
+
+    std::vector<AmendRequest> amend_requests() override
+    {
+        std::vector<AmendRequest> pending;
+        pending.swap(amend_requests_);
+        return pending;
     }
 
     void request_cancel_all()
@@ -358,6 +375,85 @@ class L2MarketMakerBase : public Strategy
         return true;
     }
 
+    // The two prices a quote would rest at, before the gates and their counters: the half width (a tick count or a
+    // basis-point distance), the inventory skew, the weak-flow shift, the clamp outside the touch, the neutral quote at
+    // the touch and the closing side. `quote()` still computes these inline because its gates mutate the quantities
+    // between the prices and the placement, and a refresh view must not count a skip it never acted on; the next change
+    // to that block makes this the only copy. Until then the two agree by construction: same inputs, same arithmetic.
+    struct QuoteTargets
+    {
+        double bid{0.0};
+        double ask{0.0};
+        bool valid{false};
+    };
+
+    QuoteTargets target_prices(const TopOfBook& top, double fair_price, double inventory_ratio,
+                               double flow) const
+    {
+        if (fair_price <= 0.0) fair_price = (top.bid_price + top.ask_price) / 2.0;
+        double half_width = config_.base_spread;
+        if (config_.base_spread_bps > 0.0 && config_.tick_size > 0.0 && fair_price > 0.0)
+        {
+            const double tick_bps = config_.tick_size / fair_price * 1e4;
+            half_width = std::max(2.0, std::round(config_.base_spread_bps / tick_bps)) * config_.tick_size;
+        }
+        const double inventory_shift = inventory_ratio * half_width;
+        double weak_flow_spread_shift = 0.0;
+        if (config_.flow_guard && std::abs(flow) > config_.weak_flow_threshold &&
+            std::abs(inventory_ratio) > config_.neutral_inventory_band)
+            weak_flow_spread_shift = config_.weak_flow_spread_shift_ticks * config_.tick_size;
+        const double raw_bid = std::floor((fair_price - half_width - inventory_shift - weak_flow_spread_shift) /
+                                          config_.tick_size) * config_.tick_size;
+        const double raw_ask = std::ceil((fair_price + half_width - inventory_shift + weak_flow_spread_shift) /
+                                         config_.tick_size) * config_.tick_size;
+        const double passive_bid = std::floor(top.bid_price / config_.tick_size) * config_.tick_size;
+        const double passive_ask = std::ceil(top.ask_price / config_.tick_size) * config_.tick_size;
+        QuoteTargets targets{std::min(raw_bid, passive_bid), std::max(raw_ask, passive_ask), false};
+        if (config_.quote_at_best_when_neutral && std::abs(inventory_ratio) < 0.25 &&
+            std::abs(flow) < config_.toxicity_flow_threshold)
+        {
+            targets.bid = passive_bid;
+            targets.ask = passive_ask;
+        }
+        if (config_.close_side_ticks > 0.0 && config_.tick_size > 0.0 && position_ != 0)
+        {
+            const double close_offset = config_.close_side_ticks * config_.tick_size;
+            if (position_ > 0)
+            {
+                const double closing_ask =
+                    std::ceil((fair_price + close_offset) / config_.tick_size) * config_.tick_size;
+                targets.ask = std::max(passive_ask, std::min(targets.ask, closing_ask));
+            }
+            else
+            {
+                const double closing_bid =
+                    std::floor((fair_price - close_offset) / config_.tick_size) * config_.tick_size;
+                targets.bid = std::min(passive_bid, std::max(targets.bid, closing_bid));
+            }
+        }
+        targets.valid = std::isfinite(targets.bid) && std::isfinite(targets.ask) && targets.bid < targets.ask;
+        return targets;
+    }
+
+    // Move each side's primary quote to the price it would be placed at, in place. A layer behind a primary is left to
+    // the cancel path: it sits at a distance of its own, and moving it to the primary's price would fold the ladder into
+    // one level. The local record takes the new price at once, because the next view compares against it.
+    void amend_resting_quotes(const TopOfBook& top, double fair_price)
+    {
+        const auto targets = target_prices(top, fair_price, position_ratio(), trade_imbalance());
+        if (!targets.valid) return;
+        for (auto& entry : open_orders_)
+        {
+            StrategyOrder& order = entry.second;
+            const double target = order.side == Side::Buy ? targets.bid : targets.ask;
+            const double primary_price = order.side == Side::Buy ? last_placed_bid_ : last_placed_ask_;
+            if (std::abs(order.price - primary_price) > 0.5 * config_.tick_size) continue;
+            if (std::abs(target - order.price) < 0.5 * config_.tick_size) continue;
+            amend_requests_.push_back(AmendRequest{entry.first, target, order.quantity});
+            order.price = target;
+        }
+    }
+
     std::vector<StrategyOrder> quote(const std::string& symbol, const TopOfBook& top,
                                      double fair_price)
     {
@@ -393,8 +489,10 @@ class L2MarketMakerBase : public Strategy
         if (!open_orders_.empty())
         {
             // needs_refresh records the reason and arms the cancel; the new quotes go out on the next
-            // view, once the cancels have been acknowledged.
-            needs_refresh(top, fair_price);
+            // view, once the cancels have been acknowledged. With amend on, the primary of each side whose price simply
+            // moved is moved in place instead, and the cancel list leaves those orders alone.
+            const bool refresh = needs_refresh(top, fair_price);
+            if (refresh && config_.amend_instead_of_cancel) amend_resting_quotes(top, fair_price);
             return orders;
         }
         if (fair_price <= 0.0) fair_price = (top.bid_price + top.ask_price) / 2.0;
@@ -638,6 +736,8 @@ class L2MarketMakerBase : public Strategy
 
     L2MarketMakerBaseConfig config_;
     std::unordered_map<uint64_t, StrategyOrder> open_orders_;
+    // Amends this view asked for, consumed by the pipeline on the same cycle as the cancels.
+    std::vector<AmendRequest> amend_requests_;
     SubmittedOrders submitted_orders_;
     std::deque<TradeVolume> recent_trades_;
     uint64_t buy_volume_{0};

@@ -96,6 +96,7 @@ constexpr std::string_view kMinSpreadPrefix = "--min-spread-ticks=";
 constexpr std::string_view kQuoteDistanceBpsPrefix = "--quote-distance-bps=";
 constexpr std::string_view kOnesidedInventoryPrefix = "--onesided-inventory-frac=";
 constexpr std::string_view kLayerStepBpsPrefix = "--layer-step-bps=";
+constexpr std::string_view kAmendInsteadOfCancelFlag = "--amend-instead-of-cancel";
 constexpr std::string_view kJumpWindowPrefix = "--jump-window-ms=";
 constexpr std::string_view kJumpTicksPrefix = "--jump-ticks=";
 constexpr std::string_view kJumpCooldownPrefix = "--jump-cooldown-ms=";
@@ -261,7 +262,10 @@ void print_usage(const char* executable)
                      "in basis points of the reference price -- max(2, round(D / tick_bps)) ticks, the same "
                      "economic distance on every instrument -- and --onesided-inventory-frac=F stops the adding "
                      "side at F of the inventory cap; --layer-step-bps=D sets the step between extra layers in basis "
-                     "points of the reference price, where one tick a layer would put them on almost the same price\n";
+                     "points of the reference price, where one tick a layer would put them on almost the same price; "
+                     "--amend-instead-of-cancel moves a primary quote in place instead of pulling it and placing it "
+                     "again, which a venue that amends takes in one round trip and this replay's engine takes as the "
+                     "cancel it replaced\n";
         std::cerr << "   limits: --max-exposure-usd=N is the exposure ceiling the summary measures the run "
                      "against, enforced rather than reported once it is named, and --kill-switch-loss-usd=N "
                      "latches when the loss reaches N dollars, closes the position it was holding at the "
@@ -1276,6 +1280,8 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                 }
                 cfg.layer_step_bps = bps;
             }
+            else if (flag == kAmendInsteadOfCancelFlag)
+                cfg.amend_instead_of_cancel = true;
             else if (flag.compare(0, kJumpWindowPrefix.size(), kJumpWindowPrefix) == 0)
             {
                 if (!parse_unsigned(flag.substr(kJumpWindowPrefix.size()), cfg.jump_window_ms))

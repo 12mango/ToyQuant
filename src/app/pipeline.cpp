@@ -433,6 +433,21 @@ void Pipeline::submit_strategy_actions(uint64_t ts, std::vector<StrategyOrder> o
         engine_.cancel_order(order_id);
     }
 
+    // An amend the strategy asked for. The engine's own when it has one -- the venue's endpoint, which keeps the order
+    // alive and pays one round trip instead of two -- and otherwise the cancel this run would have sent anyway, so the
+    // book sees the same event and only the round trip differs. The ledger is not told about an amend: an amended order
+    // is still the same working order, at a new price.
+    for (const auto& amend : strategy_.amend_requests())
+    {
+        if (engine_.supports_amend())
+            engine_.amend_order(amend.order_id, amend.price, amend.quantity);
+        else if (ledger_.begin_cancel(amend.order_id, engine_))
+        {
+            ++cancel_requests_;
+            engine_.cancel_order(amend.order_id);
+        }
+    }
+
     // The switch is checked once a cycle, after the strategy's own cancels and before its orders. The account
     // metrics are read only when the switch is armed, which keeps a run that does not ask for it on the path
     // it was on before the control existed.

@@ -130,6 +130,8 @@ struct AppConfig
     double onesided_inventory_frac = 0.0;
     // From --layer-step-bps: the step between extra layers in basis points of the reference price. 0 leaves one tick.
     double layer_step_bps = 0.0;
+    // From --amend-instead-of-cancel: move a primary quote in place instead of pulling it and placing again.
+    bool amend_instead_of_cancel = false;
     // How far the inventory-aware strategy moves its quote centre at a full inventory, in ticks: the
     // Avellaneda and Stoikov reservation price in the form this engine can use, where the shift is
     // proportional to the position rather than solved from a risk aversion. 0 uses the strategy's own 2.0.

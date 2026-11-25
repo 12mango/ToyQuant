@@ -178,6 +178,17 @@ class Strategy
     // Returns working orders that must be cancelled before the next quote cycle.
     virtual std::vector<uint64_t> cancel_requests() = 0;
 
+    // An order the strategy would move in place rather than pull and place again. A venue that can amend takes one
+    // round trip where the pair takes two and leaves the level empty in between; a venue that cannot, and this replay's
+    // engine today, receives the cancel the request would have been, so a strategy may ask unconditionally.
+    struct AmendRequest
+    {
+        uint64_t order_id{0};
+        double price{0.0};
+        uint64_t quantity{0};
+    };
+    virtual std::vector<AmendRequest> amend_requests() { return {}; }
+
     virtual int64_t net_position() const = 0;
     virtual size_t working_order_count() const = 0;
 

@@ -439,6 +439,40 @@ int main()
     assert(std::abs(layered_orders[3].price - (layered_orders[1].price + 0.5)) < 1e-9);
     assert(layered_orders[2].quantity == layered_orders[0].quantity);
 
+    // Moving a primary quote in place: with the flag on, a refresh emits an amend for the side whose target moved and
+    // leaves that order out of the cancels; with it off, the same view cancels both. The request is a request -- this
+    // replay's engine has no amend, so the pipeline turns it into the cancel it replaced and no recorded number moves.
+    {
+        const auto drive_refresh = [&](bool amend) {
+            L2MarketMakerBase strategy(amend ? L2MarketMakerBaseConfig{.order_size = 1,
+                                                                      .base_spread = 1.0,
+                                                                      .inventory_limit = 100,
+                                                                      .tick_size = 0.5,
+                                                                      .amend_instead_of_cancel = true}
+                                            : L2MarketMakerBaseConfig{.order_size = 1,
+                                                                      .base_spread = 1.0,
+                                                                      .inventory_limit = 100,
+                                                                      .tick_size = 0.5});
+            const auto placed = strategy.on_l2_market_view(view);
+            assert(placed.size() == 2);
+            strategy.on_order_submitted(StrategyOrder{placed[0].side, view.symbol.str(), placed[0].price, 1, 30});
+            strategy.on_order_submitted(StrategyOrder{placed[1].side, view.symbol.str(), placed[1].price, 1, 31});
+            L2MarketView moved = view;
+            moved.ts = 5000000;
+            moved.top.bid_price += 1.0;
+            moved.top.ask_price += 1.0;
+            strategy.on_l2_market_view(moved);
+            return std::pair{strategy.cancel_requests(), strategy.amend_requests()};
+        };
+        const auto plain = drive_refresh(false);
+        assert(plain.first.size() == 2);
+        assert(plain.second.empty());
+        const auto amended = drive_refresh(true);
+        assert(amended.first.empty());
+        assert(amended.second.size() == 2);
+        assert(std::abs(amended.second[0].price - amended.second[1].price) > 0.5);
+    }
+
     // A layer's step in basis points: the default is one tick, which on a fine tick puts the second layer on almost the
     // first layer's price. At ten bps a layer the step here -- fair 6421.25, tick 0.5 -- is 6.42 of price, 12.8 ticks,
     // rounded outward to thirteen, so the second layer sits 6.5 behind the first instead of 0.5.
