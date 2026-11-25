@@ -1757,6 +1757,39 @@ eight, not the fifteen or twenty a reader might expect**: most of the 555 have a
 couple of basis points, which is exactly why the screen's 127 width-passers are not 127 candidates. The next two
 downloads in order are **SSV** and **OL**, then **PROS** and **BLUR**.
 
+**The screen's candidates, measured (2026-11-25).** The three-distance ladder is the first test of any candidate, because
+the fill floor fails before the median does: the frozen cell minus the expected-value gate (which refuses a one-tick quote
+by construction), seven days at 13:30-15:30 UTC, at one, two and three ticks -- or at seven, fourteen and twenty-eight
+basis points where a tick is too narrow for a tick count to mean anything.
+
+| instrument, distance | fills, median | closed median | days positive (closed) | what it says |
+|---|---:|---:|---:|---|
+| **NES, 3 ticks** | **46** | **+9.07** | **5 of 7** | clears the registered bar; net +1.25 on 4 of 7 |
+| NES, 2 ticks | 57 | -0.67 | 3 of 7 | more fills, no capture |
+| NES, 1 tick | 70 | -24.66 | 2 of 7 | the touch is where the flow is informed |
+| SSV, 1 tick | 14 | +2.65 | 4 of 6 | 5,000 to 22,000 prints a day is not a book you can quote |
+| SSV, 3 ticks | 3 | -29.74 to +31.87 | -- | three fills a window is not a measurement |
+| CT, 14 bps (18 ticks) | 2 to 12 | -44.35 to +13.89 | 3 of 5 with fills | eighteen ticks out is rarely swept |
+| CT, 28 bps (36 ticks) | 0 to 4 | mostly n/a | -- | dead |
+
+**NES is the second seat the screen has produced.** At three ticks it fills 46 times a window with a positive closed
+median on five of seven -- UP's bar structure at a lower capture (+9.07 against +26.18) and three fifths of its turnover
+(1.94 M USD a day against 3.25). The distance ladder reads the way the DNA one did: the touch fills most and loses most
+(70 fills, -24.66) and the capture only appears behind the flow.
+
+**SSV is closed, and the reason is a rate rather than a price.** Its one-tick capture is the widest of the three (+2.65
+closed on 4 of 6) and it fills **14 times a window against the thirty the bar asks**, because the tape carries 5,000 to
+22,000 prints a day where NES carries 450,000. A wide book with no prints is the actions gate, not the fee gate -- the
+shape the options line closed on, one market over.
+
+**CT is closed from the other side of the same arithmetic.** A 0.76 bps tick turns 14 bps of distance into eighteen ticks
+against a book eight ticks wide, so the quote rests where almost nothing sweeps: 2 to 12 fills a window at 14 bps, 0 to 4
+at 28. What that does **not** close is the fine-tick branch itself, whose last two representatives are the high-turnover
+ones: **PROS** (1.43 bps a tick, 14 bps is ten ticks, 16.6 M USD a day) and **BLUR** (1.08 bps a tick, thirteen ticks,
+10.7 M a day). If neither of those reaches thirty fills at ten to thirteen ticks, the branch is written off rather than
+extended.
+
+
 **Two mechanisms, registered before their runs, and both fail the bar (2026-11-25).** The frontier's method rows had two
 experiments that no data could block: the quote distance in basis points rather than ticks, and the one-sided retreat at
 high inventory. Both are in the tree now behind flags that default to off, so every earlier number stands, and both ran
