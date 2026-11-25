@@ -74,6 +74,7 @@ does not.
 | `tools/study/okx_book_depth.py` | the same cut's top two levels, time-weighted: the size a quote would stand behind, and the USD it is worth | hand |
 | `tools/study/okx_halfhour_profile.py` | a day's half-hour profile -- duration-weighted half spread and trades a second -- with no P&L, for deciding a window on the book rather than on a run | hand |
 | `tools/study/okx_tape_toxicity.py` | the tape's own adverse selection per half hour: each print's signed mid move over a stated horizon, as the passive side's markout -- mean, median and the share the mid moved on, with no strategy and no P&L | hand |
+| `tools/study/okx_fill_profile.py` | our own fills per half hour, from a run's trade stream: capture against the mid, markout at two horizons, the net contracts and the share of fills that opened a position -- the subset the quotes actually got | hand |
 | `tools/study/okx_spread_screen.py` | every swap's median half-spread and tick width over repeated ticker reads, against three thresholds, archiving its reads | hand |
 | `tools/study/plot_report.py` | quotes, distance, inventory and equity as one PNG | hand |
 | `tools/study/pnl_interval.py` | a mean beside the interval it carries | both |

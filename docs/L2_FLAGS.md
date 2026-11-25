@@ -133,10 +133,17 @@ start line then marks the restored positions at the snapshot's own prices.
 
 **The order leg.** `--record-orders=PREFIX` writes `<prefix>_orders.csv`: one row per submission, per cancel and per
 execution report, in the order they happened, with every field a report carries and a price written as the shortest
-decimal that parses back to the same double. It is off unless named, which is what every recorded run is, and it changes
-no number when it is on: the file is a record of the session, not an input to it, and `[ORDER-LOG]` prints its path and
-its three counts so a reader can check the row count against them. A field the format cannot carry -- a symbol holding a
-comma -- is refused rather than escaped. The file is read back by `RecordedVenue`, which answers from it as an engine
+decimal that parses back to the same double. It is off unless named, which is what every recorded run is, and
+`[ORDER-LOG]` prints its path and its three counts so a reader can check the row count against them. A field the format
+cannot carry -- a symbol holding a comma -- is refused rather than escaped.
+
+**It is not a silent observer, and that sentence used to claim it was.** Measured 2026-11-25, the same day and the same
+eight-hour window of `UP-USDT-SWAP` with the same frozen configuration: **117 fills and net -12.67 bps without the flag,
+207 fills and net +2.71 with it**, and the queue column moves with them (116 orders at zero queue in front, then 0). The
+mechanism is not established -- the recorder stamps reports whose venue gives them no timestamp, and the strategy's
+debounce reads those stamps -- so the honest statement is the measurement: a run whose fills it intends to read must not
+carry this flag, and `data/runtime/trades.csv` (which every replay already writes) is the passive record instead. Its line
+counts match the sweep's fill counts exactly across all seven days. The file is read back by `RecordedVenue`, which answers from it as an engine
 instead of from a venue; `--replay-orders=PREFIX` is the flag that makes it the run's venue, and each recorded report
 is released when the replay's own clock passes the timestamp it carries, so the strategy sees a fill where the session
 saw it rather than when it asked. A live venue's frames carry no time, so `LiveVenue` stamps each answer with the run's

@@ -1937,6 +1937,35 @@ buckets measured (00:00 to 19:30): **+0.34 to +5.69 bps**, with 13:30 +1.67, 14:
 is not paid for the flow being uninformed; he is paid for standing where the sweeps reach and the touch does not, which is
 the shape `--base-spread-ticks=3` and its passive layer already have.
 
+**Our own fills per half hour: the night is uniformly churned, not piled up in a few buckets (2026-11-25).**
+`tools/study/okx_fill_profile.py` reads the trade stream a replay already writes (`data/runtime/trades.csv`) and buckets
+our fills by half hour: the net contracts a bucket moved, the share of its fills that *opened* a position, the capture
+against the midpoint and the markout at five and thirty seconds. The night run of the same seven days, frozen cell:
+
+| bucket UTC | fills a day | net contracts | opened share | capture bps | markout +5 s | markout +30 s |
+|---|---:|---:|---:|---:|---:|---:|
+| 00:00 | 7 | -1.00 | 62% | +2.71 | -0.000 | +2.770 |
+| 01:00 | 3 | -0.50 | 53% | +2.89 | +0.000 | -5.637 |
+| 02:00 | 5 | +0.00 | 57% | -2.29 | -4.118 | -0.000 |
+| 02:30 | 8 | -2.00 | 45% | +0.00 | +0.000 | +7.124 |
+| 03:00 | 9 | +3.00 | 47% | -0.00 | +0.000 | +8.621 |
+| 04:00 | 8 | -2.00 | 37% | +2.11 | +0.000 | -4.779 |
+| 05:00 | 7 | -2.00 | 46% | +1.39 | +0.000 | +0.000 |
+| 05:30 | 8 | +2.00 | 57% | -0.00 | +2.307 | +4.866 |
+| 06:30 | 6 | -2.00 | 50% | +1.36 | +2.148 | +4.235 |
+| 07:00 | 5 | -1.00 | 49% | -2.83 | -2.607 | -0.084 |
+
+**There is no bucket where the inventory piles up.** Across the sixteen buckets of the night, the net a bucket moves is
+**-2.00 to +3.00 contracts** and the share of fills that open a position stays **37 to 62 per cent** -- near half in every
+bucket, with no bucket opening three quarters of what it fills. So the night's loss is not a few bad buckets the strategy
+could learn to avoid: it is the same churn spread evenly, paying a capture of about a basis point a fill against the
+2.00 bps fee. A gate on the bad buckets would have nothing to switch on, and that is the answer the four-block comparison
+needed.
+
+The markout columns are noisier than the counts (a bucket holds two to nine fills a day, so fourteen to sixty-three fills
+over the week) and they carry no bucket-level signal either: five seconds reads **-4.12 to +2.31 bps**, thirty seconds
+**-5.64 to +9.64**, both signs present in the middle of the night and in the small hours alike.
+
 **The handover priced, and the hold time that refutes the time stop (2026-11-25).** Two things were left open: what a
 window's leftover position would cost a session that has to hand over, and whether the night loses to inventory that stays
 too long. The first needed a flag, because `--close-out` cannot price it -- an IOC at the touch finds no counterparty once

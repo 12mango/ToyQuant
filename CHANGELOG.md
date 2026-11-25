@@ -7,7 +7,23 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
-## The handover is priced, and the hold time refutes the time stop (2026-11-25)
+## Our own fills are churned evenly at night, and the recording flag is not a silent observer (2026-11-25)
+
+- **`tools/study/okx_fill_profile.py`** buckets our own fills by half hour from the trade stream every replay writes
+  (`data/runtime/trades.csv`): fills, the net contracts a bucket moved, the share of its fills that opened a position, the
+  capture against the midpoint and the markout at five and thirty seconds.
+- **The night has no bucket where the inventory piles up.** Across its sixteen buckets the net a bucket moves is **-2.00 to
+  +3.00 contracts** and the share of fills that open stays **37 to 62 per cent** -- half in every bucket. So the night's loss
+  is the same churn spread evenly at about a basis point a fill against the 2.00 bps fee, not a few bad buckets a gate could
+  learn to avoid; the markout columns (5 s -4.12 to +2.31, 30 s -5.64 to +9.64) carry no bucket-level signal either.
+- **`--record-orders` changes the run, which its own documentation denied.** Measured on the same day and window: **117
+  fills and net -12.67 bps without it, 207 fills and net +2.71 with it**, the zero-queue count going 116 to 0. The cause is
+  not established -- the recorder stamps reports a venue gives no timestamp, and the debounce reads those -- so the flag is
+  now documented as a measurement hazard rather than a passive record, and a fill measurement reads the trade stream
+  instead: its seven days' line counts match the sweep's fill counts exactly.
+- `docs/archive/studies.md` carries the table, `docs/TOOLS.md` the tool, `docs/L2_FLAGS.md` the corrected paragraph. `docs`
+  and `fast` green.
+
 
 - **`--settle-residual`** prices what a run's leftover position would cost to hand over, because `--close-out` cannot: once
   the replay's input ends the touch is a displayed quantity no print restores, so the closing IOC finds no counterparty --
