@@ -277,6 +277,28 @@ inline InstrumentSpec okx_dna_swap_spec(uint64_t quantity_scale = 1000000)
 {
     return okx_swap_spec("DNA-USDT-SWAP", 0.0001, 10.0, quantity_scale);
 }
+// The four instruments the screen's capture ranking of 2026-11-25 put in the two groups the measured instruments define
+// (`tools/study/okx_download_rank.py`). Registered by name for the same reason UP and DNA are -- a registered symbol is
+// a claim that its numbers are re-derivable -- and each of the three facts comes from the venue's own instrument table:
+// SSV quotes 0.001 against a price near 0.19 (5.4 bps a tick) and one contract carries 0.1 of it, NES and PIEVERSE quote
+// 0.0001 with ten tokens a contract, and CT quotes 0.00001 -- the narrowest tick here, 0.76 bps, which is why its
+// distance was measured in basis points rather than in ticks.
+inline InstrumentSpec okx_ssv_swap_spec(uint64_t quantity_scale = 1000000)
+{
+    return okx_swap_spec("SSV-USDT-SWAP", 0.001, 0.1, quantity_scale);
+}
+inline InstrumentSpec okx_nes_swap_spec(uint64_t quantity_scale = 1000000)
+{
+    return okx_swap_spec("NES-USDT-SWAP", 0.0001, 10.0, quantity_scale);
+}
+inline InstrumentSpec okx_ct_swap_spec(uint64_t quantity_scale = 1000000)
+{
+    return okx_swap_spec("CT-USDT-SWAP", 0.00001, 10.0, quantity_scale);
+}
+inline InstrumentSpec okx_pieverse_swap_spec(uint64_t quantity_scale = 1000000)
+{
+    return okx_swap_spec("PIEVERSE-USDT-SWAP", 0.0001, 10.0, quantity_scale);
+}
 // in this repository where the fee is not a multiple of a tick — one tick on a hundred dollar share is one
 // basis point, and a retail commission of a few tenths of a cent a share is a fraction of it, where the
 // perpetuals this repository traded before paid tens of ticks or more. The commission is per share and the rate
@@ -367,6 +389,26 @@ inline bool instrument_spec_of(const std::string& symbol, InstrumentSpec& out)
     if (symbol == "DNA-USDT-SWAP")
     {
         out = okx_dna_swap_spec();
+        return true;
+    }
+    if (symbol == "SSV-USDT-SWAP")
+    {
+        out = okx_ssv_swap_spec();
+        return true;
+    }
+    if (symbol == "NES-USDT-SWAP")
+    {
+        out = okx_nes_swap_spec();
+        return true;
+    }
+    if (symbol == "CT-USDT-SWAP")
+    {
+        out = okx_ct_swap_spec();
+        return true;
+    }
+    if (symbol == "PIEVERSE-USDT-SWAP")
+    {
+        out = okx_pieverse_swap_spec();
         return true;
     }
     if (symbol == "SPY")
