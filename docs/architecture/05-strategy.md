@@ -30,6 +30,10 @@ new interface: `on_l2_market_view` is what a maker answers, `on_market_trade` is
 in that directory; the factory maps mode names to classes and nothing else, which is what keeps the two lines free to grow
 apart.
 
+Where the two non-maker lines stand as research is not this page: their walls, the directions registered against them and the
+number that would buy each one are in [the retrospective's frontier map](../RETROSPECTIVE.md#the-two-non-maker-lines-six-directions-and-the-number-that-would-buy-each),
+because a line with no measurement of its own is an open row rather than a reference section.
+
 ## How to read this
 
 | You want to understand... | Start here |
