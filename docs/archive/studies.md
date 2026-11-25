@@ -1710,7 +1710,10 @@ from the other side: there the price quoted was one tick through the ask and the
 apart, 555 instruments two-sided at least once, thresholds 1.2 bps of median half-spread, 2 ticks of median width and
 500,000 USD of daily notional: **127 pass the width screen (1.2 bps), 104 clear 2.0 and 87 clear 2.5**, and 101 of 555
 clear 2 bps of capture at a three-tick distance -- the maker fee. The reads are archived as
-`data/v2/crypto/okx_tickers_20261125T133101Z.json`, and `--read` re-derives this table from it.
+`data/v2/crypto/okx_tickers_20261125T133101Z.json`, and `--read` re-derives this table from it. From 2026-11-25 the
+screen also reports **contracts a day** beside the notional, because dollars cannot separate a wide book from a busy one:
+`SSV` and `NES` traded the same 1.94 M USD a day and 5,000 to 22,000 against 450,000 times. An archive written before that
+column existed re-derives with the count as `n/a` and no filter on it, which is what keeps this sample checkable.
 
 The capture ranking is where the mechanism lives, and the three instruments the owner downloaded land three different
 ways:

@@ -87,20 +87,27 @@ def sample_once(samples, stamp, tick_sizes):
             bid, ask = float(row["bidPx"]), float(row["askPx"])
             last = float(row.get("last") or 0.0)
             base_volume = float(row.get("volCcy24h") or 0.0)
+            # Contracts traded in 24 hours. The ticker carries both the base-currency volume and the contract count, and
+            # the count is the one that answers "how many times did anything happen": SSV trades 1.94 M USD a day and
+            # 5,000 to 22,000 times, NES the same notional and 450,000 times, so a filter on dollars cannot separate them
+            # and a filter on actions can.
+            contracts = float(row.get("vol24h") or 0.0)
         except (KeyError, TypeError, ValueError):
             continue
         if bid <= 0.0 or ask <= 0.0 or ask <= bid:
             continue
         mid = 0.5 * (bid + ask)
         tick = tick_sizes.get(symbol)
-        entry = samples.setdefault(symbol, {"spreads": [], "ticks": [], "notional": [], "stamps": []})
+        entry = samples.setdefault(symbol, {"spreads": [], "ticks": [], "notional": [], "contracts": [],
+                                            "stamps": []})
         entry["spreads"].append((ask - bid) / 2.0 / mid * 10_000.0)
         entry.setdefault("ticks", []).append((ask - bid) / tick if tick else None)
         entry["notional"].append(base_volume * last)
+        entry["contracts"].append(contracts)
         entry["stamps"].append(stamp)
 
 
-def analyse(samples, min_spread, min_notional, min_ticks, quote_ticks, min_capture):
+def analyse(samples, min_spread, min_notional, min_ticks, quote_ticks, min_capture, min_contracts=0.0):
     """One row per instrument: the medians, the spread's own range, and the verdicts.
 
     `capture` is the column the screen exists for on this venue: a quote that rests `quote_ticks` behind the touch is
@@ -120,15 +127,20 @@ def analyse(samples, min_spread, min_notional, min_ticks, quote_ticks, min_captu
         ticks = [value for value in entry.get("ticks", []) if value is not None]
         median_ticks = statistics.median(ticks) if ticks else None
         notional = statistics.median(entry["notional"]) if entry["notional"] else 0.0
+        # Contracts a day, or None for an archive written before the column existed: an old sample must still re-derive,
+        # so a missing count passes the filter instead of failing every row.
+        contracts = statistics.median(entry["contracts"]) if entry.get("contracts") else None
         # One tick in bps: the half spread is `median`, the full spread is `median_ticks` ticks, so a tick is
         # 2 x half-spread / full-spread-in-ticks. None when the tick width could not be read.
         tick_bps = 2.0 * median / median_ticks if median_ticks else None
         capture = quote_ticks * tick_bps if tick_bps is not None else None
         rows.append({"symbol": symbol, "samples": len(spreads), "median": median, "p10": p10, "p90": p90,
-                     "ticks": median_ticks, "notional": notional, "tick_bps": tick_bps, "capture": capture,
+                     "ticks": median_ticks, "notional": notional, "contracts": contracts,
+                     "tick_bps": tick_bps, "capture": capture,
                      "spread_ok": median >= min_spread,
                      "ticks_ok": median_ticks is not None and median_ticks >= min_ticks,
-                     "volume_ok": notional >= min_notional,
+                     "volume_ok": notional >= min_notional and
+                                  (contracts is None or contracts >= min_contracts),
                      "capture_ok": capture is not None and capture >= min_capture})
     rows.sort(key=lambda row: row["median"], reverse=True)
     return rows
@@ -138,13 +150,14 @@ def print_table(rows, title, quote_ticks):
     print(f"### {title}")
     print()
     print(f"| instrument | reads | median half spread bps | median spread ticks | {quote_ticks:g}-tick capture bps |"
-          " p10 | p90 | median 24h notional USD | spread | ticks | volume |")
-    print("|---|---:|---:|---:|---:|---:|---:|---:|---|---|---|")
+          " p10 | p90 | median 24h notional USD | median 24h contracts | spread | ticks | volume |")
+    print("|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|---|")
     for row in rows:
         ticks = "n/a" if row["ticks"] is None else f"{row['ticks']:.2f}"
         capture = "n/a" if row["capture"] is None else f"{row['capture']:.2f}"
+        contracts = "n/a" if row.get("contracts") is None else f"{row['contracts']:,.0f}"
         print(f"| {row['symbol']} | {row['samples']} | {row['median']:.2f} | {ticks} | {capture} | "
-              f"{row['p10']:.2f} | {row['p90']:.2f} | {row['notional']:,.0f} | "
+              f"{row['p10']:.2f} | {row['p90']:.2f} | {row['notional']:,.0f} | {contracts} | "
               f"{'pass' if row['spread_ok'] else 'fail'} | "
               f"{'pass' if row['ticks_ok'] else 'fail'} | {'pass' if row['volume_ok'] else 'fail'} |")
     print()
@@ -158,6 +171,9 @@ def main():
     parser.add_argument("--min-spread-ticks", type=float, default=2.0,
                         help="the book's median width in ticks; one tick is not a book a deep quote can rest in")
     parser.add_argument("--min-volume-usd", type=float, default=500_000.0)
+    parser.add_argument("--min-contracts", type=float, default=0.0,
+                        help="contracts a day, the count rather than the dollars: SSV and NES trade the same notional "
+                             "and 5,000 against 450,000 times, so only a count separates a wide book from a busy one")
     parser.add_argument("--quote-ticks", type=float, default=3.0,
                         help="how far behind the touch the quoting rule rests; its capture a fill is that many ticks")
     parser.add_argument("--min-capture-bps", type=float, default=2.0,
@@ -198,11 +214,12 @@ def main():
             print(f"archived the reads to {target} ({target.stat().st_size} bytes)")
 
     rows = analyse(samples, args.min_half_spread_bps, args.min_volume_usd, args.min_spread_ticks,
-                   args.quote_ticks, args.min_capture_bps)
+                   args.quote_ticks, args.min_capture_bps, args.min_contracts)
     passers = [row for row in rows if row["spread_ok"] and row["ticks_ok"] and row["volume_ok"]]
     print(f"reads from {first} to {last}, {len(samples)} instruments with a two-sided book at least once")
     print(f"screen: median half spread >= {args.min_half_spread_bps:g} bps, median spread >= "
-          f"{args.min_spread_ticks:g} ticks and median 24h notional >= {args.min_volume_usd:,.0f} USD")
+          f"{args.min_spread_ticks:g} ticks, median 24h notional >= {args.min_volume_usd:,.0f} USD and "
+          f"median 24h contracts >= {args.min_contracts:,.0f}")
     # The tiers are printed as counts as well as rows: a reader wants to know how many instruments clear 1.2, 2.0 and
     # 2.5 bps under the same tick and volume floors, and a table sorted by width does not answer that at a glance.
     tiers = [1.2, 2.0, 2.5]
