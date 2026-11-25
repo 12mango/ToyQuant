@@ -24,6 +24,7 @@ site now points at `ToyQuant`.
 - `docs/archive/studies.md` carries the capture table and the corrections, `docs/TOOLS.md` the tool's new column,
   `docs/L2_FLAGS.md` the jump-cooldown paragraph without the wrong premise. `docs` and `fast` green.
 
+## Our own fills are churned evenly at night, and the recording flag is not a silent observer (2026-11-25)
 
 - **`tools/study/okx_fill_profile.py`** buckets our own fills by half hour from the trade stream every replay writes
   (`data/runtime/trades.csv`): fills, the net contracts a bucket moved, the share of its fills that opened a position, the
