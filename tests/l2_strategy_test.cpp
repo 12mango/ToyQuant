@@ -3,7 +3,7 @@
 
 #include "orderbook/l2_orderbook.h"
 #include "strategy/active_l2_market_maker.h"
-#include "strategy/inventory_aware_l2_market_maker.h"
+#include "strategy/legacy/inventory_aware_l2_market_maker.h"
 #include "strategy/l2_market_maker_base.h"
 #include "strategy/trend_l2.h"
 

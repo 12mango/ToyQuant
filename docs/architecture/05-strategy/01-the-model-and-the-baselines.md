@@ -1,11 +1,11 @@
 *Section 6 of the module reference, part 1. The index is [`../05-strategy.md`](../05-strategy.md).*
 
-The decision layer: its lifecycle, the order state machine, the family map, and each strategy in
-turn up to the `active_l2` mainline.
+The decision layer: its lifecycle, the order state machine, the family map, the mainline, and the three baseline makers
+folded at the end.
 
 ## 6. Strategy: The Main Decision Module
 
-**Files:** `src/strategy/strategy.h`, `src/strategy/baseline_market_makers.h`, `src/strategy/l2_market_maker_base.h`, `src/strategy/inventory_aware_l2_market_maker.h`, `src/strategy/active_l2_market_maker.h`, `src/strategy/trend_l2.h`, `src/strategy/execution_l2.h`, `src/lines/legacy/l1_market_maker.h`
+**Files:** `src/strategy/strategy.h`, `src/strategy/l2_market_maker_base.h`, `src/strategy/active_l2_market_maker.h`, `src/strategy/trend_l2.h`, `src/strategy/execution_l2.h`, `src/strategy/legacy/baseline_market_makers.h`, `src/strategy/legacy/inventory_aware_l2_market_maker.h`, `src/lines/legacy/l1_market_maker.h`
 
 Eight files and four families, which is worth stating because the file names alone do not say it. `trend_l2.h` is deliberately outside the maker families: it has no quote lifecycle, only a target position. `execution_l2.h` is outside all of them and outside the signal families too: it has no view about direction, only a parent order and a schedule. `strategy.h` is the interface everything implements, and it is where the L2 family stops depending on the L1 one: `tools/gate/check_layering.py` keeps that true rather than trusting it, because a `legacy/` include anywhere under `src/strategy/` fails the gate. `baseline_market_makers.h` holds `NaiveMarketMaker` and `OptimizedMarketMaker`, neither of which implements `on_l2_market_view`: they see the touch and nothing else, and they are the baseline the rest is measured against. The active family is three files with one inheritance chain between them, and the middle one is the root:
 
@@ -215,6 +215,13 @@ accepted.
 | L1 replay | `TopOfBook` + trades | BBO-aware quoting | Trades+BBO matching |
 | L2 replay | `L2MarketView` + trades | Depth-aware quoting and queue diagnostics | Queue-aware L2 matching |
 
+The three baseline makers below are the touch-only strategies the L2 line is measured against. None of them reads the L2
+ladder, no recorded decision selects one, and the two that are maker classes now live in `src/strategy/legacy/`; they are
+documented in full inside the fold because the comparisons in this section mean "a quote at the touch" and a reader
+checking one needs their behaviour -- not because they are part of the mainline.
+
+/// details | The three baseline makers, one paragraph each
+
 ### 6.1 NaiveMarketMaker: baseline quote
 
 The naive strategy requires both sides of the top of book, computes the midpoint, places one quote on each side, and rounds both prices to the configured tick size:
@@ -359,5 +366,7 @@ comparison and `adverse_selection` is a later markout after five quote cycles; b
 reports and the same market events, and prints them in `[EXECUTION]`. The L1 makers used to keep a
 second copy of those quantities from their own view of the mid, and it was deleted rather than
 reconciled because the two could disagree and nothing compared them. Neither number includes fees or
+///
+
 constitutes a complete portfolio PnL calculation.
 

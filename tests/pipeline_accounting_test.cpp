@@ -10,7 +10,7 @@
 #include "market/funding_rate.h"
 #include "orderbook/top_of_book.h"
 #include "strategy/l2_market_maker_base.h"
-#include "strategy/baseline_market_makers.h"
+#include "strategy/legacy/baseline_market_makers.h"
 #include "support/test_support.h"
 #include "utils/logger.h"
 
