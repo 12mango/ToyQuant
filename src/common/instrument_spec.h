@@ -268,6 +268,15 @@ inline InstrumentSpec okx_up_swap_spec(uint64_t quantity_scale = 1000000)
 {
     return okx_swap_spec("UP-USDT-SWAP", 0.0001, 10.0, quantity_scale);
 }
+// The second instrument the screen's capture column ranked, and the first whose 400-level depth came from the venue's
+// portal rather than from a public route (`tools/fetch/fetch_okx_trades.py` names that limit): a tenth of a cent tick, one
+// contract carrying ten tokens, and -- measured by the screen on 2026-11-25 -- a half spread of 7.34 bps over a two-tick
+// book, which is 22.03 bps of capture for a quote three ticks behind the touch, the widest of 555 instruments. Registered
+// to be measured, and for the same reason UP was: the capture column is a screen and not a result.
+inline InstrumentSpec okx_dna_swap_spec(uint64_t quantity_scale = 1000000)
+{
+    return okx_swap_spec("DNA-USDT-SWAP", 0.0001, 10.0, quantity_scale);
+}
 // in this repository where the fee is not a multiple of a tick — one tick on a hundred dollar share is one
 // basis point, and a retail commission of a few tenths of a cent a share is a fraction of it, where the
 // perpetuals this repository traded before paid tens of ticks or more. The commission is per share and the rate
@@ -353,6 +362,11 @@ inline bool instrument_spec_of(const std::string& symbol, InstrumentSpec& out)
     if (symbol == "UP-USDT-SWAP")
     {
         out = okx_up_swap_spec();
+        return true;
+    }
+    if (symbol == "DNA-USDT-SWAP")
+    {
+        out = okx_dna_swap_spec();
         return true;
     }
     if (symbol == "SPY")

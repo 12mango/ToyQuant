@@ -22,11 +22,14 @@ import bisect
 import csv
 import json
 import statistics
+import sys
 import tarfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tools" / "lib"))
+from okx_data import depth_archive, trade_tape  # noqa: E402
 BUCKETS_PER_DAY = 48
 
 
@@ -96,8 +99,8 @@ def prints_of_day(symbol, day_text, trades_dir):
     rows = []
     # The file named X covers [X-1 16:00 UTC, X 16:00 UTC): the UTC day D is D's head and D+1's afternoon.
     for name in (day.strftime("%Y-%m-%d"), (day + timedelta(days=1)).strftime("%Y-%m-%d")):
-        path = Path(trades_dir) / f"okx_trades_{name}_{symbol}.csv"
-        if not path.exists():
+        path = trade_tape(trades_dir, symbol, name)
+        if path is None:
             continue
         with path.open(newline="") as handle:
             reader = csv.reader(handle)
@@ -177,9 +180,9 @@ def main():
     bucket_ms = args.bucket_minutes * 60 * 1000
     days_medians, days_means, days_moved, days_counts = [], [], [], []
     for day_text in [part.strip() for part in args.days.split(",") if part.strip()]:
-        archive = ROOT / args.archives / f"{args.symbol}-L2orderbook-400lv-{day_text}.tar.gz"
-        if not archive.exists():
-            print(f"# {day_text}: no archive at {archive}")
+        archive = depth_archive(ROOT / args.archives, args.symbol, day_text)
+        if archive is None:
+            print(f"# {day_text}: no {args.symbol}-L2orderbook-400lv-{day_text}.tar.gz under {args.archives}")
             continue
         medians, means, moved, counts = toxicity_for_day(args.symbol, day_text, archive, args.horizon_ms,
                                                          args.sample_ms, bucket_ms, ROOT / args.trades,

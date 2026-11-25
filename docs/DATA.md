@@ -381,7 +381,7 @@ it over as a `.data` member inside a `tar.gz`, and every line is a JSON object:
   and multiplies by the contract value before the quantity reaches the engine.
 
 ```bash
-tar -xzOf data/v2/crypto/BTC-USDT-SWAP-L2orderbook-400lv-2026-01-07.tar.gz | head -n 300000 > /tmp/okx_l2_300k.jsonl
+tar -xzOf data/v2/crypto/BTC-USDT-SWAP/BTC-USDT-SWAP-L2orderbook-400lv-2026-01-07.tar.gz | head -n 300000 > /tmp/okx_l2_300k.jsonl
 ./out/build/linux-debug/toy_quant l2_replay <okx trades csv> /tmp/okx_l2_300k.jsonl BTC-USDT-SWAP 0 \
   active_l2 1 prorata --fast-validation --base-spread-ticks=1 --refresh-price-ticks=4 --order-size=100000
 ```
@@ -502,7 +502,7 @@ behind fails tier 1 and names itself.
 
 | family | files | size | what it is | regenerable |
 |---|---:|---:|---|---|
-| `crypto/` | 21 | 8.5 GB | the 2020 perpetual snapshots, incremental books and trades the L2 path is measured on, plus the Binance and OKX archives of a closed line | yes, from the Tardis samples and the venue archives |
+| `crypto/` | 52 | 8.9 GB | the 2020 perpetual snapshots, incremental books and trades the L2 path is measured on, plus the Binance and OKX archives of a closed line and the two OKX instruments the later screens ranked -- one folder per instrument since 2026-11-25 | yes, from the Tardis samples and the venue archives |
 | `equities/` | 29 | 1.8 GB | the US equity windows: depth and trades per symbol and session | yes, from Databento, about two dollars a session |
 | `futures/` | 3 | 2.0 GB | the micro E-mini session, raw and converted | yes, from Databento |
 | `funding/` | 25 | 152 KB | both venues' funding histories for 2024, which closed the carry line | yes, and they are free |
@@ -515,6 +515,9 @@ another copy may hold fewer files and every number here is a snapshot rather tha
 
 **Removed**: the empty `v2/carry/` directory, and `BTCUSDT-bookTicker-2024-03-30`, which no gate or checked block
 names. The June, July and August 2020 Deribit snapshots an earlier version of this paragraph listed as removed are on
-disk again and the row above counts them, and four `*:Zone.Identifier` sidecars are present -- Windows metadata rather
-than data, which no reader opens. What the gate needs is the files the checked blocks name, and every one of those was
-left alone.
+disk again and the row above counts them. **The eighteen `*:Zone.Identifier` sidecars are gone** (Windows metadata rather
+than data, which no reader opens), and `crypto/` is now one folder per instrument -- `UP-USDT-SWAP/`, `DNA-USDT-SWAP/`,
+`BTC-USDT-SWAP/`, `ETH-USDT-SWAP/` and a folder for each single-day symbol -- holding that instrument's depth archive and
+its trade tapes. `tools/lib/okx_data.py` accepts both that layout and the flat one, because the flat one is what every
+recorded number was measured from: a measurement must not start depending on where a file was moved. What the gate needs
+is the files the checked blocks name, and every one of those was left alone.

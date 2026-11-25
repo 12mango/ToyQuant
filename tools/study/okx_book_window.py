@@ -152,7 +152,10 @@ def main():
         start_ms, end_ms = window_bounds(day_text, args.start, args.end)
         emit_path = None
         if emit_dir is not None:
-            emit_path = str(emit_dir / f"okx_{day_text}_{args.start.replace(':', '')}.jsonl")
+            # The name carries the instrument: a cuts directory serves every symbol, and a cut keyed by day alone made a
+            # second instrument's run replay the first one's book (measured 2026-11-25 on DNA, whose run read the UP cut).
+            symbol = Path(path).name.split("-L2orderbook")[0]
+            emit_path = str(emit_dir / f"okx_{symbol}_{day_text}_{args.start.replace(':', '')}.jsonl")
         records, snapshots, pairs, emitted = measure(path, start_ms, end_ms, emit_path)
         median, median_ticks, covered, crossed = weighted_medians(pairs, args.tick)
         if median is None:

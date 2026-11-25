@@ -7,7 +7,28 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
-## The screen learns what our distance is worth, and a tick turned out to be 10x bigger than written (2026-11-25)
+## The screen's top instrument fails the fill test, and the cut cache forgot which symbol it replayed (2026-11-25)
+
+- **`DNA-USDT-SWAP` was measured on the owner's seven-day portal download** and the same frozen cell as UP: seven to twenty
+  fills a window against the thirty-fill floor, a median net of **-11.84 bps on 2 of 7 days** (UP: 26 fills, **+15.13**,
+  5 of 7), and **-14.34** after the handover is priced. The instrument the capture column ranked first of 555 -- 22.03 bps
+  a fill -- fails both halves of the registered bar.
+- **The reason is that same column**: DNA's tick is 7.3 bps and its book two ticks wide, so a quote three ticks behind the
+  touch rests 22 bps from the mid and almost nothing sweeps that far (capture 0.92-3.14 ticks a fill, fill rate 1.6-5.4%).
+  The ranking is of captures, not of opportunities; what it buys is the order in which to spend portal downloads.
+- **DNA's best quote distance still misses the bar**: at half widths of 1, 2 and 3 ticks the same seven days read 28 fills
+  and a median net of -2.36, 21 and **+10.37**, 18 and -11.84 -- all under the thirty-fill floor, and four of seven at the
+  best of them. And **the touch is the worst place to quote** even though it fills most, which is the tape's finding
+  (informed at the touch, reverting two ticks through) read from the strategy's side.
+- **The sweep's cut and trade-slice names now carry the instrument.** They were keyed by day and window only, so the first
+  DNA run replayed *UP's* cut (its `instId` read `UP-USDT-SWAP`) and every cell came back `?`. `okx_book_window.py` names
+  its emit the same way, so the two sides agree; no recorded number came from the broken run.
+- **`data/v2/crypto/` is one folder per instrument** (UP, DNA, BTC, ETH and the single-day symbols), the eighteen
+  `*:Zone.Identifier` sidecars are gone, and `tools/lib/okx_data.py` is the one place that resolves both that layout and
+  the flat one -- the flat one is what every recorded number was measured from.
+- `docs/DATA.md` carries the layout and the counts, `docs/archive/studies.md` the seven days. `code`, `docs` and `fast`
+  green.
+
 
 - **`okx_spread_screen.py --quote-ticks`** adds the column the mechanism lives on: the basis points a quote that many ticks
   behind the touch captures a fill, computed as `quote_ticks x 2 x half-spread / spread-in-ticks`. On one archived sample

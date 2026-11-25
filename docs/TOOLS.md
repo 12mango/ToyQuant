@@ -70,6 +70,7 @@ does not.
 | `tools/study/funding_extreme_test.py` | whether a funding extreme predicts the next eight hours | hand |
 | `tools/study/lowturnover_test.py` | the pre-registered rule on sixty equity windows | hand |
 | `tools/study/measure_l2_baseline.py` | replay seconds, and the hash of the output | hand |
+| `tools/lib/okx_data.py` | where an OKX depth archive and trade tape live: `<root>/<SYMBOL>/` or the flat root, so one module owns the two layouts every study tool reads | hand |
 | `tools/study/okx_book_window.py` | a day archive's time-weighted half-spread inside a UTC window, and the window cut that opens on a snapshot | hand |
 | `tools/study/okx_book_depth.py` | the same cut's top two levels, time-weighted: the size a quote would stand behind, and the USD it is worth | hand |
 | `tools/study/okx_halfhour_profile.py` | a day's half-hour profile -- duration-weighted half spread and trades a second -- with no P&L, for deciding a window on the book rather than on a run | hand |

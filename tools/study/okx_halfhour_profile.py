@@ -24,11 +24,14 @@ import argparse
 import csv
 import json
 import statistics
+import sys
 import tarfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tools" / "lib"))
+from okx_data import depth_archive, trade_tape  # noqa: E402
 BUCKETS_PER_DAY = 48
 
 
@@ -46,8 +49,8 @@ def trade_rates(symbol, day_text, bucket_ms, trades_dir):
     # afternoon of D+1's. Reading D-1 and D instead left every bucket after 16:00 with no trades -- measured
     # 2026-11-25, the first version of this table showed 0.000 trades a second for the whole evening.
     for name in (day.strftime("%Y-%m-%d"), (day + timedelta(days=1)).strftime("%Y-%m-%d")):
-        path = Path(trades_dir) / f"okx_trades_{name}_{symbol}.csv"
-        if not path.exists():
+        path = trade_tape(trades_dir, symbol, name)
+        if path is None:
             continue
         with path.open(newline="") as handle:
             reader = csv.reader(handle)
@@ -154,9 +157,9 @@ def main():
     bucket_ms = args.bucket_minutes * 60 * 1000
     spreads, rates = [], []
     for day_text in [part.strip() for part in args.days.split(",") if part.strip()]:
-        archive = ROOT / args.archives / f"{args.symbol}-L2orderbook-400lv-{day_text}.tar.gz"
-        if not archive.exists():
-            print(f"# {day_text}: no archive at {archive}")
+        archive = depth_archive(ROOT / args.archives, args.symbol, day_text)
+        if archive is None:
+            print(f"# {day_text}: no {args.symbol}-L2orderbook-400lv-{day_text}.tar.gz under {args.archives}")
             continue
         spreads.append(spread_profile(archive, bucket_ms))
         rates.append(trade_rates(args.symbol, day_text, bucket_ms, ROOT / args.trades))

@@ -21,10 +21,13 @@ import bisect
 import csv
 import json
 import statistics
+import sys
 import tarfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tools" / "lib"))
+from okx_data import depth_archive  # noqa: E402
 BUCKETS_PER_DAY = 48
 QUANTITY_SCALE = 10_000_000  # engine units of one contract, as the sweep's `--order-size` uses
 
@@ -155,8 +158,8 @@ def main():
 
     profiles = []
     for fills_path, day_text in zip(fills, days):
-        archive = ROOT / args.archives / f"{args.symbol}-L2orderbook-400lv-{day_text}.tar.gz"
-        if not Path(fills_path).exists() or not archive.exists():
+        archive = depth_archive(ROOT / args.archives, args.symbol, day_text)
+        if archive is None or not Path(fills_path).exists():
             print(f"# {day_text}: no fills or no archive, skipped")
             continue
         profile = profile_day(fills_path, archive, day_text, args.sample_ms, bucket_ms, horizons)

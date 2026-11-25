@@ -1993,6 +1993,57 @@ is near the top of the only ranking that matches the mechanism.
 so it says what the venue looked like then; capture is also not expectation -- a two-tick book pays 20 bps a fill and fills
 rarely -- which is what the acceptance cell, and the depth archives it needs, is for.
 
+**The capture screen's top instrument fails the acceptance cell (2026-11-25).** `DNA-USDT-SWAP` ranked first of 555 on the
+capture column -- 22.03 bps for a quote three ticks behind the touch -- and the owner downloaded its seven days of
+400-level depth from the venue's portal, because the public route has no book module. With seven trade tapes from the
+public route, the instrument ran the same frozen cell as UP: two layers of one contract, `--post-only`, a 40 ms debounce,
+10 ms on both legs, `--edge-cover-ticks=1`, `--settle-residual`.
+
+| day | fills | net bps | closed bps | capture ticks | hold s | settle bps | settled bps |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 2026-11-16 | 7 | -100.91 | -13.45 | 1.14 | 5.75 | 6.20 | -107.11 |
+| 2026-11-17 | 7 | -11.84 | -11.63 | 1.00 | 5.33 | 2.50 | -14.34 |
+| 2026-11-18 | 19 | +38.04 | +39.88 | 2.21 | 1.97 | 0.73 | +37.31 |
+| 2026-11-19 | 18 | +5.02 | +0.35 | 2.22 | 0.96 | 1.96 | +3.06 |
+| 2026-11-20 | 13 | -49.45 | -8.61 | 0.92 | 1.22 | 7.84 | -57.29 |
+| 2026-11-21 | 20 | +58.64 | +15.40 | 1.83 | 2.93 | 5.04 | +53.59 |
+| 2026-11-22 | 18 | -30.25 | -1.23 | 3.14 | 1.68 | 6.74 | -36.99 |
+
+**It fails both halves of the registered bar.** Seven to twenty fills a window against the thirty-fill floor, and a median
+net of **-11.84 bps on 2 of 7 days** where UP reads 26 fills, **+15.13** and 5 of 7. The settlement deepens it to a median
+of **-14.34**: a residual of one to seven contracts is a larger share of a day with eighteen fills than of one with
+twenty-six, so the handover costs 0.73 to 7.84 bps here against UP's 0.73 to 4.88.
+
+**And the reason is the column that ranked it.** DNA's tick is 0.0001 on a price near 0.136 -- **7.3 bps** -- and its book
+is two ticks wide, so a quote three ticks behind the touch rests 22 bps from the mid. Almost nothing sweeps that far: the
+run's own capture is 0.92 to 3.14 ticks a fill and its fill rate 1.6 to 5.4 per cent. The capture column said a two-tick
+book pays well and fills rarely; the acceptance cell says how rarely, and it is too rarely to reach the fill floor.
+
+**So the ranking is of captures, not of opportunities**, and no screen replaces the fill test. What the column buys is the
+order in which to spend portal downloads: it put DNA first of 555, and DNA was rejected in an afternoon instead of after a
+week of live work.
+
+**And its best distance still misses the bar (2026-11-25).** The same seven days at three quote distances, everything else
+frozen -- the parameter is the mechanism, and the bar was registered before the run:
+
+| half width, ticks | fills a day | median net bps | days positive | closed_bps median |
+|---|---:|---:|---:|---:|
+| 1 (at the touch) | 28 | -2.36 | 3 of 7 | 8.82 |
+| 2 | 21 | **+10.37** | 4 of 7 | 10.08 |
+| 3 (the frozen cell) | 18 | -11.84 | 2 of 7 | 0.35 |
+
+**Twenty-one fills is under the thirty-fill floor and four of seven is under the five**, so DNA does not qualify at any of
+the three; two is its best compromise and the reader should not read it as a result. What the ladder does say is worth
+keeping: the **touch is the worst place to quote** even though it fills most (median -2.36 against +10.37 two ticks out),
+which is the tape's own finding from the other side -- a print at the touch is informed, a print two ticks through the mid
+reverts -- and it says the two columns (fill count and capture) trade against each other rather than moving together.
+
+**The first DNA run measured nothing, and the reason is a defect worth keeping.** The sweep's cut and trade-slice names
+were keyed by day and window only, so the DNA run replayed *UP's* cut -- the cut file's own `instId` read `UP-USDT-SWAP` --
+and every cell came back `?`. Both names now carry the instrument (`okx_<SYMBOL>_<day>_<start>.jsonl`,
+`trades_<SYMBOL>_<day>.csv`) and `okx_book_window.py` names its emit the same way, so a second instrument cannot inherit
+the first one's book. No recorded number came from the broken run.
+
 **The handover priced, and the hold time that refutes the time stop (2026-11-25).** Two things were left open: what a
 window's leftover position would cost a session that has to hand over, and whether the night loses to inventory that stays
 too long. The first needed a flag, because `--close-out` cannot price it -- an IOC at the touch finds no counterparty once

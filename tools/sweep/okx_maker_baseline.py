@@ -39,6 +39,9 @@ ROOT = Path(__file__).resolve().parents[2]
 BIN = ROOT / "out/build/linux-debug/toy_quant"
 WINDOW_TOOL = ROOT / "tools/study/okx_book_window.py"
 SLICE_TOOL = ROOT / "tools/fetch/slice.py"
+# The archive and the trade tape live in `<root>/<SYMBOL>/` or in the flat root; one module owns both layouts.
+sys.path.insert(0, str(ROOT / "tools" / "lib"))
+from okx_data import depth_archive, trade_tape  # noqa: E402
 COLUMNS = ["day", "model", "base", "refresh", "latency_us", "fills", "fill_rate", "fees_bps", "gross_bps", "closed_bps",
            "closed_per_fill_bps", "net_bps", "breakeven_bps", "capture_ticks", "markout_ticks", "zero_queue",
            "max_inv", "net_pos", "hold_s", "settle_bps", "settled_bps", "stale"]
@@ -87,9 +90,15 @@ def summary_fields(text):
 
 
 def ensure_cut(archive, cuts, start, end, tick):
-    """The day's depth cut, made by the window tool when it is absent; returns its path or None."""
+    """The day's depth cut, made by the window tool when it is absent; returns its path or None.
+
+    The cut's name carries the instrument, because a cuts directory is shared: `okx_2026-11-16_1330.jsonl` was keyed by
+    day, start and tick only, so the first measurement of a second instrument silently replayed the *first* one's book --
+    measured 2026-11-25, the DNA run read `fills=?` on three days and the cut's own `instId` said `UP-USDT-SWAP`.
+    """
     day_text = archive.name.split("-400lv-")[-1].split(".tar.gz")[0]
-    cut = Path(cuts) / f"okx_{day_text}_{start.replace(':', '')}.jsonl"
+    symbol = archive.name.split("-L2orderbook")[0]
+    cut = Path(cuts) / f"okx_{symbol}_{day_text}_{start.replace(':', '')}.jsonl"
     if cut.exists() and first_timestamp(cut) is not None:
         return cut
     if cut.exists():
@@ -115,7 +124,9 @@ def trade_source(day_text, symbol, start_ms):
     day = datetime.strptime(day_text, "%Y-%m-%d").replace(tzinfo=timezone.utc)
     sixteen = int(day.replace(hour=16).timestamp() * 1000)
     name = day_text if start_ms < sixteen else (day + timedelta(days=1)).strftime("%Y-%m-%d")
-    return ROOT / f"data/v2/crypto/okx_trades_{name}_{symbol}.csv"
+    # `<root>/<SYMBOL>/` or the flat root; `tools/lib/okx_data.py` is the one place that knows both.
+    found = trade_tape(ROOT / "data/v2/crypto", symbol, name)
+    return found if found is not None else ROOT / f"data/v2/crypto/okx_trades_{name}_{symbol}.csv"
 
 
 def slice_trades(day_text, symbol, start_ms, end_ms, cuts):
@@ -123,7 +134,8 @@ def slice_trades(day_text, symbol, start_ms, end_ms, cuts):
     source = trade_source(day_text, symbol, start_ms)
     if not source.exists():
         return None
-    target = Path(cuts) / f"trades_{day_text}.csv"
+    # The slice's name carries the instrument for the same reason the cut's does: one cuts directory serves every symbol.
+    target = Path(cuts) / f"trades_{symbol}_{day_text}.csv"
     run = subprocess.run([sys.executable, str(SLICE_TOOL), "window", "--input", str(source), "--column", "6",
                           "--from", str(start_ms), "--to", str(end_ms), "--output", str(target)],
                          cwd=ROOT, capture_output=True, text=True)
@@ -171,9 +183,9 @@ def main():
     refreshes = number_list(args.refresh_grid, cast=int)
     rows = []
     for day_text in [part.strip() for part in args.days.split(",") if part.strip()]:
-        archive = ROOT / args.archives / f"{args.symbol}-L2orderbook-400lv-{day_text}.tar.gz"
-        if not archive.exists():
-            print(f"# {day_text}: no archive at {archive}")
+        archive = depth_archive(ROOT / args.archives, args.symbol, day_text)
+        if archive is None:
+            print(f"# {day_text}: no {args.symbol}-L2orderbook-400lv-{day_text}.tar.gz under {args.archives}")
             continue
         cut = ensure_cut(archive, args.cuts, args.start, args.end, args.tick)
         if cut is None:
