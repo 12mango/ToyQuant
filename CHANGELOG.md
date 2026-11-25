@@ -16,18 +16,26 @@ site now points at `ToyQuant`.
   answer different questions. `touch` prices the quote at the best bid, where only a book that moved inside the round
   trip can make it marketable, so its decline rate *is* the stale-on-arrival rate. The instrument list is read unsigned:
   the demo header returns only the demo's own subset, which is how `UP-USDT-SWAP` first answered "does not list".
-- **Measured through the operator's proxy**: placement p50 **632 ms** (p95 977) on a fresh connection and **414 ms**
-  (p95 481) on a kept-alive one; cancel p50 584 and 341 ms. That is an order of magnitude above the 30-80 ms the latency
-  work had been assuming.
-- **`post_only` at the touch was declined 14 times out of 14** at a 553 ms round trip. At that latency the quote is stale
-  before it lands every time; the 87-of-172 decline rate of the recorded live session was a faster route than this one.
+- **Measured on 2026-11-25, two paths.** Direct, with no proxy: placement p50 **118 ms** (p95 123) on one kept-alive
+  tunnel and 194 ms (p95 2817) on a fresh connection; cancel 76 and 161 ms. Through the operator's proxy the same two are
+  **414** (p95 481) and **632** (p95 977); cancel 341 and 584. That is an order of magnitude above the 30-80 ms the latency
+  work had assumed, and it is three times the direct path.
+- **Where the delay is, and it is not the venue.** `curl` splits a cold request: direct, 70 ms to connect (13 ms of TLS
+  after it) and **98 ms** from request to first byte; through the proxy, 723 ms of CONNECT and TLS and **386 ms** of
+  request. The venue is a Cloudflare CNAME (`www.okx.com.cdn.cloudflare.net`), so the direct 98 ms is the edge reaching
+  OKX's origin, and the proxy is the larger half -- the same proxy answers `api.github.com` in 435 ms a request and takes
+  5.6 s to establish a connection to `www.google.com`. An order costs no more than a public read on the same tunnel (336
+  against 326 ms), so the matching engine is not in the number.
+- **`post_only` at the touch was declined 14 times out of 14** on the proxy's 553 ms round trip. On the direct route that
+  probe has not been run; its through-ask version rested six of six there, so the decline rate at 118 ms is the one number
+  still missing.
 - **`UP-USDT-SWAP` is not tradable in the demo environment**: eight placements, resting and crossing, every one
-  `code=1/sCode=51001` with no `ordId`. The link measurement therefore runs on `BTC-USDT-SWAP`, and the UP order leg stays
-  unmeasurable until the venue's demo lists it.
-- **At those two latencies the rescue configuration's fills are taker fills**: 8-13 a window at 414 ms and 4-9 at 632 ms,
-  capture negative on all seven days, `maker_notional_usd` zero on three of the seven and five of the seven with 17-63 bps
-  of fee on the rest. Those rows are under the thirty fills the project requires, so they say what the mechanism is and
-  nothing about P&L. `--latency-us` for this host is 414,000 or 632,000, and at either the instrument is not a maker here.
+  `code=1/sCode=51001` with no `ordId`. Its live record says `state: live`, `ctVal 10`, `tickSz 0.0001`, lot and minimum 1
+  -- so it is a demo-environment gap, not a venue one, and this tree holds only a demo key.
+- **The configuration stops being a maker between 80 and 100 ms**: at 80 ms the fee is 2.05-2.13 bps and the capture
+  +2.24 to +2.70 ticks; at 100 ms the fee is 26 to 89 bps and the capture -0.68 to -0.98 on 25 to 44 fills, and at 181 ms
+  it is 14 to 24 fills with the same sign. Every fill above 100 ms is a taker fill, which is the wall above the fee.
+  `--latency-us` for this host is 118,000 direct or 414,000 through the proxy, and at either the instrument is not a maker.
 - `docs/archive/studies.md` carries the tables; the frontier map's UP row now names the route as the first gate and the
   fee tier as the second.
 - `docs` and `fast` green.

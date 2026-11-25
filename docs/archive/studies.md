@@ -1653,43 +1653,58 @@ and comes back at 50 ms, so the honest statement is that the link moves the net'
 without a monotone relation to the delay, while the closed capture stays above the fee from 0 to 80 ms.
 
 **The link, measured -- and it is the wall above the fee (2026-11-25).** Every latency row above is a replay setting;
-the venue's own round trip from this host had never been measured, and "30-80 ms" was an assumption. It is now three
-numbers and a rate. `tools/live/okx_probe.py rtt` places a `post_only` buy two percent under the best bid -- so the order
-has to rest and the venue's reply is the placement's -- times that reply and the cancel that follows it, and `touch`
-prices the same order at the best bid, where only a book that moved inside the round trip can make it marketable. The
-measurement is on `BTC-USDT-SWAP`, because `UP-USDT-SWAP` **is not tradable in the demo environment at all**: four resting
-and four crossing placements, eight of eight `code=1/sCode=51001`, no `ordId` at any price.
+the venue's own round trip from this host had never been measured, and "30-80 ms" was an assumption. It is now two paths
+and a rate. `tools/live/okx_probe.py rtt` places a `post_only` buy two percent under the best bid -- so the order has to
+rest and the venue's reply is the placement's -- times that reply and the cancel that follows it, and `touch` prices the
+same order at the best bid, where only a book that moved inside the round trip can make it marketable. The measurement is
+on `BTC-USDT-SWAP`, because `UP-USDT-SWAP` **is not tradable in the demo environment at all**: four resting and four
+crossing placements, eight of eight `code=1/sCode=51001`, no `ordId` at any price.
 
-| probe, through the operator's proxy | placement p50 | placement p95 | cancel p50 | cancel p95 |
+| path | placement p50 | placement p95 | cancel p50 | cancel p95 |
 |---|---:|---:|---:|---:|
-| a fresh connection per request (n=12) | 632 ms | 977 ms | 584 ms | 907 ms |
-| one kept-alive CONNECT tunnel (n=12) | 414 ms | 481 ms | 341 ms | 536 ms |
-| quote at the touch (n=14) | 553 ms | 715 ms | 576 ms | 663 ms |
+| direct, one kept-alive tunnel (n=8) | **118 ms** | 123 ms | **76 ms** | 102 ms |
+| direct, a fresh connection per request (n=6) | 194 ms | 2817 ms | 161 ms | 4515 ms |
+| the operator's proxy, kept-alive (n=12) | 414 ms | 481 ms | 341 ms | 536 ms |
+| the operator's proxy, fresh (n=12) | 632 ms | 977 ms | 584 ms | 907 ms |
 
-The touch probe's verdict is a rate rather than a latency: **14 of 14 quotes at the best bid were declined**. The venue
-accepts the order and then cancels it as marketable on arrival -- the `post_only` decline this repository counts -- so at
-a 553 ms round trip the quote is stale before it lands every time. The 87-of-172 decline rate the recorded live session
-showed was a faster route than this one, and this one cannot rest a quote at the touch at all.
+**Where the delay is, which is not the venue.** `curl` splits a cold request into its parts, and both paths were timed on
+the same URL at the same minute:
 
-**What the replay says at that latency.** The same seven days and the same rescue configuration, at each measured p50:
+| | connect | CONNECT + TLS | request -> first byte | total |
+|---|---:|---:|---:|---:|
+| direct, pinned to the venue's Cloudflare IP | 70 ms | 83 ms | **98 ms** | 181 ms |
+| through the proxy | 1 ms to the proxy | 723 ms | **386 ms** | 1109 ms |
 
-| reading | 414,000 us each way | 632,000 us each way |
-|---|---|---|
-| fills in a two-hour window | 8 to 13 | 4 to 9 |
-| capture ticks, median of seven days | -1.00 | -1.07 |
-| maker notional | zero on three of seven days, 17 to 63 bps of fee on the rest | zero on five of seven |
-| net bps | -194 to +322 | -84 to +134 |
+Two things fall out. The venue is fronted by Cloudflare -- `www.okx.com` is a CNAME to `www.okx.com.cdn.cloudflare.net`,
+and the direct TLS handshake costs only 13 ms after the connection, so this host sits close to the edge; the 98 ms of
+"request" is the edge reaching OKX's own origin. And **the proxy is the larger half**: the same proxy answers
+`api.github.com` in 435 ms a request and takes 5.6 s to establish a connection to `www.google.com`, so its upstream is
+slow for every host and not for this one. An order is not slower than a public read either -- 336 ms against 326 ms on
+the same tunnel -- so the matching engine is not in this number at all.
 
-A negative capture is what a **taker** fill looks like, and a fee rate above the maker's 2.00 bps is the same statement
-in the venue's own currency: the configuration does not become thin at the measured link, it becomes a taker, which is
-the one thing `--post-only` exists to prevent. The nets swing by hundreds of basis points on 8 to 13 fills, so they are
-under the thirty the project requires and conclude nothing -- the capture and the fee rate are the quotable part.
+**The decline rate the `touch` probe measures is a rate, and on the proxy route it is total.** Fourteen quotes at the best
+bid, on a 553 ms round trip (p95 715), were **declined 14 of 14**: the venue accepts the order and then cancels it as
+marketable on arrival, which is the `post_only` decline this repository counts. The 87-of-172 decline rate of the recorded
+live session was a faster route than that. On the direct route the same probe has not been run yet -- its through-ask
+version rested six of six there, which is the same staleness seen from the other side -- so **the decline rate at 118 ms
+is the one number this section still lacks, and it is one command**.
 
-So `--latency-us` for this host is **414,000** on a kept-alive tunnel or **632,000** on a fresh connection, not the
-30,000 the assumption was built on, and at either setting the replay says the instrument is not a maker here. What would
-reopen the row is a measured p50 under 50 ms on the same probe -- a direct or colocated route -- because between 0 and
-80 ms the numbers above are still +1.95 to +3.12 bps of closed capture. The fee tier is the second gate; the route is
-the first, and it was never measured until now.
+**And the configuration stops being a maker between 80 and 100 ms.** The grid above was taken at 0, 10, 30, 50 and 80 ms;
+these two rows fill the gap towards the measured paths, and the transition is a cliff rather than a slope:
+
+| latency each way | fills a window | fee bps | capture ticks | closed bps |
+|---|---:|---:|---:|---|
+| 80,000 us | 100 to 388 | 2.05 to 2.13 | +2.24 to +2.70 | +1.32 to +5.73 |
+| 100,000 us | 25 to 44 | **26 to 89** | **-0.68 to -0.98** | +40 to +505, and -645 on one day |
+| 181,000 us | 14 to 24 | 32 to 102 | -0.82 to -1.33 | -381 to +681 |
+
+At 80 ms the fee is the maker's 2 bps and the capture is positive, which is the configuration working. At 100 ms the fee
+is 13 to 45 times the maker's rate and the capture is negative: every fill is a taker fill, and the P&L is an inventory
+mark on 25 to 44 fills. So the useful band is **under about 90 ms**, the direct route's 118 ms sits outside it, and the
+proxy's 414 ms is four times outside. `--latency-us` for this host is 118,000 on a direct kept-alive tunnel and 414,000
+through the proxy, and at either the instrument is not a maker here -- the row that would open it again is an order round
+trip under 80 ms, which is a colocated or a Tokyo/Singapore point of presence rather than anything the strategy can tune.
+
 
 
 **The capacity arithmetic, and why the fee tier cannot be bought (2026-11-25).** The tier the instrument needs is about
