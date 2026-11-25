@@ -1674,6 +1674,13 @@ crossing placements, eight of eight `code=1/sCode=51001`, no `ordId` at any pric
 | direct, a fresh connection per request (n=6) | 194 ms | 2817 ms | 161 ms | 4515 ms |
 | the operator's proxy, kept-alive (n=12) | 414 ms | 481 ms | 341 ms | 536 ms |
 | the operator's proxy, fresh (n=12) | 632 ms | 977 ms | 584 ms | 907 ms |
+| direct, one kept-alive tunnel, re-measured (n=12, 11:21 UTC) | **77.5 ms** | 81.4 ms | 78.0 ms | 91.6 ms |
+| direct, a fresh connection per request, re-measured (n=12, 11:21 UTC) | 127.5 ms | 136.0 ms | 131.5 ms | 146.9 ms |
+| direct, the `touch` probe's own placement leg (n=12, 11:22 UTC) | 112.9 ms | 148.1 ms | 112.7 ms | 158.4 ms |
+
+**The direct rows are two runs of one day and they differ by 40 to 66 ms**, so the direct path is a range rather than a
+constant: 77 to 118 ms kept-alive and 128 to 194 ms fresh. The proxy rows are one run each and have not been re-measured,
+because the proxy is not running on this host (nothing listens on `127.0.0.1:7890`).
 
 **Where the delay is, which is not the venue.** `curl` splits a cold request into its parts, and both paths were timed on
 the same URL at the same minute:
@@ -1690,12 +1697,14 @@ and the direct TLS handshake costs only 13 ms after the connection, so this host
 slow for every host and not for this one. An order is not slower than a public read either -- 336 ms against 326 ms on
 the same tunnel -- so the matching engine is not in this number at all.
 
-**The decline rate the `touch` probe measures is a rate, and on the proxy route it is total.** Fourteen quotes at the best
-bid, on a 553 ms round trip (p95 715), were **declined 14 of 14**: the venue accepts the order and then cancels it as
+**The decline rate the `touch` probe measures is a rate, and on both measured routes it is total.** Fourteen quotes at the
+best bid, on a 553 ms round trip (p95 715), were **declined 14 of 14**: the venue accepts the order and then cancels it as
 marketable on arrival, which is the `post_only` decline this repository counts. The 87-of-172 decline rate of the recorded
-live session was a faster route than that. On the direct route the same probe has not been run yet -- its through-ask
-version rested six of six there, which is the same staleness seen from the other side -- so **the decline rate at 118 ms
-is the one number this section still lacks, and it is one command**.
+live session was a faster route than that. **On the direct route it is 12 of 12** -- twelve quotes at the best bid, a
+113 ms placement p50, none rested and none filled, measured 2026-11-25 at 11:22 UTC. So at a fifth of the proxy's round
+trip a `post_only` quote at the touch is still marketable on arrival every time, and the decline is not something the
+proxy produces. Its through-ask version rested six of six on the same direct route, which is the same staleness read
+from the other side: there the price quoted was one tick through the ask and the ask had moved up before it landed.
 
 **The band ends at 10 ms, not at 90.** The grid above is the whole ladder; the two measured paths sit far beyond it, and
 the 100 and 181 ms rows below are the same configuration without the flag, for the record:
@@ -1706,9 +1715,10 @@ the 100 and 181 ms rows below are the same configuration without the flag, for t
 | 100,000 us | 25 to 44 | **26 to 89** | **-0.68 to -0.98** | +40 to +505, and -645 on one day |
 | 181,000 us | 14 to 24 | 32 to 102 | -0.82 to -1.33 | -381 to +681 |
 
-So `--latency-us` for this host is 118,000 on a direct kept-alive tunnel and 414,000 through the proxy, and **both are four
-to forty times past the point where this configuration is a maker**: at 10 ms it already pays 4.5 to 10 bps of fee against
-the maker's 2.00, and the direct route's 118 ms is past the 80 ms row, where the fee is 13 to 129. The row that would open
+So `--latency-us` for this host is **77,500 to 118,000** on a direct kept-alive tunnel -- two runs on the same day, 40 ms
+apart -- and 414,000 through the proxy, and **both are seven to forty times past the point where this configuration is a
+maker** (77.5/10 and 414/10): at 10 ms it already pays 4.5 to 10 bps of fee against the maker's 2.00, and the direct
+route's 77 to 118 ms brackets the 80 ms row, where the fee is 13 to 129. The row that would open
 the line is an order round trip of a few milliseconds -- inside 10 ms, and the 10 ms row is already halfway to a taker, so
 the target is a colocation beside the venue's matching engine rather than a Tokyo or Singapore VPS on its own.
 
@@ -2077,8 +2087,8 @@ beside the half-spread, because a one-tick book cannot hold a quote three ticks 
 says. A candidate has to clear **1.2, 2.0 and 2.5 bps** under two more floors: a median spread of at least **two ticks** and
 a median **500,000 USD** of daily notional. Anything that passes gets the same seven-day treatment this instrument got: the
 window cut by `tools/study/okx_book_window.py`, the maker run by `tools/sweep/okx_maker_baseline.py` under the conservative
-fill model, and `--latency-us` at the route's own measured value -- **118,000** on a direct kept-alive tunnel, 414,000
-through the operator's proxy, and in microseconds always.
+fill model, and `--latency-us` at the route's own measured value -- **77,500 to 118,000** on a direct kept-alive tunnel
+(two runs on 2026-11-25), 414,000 through the operator's proxy, and in microseconds always.
 
 One measurement error belongs in this record because it produced a table of zeros: OKX cuts its trade archive on midnight
 UTC+8 and its book archive on UTC, so a window starting at or after 16:00 UTC lives in the *next* trade file. Reading the

@@ -225,16 +225,19 @@ site now points at `ToyQuant`.
 - **Measured on 2026-11-25, two paths.** Direct, with no proxy: placement p50 **118 ms** (p95 123) on one kept-alive
   tunnel and 194 ms (p95 2817) on a fresh connection; cancel 76 and 161 ms. Through the operator's proxy the same two are
   **414** (p95 481) and **632** (p95 977); cancel 341 and 584. That is an order of magnitude above the 30-80 ms the latency
-  work had assumed, and it is three times the direct path.
+  work had assumed, and it is three times the direct path. A second run at 11:21 UTC read **77.5 ms** (p95 81.4) kept-alive
+  and **127.5 ms** (p95 136.0) fresh, cancel 78.0 and 131.5, so the direct path is a range -- 77 to 118 ms -- rather than a
+  constant, and its fast end is still seven times past the 10 ms where the capture halves.
 - **Where the delay is, and it is not the venue.** `curl` splits a cold request: direct, 70 ms to connect (13 ms of TLS
   after it) and **98 ms** from request to first byte; through the proxy, 723 ms of CONNECT and TLS and **386 ms** of
   request. The venue is a Cloudflare CNAME (`www.okx.com.cdn.cloudflare.net`), so the direct 98 ms is the edge reaching
   OKX's origin, and the proxy is the larger half -- the same proxy answers `api.github.com` in 435 ms a request and takes
   5.6 s to establish a connection to `www.google.com`. An order costs no more than a public read on the same tunnel (336
   against 326 ms), so the matching engine is not in the number.
-- **`post_only` at the touch was declined 14 times out of 14** on the proxy's 553 ms round trip. On the direct route that
-  probe has not been run; its through-ask version rested six of six there, so the decline rate at 118 ms is the one number
-  still missing.
+- **`post_only` at the touch was declined 14 times out of 14** on the proxy's 553 ms round trip, and **12 of 12 on the
+  direct route** at a 113 ms placement p50 (none rested, none filled) -- so a quote at the touch is marketable on arrival
+  every time at both measured routes, and the decline is not the proxy's. Its through-ask version rested six of six
+  direct, which is the same staleness from the other side.
 - **`UP-USDT-SWAP` is not tradable in the demo environment**: eight placements, resting and crossing, every one
   `code=1/sCode=51001` with no `ordId`. Its live record says `state: live`, `ctVal 10`, `tickSz 0.0001`, lot and minimum 1
   -- so it is a demo-environment gap, not a venue one, and this tree holds only a demo key.
@@ -248,8 +251,8 @@ site now points at `ToyQuant`.
 - **With `--post-only` at 80 ms the fills fall to 1-10 a window** against 22-46 unflagged, because the quotes that would
   have crossed are declined: one day decomposes into `post_only_cancels=41`, 8 fills and zero taker fills, against 41 fills
   of which 35 were taker without the flag. Both branches end the line at this latency; which one a session gets is the flag.
-- `--latency-us` for this host is 118,000 direct or 414,000 through the proxy, and both are four to forty times past the
-  point where the configuration is a maker.
+- `--latency-us` for this host is 77,500 to 118,000 direct or 414,000 through the proxy, and both are seven to forty
+  times past the point where the configuration is a maker.
 - `docs/archive/studies.md` carries the tables; the frontier map's UP row now names the route as the first gate and the
   fee tier as the second.
 - `docs` and `fast` green.
