@@ -173,6 +173,10 @@ StrategyFactoryConfig Application::strategy_config(const InstrumentSpec& instrum
         .markout_cover = cfg_.markout_cover,
         .flatten_band_units = cfg_.flatten_band,
         .min_spread_ticks_override = cfg_.min_spread_ticks,
+        .jump_window_ms = cfg_.jump_window_ms,
+        .jump_ticks = cfg_.jump_ticks,
+        .jump_cooldown_ms = cfg_.jump_cooldown_ms,
+        .advance_debounce_ms = cfg_.advance_debounce_ms,
         .trend = cfg_.trend,
         .trend_entry = cfg_.trend_entry,
         .execution = StrategyFactoryConfig::ExecutionParams{
@@ -409,6 +413,10 @@ void Application::run_replay_mode() const
                                           cfg_.refresh_price_ticks_override,
                                       .edge_cover_ticks_override = cfg_.edge_cover_ticks,
                                       .min_spread_ticks_override = cfg_.min_spread_ticks,
+                                      .jump_window_ms = cfg_.jump_window_ms,
+                                      .jump_ticks = cfg_.jump_ticks,
+                                      .jump_cooldown_ms = cfg_.jump_cooldown_ms,
+                                      .advance_debounce_ms = cfg_.advance_debounce_ms,
                                       .trend = cfg_.trend,
                                       .trend_entry = cfg_.trend_entry,
                                       .execution = StrategyFactoryConfig::ExecutionParams{

@@ -51,6 +51,14 @@ struct StrategyFactoryConfig
     int64_t flatten_band_units = 0;
     // The conditional rule: quote only when the top of book is at least this many ticks wide. 0 leaves it off.
     double min_spread_ticks_override = 0.0;
+    // The forced-flow cooldown: a mid-price range of `jump_ticks` inside `jump_window_ms` pulls the quotes and holds
+    // them off for `jump_cooldown_ms`. Any of the three at zero leaves it off.
+    uint64_t jump_window_ms = 0;
+    double jump_ticks = 0.0;
+    uint64_t jump_cooldown_ms = 0;
+    // The asymmetric refresh: only the side that would move towards the market waits for the fair to settle. 0 leaves
+    // the symmetric behaviour.
+    uint64_t advance_debounce_ms = 0;
     // The non-market-making signal, from --trend-params. `set` false leaves the strategy's own defaults.
     TrendParams trend{};
     // Where that line's entry is priced, from --trend-entry. The defaults are the touch entry every recorded run had.

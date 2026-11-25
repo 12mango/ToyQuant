@@ -292,6 +292,109 @@ int main()
     assert(pausing.on_l2_market_view(shock_view).empty());
     assert(pausing.cancel_requests().size() == 2);
 
+    // The forced-flow cooldown: a mid that moves two ticks inside 40 ms pulls the quotes and holds them off for
+    // 75 ms. The speed gate is pushed out of reach, so only the cooldown can be responsible for a pause.
+    ActiveL2MarketMaker cooldown(ActiveL2MarketMakerConfig{
+        .base = L2MarketMakerBaseConfig{.order_size = 2,
+                                     .base_spread = 1.0,
+                                     .inventory_limit = 100,
+                                     .tick_size = 0.5,
+                                     .signal_mode = L2SignalMode::Flow,
+                                     .flow_guard = true,
+                                     .toxicity_flow_threshold = 0.65},
+        .volatility_alpha = 0.0,
+        .pause_after_ticks_per_second = 1.0e9,
+        .jump_window_ms = 40,
+        .jump_ticks = 2.0,
+        .jump_cooldown_ms = 75});
+    L2MarketView calm_quote = view;
+    calm_quote.ts = 1000000;
+    const auto cooldown_orders = cooldown.on_l2_market_view(calm_quote);
+    assert(cooldown_orders.size() == 2);
+    cooldown.on_order_submitted(
+        StrategyOrder{Side::Buy, view.symbol.str(), cooldown_orders[0].price, 2, 61});
+    cooldown.on_order_submitted(
+        StrategyOrder{Side::Sell, view.symbol.str(), cooldown_orders[1].price, 2, 62});
+    L2MarketView jump_view = calm_quote;
+    jump_view.ts += 10000;
+    jump_view.top.bid_price += 1.0;  // two ticks in ten milliseconds is a jump
+    jump_view.top.ask_price += 1.0;
+    assert(cooldown.on_l2_market_view(jump_view).empty());
+    assert(cooldown.cancel_requests().size() == 2);
+    cooldown.on_order_update(ExecutionReport{.order_id = 61, .side = exchange::Side::Buy,
+                                             .exec_type = ExecType::Cancelled,
+                                             .symbol = view.symbol.str()});
+    cooldown.on_order_update(ExecutionReport{.order_id = 62, .side = exchange::Side::Sell,
+                                             .exec_type = ExecType::Cancelled,
+                                             .symbol = view.symbol.str()});
+    L2MarketView inside_cooldown = jump_view;
+    inside_cooldown.ts += 20000;  // still inside the 75 ms it was armed for
+    assert(cooldown.on_l2_market_view(inside_cooldown).empty());
+    L2MarketView past_cooldown = inside_cooldown;
+    past_cooldown.ts += 80000;
+    assert(cooldown.on_l2_market_view(past_cooldown).size() == 2);
+
+    // One tick inside the same window is a drift, not a jump, so quoting continues.
+    ActiveL2MarketMaker drift(ActiveL2MarketMakerConfig{
+        .base = L2MarketMakerBaseConfig{.order_size = 2,
+                                     .base_spread = 1.0,
+                                     .inventory_limit = 100,
+                                     .tick_size = 0.5,
+                                     .signal_mode = L2SignalMode::Flow,
+                                     .flow_guard = true,
+                                     .toxicity_flow_threshold = 0.65},
+        .volatility_alpha = 0.0,
+        .pause_after_ticks_per_second = 1.0e9,
+        .jump_window_ms = 40,
+        .jump_ticks = 2.0,
+        .jump_cooldown_ms = 75});
+    assert(drift.on_l2_market_view(calm_quote).size() == 2);
+    L2MarketView small_move = calm_quote;
+    small_move.ts += 10000;
+    small_move.top.bid_price += 0.5;
+    small_move.top.ask_price += 0.5;
+    assert(drift.on_l2_market_view(small_move).size() == 2);
+
+    // The asymmetric refresh: a requote that would move the bid *up* while the fair is still moving is held back,
+    // and the ask that retreats goes out at once; once the fair has been still for the debounce, the bid follows.
+    L2MarketMakerBase asymmetric(L2MarketMakerBaseConfig{.order_size = 1,
+                                                        .base_spread = 1.0,
+                                                        .inventory_limit = 100,
+                                                        .tick_size = 0.5,
+                                                        .advance_debounce_ms = 40});
+    L2MarketView symmetric_start = view;
+    symmetric_start.ts = 2000000;
+    const auto asymmetric_orders = asymmetric.on_l2_market_view(symmetric_start);
+    assert(asymmetric_orders.size() == 2);
+    asymmetric.on_order_submitted(
+        StrategyOrder{Side::Buy, view.symbol.str(), asymmetric_orders[0].price, 1, 71});
+    asymmetric.on_order_submitted(
+        StrategyOrder{Side::Sell, view.symbol.str(), asymmetric_orders[1].price, 1, 72});
+    L2MarketView rising = symmetric_start;
+    rising.ts += 1000;
+    rising.top.bid_price += 1.0;
+    rising.top.ask_price += 1.0;
+    // The refresh arms the cancel, and the reports that answer it arrive before the requote.
+    assert(asymmetric.on_l2_market_view(rising).empty());
+    assert(asymmetric.cancel_requests().size() == 2);
+    asymmetric.on_order_update(ExecutionReport{.order_id = 71, .side = exchange::Side::Buy,
+                                               .exec_type = ExecType::Cancelled,
+                                               .symbol = view.symbol.str()});
+    asymmetric.on_order_update(ExecutionReport{.order_id = 72, .side = exchange::Side::Sell,
+                                               .exec_type = ExecType::Cancelled,
+                                               .symbol = view.symbol.str()});
+    // One millisecond after the fair moved: the ask retreats and goes out, the bid would chase and waits.
+    const auto deflected = asymmetric.on_l2_market_view(rising);
+    assert(deflected.size() == 1);
+    assert(deflected[0].side == Side::Sell);
+    // The same prices once the fair has been still for the debounce: both sides, and the bid has caught up.
+    L2MarketView settled = rising;
+    settled.ts += 60000;
+    const auto caught_up = asymmetric.on_l2_market_view(settled);
+    assert(caught_up.size() == 2);
+    assert(caught_up[0].side == Side::Buy);
+    assert(caught_up[0].price > asymmetric_orders[0].price);
+
     // The adverse-selection gate: a side is quoted only when the edge that fill would capture covers the maker
     // fee plus what passive fills at that distance have actually cost. The estimate arrives from the pipeline,
     // which is the only component that sees the midpoint after a fill, and the gate waits for samples before it

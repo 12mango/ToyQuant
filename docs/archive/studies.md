@@ -1745,6 +1745,40 @@ broker passes through) or does not, which is why the frontier map lists it as an
 rather than as a research row.
 
 
+**Two execution mechanisms, registered, measured, and one of them worth a bigger sample (2026-11-25).** With the link
+measured and the maker regime ending at about 10 ms, the question the frontier map leaves is whether the *decision* can be
+changed rather than the delay. Two mechanisms were registered and built, both off by default and both orthogonal to the
+quote geometry: a **jump cooldown** (a mid-range of `--jump-ticks` inside `--jump-window-ms` pulls the quotes and holds
+them off for `--jump-cooldown-ms`) and an **asymmetric refresh** (`--advance-debounce-ms`: the side that would move towards
+the market waits until the fair has been still for that long, while the side that retreats goes out at once).
+
+The bar was written before the runs: at 80 ms with `--post-only` the rescue configuration reads 1 to 10 fills a window at
+the maker's 2.00 bps, so a mechanism that helped would raise the median to **at least 20 fills** with the fee still 2.00
+and the capture at **+1.0 tick or better**, on **five of seven days**. What the runs say, at the two latencies that matter:
+
+| configuration, `--post-only` | fills a window | fee bps | capture ticks | closed bps, median (days positive) |
+|---|---:|---:|---:|---|
+| 80 ms, nothing new | 1 to 10 | 2.00 | +0.79 to +3.19 | -- |
+| 80 ms, jump cooldown | **0 to 1** | 2.00 | +2.00 to -2.00 | -- |
+| 80 ms, asymmetric refresh | 1 to 4 | 2.00 | +0.50 to +3.50 | -- |
+| 10 ms, nothing new | 38 to 75 | 2.00 | +1.49 to +1.98 | **-4.61** (1 of 7) |
+| 10 ms, jump cooldown | **0 to 1** | 2.00 | +2.00 to +4.00 | -- |
+| 10 ms, asymmetric refresh | **13 to 27** | 2.00 | +1.46 to +2.34 | **+12.40** (6 of 7) |
+
+**The cooldown fails for a reason that is a property of the instrument**: its tick is 0.0001 on a 0.19 price, about half a
+basis point, and the book is two to three ticks wide, so "two ticks inside forty milliseconds" is the normal state rather
+than a jump -- the gate pauses almost always and the fills fall to zero or one at both latencies. That closes this variant,
+not the idea: a jump threshold has to be expressed in the instrument's own volatility, and on this one it is not two ticks.
+
+**The asymmetric refresh does the opposite at 10 ms**, and it is the one result here that is worth another sample: it
+halves the fills, from 38 to 75 down to 13 to 27, and turns the closed capture from a median of -4.61 bps with one day of
+seven positive into **+12.40 with six of seven positive**, at the maker's fee on every day. Refusing to chase the market
+captures less often and better, which is what the mechanism was for. **It is not a conclusion**: thirteen to twenty-seven
+fills is below the thirty this repository requires, so what is registered for the next run is the same mechanism with
+**thirty fills or more a window and a positive closed median on five of seven days** -- which needs a larger clip or an
+instrument that trades more, not a different threshold.
+
+
 **What is next, and what would qualify another instrument.** The next measurement is a tiered re-screen of every swap
 inside the same 13:30-15:30 UTC window -- thirty ticker reads twenty seconds apart -- with the book's median width reported
 beside the half-spread, because a one-tick book cannot hold a quote three ticks behind the touch whatever its bps figure

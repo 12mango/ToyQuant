@@ -135,8 +135,13 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
         base_config.edge_cover_ticks = config.edge_cover_ticks_override;
         base_config.min_spread_ticks = config.min_spread_ticks_override;
         base_config.markout_cover = config.markout_cover;
+        base_config.advance_debounce_ms = config.advance_debounce_ms;
         base_config.flatten_band_units = config.flatten_band_units;
-        return std::make_unique<ActiveL2MarketMaker>(make_active_l2_config(base_config));
+        auto active_config = make_active_l2_config(base_config);
+        active_config.jump_window_ms = config.jump_window_ms;
+        active_config.jump_ticks = config.jump_ticks;
+        active_config.jump_cooldown_ms = config.jump_cooldown_ms;
+        return std::make_unique<ActiveL2MarketMaker>(active_config);
     }
     if (strategy_name == "execution_l2")
     {

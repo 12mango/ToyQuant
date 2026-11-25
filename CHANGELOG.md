@@ -7,6 +7,28 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## Two execution mechanisms, registered before the run and measured (2026-11-25)
+
+- **Four flags, all defaulting to zero** -- `--jump-window-ms`/`--jump-ticks`/`--jump-cooldown-ms` (pull the quotes and
+  hold them off when the mid crosses N ticks inside M milliseconds) and `--advance-debounce-ms` (only the side that would
+  move towards the market waits for the fair price to settle; the side that retreats goes out at once). Zero keeps every
+  recorded number where it was, and both mechanisms are pinned by `l2_strategy_test`: a jump pauses and releases while a
+  one-tick drift does not, and the chasing side is held while the retreating one goes out and follows once the fair is still.
+- **The bar, written before the runs**: at 80 ms and `--post-only` the rescue configuration reads 1-10 fills a window at
+  2.00 bps, so a mechanism that helped would raise the median above 20 fills with the fee at 2.00 and the capture at +1.0
+  tick or better on five of seven days.
+- **Both fail at 80 ms** (fills 0-4), for a reason that is not about gating: at that latency every quote is stale on
+  arrival, so only the few the sweep had not reached yet can rest, and pausing removes them.
+- **At 10 ms the cooldown kills the flow** (38-75 fills down to 0-1). On an instrument whose tick is 0.0001 on a 0.19 price
+  -- about half a basis point -- a two-tick move inside 40 ms is the normal state rather than a jump, so the gate pauses
+  almost always.
+- **At 10 ms the asymmetric refresh halves the fills and flips the sign**: 38-75 down to 13-27 at the maker's 2.00 bps, and
+  the closed median from -4.61 bps (1 of 7 days positive) to **+12.40 (6 of 7)**. That is below the thirty fills the project
+  requires, so it is registered as the next sample: thirty fills or more a window and a positive closed median on five of
+  seven days, which needs a larger clip or a busier instrument rather than a different threshold.
+- `docs/archive/studies.md` carries the table; `docs/L2_FLAGS.md` carries the flags with these numbers beside them.
+- `docs` and `fast` green.
+
 ## The link is measured, and it is the wall above the fee (2026-11-25)
 
 - **`okx_probe.py` gained `rtt`, `warm` and `touch`.** `rtt` places a `post_only` buy two percent under the best bid, so

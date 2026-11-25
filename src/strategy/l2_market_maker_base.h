@@ -102,6 +102,13 @@ struct L2MarketMakerBaseConfig
     // Decision attribution: sides not quoted because the gate refused them.
     uint64_t edge_gate_skips{0};
     uint64_t min_spread_skips{0};
+    // The asymmetric refresh: when a requote would move a side *towards* the market -- the bid up or the ask down,
+    // which is the quote that gets filled badly on a slow link -- that side waits until the fair price has been
+    // unchanged for this long, while the retreating side goes out at once. Zero, the default, leaves the symmetric
+    // behaviour every recorded run was measured with.
+    uint64_t advance_debounce_ms{0};
+    // Sides held back by the rule above, so a run can say how often it refused to chase.
+    uint64_t advance_skips{0};
 };
 
 // The L2 market maker. Strategies that add behaviour to it derive from it rather than holding one:
@@ -120,6 +127,9 @@ class L2MarketMakerBase : public Strategy
 
     std::vector<StrategyOrder> on_l2_market_view(const L2MarketView& view) override
     {
+        // The view's clock is the one the debounce measures with: a strategy only acts on a market event, so the
+        // event's own timestamp is when this decision was taken.
+        last_view_ts_ = view.ts;
         if (view.top.bid_price <= 0.0 || view.top.ask_price <= 0.0)
             return quote(view.symbol.str(), view.top, 0.0);
         return quote(view.symbol.str(), view.top, fair_price(view));
@@ -312,7 +322,11 @@ class L2MarketMakerBase : public Strategy
         }
         if (quote_age_ < config_.max_quote_age && !price_changed) return false;
         if (price_changed)
+        {
             ++metrics_.price_refresh_count;
+            // When the fair price last moved, in the view clock the debounce reads.
+            fair_change_ts_ = last_view_ts_;
+        }
         else
             ++metrics_.age_refresh_count;
         cancel_pending_ = true;
@@ -485,10 +499,42 @@ class L2MarketMakerBase : public Strategy
             }
         }
 
+        // The asymmetric refresh, applied after every other gate because it is about which side may go out now
+        // rather than about whether to quote: a side that would move towards the market is held back until the fair
+        // price has been still for the debounce, and a side that retreats is sent at once. Zero leaves the symmetric
+        // behaviour every recorded run was measured with.
+        if (config_.advance_debounce_ms > 0 && last_view_ts_ > 0 &&
+            (buy_quantity > 0 || sell_quantity > 0))
+        {
+            const uint64_t debounce_us = config_.advance_debounce_ms * 1000ULL;
+            const bool settled =
+                fair_change_ts_ == 0 || last_view_ts_ - fair_change_ts_ >= debounce_us;
+            const double half_tick = 0.5 * config_.tick_size;
+            if (!settled)
+            {
+                if (buy_quantity > 0 && last_placed_bid_ > 0.0 && bid_price > last_placed_bid_ + half_tick)
+                {
+                    ++config_.advance_skips;
+                    buy_quantity = 0;
+                }
+                if (sell_quantity > 0 && last_placed_ask_ > 0.0 && ask_price < last_placed_ask_ - half_tick)
+                {
+                    ++config_.advance_skips;
+                    sell_quantity = 0;
+                }
+            }
+        }
+
         if (buy_quantity > 0) orders.emplace_back(Side::Buy, symbol, bid_price, buy_quantity, 0);
         if (sell_quantity > 0) orders.emplace_back(Side::Sell, symbol, ask_price, sell_quantity, 0);
         if (!orders.empty())
         {
+            for (const auto& order : orders)
+            {
+                // What was actually sent, which is what the next requote is compared against.
+                if (order.side == Side::Buy) last_placed_bid_ = order.price;
+                else last_placed_ask_ = order.price;
+            }
             last_fair_price_ = fair_price;
             last_market_mid_ = (top.bid_price + top.ask_price) / 2.0;
             quote_age_ = 0;
@@ -517,6 +563,12 @@ class L2MarketMakerBase : public Strategy
     double last_market_mid_{0.0};
     uint64_t queue_activity_{0};
     uint64_t queue_hold_count_{0};
+    // The view clock and the last time the fair price moved, which is what the asymmetric refresh measures.
+    uint64_t last_view_ts_{0};
+    uint64_t fair_change_ts_{0};
+    // What the last requote actually sent per side, so the next one can tell chasing from retreating.
+    double last_placed_bid_{0.0};
+    double last_placed_ask_{0.0};
     StrategyMetrics metrics_;
     MarkoutEstimate markout_estimate_;
 
@@ -525,6 +577,7 @@ class L2MarketMakerBase : public Strategy
     // what it did. Exposed through accessors because the counters themselves live in the configuration.
     [[nodiscard]] uint64_t edge_gate_skips() const { return config_.edge_gate_skips; }
     [[nodiscard]] uint64_t min_spread_skips() const { return config_.min_spread_skips; }
+    [[nodiscard]] uint64_t advance_skips() const { return config_.advance_skips; }
     [[nodiscard]] uint64_t markout_gate_skips() const override { return config_.markout_gate_skips; }
     [[nodiscard]] uint64_t flatten_orders() const override { return config_.flatten_orders; }
     [[nodiscard]] uint64_t flatten_quantity() const override { return config_.flatten_quantity; }

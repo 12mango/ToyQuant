@@ -298,6 +298,16 @@ struct AppConfig
     // The conditional rule: quote only when the top of book is at least this many ticks wide, and 0 leaves it
     // off, which is what every run recorded in the documents asks for.
     double min_spread_ticks = 0.0;
+    // The forced-flow cooldown on `active_l2`: a mid-price range of `jump_ticks` inside `jump_window_ms` pulls the
+    // quotes and holds them off for `jump_cooldown_ms`. Any of the three at zero leaves it off, which is what every
+    // run recorded in the documents asks for.
+    uint64_t jump_window_ms = 0;
+    double jump_ticks = 0.0;
+    uint64_t jump_cooldown_ms = 0;
+    // The asymmetric refresh: a quote that would move towards the market waits until the fair price has been still
+    // for this long, while a quote that retreats goes out at once. 0 leaves the symmetric behaviour every recorded
+    // run was measured with.
+    uint64_t advance_debounce_ms = 0;
     // 0 disables per-stage profiling. Otherwise this is the sampling interval in events,
     // so 64 times the 64th event of every 64.
     uint64_t profile_sample_interval = 0;

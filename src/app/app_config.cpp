@@ -89,6 +89,10 @@ constexpr std::string_view kInventoryShiftPrefix = "--inventory-shift-ticks=";
 constexpr std::string_view kRefreshPrefix = "--refresh-price-ticks=";
 constexpr std::string_view kEdgeCoverPrefix = "--edge-cover-ticks=";
 constexpr std::string_view kMinSpreadPrefix = "--min-spread-ticks=";
+constexpr std::string_view kJumpWindowPrefix = "--jump-window-ms=";
+constexpr std::string_view kJumpTicksPrefix = "--jump-ticks=";
+constexpr std::string_view kJumpCooldownPrefix = "--jump-cooldown-ms=";
+constexpr std::string_view kAdvanceDebouncePrefix = "--advance-debounce-ms=";
 constexpr std::string_view kQueueChunksPrefix = "--queue-chunks=";
 constexpr std::string_view kQueueSeedPrefix = "--queue-seed=";
 constexpr std::string_view kArrivalSharePrefix = "--arrival-share=";
@@ -238,7 +242,10 @@ void print_usage(const char* executable)
                      "has to move before its resting quotes are pulled and replaced, --edge-cover-ticks=N "
                      "requires a quote to cover N ticks on top of the maker fee before it is placed, and "
                      "--min-spread-ticks=N quotes only where the touch is at least N ticks wide; 0 leaves "
-                     "each of them at the strategy's own setting\n";
+                     "each of them at the strategy's own setting. --jump-window-ms=N, --jump-ticks=T and "
+                     "--jump-cooldown-ms=C pull the quotes when the mid moves T ticks inside N milliseconds "
+                     "and hold them off for C, and --advance-debounce-ms=D holds back only the side that would "
+                     "move towards the market, for D milliseconds after the fair price last moved\n";
         std::cerr << "   limits: --max-exposure-usd=N is the exposure ceiling the summary measures the run "
                      "against, enforced rather than reported once it is named, and --kill-switch-loss-usd=N "
                      "latches when the loss reaches N dollars, closes the position it was holding at the "
@@ -1181,6 +1188,42 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                     return false;
                 }
                 cfg.min_spread_ticks = ticks;
+            }
+            else if (flag.compare(0, kJumpWindowPrefix.size(), kJumpWindowPrefix) == 0)
+            {
+                if (!parse_unsigned(flag.substr(kJumpWindowPrefix.size()), cfg.jump_window_ms))
+                {
+                    error = "--jump-window-ms must be a non-negative integer";
+                    return false;
+                }
+            }
+            else if (flag.compare(0, kJumpTicksPrefix.size(), kJumpTicksPrefix) == 0)
+            {
+                double ticks = 0.0;
+                std::istringstream stream(flag.substr(kJumpTicksPrefix.size()));
+                if (!(stream >> ticks) || ticks < 0.0)
+                {
+                    error = "--jump-ticks must not be negative";
+                    return false;
+                }
+                cfg.jump_ticks = ticks;
+            }
+            else if (flag.compare(0, kJumpCooldownPrefix.size(), kJumpCooldownPrefix) == 0)
+            {
+                if (!parse_unsigned(flag.substr(kJumpCooldownPrefix.size()), cfg.jump_cooldown_ms))
+                {
+                    error = "--jump-cooldown-ms must be a non-negative integer";
+                    return false;
+                }
+            }
+            else if (flag.compare(0, kAdvanceDebouncePrefix.size(), kAdvanceDebouncePrefix) == 0)
+            {
+                if (!parse_unsigned(flag.substr(kAdvanceDebouncePrefix.size()),
+                                    cfg.advance_debounce_ms))
+                {
+                    error = "--advance-debounce-ms must be a non-negative integer";
+                    return false;
+                }
             }
             else if (flag.compare(0, kQueueChunksPrefix.size(), kQueueChunksPrefix) == 0)
             {
