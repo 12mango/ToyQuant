@@ -300,7 +300,12 @@ def main():
                         # `tools/sweep/okx_maker_baseline.py` owns this one: it sets `--order-latency-us` and
                         # `--cancel-latency-us` together so a sweep can ask one latency question across a window. The
                         # engine still takes the two halves separately; the studies record names the tool's spelling.
-                        "--latency-us"}:
+                        "--latency-us",
+                        # `tools/study/okx_spread_screen.py` owns these two: how far behind the touch the quoting rule
+                        # rests, and the fee that distance has to clear. They turn the venue's two ticker columns --
+                        # half-spread in bps and spread in ticks -- into the basis points a fill is actually paid, which
+                        # is the column the instrument choice lives on rather than the width ranking.
+                        "--quote-ticks", "--min-capture-bps"}:
             problems.append(f"{flag} is mentioned in a document and is not a flag the binary accepts")
     for model in sorted(models):
         if model not in text.lower():

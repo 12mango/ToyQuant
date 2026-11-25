@@ -125,9 +125,10 @@ def toxicity_for_day(symbol, day_text, archive, horizon_ms, sample_ms, bucket_ms
                      min_distance_ticks=0.0, tick=0.0001):
     """Per bucket: median and mean maker markout, the share of prints the mid moved on, and the count.
 
-    A median alone is degenerate here: the tick is half a basis point and the mid often does not move at all within the
-    horizon, so zero is the mode in every bucket (measured 2026-11-25 at 1 s and 5 s: every cell read +0.000). The mean
-    carries the adverse selection the median hides, and the moved share says how much of it there is to average.
+    A median alone is degenerate here: one tick on this instrument is 5.2 bps (0.0001 on a 0.19 price) and the mid often
+    does not move a tick at all within the horizon, so zero is the mode in every bucket (measured 2026-11-25 at 1 s and
+    5 s: every cell read +0.000). The mean carries the adverse selection the median hides, and the moved share says how
+    much of it there is to average.
 
     `min_distance_ticks` keeps only the prints that were at least that far through the mid when they happened -- the
     subset a quote standing behind the touch is filled by, rather than the prints that only reach the touch.

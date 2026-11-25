@@ -7,7 +7,23 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
-## Our own fills are churned evenly at night, and the recording flag is not a silent observer (2026-11-25)
+## The screen learns what our distance is worth, and a tick turned out to be 10x bigger than written (2026-11-25)
+
+- **`okx_spread_screen.py --quote-ticks`** adds the column the mechanism lives on: the basis points a quote that many ticks
+  behind the touch captures a fill, computed as `quote_ticks x 2 x half-spread / spread-in-ticks`. On one archived sample
+  of 555 instruments **71 clear 2 bps of capture**, and the fourteen names the width screen called passers are not among
+  them: BE at 1.67 bps over five ticks is 1.00, COST at 1.37 over thirty is 0.14. `UP-USDT-SWAP` reads 16.21 and sits fifth
+  of 555, which is the sanity check -- the instrument the line was measured on is near the top of the ranking that matches
+  the mechanism. The sample was taken 06:58-07:08 UTC, so it is a reading and not the registered 13:30-15:30 screen, and
+  capture is not expectation: a two-tick book pays a lot a fill and fills rarely.
+- **The tick on `UP-USDT-SWAP` is 5.2 bps, not half of one.** `0.0001` on a `0.19` price is `5.2` bps, and the profile
+  page, this changelog and two tool docstrings said "one tick is half a basis point" for a day -- 10x low, which also made
+  "a capture of about a basis point a fill" out of a capture of 1.79-1.98 ticks (9 to 10 bps). Corrected in all four
+  places, with the venue's own `tickSz` and the screen's spread-in-ticks agreeing on 5.2-5.4. `.clinerules` gains the rule:
+  a tick is a price, not an amount, so a per-tick figure carries its conversion.
+- `docs/archive/studies.md` carries the capture table and the corrections, `docs/TOOLS.md` the tool's new column,
+  `docs/L2_FLAGS.md` the jump-cooldown paragraph without the wrong premise. `docs` and `fast` green.
+
 
 - **`tools/study/okx_fill_profile.py`** buckets our own fills by half hour from the trade stream every replay writes
   (`data/runtime/trades.csv`): fills, the net contracts a bucket moved, the share of its fills that opened a position, the
@@ -81,8 +97,9 @@ site now points at `ToyQuant`.
   and a count of the days at or above a stated rate.
 - **The "dead wide" explanation of the eight-hour loss does not survive it.** The half spread runs 4.78 to 7.10 bps across
   all forty-eight buckets -- 5.27 at 08:00, 6.06 at 13:30, 5.43 at 20:00 -- so on this instrument a quiet book is not a
-  wider one. A 0.0001 tick on a 0.19 price makes one tick half a basis point, and a two-to-three-tick book is five bps at
-  any hour.
+  wider one. A 0.0001 tick on a 0.19 price is **5.2 bps**, so a two-to-three-tick book is 5 to 8 bps of half spread at any
+  hour. (This paragraph first said a tick was half a basis point -- 10x low; the venue's own `tickSz` and the screen's
+  spread-in-ticks agree on 5.2-5.4.)
 - **The flow is what moves, and only after 16:00 UTC**: the median rate is 0.93-3.18 prints a second all day, but the
   worst day of the seven has **zero prints** in every bucket from 16:00 on and 0.38-1.66 before it. The morning is not
   quiet: 08:00-13:00 prints at 1.3-2.1 a second against the good window's 1.7-2.9.

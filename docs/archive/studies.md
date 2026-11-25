@@ -1857,8 +1857,9 @@ across the seven days.
 **The spread does not widen when the flow leaves.** Across all forty-eight buckets it sits between 4.78 and 7.10 bps --
 5.27 at 08:00, 6.06 at 13:30, 5.43 at 20:00 -- so on this instrument a quiet book is not a wider book, and the gate cannot
 be fooled by "dead width" because there is no dead width to be fooled by. That is the opposite of the guess, and it is a
-property of the instrument: a 0.0001 tick on a 0.19 price makes one tick half a basis point, so a two-to-three-tick book is
-five bps whatever the hour.
+property of the instrument: a 0.0001 tick on a 0.19 price is **5.2 bps**, so a two-to-three-tick book is 5 to 8 bps of half
+spread whatever the hour. (The first version of this page said "one tick is half a basis point", which is 10x low; the
+screen's own tickSz column measures 5.2 to 5.4 and the two agree, so the sentence was the defect and the table was right.)
 
 **What does move is the flow, and only at the end of the day.** The median rate runs 0.93 to 3.18 prints a second all day;
 the *minimum across days* is zero in every bucket from 16:00 onward and 0.38 to 1.66 before it. So the evening is genuinely
@@ -1958,13 +1959,39 @@ against the midpoint and the markout at five and thirty seconds. The night run o
 **There is no bucket where the inventory piles up.** Across the sixteen buckets of the night, the net a bucket moves is
 **-2.00 to +3.00 contracts** and the share of fills that open a position stays **37 to 62 per cent** -- near half in every
 bucket, with no bucket opening three quarters of what it fills. So the night's loss is not a few bad buckets the strategy
-could learn to avoid: it is the same churn spread evenly, paying a capture of about a basis point a fill against the
-2.00 bps fee. A gate on the bad buckets would have nothing to switch on, and that is the answer the four-block comparison
-needed.
+could learn to avoid: it is the same churn spread evenly, with a capture a fill of 1.79-1.98 ticks -- 9 to 10 bps on this
+instrument's 5.2 bps tick -- against a closed result of about zero a fill, so the spread taken at the fill is given back
+before the position closes. A gate on the bad buckets would have nothing to switch on, and that is the answer the
+four-block comparison needed.
 
 The markout columns are noisier than the counts (a bucket holds two to nine fills a day, so fourteen to sixty-three fills
 over the week) and they carry no bucket-level signal either: five seconds reads **-4.12 to +2.31 bps**, thirty seconds
 **-5.64 to +9.64**, both signs present in the middle of the night and in the small hours alike.
+
+**The screen gains the column the mechanism needs, and it re-ranks everything (2026-11-25).**
+`okx_spread_screen.py` reported width, ticks and volume; a quote three ticks behind the touch needs a fourth number -- what
+that distance is worth in basis points, which is `3 x tick` with a tick of `2 x half-spread / spread-in-ticks`. On the
+archived reads of one off-window sample (555 instruments with a two-sided book, 06:58-07:08 UTC, so a reading and not the
+registered 13:30-15:30 screen):
+
+| instrument | half spread bps | spread ticks | 3-tick capture bps | 24h notional USD |
+|---|---:|---:|---:|---:|
+| DNA | 7.34 | 2.00 | **22.03** | 13.9M |
+| ARX | 9.18 | 3.00 | 18.37 | 0.50M |
+| LINEA | 6.05 | 2.00 | 18.15 | 0.86M |
+| NES | 5.61 | 2.00 | 16.84 | 2.71M |
+| **UP** | 8.11 | 3.00 | **16.21** | 3.13M |
+| EGLD | 4.52 | 2.00 | 13.55 | 0.56M |
+
+**71 of the 555 clear 2 bps of capture, and the fourteen names the width screen called passers are not among them**: BE at
+1.67 bps over five ticks is 1.00 bps of capture and COST at 1.37 over thirty is 0.14. That is the reversal the column
+exists to show -- wide enough in bps is not wide enough at our distance, and ranking by half-spread rewards a book whose
+ticks are too cheap to pay a fee. UP sits fifth of 555, which is the sanity check: the instrument the line was measured on
+is near the top of the only ranking that matches the mechanism.
+
+**And it is a reading, not a verdict.** The sample was taken at 07:00 UTC, outside the window every other screen here uses,
+so it says what the venue looked like then; capture is also not expectation -- a two-tick book pays 20 bps a fill and fills
+rarely -- which is what the acceptance cell, and the depth archives it needs, is for.
 
 **The handover priced, and the hold time that refutes the time stop (2026-11-25).** Two things were left open: what a
 window's leftover position would cost a session that has to hand over, and whether the night loses to inventory that stays

@@ -133,6 +133,13 @@ compatibility path. Everything below assumes that page.
   80 ms" was five runs at 0 to 80 us, so every conclusion drawn from it was about zero latency and the table looked clean
   because there was no delay in it. `tools/sweep/okx_maker_baseline.py` now warns below one millisecond; the habit is to
   write `80000` in the command and say "80 ms" only in the prose beside it.
+- **A tick is a price, not an amount, and a per-tick figure is converted before it is quoted.** `0.0001` on a `0.19`
+  instrument is **5.2 bps**, not half of one, and the difference is the whole answer to "can a fee be paid": on
+  2026-11-25 the profile page, the changelog and two tool docstrings said "one tick is half a basis point" for a day,
+  because a tick *looks* small, and the sentence survived a gate that only checks the figures beside it. So a claim about
+  ticks carries the conversion -- `tick / price x 1e4` -- and the venue's own `tickSz` beside the spread in ticks is the
+  cheap cross-check: `okx_spread_screen.py` reports both, and the two agreed on 5.2 to 5.4 while the prose disagreed with
+  them both.
 - **A recorded number is changed by re-deriving it, never by editing it.** Run the command, paste the new output, and if
   a reference hash moves, justify the re-record by proving the diff is exactly the intended change -- that is the
   standard the documents already hold themselves to.

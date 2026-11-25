@@ -100,8 +100,14 @@ def sample_once(samples, stamp, tick_sizes):
         entry["stamps"].append(stamp)
 
 
-def analyse(samples, min_spread, min_notional, min_ticks):
-    """One row per instrument: the medians, the spread's own range, and the three verdicts."""
+def analyse(samples, min_spread, min_notional, min_ticks, quote_ticks, min_capture):
+    """One row per instrument: the medians, the spread's own range, and the verdicts.
+
+    `capture` is the column the screen exists for on this venue: a quote that rests `quote_ticks` behind the touch is
+    filled only by a sweep that reaches it, and what it earns a fill is that distance in basis points. It is computed from
+    the two medians -- tick width = 2 x half-spread / spread-in-ticks -- because those are the two columns the venue's
+    ticker actually reports, and it is compared against the maker fee rather than against an opinion.
+    """
     rows = []
     for symbol, entry in samples.items():
         spreads = entry["spreads"]
@@ -114,25 +120,32 @@ def analyse(samples, min_spread, min_notional, min_ticks):
         ticks = [value for value in entry.get("ticks", []) if value is not None]
         median_ticks = statistics.median(ticks) if ticks else None
         notional = statistics.median(entry["notional"]) if entry["notional"] else 0.0
+        # One tick in bps: the half spread is `median`, the full spread is `median_ticks` ticks, so a tick is
+        # 2 x half-spread / full-spread-in-ticks. None when the tick width could not be read.
+        tick_bps = 2.0 * median / median_ticks if median_ticks else None
+        capture = quote_ticks * tick_bps if tick_bps is not None else None
         rows.append({"symbol": symbol, "samples": len(spreads), "median": median, "p10": p10, "p90": p90,
-                     "ticks": median_ticks, "notional": notional,
+                     "ticks": median_ticks, "notional": notional, "tick_bps": tick_bps, "capture": capture,
                      "spread_ok": median >= min_spread,
                      "ticks_ok": median_ticks is not None and median_ticks >= min_ticks,
-                     "volume_ok": notional >= min_notional})
+                     "volume_ok": notional >= min_notional,
+                     "capture_ok": capture is not None and capture >= min_capture})
     rows.sort(key=lambda row: row["median"], reverse=True)
     return rows
 
 
-def print_table(rows, title):
+def print_table(rows, title, quote_ticks):
     print(f"### {title}")
     print()
-    print("| instrument | reads | median half spread bps | median spread ticks | p10 | p90 | median 24h notional USD |"
-          " spread | ticks | volume |")
-    print("|---|---:|---:|---:|---:|---:|---:|---|---|---|")
+    print(f"| instrument | reads | median half spread bps | median spread ticks | {quote_ticks:g}-tick capture bps |"
+          " p10 | p90 | median 24h notional USD | spread | ticks | volume |")
+    print("|---|---:|---:|---:|---:|---:|---:|---:|---|---|---|")
     for row in rows:
         ticks = "n/a" if row["ticks"] is None else f"{row['ticks']:.2f}"
-        print(f"| {row['symbol']} | {row['samples']} | {row['median']:.2f} | {ticks} | {row['p10']:.2f} | "
-              f"{row['p90']:.2f} | {row['notional']:,.0f} | {'pass' if row['spread_ok'] else 'fail'} | "
+        capture = "n/a" if row["capture"] is None else f"{row['capture']:.2f}"
+        print(f"| {row['symbol']} | {row['samples']} | {row['median']:.2f} | {ticks} | {capture} | "
+              f"{row['p10']:.2f} | {row['p90']:.2f} | {row['notional']:,.0f} | "
+              f"{'pass' if row['spread_ok'] else 'fail'} | "
               f"{'pass' if row['ticks_ok'] else 'fail'} | {'pass' if row['volume_ok'] else 'fail'} |")
     print()
 
@@ -145,6 +158,10 @@ def main():
     parser.add_argument("--min-spread-ticks", type=float, default=2.0,
                         help="the book's median width in ticks; one tick is not a book a deep quote can rest in")
     parser.add_argument("--min-volume-usd", type=float, default=500_000.0)
+    parser.add_argument("--quote-ticks", type=float, default=3.0,
+                        help="how far behind the touch the quoting rule rests; its capture a fill is that many ticks")
+    parser.add_argument("--min-capture-bps", type=float, default=2.0,
+                        help="the maker fee the capture has to clear, in basis points")
     parser.add_argument("--top", type=int, default=25, help="rows printed in the ranked table")
     parser.add_argument("--write", help="where to archive the raw reads; defaults to data/v2/crypto/okx_tickers_<utc>.json")
     parser.add_argument("--read", help="analyse an archived sample set instead of polling the venue")
@@ -180,7 +197,8 @@ def main():
             target.write_text(json.dumps(samples), encoding="utf-8")
             print(f"archived the reads to {target} ({target.stat().st_size} bytes)")
 
-    rows = analyse(samples, args.min_half_spread_bps, args.min_volume_usd, args.min_spread_ticks)
+    rows = analyse(samples, args.min_half_spread_bps, args.min_volume_usd, args.min_spread_ticks,
+                   args.quote_ticks, args.min_capture_bps)
     passers = [row for row in rows if row["spread_ok"] and row["ticks_ok"] and row["volume_ok"]]
     print(f"reads from {first} to {last}, {len(samples)} instruments with a two-sided book at least once")
     print(f"screen: median half spread >= {args.min_half_spread_bps:g} bps, median spread >= "
@@ -194,8 +212,20 @@ def main():
         args.min_spread_ticks, args.min_volume_usd) +
         ", ".join(f"{tier:g} bps: {counts[tier]}" for tier in tiers))
     print()
-    print_table(passers, f"the screen's passers ({len(passers)} of {len(rows)})")
-    print_table(rows[:args.top], f"the {min(args.top, len(rows))} widest, pass or fail")
+    print_table(passers, f"the screen's passers ({len(passers)} of {len(rows)})", args.quote_ticks)
+    print_table(rows[:args.top], f"the {min(args.top, len(rows))} widest, pass or fail", args.quote_ticks)
+    # The question the width tiers do not answer: what a quote at our own distance earns a fill, against the fee. A wide
+    # book measured in ticks is not the same as a wide book measured in bps -- a 30-tick spread can be worth 1.4 bps, and
+    # three ticks behind it is worth 0.14 -- so this is the column the mechanism actually lives or dies on.
+    by_capture = sorted((row for row in rows if row["capture"] is not None),
+                        key=lambda row: row["capture"], reverse=True)
+    clearing = [row for row in by_capture if row["capture_ok"] and row["ticks_ok"] and row["volume_ok"]]
+    print(f"a quote {args.quote_ticks:g} ticks behind the touch captures {args.min_capture_bps:g} bps or more on "
+          f"{len(clearing)} of {len(rows)} instruments (with the tick and volume floors); the maker fee is "
+          f"{args.min_capture_bps:g} bps")
+    print()
+    print_table(clearing[:args.top], f"the {min(args.top, len(clearing))} widest captures that clear the fee",
+                args.quote_ticks)
     return 0
 
 
