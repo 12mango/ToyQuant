@@ -1633,24 +1633,32 @@ with both legs on the same link that is the common case, not an edge. The strate
 tried to pull (`longest_wait_filled_cycles=26570` is a fill wait, not an age refresh). The engine now holds such a cancel
 and applies it when the order lands, and the same seven days, conservative fill, one command per latency, read:
 
-| reading, bps | 0 ms | 10 ms | 30 ms | 50 ms | 80 ms |
+| reading | 0 ms | 10 ms | 30 ms | 50 ms | 80 ms |
 |---|---:|---:|---:|---:|---:|
-| baseline (touch, refresh 4), net median | -2.28 | -2.12 | -2.64 | -2.68 | -2.00 |
-| rescue (3 ticks, refresh 1, edge cover 1), closed mean | +3.12 | +2.92 | +2.40 | +2.66 | +1.95 |
-| rescue, net mean | +1.16 | +1.11 | +0.38 | +0.61 | -0.12 |
-| rescue, net median | +1.14 | +0.99 | -0.47 | +0.41 | -0.34 |
+| rescue, fills a window | 76-358 | 64-164 | 50-91 | 37-59 | 22-46 |
+| rescue, fee bps (2.00 is all maker) | 2.00 | 4.46-10.28 | 7.22-16.12 | 15.89-29.91 | 12.74-129.47 |
+| rescue, capture ticks | +1.4 to +2.7 | +0.05 to +0.99 | -0.56 to +0.16 | -0.69 to -0.35 | -1.33 to -0.21 |
+| baseline, fee bps | 2.02 | 3.05-7.17 | 5.10-13.28 | 8.97-16.54 | 9.68-25.17 |
 
-**The baseline loses to its fee at every latency and the link is not why.** It has exactly one positive day of seven at
-0, 10, 30, 50 and 80 ms, and its median moves by less than half a basis point across that range while the day-to-day spread
-is 14 -- so a 30-80 ms link is below this window's own noise, and the -2.3 the fee table above shows is the gap, not the
-delay. The 30 ms run that used to read one to forty-four fills now reads 240 to 777.
+**The first version of this table was five runs at 0 to 80 microseconds, and every conclusion drawn from it was about zero
+latency.** The flag is `--latency-us`, a grid written in milliseconds passed 80 where it meant 80000, and the rows moved by
+tenths of a basis point because there was no delay in them. What caught it was the repository's own rule that a result too
+clean has to reconcile: a single day at a true 80 ms gave 41 fills where the "80 ms" row claimed 100 to 388, and the
+decomposition -- capture negative, fee 31 bps, 35 of 41 fills taker -- put the flag back where it belonged. The tool now
+prints a warning when the value is under one millisecond, so the same 1000x shows up in the log.
 
-**The rescue configuration keeps its fills and loses about a basis point at the far end.** 76 to 358 fills a day at zero
-latency and 90 to 396 across the four delays, with closed capture falling from +3.12 to +1.95 bps between 0 and 80 ms:
-that fall is the link's whole measurable cost at this size, and it is inside the 2.00 bps the row is measured against. What
-the latency also moves is the net, which is a mark: its median crosses zero somewhere between 10 and 30 ms (+0.99 to -0.47)
-and comes back at 50 ms, so the honest statement is that the link moves the net's sign by a few tenths of a basis point
-without a monotone relation to the delay, while the closed capture stays above the fee from 0 to 80 ms.
+**At the true latencies the configuration is a maker only near zero.** At 10 ms the fee is already two to five times the
+maker's 2.00 bps and the capture has fallen from about two ticks to +0.05 to +0.99; at 30 ms the capture is negative on
+the median, and from 50 ms the fee is eight to fifteen times the maker rate. What happens is not that the flow disappears:
+the quote lands after the book has moved, so it is marketable on arrival and fills as a **taker** -- the fee rate is the
+taker share in the venue's own currency, and it is the column to read. The baseline shows the same ladder from its own
+2.02 bps to 3 to 7 at 10 ms and 10 to 25 at 80; its net is a mark on 150 to 280 fills, so its *sign* is not a measurement
+at this count, and the fee rate is the comparable number.
+
+**With `--post-only` the same latency turns the fills off instead of making them take.** At 80 ms and one contract the flag
+leaves **1 to 10 fills a window** against 22 to 46 unflagged, because the quotes that would have crossed are declined: one
+day's decomposition shows `post_only_cancels=41`, 8 fills and **zero taker fills**, against 41 fills of which 35 were taker
+without the flag. Both branches end the line at this latency; which one a session gets is the flag.
 
 **The link, measured -- and it is the wall above the fee (2026-11-25).** Every latency row above is a replay setting;
 the venue's own round trip from this host had never been measured, and "30-80 ms" was an assumption. It is now two paths
@@ -1689,21 +1697,20 @@ live session was a faster route than that. On the direct route the same probe ha
 version rested six of six there, which is the same staleness seen from the other side -- so **the decline rate at 118 ms
 is the one number this section still lacks, and it is one command**.
 
-**And the configuration stops being a maker between 80 and 100 ms.** The grid above was taken at 0, 10, 30, 50 and 80 ms;
-these two rows fill the gap towards the measured paths, and the transition is a cliff rather than a slope:
+**The band ends at 10 ms, not at 90.** The grid above is the whole ladder; the two measured paths sit far beyond it, and
+the 100 and 181 ms rows below are the same configuration without the flag, for the record:
 
 | latency each way | fills a window | fee bps | capture ticks | closed bps |
 |---|---:|---:|---:|---|
-| 80,000 us | 100 to 388 | 2.05 to 2.13 | +2.24 to +2.70 | +1.32 to +5.73 |
+| 10,000 us | 64 to 164 | 4.46 to 10.28 | +0.05 to +0.99 | -13.63 to +35.65 |
 | 100,000 us | 25 to 44 | **26 to 89** | **-0.68 to -0.98** | +40 to +505, and -645 on one day |
 | 181,000 us | 14 to 24 | 32 to 102 | -0.82 to -1.33 | -381 to +681 |
 
-At 80 ms the fee is the maker's 2 bps and the capture is positive, which is the configuration working. At 100 ms the fee
-is 13 to 45 times the maker's rate and the capture is negative: every fill is a taker fill, and the P&L is an inventory
-mark on 25 to 44 fills. So the useful band is **under about 90 ms**, the direct route's 118 ms sits outside it, and the
-proxy's 414 ms is four times outside. `--latency-us` for this host is 118,000 on a direct kept-alive tunnel and 414,000
-through the proxy, and at either the instrument is not a maker here -- the row that would open it again is an order round
-trip under 80 ms, which is a colocated or a Tokyo/Singapore point of presence rather than anything the strategy can tune.
+So `--latency-us` for this host is 118,000 on a direct kept-alive tunnel and 414,000 through the proxy, and **both are four
+to forty times past the point where this configuration is a maker**: at 10 ms it already pays 4.5 to 10 bps of fee against
+the maker's 2.00, and the direct route's 118 ms is past the 80 ms row, where the fee is 13 to 129. The row that would open
+the line is an order round trip of a few milliseconds -- inside 10 ms, and the 10 ms row is already halfway to a taker, so
+the target is a colocation beside the venue's matching engine rather than a Tokyo or Singapore VPS on its own.
 
 
 
@@ -1744,7 +1751,8 @@ beside the half-spread, because a one-tick book cannot hold a quote three ticks 
 says. A candidate has to clear **1.2, 2.0 and 2.5 bps** under two more floors: a median spread of at least **two ticks** and
 a median **500,000 USD** of daily notional. Anything that passes gets the same seven-day treatment this instrument got: the
 window cut by `tools/study/okx_book_window.py`, the maker run by `tools/sweep/okx_maker_baseline.py` under the conservative
-fill model, and `--latency-us` at the route's own measured value -- 414,000 or 632,000 on this host, not 30,000.
+fill model, and `--latency-us` at the route's own measured value -- **118,000** on a direct kept-alive tunnel, 414,000
+through the operator's proxy, and in microseconds always.
 
 One measurement error belongs in this record because it produced a table of zeros: OKX cuts its trade archive on midnight
 UTC+8 and its book archive on UTC, so a window starting at or after 16:00 UTC lives in the *next* trade file. Reading the

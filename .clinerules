@@ -128,6 +128,11 @@ compatibility path. Everything below assumes that page.
 - **CI runs only what needs no market data** (`check_written_fields.py`, `lint_prose.py docs`, `check_links.py`, and
   `mkdocs build --strict`). A local tier is green and CI is green only when both were run; the data-backed tiers stay
   local because the depth file is 1.5 GB.
+- **A flag that names its unit is read twice, and the number is written in that unit.** `--latency-us 80` is eighty
+  microseconds, not eighty milliseconds, and nothing refuses it: measured 2026-11-25, a five-point grid labelled "0 to
+  80 ms" was five runs at 0 to 80 us, so every conclusion drawn from it was about zero latency and the table looked clean
+  because there was no delay in it. `tools/sweep/okx_maker_baseline.py` now warns below one millisecond; the habit is to
+  write `80000` in the command and say "80 ms" only in the prose beside it.
 - **A recorded number is changed by re-deriving it, never by editing it.** Run the command, paste the new output, and if
   a reference hash moves, justify the re-record by proving the diff is exactly the intended change -- that is the
   standard the documents already hold themselves to.

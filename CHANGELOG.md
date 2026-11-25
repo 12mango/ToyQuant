@@ -32,10 +32,18 @@ site now points at `ToyQuant`.
 - **`UP-USDT-SWAP` is not tradable in the demo environment**: eight placements, resting and crossing, every one
   `code=1/sCode=51001` with no `ordId`. Its live record says `state: live`, `ctVal 10`, `tickSz 0.0001`, lot and minimum 1
   -- so it is a demo-environment gap, not a venue one, and this tree holds only a demo key.
-- **The configuration stops being a maker between 80 and 100 ms**: at 80 ms the fee is 2.05-2.13 bps and the capture
-  +2.24 to +2.70 ticks; at 100 ms the fee is 26 to 89 bps and the capture -0.68 to -0.98 on 25 to 44 fills, and at 181 ms
-  it is 14 to 24 fills with the same sign. Every fill above 100 ms is a taker fill, which is the wall above the fee.
-  `--latency-us` for this host is 118,000 direct or 414,000 through the proxy, and at either the instrument is not a maker.
+- **The configuration is a maker only near zero latency, and the first version of this grid was a 1000x unit error.**
+  `--latency-us 10/30/50/80` is **microseconds**, so a five-point table labelled "0 to 80 ms" was five zero-latency runs and
+  every conclusion drawn from it was about no delay at all. Caught by the rule that a too-clean result has to reconcile: a
+  single day at a true 80 ms gave 41 fills where the "80 ms" row claimed 100 to 388. Re-derived at the real values, the
+  rescue configuration's fee runs 2.00 bps at 0, 4.46-10.28 at 10 ms, 7.22-16.12 at 30, 15.89-29.91 at 50 and
+  12.74-129.47 at 80, with the capture falling from +1.4..+2.7 ticks to +0.05..+0.99 at 10 ms and negative from 30.
+  `okx_maker_baseline.py` now warns when the value is under one millisecond, so the same 1000x shows up in the log.
+- **With `--post-only` at 80 ms the fills fall to 1-10 a window** against 22-46 unflagged, because the quotes that would
+  have crossed are declined: one day decomposes into `post_only_cancels=41`, 8 fills and zero taker fills, against 41 fills
+  of which 35 were taker without the flag. Both branches end the line at this latency; which one a session gets is the flag.
+- `--latency-us` for this host is 118,000 direct or 414,000 through the proxy, and both are four to forty times past the
+  point where the configuration is a maker.
 - `docs/archive/studies.md` carries the tables; the frontier map's UP row now names the route as the first gate and the
   fee tier as the second.
 - `docs` and `fast` green.
@@ -75,12 +83,11 @@ site now points at `ToyQuant`.
   The synchronous rows, the cancel-only row and both MES rows are unchanged. Above one millisecond the window's own
   mark dominates the column now, so `docs/performance/history-04` rests its verdict on the one-millisecond row and
   says why the rows above it cannot price the delay.
-- **The OKX maker's 30 ms collapse was this defect, not the link.** On the seven UP-USDT-SWAP days the baseline
-  configuration's median net reads -2.28, -2.12, -2.64, -2.68 and -2.00 bps at 0/10/30/50/80 ms, with one positive
-  day of seven at every setting; the 30 ms run that used to place one to forty-four fills across the seven days now
-  places 240 to 777. `--base-spread-ticks=3 --refresh-price-ticks=1 --edge-cover-ticks=1` keeps 76 to 358 fills a day
-  at zero latency and 90 to 396 across the four delays, with closed capture +3.12 bps falling to +1.95 at 80 ms.
-  `docs/archive/studies.md` carries the grid and says what the old number was.
+- **The OKX maker's 30 ms collapse was this defect, not the link.** The repair is what made a 30 ms run place its quotes at
+  all: the pre-fix run placed one to forty-four fills across seven days, and at a true 30 ms the same configuration now
+  fills 89 to 138 a window. The five-point "0/10/30/50/80 ms" table this entry first carried was **microseconds** rather
+  than milliseconds -- a unit error corrected in the entry above -- which is why the fee ladder (2.02 bps to 5-13 at 30 ms)
+  is the number to read rather than the net.
 - `docs/performance/history-04`'s marked block re-derives to the new `then:` values; `code`, `docs` and `fast` green.
 
 ## The screen gains the tick width, and its readings move out of /tmp (2026-11-25)

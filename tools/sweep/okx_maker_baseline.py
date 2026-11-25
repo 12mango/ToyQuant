@@ -152,6 +152,13 @@ def main():
     parser.add_argument("--out", default="/tmp/tq/baseline.csv")
     args = parser.parse_args()
 
+    # The flag is microseconds, and a sweep written in milliseconds passes 80 where it meant 80000. Measured on
+    # 2026-11-25: a five-point grid labelled "0 to 80 ms" was five runs at 0 to 80 us, and every conclusion drawn from it
+    # was a statement about zero latency. The number cannot be corrected for the caller, so it is named in both units.
+    if 0 < args.latency_us < 1000:
+        print(f"# warning: --latency-us={args.latency_us} is {args.latency_us / 1000.0:g} ms, which is not a round "
+              f"trip; a millisecond value is 1000x this", file=sys.stderr)
+
     Path(args.cuts).mkdir(parents=True, exist_ok=True)
     bases = number_list(args.base_spread_grid)
     refreshes = number_list(args.refresh_grid, cast=int)
