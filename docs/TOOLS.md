@@ -32,6 +32,7 @@ does not.
 | tool | what it prints | run by |
 |---|---|---|
 | `tools/gate/verify_l2.sh` | one line per tier, and the field that moved | is the gate |
+| `tools/gate/quiet.sh` | the first and last few lines of a command's output, and the log that holds the rest | hand |
 | `tools/gate/check_docs.py` | `checked N recorded run(s), 0 mismatch(es)` | gate |
 | `tools/gate/check_written_fields.py` | `checked N metric fields, 0 unwritten` | gate |
 | `tools/gate/check_layering.py` | the include that crosses a layer boundary | gate |

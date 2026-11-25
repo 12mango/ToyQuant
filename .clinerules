@@ -170,12 +170,19 @@ compatibility path. Everything below assumes that page.
   times is taken for a loop and the session stops -- that happened on a gate log. Check `/tmp/<name>.exit` first
   (absent = still running), then do a real piece of work -- the next page to edit, the diff to read -- before looking
   again; or copy the log to a fresh name and read the copy, so each read is a new artifact. **The reader is the file-read
-  tool, never the shell**: `run_commands 'sleep 200; cat ...'` puts a long-lived child on the pty, which is the one shape
-  the completion detector loses, and on 2026-11-25 the tool call came back as an unpaired result -- `Messages with role
-  'tool' must be a response to a preceding message with 'tool_calls'` -- so every later request in that session was
-  refused and the work needed a VS Code restart. Enqueuing is a write and polling is a read, so a task can finish with no
-  shell in the loop at all; that is the point of `.run.sh queue`, and using it to start a job and then timing it with
-  `sleep` in the same shell throws the property away.
+  tool, never the shell, and the reason is measured rather than inferred: the detector loses a command whose output is
+  large, not one that waits.** Measured 2026-11-25 on this host, deliberately: `seq 1 1000 | sed ...` -- about 10 KB of
+  short lines -- lost its completion and the tool opened a new terminal, while a single 4000-character line,
+  `sleep 3; echo` and `sleep 12; echo` all reported normally. The attribution this bullet used to carry -- a `sleep`
+  holding the pty -- was tested and is **wrong**: the sleeps are fine and the `cat` after them is the leak. That session
+  lost 25 completions and the tool created a terminal per loss (its log reaches `terminal 25`, and `ps` showed fourteen
+  idle bash processes, each at a prompt with no child), which is exactly what made it read as a wedged shell: the shell
+  had finished and nothing was holding it. So a command's output is a screenful -- `grep -m3`, `head -5`, `cut -c1-120`,
+  `wc -l` -- and anything bigger goes through `tools/gate/quiet.sh [lines] -- <command>`, which prints the first and last
+  lines and names the whole log. The loss is not limited to big outputs -- two six-line ones went the same way in the
+  same hour -- so a lost completion is read back from the artifacts and never retyped: the command ran, and the tool
+  opens a fresh terminal by itself. Enqueuing is a write and polling is a read, so a task can finish with no
+  shell in the loop at all; that is the point of `.run.sh queue`.
   A request written **by hand** is written to `queue/<name>.req.tmp` and renamed, or it will be read mid-write: measured
   2026-11-25, an editor-written `docs2.req` was taken while it was still empty, the daemon's `set --` ran with no
   arguments, and a bare `status` executed instead of the gate -- with no `docs2.out` to read. `bash .run.sh queue <verb>`
