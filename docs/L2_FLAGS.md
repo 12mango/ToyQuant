@@ -60,6 +60,7 @@ watch a position build names both: `--order-size=10 --inventory-limit=100`.
 | gates | `--markout-cover`, `--flatten-band`, `--markout-horizon` | `--markout-cover` needs `active_l2`; `--markout-horizon` moves the cycle count behind the markout itself |
 | output | `--metrics`, `--trace-order`, `--record` | each adds a line or a file and changes no number |
 | the one that does change a number | `--close-out`, `--close-out-cross-bps` | flattens the carried position at the touch and prints `[WIND-DOWN]`, so `[PNL]` becomes realisable instead of a mark; the band puts the closing IOC through the midpoint for a live venue whose book is not the market leg's last snapshot |
+| the handover a replay cannot fill | `--settle-residual`, `--settle-taker-bps`, `--settle-slippage-ticks` | prices the leftover position against the far touch plus N ticks with a taker fee and prints `[SETTLE]` **beside** `[PNL]`; needs one book, and off by default leaves every recorded line where it was |
 | session | `--snapshot-out`, `--snapshot-in` | see below: the account comes back, the strategy's own state does not |
 | order leg | `--record-orders`, `--replay-orders` | see below: one file per venue, the reader that replays it, and the clock it replays on |
 | live order leg | `--live-orders`, `--venue-endpoint`, `--venue-max-orders`, `--venue-orders-per-second` | see below: the venue becomes the relay's order channel; the first three are required together and only `l2_replay` and `ws` take them, and the rate is optional beside the session cap |
@@ -80,6 +81,16 @@ floor, which is 0.5% under its mark. The demo's 2026-11-17 40 bps run crossed th
 against a mark of 64,368.86 put a 40 bps sell at 63,993, under the 64,047 floor, and the venue refused it; 20 bps sits at
 64,122. The fill is still the venue's own best price, so the band is the ceiling `spread_bps` reports, not the price the
 exit gets.
+
+`--settle-residual` is the exit a replay cannot print. Once the input ends the touch is a displayed quantity no print
+restores, so the closing IOC above finds no counterparty, fills nothing, and the residual is marked again -- measured on
+2026-11-25, `--close-out` over an eight-hour window returned numbers identical to the same run without it, to the last
+digit of every column. The settlement prices what a session that must hand over would pay instead: the far side of the
+touch, `--settle-slippage-ticks` (default 1) further out, and `--settle-taker-bps` (default 5) of taker fee on the
+notional crossed, reported as `[SETTLE]` with `settle_cost_usd`, `settle_cost_bps` and the marked result with that cost
+taken out (`settled_net_usd`, `settled_net_bps`). It does not book a fill, so `[PNL]` keeps its own definition and the
+ledger keeps the position the run actually left -- two numbers, one definition each. A two-book run refuses it, because
+the two books would be settled separately and the account's line cannot say which leg would be crossed.
 
 ## The eight whose semantics need more than a line
 

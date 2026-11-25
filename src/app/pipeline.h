@@ -112,6 +112,11 @@ class Pipeline
     // of the notional. It runs after the feed has finished and before the final mark, so the account it reports is a
     // closed one.
     WindDownSummary close_out(uint64_t ts);
+    // What the position left at the end would cost to hand over, priced the way a session that has to be flat would
+    // pay it: the far side of the touch, moved `slippage_ticks` past it, and a taker fee on the notional. `close_out`
+    // above cannot price that in a replay -- an IOC at the touch finds no counterparty once the input ends, so the
+    // exit fills nothing and the residual is marked again -- and this is the screen that stands in for it.
+    ResidualSettlement settle_residual(double taker_bps, double slippage_ticks) const;
 
     // How far through the touch a close may cross, in basis points of the midpoint. 0, the default, sends the IOC at
     // the touch, which is the in-process engine's own book and the number every recorded run uses. A live venue's book

@@ -1937,11 +1937,31 @@ buckets measured (00:00 to 19:30): **+0.34 to +5.69 bps**, with 13:30 +1.67, 14:
 is not paid for the flow being uninformed; he is paid for standing where the sweeps reach and the touch does not, which is
 the shape `--base-spread-ticks=3` and its passive layer already have.
 
-**That puts the block difference back where the cap ladder found it.** The deep prints are *more* frequent at night (719 a
-day at 00:00, 1,153 at 05:00) than inside the two hours (410 at 13:30, 733 at 14:30), so the opportunity is not what the
-night lacks. What it lacks is conversion: the same fills do not become closed round trips, and the cap that would stop the
-carry only halves the loss. Which fills our own quotes actually get -- bucketed by half hour, from one full-day run a day
-with the fills recorded -- is therefore the next measurement, and a second strategy module is not.
+**The handover priced, and the hold time that refutes the time stop (2026-11-25).** Two things were left open: what a
+window's leftover position would cost a session that has to hand over, and whether the night loses to inventory that stays
+too long. The first needed a flag, because `--close-out` cannot price it -- an IOC at the touch finds no counterparty once
+the input ends, and the eight-hour run with the flag returned numbers identical to the run without it. `--settle-residual`
+prices it instead: the far side of the touch, one tick past it, five basis points of taker fee, printed as `[SETTLE]`
+behind the marked `[PNL]`. The second needed only `--metrics`, whose `[ROUND_TRIPS]` line already carries
+`average_holding_seconds`.
+
+| block UTC | median net bps | settle cost a day, bps | median settled bps | days positive | median hold, s |
+|---|---:|---:|---:|---:|---:|
+| 13:30-15:30 | +15.13 | 0.73 to 4.88 | **+11.22** | 5 of 7 | **2.18** |
+| 00:00-08:00 | -16.51 | 0.16 to 1.41 | **-16.67** | 2 of 7 | **2.54** |
+
+**The handover is affordable and it does not change the answer.** In the two hours it costs 0.73 to 4.88 bps a day, and the
+settled median is +11.22 with the same 5 of 7 -- 74 per cent of the net median survives the worst case, so the window is
+not a result that depends on being able to walk away from its last contracts. At night it costs less still (0.16 to 1.41)
+because there is less maker notional behind the residual, and the block stays where it was at -16.67 on 2 of 7.
+
+**And the time stop has nothing to act on.** The hypothesis was that the night's fills are fine at five and thirty seconds
+and lose only by being held, so a "close at a touch after N seconds" rule would rescue the block. The holding times say
+otherwise: completed round trips live **0.62 to 4.37 seconds in the two hours and 1.53 to 10.75 at night** -- the same
+order, seconds rather than minutes, with no long-held population for a timer to reach. What the night carries is the
+residual at the end (`net_pos` -3 to +9 contracts), which is exactly what the cap ladder and this settlement price, and
+that residual is not a dwell. So the mechanism was not built: the measurement refuted the reason for it first, which is
+cheaper than a flag nobody should run.
 
 
 **What is next, and what would qualify another instrument.** The next measurement is a tiered re-screen of every swap

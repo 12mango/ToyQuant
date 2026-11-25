@@ -696,7 +696,60 @@ int main()
         assert(left != nullptr && left->quantity == 5);
     }
 
-    // A live close's fill is a report that arrives after the placement, so the close pumps the caller's drain instead
+    // What a handover would cost, for the runs that cannot cross the touch: the residual is priced against the far side
+    // of the touch plus a tick, with a taker fee on top, and the two costs are pinned here by hand on an instrument whose
+    // unit value is a fixed ten dollars. This is the screen `--settle-residual` prints, and it exists because the close
+    // above is the one an ended replay never gets.
+    {
+        test_support::TempFile settle_orders_file("pipeline_settle_orders.csv");
+        test_support::TempFile settle_trades_file("pipeline_settle_trades.csv");
+        std::ofstream settle_orders = settle_orders_file.open();
+        std::ofstream settle_trades = settle_trades_file.open();
+        L2MarketMakerBase settle_strategy(L2MarketMakerBaseConfig{.order_size = 10,
+                                                                   .base_spread = 0.5,
+                                                                   .inventory_limit = 100,
+                                                                   .tick_size = 1.0,
+                                                                   .signal_mode = L2SignalMode::Baseline});
+        MatchingEngine settle_engine(1.0, FeeSchedule{.maker_rate = 0.0002,
+                                                      .taker_rate = 0.0005,
+                                                      .quantity_scale = 1,
+                                                      .unit_notional_usd = 10.0});
+        Portfolio settle_portfolio(1, 1000.0, 10.0);
+        Pipeline settle_pipeline(settle_orders, settle_trades, settle_strategy, settle_engine,
+                                 settle_portfolio, 1.0);
+        settle_pipeline.set_collateral(1000.0, 10.0, 1, 1.0);
+        settle_pipeline.process_l2_market_view(L2MarketView{.symbol = "SETTLE",
+                                                            .ts = 10,
+                                                            .top = TopOfBook{100.0, 100, 101.0, 100},
+                                                            .micro_price = 100.5});
+        settle_pipeline.process_l2_market_trade(MarketTrade{11, "SETTLE", 100.0, 200, Side::Sell, 1, "deribit"});
+        // No close: the run ends long ten contracts, which is the state a window hands over.
+        const auto* held = settle_portfolio.find_position("SETTLE");
+        assert(held != nullptr && held->quantity == 10);
+        settle_portfolio.mark_to_market({{"SETTLE", 100.5}});
+
+        const ResidualSettlement settlement = settle_pipeline.settle_residual(5.0, 1.0);
+        assert(settlement.attempted());
+        assert(settlement.position == 10);
+        assert(std::abs(settlement.mark_price - 100.5) < 1e-9);
+        // A long is sold one tick past the bid, not at it.
+        assert(std::abs(settlement.settle_price - 99.0) < 1e-9);
+        // Ten contracts of a ten dollar face: 100 dollars of notional marked at the midpoint, crossed 1.5 lower.
+        assert(std::abs(settlement.slippage_usd - 100.0 * 1.5 / 100.5) < 1e-9);
+        // Five basis points of the same face, charged on what the exit trades.
+        assert(std::abs(settlement.fees_usd - 100.0 * 5.0 / 10'000.0) < 1e-9);
+        assert(std::abs(settlement.cost_usd - (settlement.slippage_usd + settlement.fees_usd)) < 1e-12);
+        const PnlSummary marked = settle_pipeline.summary().pnl;
+        // The same denominator every other basis point in this project divides by.
+        assert(std::abs(settlement.cost_bps - settlement.cost_usd / marked.maker_notional_usd * 10'000.0) <
+               1e-9);
+        // The line is the mark minus the handover, and it says so rather than replacing the mark.
+        assert(std::abs(settlement.net_after_settle_usd - (marked.net_pnl_usd - settlement.cost_usd)) < 1e-12);
+        assert(std::abs(settlement.net_after_settle_bps -
+                        settlement.net_after_settle_usd / marked.maker_notional_usd * 10'000.0) < 1e-9);
+        assert(settlement.net_after_settle_usd < marked.net_pnl_usd);
+    }
+
     // of reading the position once. The wait is bounded and it changes no decision: a venue that shows nothing inside
     // the budget still returns its residual and says `no_liquidity`, which is the one case the pump exists to tell
     // apart from a fill.

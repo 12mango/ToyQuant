@@ -105,6 +105,13 @@ struct AppConfig
     // How far through the touch the closing IOC may cross, in basis points of the midpoint. 0 is the touch, which is
     // the in-process book; a live run passes a band because the venue's book is not the market leg's last snapshot.
     double close_out_cross_bps = 0.0;
+    // What a leftover position would cost to hand over, printed as its own [SETTLE] line: the far side of the touch,
+    // `settle_slippage_ticks` past it, plus `settle_taker_bps` of taker fee. A replay's `--close-out` cannot price this
+    // -- an IOC at the touch finds no counterparty once the input ends -- so the residual would otherwise be a mark
+    // with no cost beside it. Off, the default, leaves every recorded line exactly where it was.
+    bool settle_residual = false;
+    double settle_taker_bps = 5.0;
+    double settle_slippage_ticks = 1.0;
     // The non-market-making signal. A run that does not name --trend-params leaves `set` false and the
     // strategy's own defaults in force.
     TrendParams trend{};

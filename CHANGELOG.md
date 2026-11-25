@@ -7,7 +7,27 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
-## The night is as dense as the good window and still loses, and the maker's edge is depth rather than hour (2026-11-25)
+## The handover is priced, and the hold time refutes the time stop (2026-11-25)
+
+- **`--settle-residual`** prices what a run's leftover position would cost to hand over, because `--close-out` cannot: once
+  the replay's input ends the touch is a displayed quantity no print restores, so the closing IOC finds no counterparty --
+  measured, the eight-hour run with `--close-out` returned numbers identical to the run without it, down to the last digit
+  of every column. The flag crosses the residual at the far touch, `--settle-slippage-ticks` (1) further out, paying
+  `--settle-taker-bps` (5) of taker fee, and prints `[SETTLE]` with `settle_cost_usd`, `settle_cost_bps` and the marked
+  result less that cost. It books no fill, so `[PNL]` keeps its own definition; it refuses a two-book run, and off by
+  default it changes no recorded line. `pipeline_accounting_test` pins the arithmetic by hand on a ten-dollar face.
+- **The two hours survive the worst case.** Over the same seven days the settlement costs 0.73 to 4.88 bps a day there and
+  the median of the settled result is **+11.22** on the same 5 of 7 -- 74 per cent of the net median -- so the window does
+  not depend on walking away from its last contracts. At night it costs 0.16 to 1.41 bps and the block stays at -16.67 on
+  2 of 7.
+- **The time stop was refuted before it was built.** Completed round trips live **0.62 to 4.37 seconds** in the two hours
+  and **1.53 to 10.75 at night**, from `--metrics`' own `average_holding_seconds`: seconds, not minutes, and no long-held
+  population for a timer to reach. What the night carries is the residual at the end, which the cap ladder and the
+  settlement already price. Nothing was added to the strategy.
+- `tools/sweep/okx_maker_baseline.py` gains `--hold-time` (asks the run for `--metrics`), `--settle-residual` and
+  `--settle-taker-bps`, and three columns: `hold_s`, `settle_bps`, `settled_bps`. `docs/L2_FLAGS.md` documents the flags,
+  `docs/archive/studies.md` carries the table. `pipeline_accounting_test` green, `docs` and `fast` green.
+
 
 - **`tools/study/okx_tape_toxicity.py`** measures the tape's own adverse selection with no strategy in it: for each print,
   the mid's move over a stated horizon with the aggressor's sign, negated -- what the passive side made of that print --

@@ -565,6 +565,52 @@ WindDownSummary Pipeline::close_out(uint64_t ts)
     return send_close_order(ts);
 }
 
+ResidualSettlement Pipeline::settle_residual(double taker_bps, double slippage_ticks) const
+{
+    ResidualSettlement settlement;
+    const int64_t position = fill_accounting_.position();
+    // A flat run has nothing to hand over, and a line saying so would be noise on every run that asked for the
+    // screen and did not need it.
+    if (position == 0 || latest_quotes_.empty()) return settlement;
+    const BboQuote& quote = latest_quotes_.begin()->second;
+    if (quote.bid_price <= 0.0 || quote.ask_price <= 0.0) return settlement;
+
+    const double mid = 0.5 * (quote.bid_price + quote.ask_price);
+    const double units = static_cast<double>(std::llabs(position)) /
+                         static_cast<double>(std::max<uint64_t>(1, quantity_scale_));
+    const double tick = std::max(tick_size_, PRICE_TICK_SIZE);
+    const double slip = std::max(0.0, slippage_ticks) * tick;
+    // A long is sold against the bid and a short is bought from the offer, each one tick further away than the touch:
+    // a handover that cannot wait is filled at the price that clears it rather than at the one that looks fair.
+    const double settle_price = position > 0 ? quote.bid_price - slip : quote.ask_price + slip;
+    if (settle_price <= 0.0) return settlement;
+
+    const double unit_value_at_mark = unit_notional_at(unit_notional_usd_, multiplier_, mid);
+    const double unit_value_at_settle = unit_notional_at(unit_notional_usd_, multiplier_, settle_price);
+    const double notional_at_mark = units * unit_value_at_mark;
+
+    settlement.position = position;
+    settlement.mark_price = mid;
+    settlement.settle_price = settle_price;
+    settlement.taker_bps = std::max(0.0, taker_bps);
+    settlement.slippage_ticks = std::max(0.0, slippage_ticks);
+    settlement.slippage_usd = notional_at_mark * std::abs(mid - settle_price) / mid;
+    settlement.fees_usd = units * unit_value_at_settle * settlement.taker_bps / 10000.0;
+    settlement.cost_usd = settlement.slippage_usd + settlement.fees_usd;
+
+    const double maker_notional = fill_accounting_.maker_notional_usd();
+    if (maker_notional > 0.0)
+    {
+        settlement.cost_bps = settlement.cost_usd / maker_notional * 10000.0;
+        // The marked result with the handover taken out of it, on the denominator every other bps here uses.
+        const PnlSummary pnl =
+            RunAccounting::pnl_summary(portfolio_, maker_notional, fill_accounting_.trade_reports());
+        settlement.net_after_settle_usd = pnl.net_pnl_usd - settlement.cost_usd;
+        settlement.net_after_settle_bps = settlement.net_after_settle_usd / maker_notional * 10000.0;
+    }
+    return settlement;
+}
+
 WindDownSummary Pipeline::send_close_order(uint64_t ts)
 {
     WindDownSummary summary;

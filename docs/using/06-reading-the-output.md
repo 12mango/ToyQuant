@@ -167,5 +167,13 @@ The live exit itself is a reduce-only market order, so its `spread_bps` is the c
 position's notional rather than a band, and a fractional position is closed by the whole-contract round-up the venue
 caps at the position.
 
+**The exit a replay cannot fill.** Once a replay's input ends there is no print left to take the other side, so
+`--close-out` finds no counterparty and the residual is marked again -- measured 2026-11-25, an eight-hour run with the
+flag returned numbers identical to the run without it, to the last digit of every column. `--settle-residual` prices the
+handover instead of performing it: the far side of the touch, one tick past it (`--settle-slippage-ticks`), plus a taker
+fee (`--settle-taker-bps`, default 5), reported as `[SETTLE]` with `settle_cost_usd`, `settle_cost_bps` and
+`settled_net_usd`/`settled_net_bps` -- the marked result with that cost taken out. It books no fill, so `[PNL]` keeps its
+definition and the ledger keeps the position the run left; the two numbers are read side by side.
+
 ///
 

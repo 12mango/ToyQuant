@@ -231,7 +231,45 @@ struct WindDownSummary
     std::string to_log_string() const;
 };
 
-// What the account's marked equity did over the run, for the runs that asked for it with --metrics. The
+// What a run's leftover position would cost to hand over, priced the pessimistic way rather than the convenient one.
+// A replay's exit at the touch fills nothing once the input ends -- the touch is a displayed quantity no print restores
+// and an IOC there finds no counterparty -- so `--close-out` prices no exit at all. This is the screen instead: the
+// residual is marked against the far side of the touch, one tick past it, with a taker fee on top, and the result is
+// reported beside the marked PnL rather than folded into it. Two numbers with one definition each: `[PNL]` keeps the
+// mark it always had, and this line says what a real handover would add to it.
+struct ResidualSettlement
+{
+    int64_t position{0};
+    double mark_price{0.0};
+    // The price the residual would actually cross at: the far touch, moved `slippage_ticks` further.
+    double settle_price{0.0};
+    double taker_bps{0.0};
+    double slippage_ticks{0.0};
+    double slippage_usd{0.0};
+    double fees_usd{0.0};
+    double cost_usd{0.0};
+    double cost_bps{0.0};
+    double net_after_settle_usd{0.0};
+    double net_after_settle_bps{0.0};
+
+    bool attempted() const
+    {
+        return position != 0;
+    }
+
+    std::string to_log_string() const
+    {
+        std::ostringstream out;
+        out << "settle_position_units=" << position << " settle_mark_price=" << mark_price
+            << " settle_price=" << settle_price << " settle_taker_bps=" << taker_bps
+            << " settle_slippage_ticks=" << slippage_ticks << " settle_slippage_usd=" << slippage_usd
+            << " settle_fees_usd=" << fees_usd << " settle_cost_usd=" << cost_usd
+            << " settle_cost_bps=" << cost_bps << " settled_net_usd=" << net_after_settle_usd
+            << " settled_net_bps=" << net_after_settle_bps;
+        return out.str();
+    }
+};
+
 // equity is sampled once per 60-second bucket, so every figure here is a per-bucket rate annualized by the
 // bucket count a 24/7 year holds. `max_drawdown` is the depth of the worst decline and
 // `max_drawdown_duration_seconds` is how long the curve took to win that peak back, which are two different

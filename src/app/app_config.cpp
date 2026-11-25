@@ -82,6 +82,9 @@ constexpr std::string_view kCloseOutFlag = "--close-out";
 // How far through the touch a live close may cross. 0 is the in-process touch; a live venue needs a band because its
 // book is not the market leg's last snapshot.
 constexpr std::string_view kCloseOutCrossPrefix = "--close-out-cross-bps=";
+constexpr std::string_view kSettleResidualFlag = "--settle-residual";
+constexpr std::string_view kSettleTakerPrefix = "--settle-taker-bps=";
+constexpr std::string_view kSettleSlippagePrefix = "--settle-slippage-ticks=";
 constexpr std::string_view kTrendParamsPrefix = "--trend-params=";
 constexpr std::string_view kTrendEntryPrefix = "--trend-entry=";
 constexpr std::string_view kBaseSpreadPrefix = "--base-spread-ticks=";
@@ -313,6 +316,10 @@ void print_usage(const char* executable)
                      "[EXECUTION_ALGO]\n";
         std::cerr << "   band: --flatten-band=N (l2_replay) reduces a position above N units with a taker "
                      "order at the touch instead of carrying it into the final mark\n";
+        std::cerr << "   settle: --settle-residual prices the leftover position's handover -- the far side of the "
+                     "touch, --settle-slippage-ticks (default 1) past it, and --settle-taker-bps (default 5) of "
+                     "taker fee -- and prints [SETTLE] beside the marked [PNL]; one book only, and off by default "
+                     "so no recorded line moves\n";
         std::cerr << "   record: --record=PREFIX (l2_replay) writes PREFIX_trades.csv and "
                      "PREFIX_depth.csv in the replay shapes, so the stream this run was fed can be "
                      "replayed again\n";
@@ -1028,6 +1035,30 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                 }
                 cfg.close_out_cross_bps = bps;
             }
+            else if (flag == kSettleResidualFlag)
+                cfg.settle_residual = true;
+            else if (flag.compare(0, kSettleTakerPrefix.size(), kSettleTakerPrefix) == 0)
+            {
+                double bps = 0.0;
+                std::istringstream stream(flag.substr(kSettleTakerPrefix.size()));
+                if (!(stream >> bps) || bps < 0.0)
+                {
+                    error = "--settle-taker-bps must be a non-negative number of basis points";
+                    return false;
+                }
+                cfg.settle_taker_bps = bps;
+            }
+            else if (flag.compare(0, kSettleSlippagePrefix.size(), kSettleSlippagePrefix) == 0)
+            {
+                double ticks = 0.0;
+                std::istringstream stream(flag.substr(kSettleSlippagePrefix.size()));
+                if (!(stream >> ticks) || ticks < 0.0)
+                {
+                    error = "--settle-slippage-ticks must be a non-negative number of ticks";
+                    return false;
+                }
+                cfg.settle_slippage_ticks = ticks;
+            }
             else if (flag.compare(0, kTrendParamsPrefix.size(), kTrendParamsPrefix) == 0)
             {
                 const std::string text = flag.substr(kTrendParamsPrefix.size());
@@ -1448,6 +1479,11 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
             {
                 error = "--funding-rates names one history for one instrument; a two-symbol run needs one "
                         "history per leg, which is a shape the flag does not have yet";
+                return false;
+            }
+            if (cfg.settle_residual)
+            {
+                error = "--settle-residual prices one book's handover, and a two-book run has two to settle";
                 return false;
             }
         }

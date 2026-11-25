@@ -1080,6 +1080,15 @@ void Application::run_l2_session_mode() const
                " incremental_snapshot_batches=", validation.incremental_snapshot_batches,
                crossed_book_suffix(l2_book), trade_reference_suffix(pipeline.trade_reference()));
     logger.log(pipeline.summary().to_log_string());
+    if (cfg_.settle_residual)
+    {
+        // The exit a replay cannot print: `--close-out` above went out against a touch that no print restores, so the
+        // position is marked and this line says what handing it over would cost. Its own line, so the [PNL] above
+        // keeps the definition every recorded run has.
+        const ResidualSettlement settlement =
+            pipeline.settle_residual(cfg_.settle_taker_bps, cfg_.settle_slippage_ticks);
+        if (settlement.attempted()) logger.log("[SETTLE] ", settlement.to_log_string());
+    }
     logger.log("[EXPOSURE] ", pipeline.exposure().to_log_string());
     // The session as this run leaves it, for a process that has to take over. Written last, after the account's
     // final mark, so a snapshot and the summary above describe the same moment.

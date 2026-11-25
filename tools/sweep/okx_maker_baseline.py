@@ -41,7 +41,7 @@ WINDOW_TOOL = ROOT / "tools/study/okx_book_window.py"
 SLICE_TOOL = ROOT / "tools/fetch/slice.py"
 COLUMNS = ["day", "model", "base", "refresh", "latency_us", "fills", "fill_rate", "fees_bps", "gross_bps", "closed_bps",
            "closed_per_fill_bps", "net_bps", "breakeven_bps", "capture_ticks", "markout_ticks", "zero_queue",
-           "max_inv", "net_pos", "stale"]
+           "max_inv", "net_pos", "hold_s", "settle_bps", "settled_bps", "stale"]
 
 
 def number_list(text, cast=float):
@@ -149,6 +149,13 @@ def main():
     parser.add_argument("--latency-us", type=int, default=0,
                         help="order and cancel latency the replayer holds each leg for, in microseconds")
     parser.add_argument("--extra", default="", help="further l2_replay flags, space separated")
+    parser.add_argument("--hold-time", action="store_true",
+                        help="ask the run for --metrics, which is what makes it print the round trips' holding time")
+    parser.add_argument("--settle-residual", action="store_true",
+                        help="price the leftover position as a handover: the far touch, one tick past it, plus a taker "
+                             "fee -- the exit a replay cannot fill")
+    parser.add_argument("--settle-taker-bps", type=float, default=5.0,
+                        help="the taker fee the handover pays, in basis points")
     parser.add_argument("--out", default="/tmp/tq/baseline.csv")
     args = parser.parse_args()
 
@@ -186,6 +193,13 @@ def main():
                     if args.latency_us > 0:
                         shape.append(f"--order-latency-us={args.latency_us}")
                         shape.append(f"--cancel-latency-us={args.latency_us}")
+                    if args.hold_time:
+                        # One line the run prints only when asked, because the sampling is a per-event cost.
+                        shape.append("--metrics")
+                    if args.settle_residual:
+                        shape.append("--settle-residual")
+                        shape.append(f"--settle-taker-bps={args.settle_taker_bps:g}")
+                        shape.append("--settle-slippage-ticks=1")
                     command = [str(BIN), "l2_replay", str(trades), str(cut), args.symbol, "0", "active_l2", "1", model,
                                "--fast-validation", f"--order-size={args.order_size}",
                                f"--inventory-limit={args.inv_limit}"] + shape + [p for p in args.extra.split() if p]
@@ -212,6 +226,13 @@ def main():
                            "zero_queue": fields.get("queue_zero_orders", "?"),
                            "max_inv": fields.get("max_abs_inventory", "?"),
                            "net_pos": fields.get("strategy_net_position", "?"),
+                           # How long an inventory lived before it came back, from the [ROUND_TRIPS] line `--metrics`
+                           # prints; "n/a" when the run did not ask or completed no round trip.
+                           "hold_s": fields.get("average_holding_seconds", "n/a"),
+                           # The handover screen: what the leftover position would cost to cross out of, and the
+                           # marked result with that cost taken out. Both are the engine's own figures.
+                           "settle_bps": fields.get("settle_cost_bps", "n/a"),
+                           "settled_bps": fields.get("settled_net_bps", "n/a"),
                            "stale": fields.get("stale_trades", "0")}
                     rows.append(row)
                     print(f"# {day_text} {model} base={row['base']} refresh={row['refresh']}: "
