@@ -6,7 +6,7 @@
 #include "app/trend_params.h"
 #include "common/instrument_spec.h"
 #include "lines/legacy/l1_market_maker_config.h"
-#include "strategy/execution_l2.h"
+#include "strategy/execution/execution_l2.h"
 #include "strategy/strategy.h"
 
 // Everything only the frozen L1 line reads. Five flat fields became one member so that the live

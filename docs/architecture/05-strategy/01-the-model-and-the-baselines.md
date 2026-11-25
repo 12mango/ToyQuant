@@ -5,7 +5,7 @@ folded at the end.
 
 ## 6. Strategy: The Main Decision Module
 
-**Files:** `src/strategy/strategy.h`, `src/strategy/l2_market_maker_base.h`, `src/strategy/active_l2_market_maker.h`, `src/strategy/trend_l2.h`, `src/strategy/execution_l2.h`, `src/strategy/legacy/baseline_market_makers.h`, `src/strategy/legacy/inventory_aware_l2_market_maker.h`, `src/lines/legacy/l1_market_maker.h`
+**Files:** `src/strategy/strategy.h`, `src/strategy/maker/l2_market_maker_base.h`, `src/strategy/maker/active_l2_market_maker.h`, `src/strategy/signal/trend_l2.h`, `src/strategy/execution/execution_l2.h`, `src/strategy/maker/legacy/baseline_market_makers.h`, `src/strategy/maker/legacy/inventory_aware_l2_market_maker.h`, `src/lines/legacy/l1_market_maker.h`
 
 Eight files and four families, which is worth stating because the file names alone do not say it. `trend_l2.h` is deliberately outside the maker families: it has no quote lifecycle, only a target position. `execution_l2.h` is outside all of them and outside the signal families too: it has no view about direction, only a parent order and a schedule. `strategy.h` is the interface everything implements, and it is where the L2 family stops depending on the L1 one: `tools/gate/check_layering.py` keeps that true rather than trusting it, because a `legacy/` include anywhere under `src/strategy/` fails the gate. `baseline_market_makers.h` holds `NaiveMarketMaker` and `OptimizedMarketMaker`, neither of which implements `on_l2_market_view`: they see the touch and nothing else, and they are the baseline the rest is measured against. The active family is three files with one inheritance chain between them, and the middle one is the root:
 
@@ -216,7 +216,7 @@ accepted.
 | L2 replay | `L2MarketView` + trades | Depth-aware quoting and queue diagnostics | Queue-aware L2 matching |
 
 The three baseline makers below are the touch-only strategies the L2 line is measured against. None of them reads the L2
-ladder, no recorded decision selects one, and the two that are maker classes now live in `src/strategy/legacy/`; they are
+ladder, no recorded decision selects one, and the two that are maker classes now live in `src/strategy/maker/legacy/`; they are
 documented in full inside the fold because the comparisons in this section mean "a quote at the touch" and a reader
 checking one needs their behaviour -- not because they are part of the mainline.
 

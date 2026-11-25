@@ -679,7 +679,7 @@ which is what makes the two venues' numbers comparable at all.
 
 The maker's risk controls are all ceilings -- exposure, a kill switch, a fat-finger band, a rate cap -- and a floor
 asks the other direction: when the market is quiet, is there anything to earn after the fee?
-`src/strategy/active_l2_market_maker.h` already carries a volatility *halt*, and its own comment records why it
+`src/strategy/maker/active_l2_market_maker.h` already carries a volatility *halt*, and its own comment records why it
 cannot be a threshold at this feed rate: it is an EWMA of the midpoint's move per second, and every threshold from
 1.0 to 50.0 lands in the same place. The measurement below is the window that comment asks for.
 

@@ -3,7 +3,7 @@
 *Section 6 of the module reference. The index is [`../ARCHITECTURE.md`](../ARCHITECTURE.md).*
 
 The decision layer: what a strategy is handed, what it has to hand back, the states its orders move through, and every
-family the repository has — the three baselines and the `active_l2` mainline.
+family the repository has -- the three baselines, the `active_l2` mainline, and the two non-maker lines beside them.
 
 Two parts, because the questions arrive two ways: how the strategy layer is shaped and what the simple families do with
 it, and what the mainline actually computes from a book.
@@ -11,6 +11,24 @@ it, and what the mainline actually computes from a book.
 **To write a strategy of your own rather than read one of these**, the task-oriented version is
 [the guide's last part](../using/08-writing-a-strategy.md): the interface, the two seams, registration and what a strategy
 may not own.
+
+## The two lines, and the directories that say which one a file is in
+
+The layer holds two kinds of strategy that differ in *what they decide*, and the directory is the answer to "which kind is
+this" -- it was not, before: three files ending in `_l2.h` sat beside each other while one of them quoted, one set a target
+position and one followed a schedule.
+
+| directory | what a strategy there decides | who lives there |
+|---|---|---|
+| `src/strategy/maker/` | a **quote**: two prices and two sizes, refreshed against the book | `L2MarketMakerBase`, `ActiveL2MarketMaker`, and under `legacy/` the two maker classes the mainline left behind |
+| `src/strategy/signal/` | a **position**: a target it opens and closes, with no quote lifecycle | `TrendL2Strategy` |
+| `src/strategy/execution/` | a **schedule**: a parent order worked over time, with no direction of its own | `ExecutionL2Strategy` |
+
+`strategy.h` stays at the top because both kinds implement it, and the seams it already exposes are why a new line needs no
+new interface: `on_l2_market_view` is what a maker answers, `on_market_trade` is what a signal needs to measure itself, and
+`cancel_requests` is what a quote has and a schedule may not. A new strategy joins a line by being *of that kind* and going
+in that directory; the factory maps mode names to classes and nothing else, which is what keeps the two lines free to grow
+apart.
 
 ## How to read this
 

@@ -41,8 +41,12 @@ def core_files():
     for path in CORE_EXTRA:
         files.append(Path(path))
     for directory in CORE_DIRS:
+        # Recursive on purpose. When the strategy layer grew subdirectories -- `maker/`, `signal/`, `execution/` --
+        # a plain `glob("*.h")` stopped seeing everything below them, so the check that had just been made stricter
+        # by accident covered fewer files than before: the count fell from 36 to 34 without a single file leaving the
+        # core. A layout change must not be able to loosen this rule, so it walks the whole tree under each directory.
         for suffix in ("*.h", "*.cpp"):
-            files.extend(sorted(Path(directory).glob(suffix)))
+            files.extend(sorted(Path(directory).rglob(suffix)))
     return [path for path in files if path.is_file()]
 
 

@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <vector>
 
-#include "strategy/l2_market_maker_base.h"
+#include "strategy/maker/l2_market_maker_base.h"
 
 struct InventoryAwareL2MarketMakerConfig
 {

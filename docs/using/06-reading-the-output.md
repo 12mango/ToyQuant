@@ -125,7 +125,7 @@ incomplete, so the line is read with them in mind.
 /// details | The warm-up, and the exit a mark is not money
 
 **The warm-up.** The mainline does not quote until it has seen 16 trades and 2 valid views (`warmup_trades` and
-`warmup_views` in `src/strategy/active_l2_market_maker.h`), and `trend_l2` waits for its slow average before it will act.
+`warmup_views` in `src/strategy/maker/active_l2_market_maker.h`), and `trend_l2` waits for its slow average before it will act.
 The *book* has no cold period to match: the incremental reader's first batch is the day's snapshot, so the first decision
 is taken on a two-sided book. On the recorded BTC window the warm-up is shorter than a second -- 16 trades at that
 window's own density of about 4,100 a minute is 0.23 s, against a 0.49 h window -- and on the two-hour SPY window about
