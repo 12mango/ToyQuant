@@ -7,10 +7,10 @@
 #include "lines/legacy/l1_market_maker.h"
 #include "strategy/active_l2_market_maker.h"
 #include "strategy/execution_l2.h"
-#include "strategy/inventory_aware_l2_market_maker.h"
+#include "strategy/legacy/inventory_aware_l2_market_maker.h"
 #include "strategy/l2_market_maker_base.h"
 #include "strategy/trend_l2.h"
-#include "strategy/baseline_market_makers.h"
+#include "strategy/legacy/baseline_market_makers.h"
 
 namespace
 {
