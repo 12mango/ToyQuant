@@ -1829,6 +1829,55 @@ run reaches it exactly. On a venue where the cap is the risk budget, two layers 
 a free one.
 
 
+**The half-hour profile, and it refutes the "dead wide" explanation (2026-11-25).** The eight-hour window lost its edge
+and the guess was that the quiet hours carry a wide book that nobody trades -- a gate reading only the spread would quote
+into it and be picked off. `tools/study/okx_halfhour_profile.py` measures the two quantities that guess is about, with no
+P&L and no window chosen by outcome: the duration-weighted half spread and the prints a second, per half hour, median
+across the seven days.
+
+| bucket UTC | half spread bps | median trades/s | min trades/s | days at or above 2.5/s |
+|---|---:|---:|---:|---:|
+| 02:00 | 4.83 | 2.476 | 1.489 | 3 of 7 |
+| 02:30 | 4.79 | 2.664 | 1.462 | 4 of 7 |
+| 05:00 | 5.26 | 3.179 | 1.658 | 4 of 7 |
+| 07:00 | 5.11 | 2.713 | 0.467 | 4 of 7 |
+| 08:00 | 5.27 | 1.780 | 0.568 | 2 of 7 |
+| 09:00 | 5.68 | 1.322 | 0.881 | 2 of 7 |
+| 11:00 | 7.10 | 1.842 | 0.839 | 1 of 7 |
+| 12:00 | 5.34 | 1.882 | 1.193 | 2 of 7 |
+| 13:00 | 5.30 | 2.102 | 0.756 | 2 of 7 |
+| 13:30 | 6.06 | 1.700 | 0.768 | 2 of 7 |
+| 14:30 | 6.02 | 2.857 | 1.131 | 4 of 7 |
+| 15:30 | 5.29 | 2.909 | 1.641 | 5 of 7 |
+| 16:00 | 5.26 | 2.199 | **0.000** | 3 of 7 |
+| 17:00 | 5.05 | 2.203 | **0.000** | 3 of 7 |
+| 20:00 | 5.43 | 1.293 | **0.000** | 1 of 7 |
+| 23:00 | 4.90 | 1.289 | **0.000** | 1 of 7 |
+
+**The spread does not widen when the flow leaves.** Across all forty-eight buckets it sits between 4.78 and 7.10 bps --
+5.27 at 08:00, 6.06 at 13:30, 5.43 at 20:00 -- so on this instrument a quiet book is not a wider book, and the gate cannot
+be fooled by "dead width" because there is no dead width to be fooled by. That is the opposite of the guess, and it is a
+property of the instrument: a 0.0001 tick on a 0.19 price makes one tick half a basis point, so a two-to-three-tick book is
+five bps whatever the hour.
+
+**What does move is the flow, and only at the end of the day.** The median rate runs 0.93 to 3.18 prints a second all day;
+the *minimum across days* is zero in every bucket from 16:00 onward and 0.38 to 1.66 before it. So the evening is genuinely
+dead on at least one day of seven, which is what the eight-hour replay's two fills were telling us -- and the morning is
+not: 08:00-13:00 prints at 1.3 to 2.1 a second against the good window's 1.7 to 2.9.
+
+**And the 2.5-a-second gate the equity screen used does not transfer.** Only six of the forty-eight buckets have a *median*
+at or above 2.5, two of them in the middle of the night, and 13:30 -- the middle of the window this instrument was measured
+in -- clears it on two days of seven. A gate at that number would shut almost every bucket, including the two hours the
+line actually earned in, while 02:30 would pass it on four days. **A density gate is therefore worth building only with a
+threshold read off this profile** -- 1.5 a second would open 08:00-16:00 and close the evening -- and as a *registered*
+experiment, not as an import from another market's screen.
+
+**So the eight-hour loss is not the book's state.** Same half spread, comparable flow either side of the two hours, and the
+closed capture per fill fell about ten-fold. What differs is which prints the quotes met, and that is toxicity, which this
+profile cannot see: a half-hour table of the markout on the strategy's own fills is the measurement that would, and it is a
+different tool because it needs the run rather than the archive.
+
+
 **What is next, and what would qualify another instrument.** The next measurement is a tiered re-screen of every swap
 inside the same 13:30-15:30 UTC window -- thirty ticker reads twenty seconds apart -- with the book's median width reported
 beside the half-spread, because a one-tick book cannot hold a quote three ticks behind the touch whatever its bps figure

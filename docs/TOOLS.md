@@ -72,6 +72,7 @@ does not.
 | `tools/study/measure_l2_baseline.py` | replay seconds, and the hash of the output | hand |
 | `tools/study/okx_book_window.py` | a day archive's time-weighted half-spread inside a UTC window, and the window cut that opens on a snapshot | hand |
 | `tools/study/okx_book_depth.py` | the same cut's top two levels, time-weighted: the size a quote would stand behind, and the USD it is worth | hand |
+| `tools/study/okx_halfhour_profile.py` | a day's half-hour profile -- duration-weighted half spread and trades a second -- with no P&L, for deciding a window on the book rather than on a run | hand |
 | `tools/study/okx_spread_screen.py` | every swap's median half-spread and tick width over repeated ticker reads, against three thresholds, archiving its reads | hand |
 | `tools/study/plot_report.py` | quotes, distance, inventory and equity as one PNG | hand |
 | `tools/study/pnl_interval.py` | a mean beside the interval it carries | both |

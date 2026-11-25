@@ -7,6 +7,27 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The half-hour profile says the quiet hours are thin, not wide (2026-11-25)
+
+- **`tools/study/okx_halfhour_profile.py`** profiles a day in half-hour buckets with two physical quantities and no P&L:
+  the duration-weighted half spread and the prints a second, reported as medians across days with the worst day beside them
+  and a count of the days at or above a stated rate.
+- **The "dead wide" explanation of the eight-hour loss does not survive it.** The half spread runs 4.78 to 7.10 bps across
+  all forty-eight buckets -- 5.27 at 08:00, 6.06 at 13:30, 5.43 at 20:00 -- so on this instrument a quiet book is not a
+  wider one. A 0.0001 tick on a 0.19 price makes one tick half a basis point, and a two-to-three-tick book is five bps at
+  any hour.
+- **The flow is what moves, and only after 16:00 UTC**: the median rate is 0.93-3.18 prints a second all day, but the
+  worst day of the seven has **zero prints** in every bucket from 16:00 on and 0.38-1.66 before it. The morning is not
+  quiet: 08:00-13:00 prints at 1.3-2.1 a second against the good window's 1.7-2.9.
+- **The equity screen's 2.5-prints-a-second gate does not transfer**: only six of forty-eight buckets have a median at or
+  above it, two of them at 02:00-02:30, and 13:30 clears it on two days of seven. A gate at that number would close the two
+  hours the line earned in. A density gate is worth building only with a threshold read off this profile -- 1.5 a second
+  would open 08:00-16:00 and close the evening -- and as a registered experiment.
+- **So the eight-hour loss is toxicity rather than inactivity**: same half spread, comparable flow, and the closed capture
+  per fill fell about ten-fold. The next measurement that could see it is a per-bucket markout on the strategy's own fills,
+  which needs the run rather than the archive.
+- `docs/archive/studies.md` carries the table; `docs/TOOLS.md` the tool. `docs` and `fast` green.
+
 ## The second layer is what buys fills, and the size is what sells them (2026-11-25)
 
 - **`--extra-layers=L`** quotes L further passive layers one tick behind the first, at the same size, inside the same
