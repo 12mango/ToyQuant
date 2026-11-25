@@ -128,6 +128,11 @@ struct L2MarketMakerBaseConfig
     // alone instead of being carried into the mark; `inventory_limit` is the same rule at 1.0. Zero, the default,
     // quotes both sides until the cap.
     double onesided_inventory_frac{0.0};
+    // The distance between extra layers, in basis points of the reference price, when a fixed tick would collapse them:
+    // at a 0.76 bps tick "one more tick" puts the second layer on almost the same price as the first. Rounded outward to
+    // the tick grid and floored at one tick, so a layer is never closer than the run asked for. Zero, the default,
+    // leaves one tick a layer and every recorded number where it was.
+    double layer_step_bps{0.0};
 };
 
 // The L2 market maker. Strategies that add behaviour to it derive from it rather than holding one:
@@ -600,7 +605,15 @@ class L2MarketMakerBase : public Strategy
         }
         for (uint64_t layer = 1; layer <= config_.extra_layers; ++layer)
         {
-            const double step = static_cast<double>(layer) * config_.tick_size;
+            // The layer's own step: one tick by default, or a basis-point distance when the run asks for one. The tick
+            // form is the collapse the fine-tick instruments show -- a 0.76 bps tick puts "one more tick" almost on the
+            // first layer's price -- so the basis-point form is rounded outward to the grid and floored at one tick.
+            double step = static_cast<double>(layer) * config_.tick_size;
+            if (config_.layer_step_bps > 0.0 && config_.tick_size > 0.0 && fair_price > 0.0)
+            {
+                const double asked = static_cast<double>(layer) * config_.layer_step_bps / 1e4 * fair_price;
+                step = std::max(1.0, std::ceil(asked / config_.tick_size)) * config_.tick_size;
+            }
             if (buy_quantity > 0 && bid_price - step > 0.0)
                 orders.emplace_back(Side::Buy, symbol, bid_price - step, buy_quantity, 0);
             if (sell_quantity > 0)

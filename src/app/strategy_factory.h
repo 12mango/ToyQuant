@@ -42,6 +42,8 @@ struct StrategyFactoryConfig
     double base_spread_bps = 0.0;
     // The adding side stops at this fraction of the inventory cap, from --onesided-inventory-frac. 0 quotes both sides.
     double onesided_inventory_frac = 0.0;
+    // The step between extra layers in basis points, from --layer-step-bps; 0 leaves one tick a layer.
+    double layer_step_bps = 0.0;
     // The inventory-aware strategy's quote shift at a full inventory, in ticks. 0 leaves its own default.
     double inventory_shift_ticks_override = 0.0;
     uint64_t refresh_price_ticks_override = 0;

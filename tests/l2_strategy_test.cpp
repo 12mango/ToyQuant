@@ -439,6 +439,22 @@ int main()
     assert(std::abs(layered_orders[3].price - (layered_orders[1].price + 0.5)) < 1e-9);
     assert(layered_orders[2].quantity == layered_orders[0].quantity);
 
+    // A layer's step in basis points: the default is one tick, which on a fine tick puts the second layer on almost the
+    // first layer's price. At ten bps a layer the step here -- fair 6421.25, tick 0.5 -- is 6.42 of price, 12.8 ticks,
+    // rounded outward to thirteen, so the second layer sits 6.5 behind the first instead of 0.5.
+    L2MarketMakerBase bps_layered(L2MarketMakerBaseConfig{.order_size = 1,
+                                                          .base_spread = 1.0,
+                                                          .inventory_limit = 100,
+                                                          .tick_size = 0.5,
+                                                          .extra_layers = 1,
+                                                          .layer_step_bps = 10.0});
+    L2MarketView bps_layered_view = view;
+    bps_layered_view.ts = 4500000;
+    const auto bps_layered_orders = bps_layered.on_l2_market_view(bps_layered_view);
+    assert(bps_layered_orders.size() == 4);
+    assert(std::abs((bps_layered_orders[0].price - bps_layered_orders[2].price) - 6.5) < 1e-9);
+    assert(std::abs((bps_layered_orders[3].price - bps_layered_orders[1].price) - 6.5) < 1e-9);
+
     // The distance as basis points rather than ticks: one tick is worth `tick / price` of the price, so a target of
     // `D` bps is `max(2, round(D / tick_bps))` ticks -- the same economic distance on every instrument, which a fixed
     // count is not (UP's tick is 5.2 bps and DNA's 7.3). The floor is two ticks, so a target worth less than one
