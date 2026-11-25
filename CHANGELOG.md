@@ -7,6 +7,23 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## Two registered mechanisms, built, and both fail their bars (2026-11-25)
+
+- **`--quote-distance-bps=D`** turns the quote's half width into `max(2, round(D / tick_bps))` ticks, one tick being worth
+  `tick / price` of the price; it and `--base-spread-ticks` set one distance and are refused together. At `D = 14` it picks
+  3 ticks on UP (5.2 bps a tick) and 2 on DNA (7.3) -- the distances the per-instrument sweeps found by hand -- and
+  reproduces their fill counts (26 and 21 a window) over the same seven days at 13:30-15:30 UTC with the frozen cell.
+  Neither reaches the 30-fill floor, which is a property of the books; on UP the closed median reads +9.83 against the
+  recorded +26.18, and that gap is not attributed.
+- **`--onesided-inventory-frac=F`** stops the adding side at F of the inventory cap. At twenty contracts and F = 0.5 it
+  takes UP's worst day from -215.52 to -138.01 bps and three peak inventories down by 400 to 600 contracts, and the
+  medians fall with them (closed +14.87 to +9.62, net +27.14 to +4.84): the tail is what it buys.
+- **The wiring defect both runs exposed**: the two flags reached the strategy's config in the unit test but not through the
+  application, so the first pass ran both distance arms at the default two ticks and the two one-sided arms came out
+  identical row for row -- caught because a flag that changes nothing shows up as an equality, not as a small difference.
+- **`l2_strategy_test` pins both**: the bps rule's two-tick floor and its 385-tick width on a 6421.25 book, and the
+  one-sided retreat against the same position with the flag off.
+
 ## An amend is one round trip and cancel+place is two (2026-11-25)
 
 - **`okx_probe.py` gained `amend`**, which runs both ways of moving a resting quote in one process on one kept-alive

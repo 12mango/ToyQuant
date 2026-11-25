@@ -439,6 +439,67 @@ int main()
     assert(std::abs(layered_orders[3].price - (layered_orders[1].price + 0.5)) < 1e-9);
     assert(layered_orders[2].quantity == layered_orders[0].quantity);
 
+    // The distance as basis points rather than ticks: one tick is worth `tick / price` of the price, so a target of
+    // `D` bps is `max(2, round(D / tick_bps))` ticks -- the same economic distance on every instrument, which a fixed
+    // count is not (UP's tick is 5.2 bps and DNA's 7.3). The floor is two ticks, so a target worth less than one
+    // tick is the tick-count form's two-tick quote exactly.
+    {
+        L2MarketMakerBase floored(L2MarketMakerBaseConfig{.order_size = 1,
+                                                          .inventory_limit = 100,
+                                                          .tick_size = 0.5,
+                                                          .signal_mode = L2SignalMode::Baseline,
+                                                          .base_spread_bps = 0.0001});
+        const auto floored_orders = floored.on_l2_market_view(view);
+        assert(floored_orders.size() == 2);
+        assert(std::abs(floored_orders[0].price - baseline_orders[0].price) < 1e-9);
+        assert(std::abs(floored_orders[1].price - baseline_orders[1].price) < 1e-9);
+
+        // 300 bps on a 6421.25 reference with a 0.5 tick is 385 ticks a side, and the two sides round outward from
+        // the same fair price, so the width is 770 or 771 ticks.
+        L2MarketMakerBase wide(L2MarketMakerBaseConfig{.order_size = 1,
+                                                       .inventory_limit = 100,
+                                                       .tick_size = 0.5,
+                                                       .signal_mode = L2SignalMode::Baseline,
+                                                       .base_spread_bps = 300.0});
+        const auto wide_orders = wide.on_l2_market_view(view);
+        assert(wide_orders.size() == 2);
+        const double width_ticks = (wide_orders[1].price - wide_orders[0].price) / 0.5;
+        assert(width_ticks >= 769.0 && width_ticks <= 771.0);
+    }
+
+    // The one-sided retreat: from a fraction of the cap the adding side stops opening, so the position is worked down
+    // by the closing side alone instead of being carried into the mark. Two contracts against a cap of four is
+    // exactly the half the fraction names, and without the flag the same position quotes both sides.
+    {
+        const auto drive = [&](const L2MarketMakerBaseConfig& config) {
+            L2MarketMakerBase strategy_with_flag(config);
+            const auto both = strategy_with_flag.on_l2_market_view(view);
+            assert(both.size() == 2);
+            strategy_with_flag.on_order_submitted(
+                StrategyOrder{Side::Buy, view.symbol.str(), both[0].price, 2, 10});
+            strategy_with_flag.on_order_update(ExecutionReport{.order_id = 10,
+                                                              .side = exchange::Side::Buy,
+                                                              .exec_type = ExecType::Trade,
+                                                              .symbol = view.symbol.str(),
+                                                              .price = both[0].price,
+                                                              .quantity = 2,
+                                                              .owner = "MarketMaker"});
+            return strategy_with_flag.on_l2_market_view(view);
+        };
+        const auto control = drive(L2MarketMakerBaseConfig{.order_size = 1,
+                                                           .base_spread = 1.0,
+                                                           .inventory_limit = 4,
+                                                           .tick_size = 0.5});
+        assert(control.size() == 2);
+        const auto retreat = drive(L2MarketMakerBaseConfig{.order_size = 1,
+                                                           .base_spread = 1.0,
+                                                           .inventory_limit = 4,
+                                                           .tick_size = 0.5,
+                                                           .onesided_inventory_frac = 0.5});
+        assert(retreat.size() == 1);
+        assert(retreat[0].side == Side::Sell);
+    }
+
     // The adverse-selection gate: a side is quoted only when the edge that fill would capture covers the maker
     // fee plus what passive fills at that distance have actually cost. The estimate arrives from the pipeline,
     // which is the only component that sees the midpoint after a fill, and the gate waits for samples before it

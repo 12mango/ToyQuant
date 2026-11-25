@@ -123,6 +123,11 @@ struct AppConfig
     // default the recorded runs use. 0 means "use the default". It exists because the fill count is
     // dominated by where the quote sits, and that has to be measurable rather than argued about.
     double base_spread_ticks = 0.0;
+    // The same half width as basis points of the reference price, from --quote-distance-bps: `max(2, round(bps /
+    // tick_bps))` ticks, so one setting is the same economic distance on every instrument. 0 uses the tick form.
+    double base_spread_bps = 0.0;
+    // From --onesided-inventory-frac: the adding side stops at this share of the inventory cap. 0 quotes both sides.
+    double onesided_inventory_frac = 0.0;
     // How far the inventory-aware strategy moves its quote centre at a full inventory, in ticks: the
     // Avellaneda and Stoikov reservation price in the form this engine can use, where the shift is
     // proportional to the position rather than solved from a risk aversion. 0 uses the strategy's own 2.0.

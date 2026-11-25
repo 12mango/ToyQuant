@@ -37,6 +37,11 @@ struct StrategyFactoryConfig
     uint64_t order_size_override = 0;
     int64_t inventory_limit_override = 0;
     double base_spread_ticks_override = 0.0;
+    // The same distance in basis points of the reference price, from --quote-distance-bps; the strategy turns it into
+    // `max(2, round(bps / tick_bps))` ticks. 0 leaves the tick-count form.
+    double base_spread_bps = 0.0;
+    // The adding side stops at this fraction of the inventory cap, from --onesided-inventory-frac. 0 quotes both sides.
+    double onesided_inventory_frac = 0.0;
     // The inventory-aware strategy's quote shift at a full inventory, in ticks. 0 leaves its own default.
     double inventory_shift_ticks_override = 0.0;
     uint64_t refresh_price_ticks_override = 0;

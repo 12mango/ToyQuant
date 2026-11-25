@@ -119,6 +119,15 @@ struct L2MarketMakerBaseConfig
     uint64_t extra_layers{0};
     // Sides held back by the rule above, so a run can say how often it refused to chase.
     uint64_t advance_skips{0};
+    // The quote's half width as basis points of the reference price: `max(2, round(bps / tick_bps))` ticks, where one
+    // tick is worth `tick_size / price` of the price. A fixed tick count is a different economic distance on every
+    // instrument -- UP's tick is 5.2 bps and DNA's 7.3 -- which is the whole reason the rule exists. Zero, the default,
+    // leaves `base_spread` alone and every recorded number where it was.
+    double base_spread_bps{0.0};
+    // The adding side stops at this fraction of the inventory cap, so the position is worked down by the closing side
+    // alone instead of being carried into the mark; `inventory_limit` is the same rule at 1.0. Zero, the default,
+    // quotes both sides until the cap.
+    double onesided_inventory_frac{0.0};
 };
 
 // The L2 market maker. Strategies that add behaviour to it derive from it rather than holding one:
@@ -386,12 +395,35 @@ class L2MarketMakerBase : public Strategy
         if (fair_price <= 0.0) fair_price = (top.bid_price + top.ask_price) / 2.0;
 
         const double inventory_ratio = position_ratio();
-        const double inventory_shift = inventory_ratio * config_.base_spread;
+        // The half width the quote is built on: a tick count, or an economic distance when the run asked for one.
+        // One tick is worth `tick_size / fair_price` of the price, so a target of `D` basis points is `D / tick_bps`
+        // ticks -- the same distance on every instrument, which a fixed count is not. The floor of two ticks is the
+        // narrowest book the rule can rest in without quoting the touch.
+        double half_width = config_.base_spread;
+        if (config_.base_spread_bps > 0.0 && config_.tick_size > 0.0 && fair_price > 0.0)
+        {
+            const double tick_bps = config_.tick_size / fair_price * 1e4;
+            half_width =
+                std::max(2.0, std::round(config_.base_spread_bps / tick_bps)) * config_.tick_size;
+        }
+        const double inventory_shift = inventory_ratio * half_width;
         double weak_flow_spread_shift = 0.0;
         uint64_t buy_quantity = config_.order_size;
         uint64_t sell_quantity = config_.order_size;
         if (position_ >= config_.inventory_limit) buy_quantity = 0;
         if (position_ <= -config_.inventory_limit) sell_quantity = 0;
+        // The one-sided retreat: from a fraction of the cap the adding side stops opening, so the inventory is worked
+        // down by the closing side alone instead of being carried into the mark. The hard cap above is this rule at
+        // 1.0 and the fraction acts earlier; it is off at zero, which is what every recorded run asks for.
+        if (config_.onesided_inventory_frac > 0.0 && config_.inventory_limit > 0)
+        {
+            const double opening_at =
+                config_.onesided_inventory_frac * static_cast<double>(config_.inventory_limit);
+            if (static_cast<double>(position_) >= opening_at)
+                buy_quantity = 0;
+            else if (static_cast<double>(position_) <= -opening_at)
+                sell_quantity = 0;
+        }
         if (config_.flow_guard)
         {
             const double flow = trade_imbalance();
@@ -417,12 +449,12 @@ class L2MarketMakerBase : public Strategy
         buy_quantity = at_least_minimum(buy_quantity);
         sell_quantity = at_least_minimum(sell_quantity);
         const double raw_bid_price = std::floor(
-                                         (fair_price - config_.base_spread - inventory_shift -
+                                         (fair_price - half_width - inventory_shift -
                                           weak_flow_spread_shift) /
                                          config_.tick_size) *
                                      config_.tick_size;
         const double raw_ask_price = std::ceil(
-                                         (fair_price + config_.base_spread - inventory_shift +
+                                         (fair_price + half_width - inventory_shift +
                                           weak_flow_spread_shift) /
                                          config_.tick_size) *
                                      config_.tick_size;

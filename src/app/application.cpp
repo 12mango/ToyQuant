@@ -167,6 +167,8 @@ StrategyFactoryConfig Application::strategy_config(const InstrumentSpec& instrum
         .order_size_override = cfg_.order_size_override,
         .inventory_limit_override = cfg_.inventory_limit_override,
         .base_spread_ticks_override = cfg_.base_spread_ticks,
+        .base_spread_bps = cfg_.base_spread_bps,
+        .onesided_inventory_frac = cfg_.onesided_inventory_frac,
         .inventory_shift_ticks_override = cfg_.inventory_shift_ticks,
         .refresh_price_ticks_override = cfg_.refresh_price_ticks_override,
         .edge_cover_ticks_override = cfg_.edge_cover_ticks,
@@ -410,6 +412,8 @@ void Application::run_replay_mode() const
                                       .order_size_override = cfg_.order_size_override,
                                       .inventory_limit_override = cfg_.inventory_limit_override,
                                       .base_spread_ticks_override = cfg_.base_spread_ticks,
+                                      .base_spread_bps = cfg_.base_spread_bps,
+                                      .onesided_inventory_frac = cfg_.onesided_inventory_frac,
                                       .inventory_shift_ticks_override = cfg_.inventory_shift_ticks,
                                       .refresh_price_ticks_override =
                                           cfg_.refresh_price_ticks_override,

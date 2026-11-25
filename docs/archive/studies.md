@@ -1706,7 +1706,38 @@ trip a `post_only` quote at the touch is still marketable on arrival every time,
 proxy produces. Its through-ask version rested six of six on the same direct route, which is the same staleness read
 from the other side: there the price quoted was one tick through the ask and the ask had moved up before it landed.
 
-**An amend is one round trip and cancel+place is two (2026-11-25).** A strategy that moves a resting quote either cancels
+**Two mechanisms, registered before their runs, and both fail the bar (2026-11-25).** The frontier's method rows had two
+experiments that no data could block: the quote distance in basis points rather than ticks, and the one-sided retreat at
+high inventory. Both are in the tree now behind flags that default to off, so every earlier number stands, and both ran
+on the frozen cell (two layers x one contract, `--post-only`, a 40 ms asymmetric refresh, 10 ms on both legs,
+`--latency-us 10000`) over the same seven days at 13:30-15:30 UTC. The bars were written before the runs: the distance
+rule had to clear 30 fills a window with a positive closed median on 5 of 7 **on both instruments** and not be worse than
+each instrument's own hand-tuned distance; the retreat had to keep the fills within 20 per cent and improve the median and
+the worst day at twenty contracts.
+
+| run | fills, median | closed median | net median | days positive (closed) | max inventory, contracts |
+|---|---:|---:|---:|---:|---:|
+| UP, `--quote-distance-bps=14`, which the rule turns into 3 ticks | 26 | +9.83 | +6.78 | 5 of 7 | 4-11 |
+| DNA, `--quote-distance-bps=14`, which the rule turns into 2 ticks | 21 | +5.12 | -2.87 | 5 of 7 | 5-11 |
+| UP at 20 contracts, control | 53 | +14.87 | +27.14 | 4 of 7 | 108-192 |
+| UP at 20 contracts, `--onesided-inventory-frac=0.5` | 61 | +9.62 | +4.84 | 4 of 7 | 60-133 |
+
+**The distance rule picks the right distance, and the distance is not the thing that binds.** At `D = 14` the rule reads
+UP's tick (5.2 bps) as 2.66 and rounds to **3 ticks**, and DNA's (7.3 bps) as 1.92 and rounds to **2** -- exactly the two
+distances the per-instrument sweeps found by hand -- and the fill counts reproduce those cells: 26 a window on UP and 21 on
+DNA. What it cannot do is give DNA the thirty fills its book does not contain, so the bar fails on the instrument rather
+than on the rule. On UP the fills and the day count match the frozen cell and the closed median does not (+9.83 against the
+recorded +26.18); **that gap is not attributed here**, and until it is the honest statement is that the rule reproduces the
+distance and not yet the cell's economics.
+
+**The one-sided retreat buys the tail and pays for it in the median.** At twenty contracts, stopping the adding side at
+half the cap takes the worst day from **-215.52 to -138.01 bps** and three days' peak inventory down (1920 to 1320, 1400
+to 1000, 1340 to 1230 contracts), and it takes the medians with it: closed +14.87 to +9.62, net +27.14 to +4.84. That is
+what the frontier row predicted -- the prize is the handover the retreat avoids, 0.73 to 4.88 bps a day, and the
+`--close-side-ticks` cousin already read lower -- and it is a registered failure rather than a finding, because the fills
+stayed inside the 20 per cent (53 to 61) and the median moved the wrong way.
+
+
 and places again, or amends in place. `okx_probe.py amend` runs both in one process on one kept-alive tunnel, alternating
 which leg goes first, from a `post_only` buy two percent under the best bid to the same price one tick nearer, and times
 each call:

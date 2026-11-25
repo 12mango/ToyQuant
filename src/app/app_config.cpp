@@ -92,6 +92,9 @@ constexpr std::string_view kInventoryShiftPrefix = "--inventory-shift-ticks=";
 constexpr std::string_view kRefreshPrefix = "--refresh-price-ticks=";
 constexpr std::string_view kEdgeCoverPrefix = "--edge-cover-ticks=";
 constexpr std::string_view kMinSpreadPrefix = "--min-spread-ticks=";
+// The quote distance as an economic distance rather than a tick count, and the one-sided retreat at high inventory.
+constexpr std::string_view kQuoteDistanceBpsPrefix = "--quote-distance-bps=";
+constexpr std::string_view kOnesidedInventoryPrefix = "--onesided-inventory-frac=";
 constexpr std::string_view kJumpWindowPrefix = "--jump-window-ms=";
 constexpr std::string_view kJumpTicksPrefix = "--jump-ticks=";
 constexpr std::string_view kJumpCooldownPrefix = "--jump-cooldown-ms=";
@@ -253,7 +256,10 @@ void print_usage(const char* executable)
                      "move towards the market, for D milliseconds after the fair price last moved. "
                      "--close-side-ticks=N brings the side that reduces the position in to N ticks while the "
                      "position is not flat, leaving the adding side at its own distance, and --extra-layers=L quotes "
-                     "L further passive layers one tick behind the first\n";
+                     "L further passive layers one tick behind the first; --quote-distance-bps=D sets the half width "
+                     "in basis points of the reference price -- max(2, round(D / tick_bps)) ticks, the same "
+                     "economic distance on every instrument -- and --onesided-inventory-frac=F stops the adding "
+                     "side at F of the inventory cap\n";
         std::cerr << "   limits: --max-exposure-usd=N is the exposure ceiling the summary measures the run "
                      "against, enforced rather than reported once it is named, and --kill-switch-loss-usd=N "
                      "latches when the loss reaches N dollars, closes the position it was holding at the "
@@ -1180,6 +1186,11 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                     error = "--base-spread-ticks must be a positive number of ticks";
                     return false;
                 }
+                if (cfg.base_spread_bps > 0.0)
+                {
+                    error = "--base-spread-ticks and --quote-distance-bps set one distance in two units; name one";
+                    return false;
+                }
                 cfg.base_spread_ticks = ticks;
             }
             else if (flag.compare(0, kInventoryShiftPrefix.size(), kInventoryShiftPrefix) == 0)
@@ -1224,6 +1235,33 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                     return false;
                 }
                 cfg.min_spread_ticks = ticks;
+            }
+            else if (flag.compare(0, kQuoteDistanceBpsPrefix.size(), kQuoteDistanceBpsPrefix) == 0)
+            {
+                double bps = 0.0;
+                std::istringstream stream(flag.substr(kQuoteDistanceBpsPrefix.size()));
+                if (!(stream >> bps) || !(bps > 0.0))
+                {
+                    error = "--quote-distance-bps must be a positive number of basis points";
+                    return false;
+                }
+                if (cfg.base_spread_ticks > 0.0)
+                {
+                    error = "--base-spread-ticks and --quote-distance-bps set one distance in two units; name one";
+                    return false;
+                }
+                cfg.base_spread_bps = bps;
+            }
+            else if (flag.compare(0, kOnesidedInventoryPrefix.size(), kOnesidedInventoryPrefix) == 0)
+            {
+                double share = 0.0;
+                std::istringstream stream(flag.substr(kOnesidedInventoryPrefix.size()));
+                if (!(stream >> share) || !(share > 0.0) || share > 1.0)
+                {
+                    error = "--onesided-inventory-frac is a share of the inventory cap, so it is above 0 and at most 1";
+                    return false;
+                }
+                cfg.onesided_inventory_frac = share;
             }
             else if (flag.compare(0, kJumpWindowPrefix.size(), kJumpWindowPrefix) == 0)
             {
