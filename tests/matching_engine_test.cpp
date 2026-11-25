@@ -986,4 +986,29 @@ int main()
         assert(amend_reports.empty());
         assert(amend_engine.query_order(40) == OrderQuery::Unknown);
     }
+
+    // Same price and a smaller size keeps the queue position: two buys rest at 99.0 in the order they arrived, the first
+    // one is cut from ten to five, and the next five lots traded go to it rather than to the order behind it. That is the
+    // one amend a venue does not charge for, and modelling it as a re-queue would make a size reduction -- what a maker
+    // does when inventory is heavy -- cost the same as a price move.
+    {
+        MatchingEngine queue_engine;
+        std::vector<ExecutionReport> queue_reports;
+        queue_engine.set_report_callback([&queue_reports](const ExecutionReport& report)
+                                         { queue_reports.push_back(report); });
+        queue_engine.send_order({50, "KEEP", exchange::Side::Buy, exchange::OrderType::Limit, 99.0, 10, 10, 50,
+                                 "MarketMaker"});
+        queue_engine.send_order({51, "KEEP", exchange::Side::Buy, exchange::OrderType::Limit, 99.0, 10, 10, 51,
+                                 "MarketMaker"});
+        queue_reports.clear();
+        queue_engine.amend_order(50, 99.0, 5);
+        assert(queue_reports.empty());
+        queue_engine.process_market_trade({5, "KEEP", 99.0, 5, Side::Sell, 0, "test"});
+        // The first order keeps its place, so the trade reaches it and not the one behind.
+        assert(has_report(queue_reports, 50, ExecType::Filled, 0));
+        bool second_filled = false;
+        for (const auto& report : queue_reports)
+            second_filled |= report.order_id == 51 && report.exec_type == ExecType::Filled;
+        assert(!second_filled);
+    }
 }

@@ -645,6 +645,16 @@ void MatchingEngine::amend_order(uint64_t order_id, double price, uint64_t quant
     };
     const exchange::Side side = amended.side;
     const PriceTick new_price = to_price_tick(amended.price, tick_size_);
+    // Same price, smaller size: the one amend a venue lets you keep your place for. Removing and re-appending would model
+    // it as a re-queue, which prices the size-reduction use -- the one a market maker reaches for when inventory is heavy
+    // -- exactly as high as a price move, and there is nothing to move: the order stays where it is, in its place in the
+    // level, with a smaller remainder.
+    if (new_price == to_price_tick(resting.price, tick_size_) && amended.remaining <= resting.remaining)
+    {
+        resting.qty = quantity;
+        resting.remaining = amended.remaining;
+        return;
+    }
     order_index_.erase(it);
     if (side == exchange::Side::Buy)
         remove_from(book.bids);

@@ -1924,6 +1924,18 @@ the fear was that the halt removes the cheap minutes while removing it removes m
 and the flag stays because the threshold is still built from view gaps rather than from the market: the next version of
 this rule is a tick range over a fixed window, and it will need this switch to be tested against the same cell.
 
+**And the amend is rebuilt asymmetric, with the bar written first (2026-11-25).** The measured loss had one cause: an
+amended quote is always at the fresh price, so it lands at the back of the level that price just cleared and every adverse
+print reaches it. The fix is to amend only when the move is a **retreat** -- a buy down, a sell up -- because that is the
+case the amend exists for: one round trip, no gap at the level, and the quote out of the way before the sweep. An advance
+keeps the cancel path, where the view it costs is a filter rather than a loss. A deadband of two ticks sits on top, so a
+book that breathes does not re-queue a quote that was already in front. **The bar, written before the run: retreat-only has
+to beat the cancel path's closed median (+9.83) and the symmetric amend's (-5.92), with fills inside 20 per cent of the
+cancel path's 26 and a `zero_queue` count that falls back towards its 21-53 rather than the symmetric arm's 239-296.** The
+engine gained the other half of the venue's rule for the same reason: a same-price **size reduction** keeps its queue
+position, which is the amend a maker uses when inventory is heavy, and `matching_engine_test` pins it -- two orders at one
+price, the first cut from ten to five, and the next trade still reaches it.
+
 One defect came out of the first run and earns its line: the two prices were computed with `round` on the raw fraction,
 and a half-tick lands on a boundary where `round` answers to even, so the target came out equal to the start -- an amend
 asking for the price the order already had, reading 82.6 ms and meaning nothing. The prices are built from an integer

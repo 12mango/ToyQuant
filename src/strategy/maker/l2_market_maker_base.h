@@ -136,6 +136,10 @@ struct L2MarketMakerBaseConfig
     // Move a primary quote in place instead of pulling it and placing again, when the venue can amend. Off by default:
     // this replay's engine does not amend, so a request becomes the cancel it replaced and the run is unchanged.
     bool amend_instead_of_cancel{false};
+    // The deadband an amend must clear, in ticks. The measured symmetric version amended on a single tick and put 239 to
+    // 296 quotes at the back of a level that had just been swept, against 21 to 53 for the cancel path; two ticks is the
+    // smallest move that is a decision rather than the book breathing.
+    double amend_deadband_ticks{2.0};
 };
 
 // The L2 market maker. Strategies that add behaviour to it derive from it rather than holding one:
@@ -435,20 +439,31 @@ class L2MarketMakerBase : public Strategy
         return targets;
     }
 
-    // Move each side's primary quote to the price it would be placed at, in place. A layer behind a primary is left to
-    // the cancel path: it sits at a distance of its own, and moving it to the primary's price would fold the ladder into
-    // one level. The local record takes the new price at once, because the next view compares against it.
+    // Move each side's primary quote **away** from the touch, in place, and never towards it.
+    //
+    // The asymmetry is the whole result, and it was measured the wrong way first: with every refresh amended, fills went
+    // from 26 to 49 a window and the closed median from +9.83 to -5.92 bps, because the amended quote is always at the
+    // fresh price and lands at the back of the level that price just cleared -- it is the mechanism that catches every
+    // adverse print. The cancel path's short absence is a filter, and an amend removes it. Retreating is the case the
+    // amend is for: one round trip, no gap at the level, and the quote is out of the way before the sweep arrives. An
+    // advance keeps the cancel path, where the view it costs is a filter rather than a loss.
+    //
+    // A layer behind a primary is always left to the cancel path: it sits at a distance of its own, and moving it to the
+    // primary's price would fold the ladder into one level. The local record takes the new price at once, because the
+    // next view compares against it.
     void amend_resting_quotes(const TopOfBook& top, double fair_price)
     {
         const auto targets = target_prices(top, fair_price, position_ratio(), trade_imbalance());
         if (!targets.valid) return;
+        const double deadband = std::max(1.0, config_.amend_deadband_ticks) * config_.tick_size;
         for (auto& entry : open_orders_)
         {
             StrategyOrder& order = entry.second;
-            const double target = order.side == Side::Buy ? targets.bid : targets.ask;
-            const double primary_price = order.side == Side::Buy ? last_placed_bid_ : last_placed_ask_;
+            const bool buy = order.side == Side::Buy;
+            const double target = buy ? targets.bid : targets.ask;
+            const double primary_price = buy ? last_placed_bid_ : last_placed_ask_;
             if (std::abs(order.price - primary_price) > 0.5 * config_.tick_size) continue;
-            if (std::abs(target - order.price) < 0.5 * config_.tick_size) continue;
+            if ((buy ? order.price - target : target - order.price) < deadband - 1e-12) continue;
             amend_requests_.push_back(AmendRequest{entry.first, target, order.quantity});
             order.price = target;
             // The primary price the next refresh compares against is this one. Without this the second refresh in a row
@@ -456,7 +471,7 @@ class L2MarketMakerBase : public Strategy
             // and the mechanism silently degrades to the cancels it replaced. Measured 2026-11-25 on UP 11-16: the
             // strategy's cancel count fell by 261 over 550 placements and the execution summary was identical to the
             // baseline, which is how a one-line omission reads as "the flag does nothing".
-            if (order.side == Side::Buy)
+            if (buy)
                 last_placed_bid_ = target;
             else
                 last_placed_ask_ = target;
