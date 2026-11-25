@@ -137,13 +137,17 @@ decimal that parses back to the same double. It is off unless named, which is wh
 `[ORDER-LOG]` prints its path and its three counts so a reader can check the row count against them. A field the format
 cannot carry -- a symbol holding a comma -- is refused rather than escaped.
 
-**It is not a silent observer, and that sentence used to claim it was.** Measured 2026-11-25, the same day and the same
-eight-hour window of `UP-USDT-SWAP` with the same frozen configuration: **117 fills and net -12.67 bps without the flag,
-207 fills and net +2.71 with it**, and the queue column moves with them (116 orders at zero queue in front, then 0). The
-mechanism is not established -- the recorder stamps reports whose venue gives them no timestamp, and the strategy's
-debounce reads those stamps -- so the honest statement is the measurement: a run whose fills it intends to read must not
-carry this flag, and `data/runtime/trades.csv` (which every replay already writes) is the passive record instead. Its line
-counts match the sweep's fill counts exactly across all seven days. The file is read back by `RecordedVenue`, which answers from it as an engine
+**It was not a silent observer, and the defect behind that is fixed.** Measured 2026-11-25, the same day and the same
+eight-hour window of `UP-USDT-SWAP` with the same frozen configuration: **123 fills and net -12.22 bps without the flag,
+207 fills and net +2.71 with it**, every queue counter at zero in the second. The cause was a wrapper that forwarded
+`process_bbo` and not `process_l2_top`: the interface's default for the L2 entry point answers the BBO one, so every L2
+update reached the engine as a BBO update and the queue accounting inside `MatchingEngine::process_l2_top` never ran.
+`RecordingEngine` now forwards both, plus the six query methods it used to answer from the interface's defaults, and the
+same A/B reads **123 fills on both sides** with every queue field equal. A decorator has to hand-forward every virtual,
+and a forgotten one changes behaviour silently -- the same failure as the wrapper that forgot `on_queue_activity`, one
+layer down -- so `order_recorder_test` now pins the forwards, the L2 entry point included. `data/runtime/trades.csv`
+(which every replay already writes) is still the fill record this repository reads, because it holds the fills rather
+than the venue's calls; its line counts match the sweep's across all seven days. The file is read back by `RecordedVenue`, which answers from it as an engine
 instead of from a venue; `--replay-orders=PREFIX` is the flag that makes it the run's venue, and each recorded report
 is released when the replay's own clock passes the timestamp it carries, so the strategy sees a fill where the session
 saw it rather than when it asked. A live venue's frames carry no time, so `LiveVenue` stamps each answer with the run's

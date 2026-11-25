@@ -75,10 +75,41 @@ class ScriptedVenue : public IMatchingEngine
         emit(cancelled);
     }
 
-    void process_bbo(const BboQuote& quote) override { (void)quote; }
+    // Counted apart, because the interface's `process_l2_top` default answers `process_bbo`: a decorator that
+    // forwards only the BBO call hands every L2 update to the venue as a BBO update, and the queue accounting
+    // inside the engine's own `process_l2_top` never runs. Measured 2026-11-25, that omission alone moved one
+    // eight-hour session from 123 fills to 207 with every queue counter at zero.
+    void process_bbo(const BboQuote& quote) override
+    {
+        (void)quote;
+        ++bbo_updates;
+    }
+    void process_l2_top(const BboQuote& quote) override
+    {
+        (void)quote;
+        ++l2_updates;
+    }
     void process_market_trade(const MarketTrade& trade) override { (void)trade; }
 
+    int bbo_updates{0};
+    int l2_updates{0};
+
     void set_report_callback(ReportCallback cb) override { callback_ = std::move(cb); }
+
+    // Distinctive values for the six queries the interface answers with a default, so a decorator that answers from
+    // those defaults instead of forwarding is caught rather than blending in with a real empty queue.
+    uint64_t queue_ahead_consumed() const override { return 7; }
+    uint64_t queue_ahead_consumed(Side side) const override { return side == Side::Buy ? 11 : 13; }
+    uint64_t queue_ahead_levels_cleared(Side side) const override { return side == Side::Buy ? 17 : 19; }
+    uint64_t queue_ahead_from_quantity_changes(Side side) const override { return side == Side::Buy ? 23 : 29; }
+    uint64_t queue_ahead_at(const std::string& symbol, Side side, double price) const override
+    {
+        (void)symbol;
+        (void)side;
+        (void)price;
+        return 31;
+    }
+    uint64_t rejected_orders() const override { return 37; }
 
    private:
     void emit(const ExecutionReport& report)
@@ -160,6 +191,32 @@ int main()
         assert(engine.recorder().summary().cancels == 1);
         assert(engine.recorder().summary().reports == 6);
         assert(engine.recorder().path() == log_path);
+    }
+    // Every query the interface answers with a default is forwarded, because a decorator that answers zero is not
+    // silent: the strategy's queue-consumption refresh and the ledger's queue audit both read through this pointer.
+    // Measured 2026-11-25, without these forwards `--record-orders` read 207 fills against 117 without it and the
+    // queue profile reported zero orders reaching the front. The same failure as the wrapper that forgot
+    // `on_queue_activity`, one layer down, and the reason `PaperBroker` and `OrderGateway` forward all six.
+    {
+        ScriptedVenue venue;
+        RecordingEngine engine(venue, (root / "forward").string());
+        assert(engine.queue_ahead_consumed() == 7);
+        assert(engine.queue_ahead_consumed(Side::Buy) == 11);
+        assert(engine.queue_ahead_consumed(Side::Sell) == 13);
+        assert(engine.queue_ahead_levels_cleared(Side::Buy) == 17);
+        assert(engine.queue_ahead_levels_cleared(Side::Sell) == 19);
+        assert(engine.queue_ahead_from_quantity_changes(Side::Buy) == 23);
+        assert(engine.queue_ahead_from_quantity_changes(Side::Sell) == 29);
+        assert(engine.queue_ahead_at("BTC-PERPETUAL", Side::Buy, 6421.5) == 31);
+        assert(engine.rejected_orders() == 37);
+        // The L2 entry point reaches the venue's L2 entry point, not its BBO one: the interface's default
+        // answers `process_bbo`, and forwarding only that turned every L2 update into a BBO update.
+        BboQuote quote{};
+        engine.process_l2_top(quote);
+        assert(venue.l2_updates == 1);
+        assert(venue.bbo_updates == 0);
+        engine.process_bbo(quote);
+        assert(venue.bbo_updates == 1);
     }
     assert(recorded.size() == 6);
 

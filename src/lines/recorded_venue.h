@@ -38,7 +38,15 @@ class RecordingEngine : public IMatchingEngine
     // Forwarded rather than swallowed: this decorator can sit around the in-process engine, which is a market
     // as well as a venue, so a replay that records its own fills still fills from the book. `LiveVenue` is the
     // one engine where these two are no-ops, and that is its own decision, not this class's.
+    //
+    // `process_l2_top` is not the same call as `process_bbo`, and the interface's default is the difference:
+    // it answers `process_bbo`, so a decorator that forwarded only that one handed every L2 update to the
+    // engine as a BBO update and the queue accounting inside `MatchingEngine::process_l2_top` never ran.
+    // Measured 2026-11-25 on one day and one eight-hour window of `UP-USDT-SWAP`: 123 fills with the queue
+    // counters populated and 207 with every one of them zero, from this one omission. `PaperBroker` and
+    // `OrderGateway` both forward it; this class did not.
     void process_bbo(const BboQuote& quote) override { venue_.process_bbo(quote); }
+    void process_l2_top(const BboQuote& quote) override { venue_.process_l2_top(quote); }
     void process_market_trade(const MarketTrade& trade) override { venue_.process_market_trade(trade); }
 
     void set_report_callback(ReportCallback cb) override;
@@ -47,6 +55,29 @@ class RecordingEngine : public IMatchingEngine
     // recovery that asked a recording instead of the venue would find no order and leave every inherited one alive.
     OrderQuery query_order(uint64_t order_id) const override { return venue_.query_order(order_id); }
     void settle_queries() override { venue_.settle_queries(); }
+
+    // The six questions the interface answers with a default, forwarded for the same reason -- because a decorator
+    // that answers zero is not silent. Measured 2026-11-25 on one day and window of `UP-USDT-SWAP`: with these
+    // missing, `--record-orders` read 207 fills against 117 without it and the queue profile reported zero orders
+    // reaching the front, because the strategy's queue-consumption refresh and the ledger's queue audit both read
+    // through this pointer. `PaperBroker` and `OrderGateway` forward all six; this class did not.
+    uint64_t queue_ahead_consumed() const override { return venue_.queue_ahead_consumed(); }
+    uint64_t queue_ahead_consumed(Side side) const override { return venue_.queue_ahead_consumed(side); }
+    uint64_t queue_ahead_levels_cleared(Side side) const override
+    {
+        return venue_.queue_ahead_levels_cleared(side);
+    }
+    uint64_t queue_ahead_from_quantity_changes(Side side) const override
+    {
+        return venue_.queue_ahead_from_quantity_changes(side);
+    }
+    uint64_t queue_ahead_at(const std::string& symbol, Side side, double price) const override
+    {
+        return venue_.queue_ahead_at(symbol, side, price);
+    }
+    // The pipeline reads this one to notice a refusal at all, so a decorator that answered zero would also hide
+    // every rejected order from the audit.
+    uint64_t rejected_orders() const override { return venue_.rejected_orders(); }
 
     OrderRecorder& recorder() { return recorder_; }
 

@@ -4,8 +4,11 @@
 The tape profile (`okx_tape_toxicity.py`) measures the market's flow; this measures the subset our quotes actually got,
 which is the quantity that separated the profitable two hours from the night. It reads the file every replay already
 writes -- `data/runtime/trades.csv`, `ts,symbol,side,price,quantity,order_id,liquidity_role,fee` -- rather than
-`--record-orders`, because that flag wraps the venue in `RecordingEngine` and changes the run: measured 2026-11-25, the
-same day and window read 117 fills without it and 207 with it, so a recording that moves the number is not a recording.
+`--record-orders`, because that flag used to wrap the venue in `RecordingEngine` and change the run: measured 2026-11-25,
+the same day and window read 123 fills without it and 207 with it. That defect is fixed -- the decorator forwarded
+`process_bbo` and not `process_l2_top`, so L2 updates arrived as BBO ones and the engine's queue accounting never ran --
+and the A/B now reads 123 fills on both sides. The trade stream stays the source here anyway, because this tool counts
+fills and that is the file a fill is written to.
 
     python3 tools/study/okx_fill_profile.py --fills /tmp/tq/fp/trades_2026-11-16.csv,... \\
         --days 2026-11-16,...

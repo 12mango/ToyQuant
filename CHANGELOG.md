@@ -7,6 +7,25 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The recording decorator handed every L2 update to the engine as a BBO one (2026-11-25)
+
+- **`--record-orders` really did change the run, and the cause was a virtual that was not forwarded.**
+  `IMatchingEngine::process_l2_top` defaults to `process_bbo`, and `RecordingEngine` overrode only `process_bbo`, so an L2
+  feed reached the engine as a BBO feed and the queue accounting inside `MatchingEngine::process_l2_top` never ran.
+  Measured on one day and one eight-hour window of `UP-USDT-SWAP`: the flagged run read **207 fills with
+  `queue_ahead_consumed=0`** against **123 fills with 142,572,001,537** without it. `PaperBroker` and `OrderGateway` both
+  forward `process_l2_top`; this decorator did not. It also answered all six queue queries -- `queue_ahead_at`,
+  the two `queue_ahead_consumed`, `queue_ahead_levels_cleared`, `queue_ahead_from_quantity_changes` and
+  `rejected_orders` -- from the interface's defaults, which return zero, so the ledger's queue audit and the pipeline's
+  refusal detection were blind under the flag as well.
+- **Both sets are forwarded now and the A/B closes.** The same day, window, cell and input read **123 fills on both
+  sides**, net **-12.22 bps**, `queue_zero_orders=123` and the same `queue_ahead_consumed`: a recording is a recording
+  again. The hypothesis the record carried -- that the recorder stamped untimed reports and the debounce read them -- was
+  wrong, and the measurement replaces it.
+- **`order_recorder_test` pins both halves**, with a scripted venue whose queue queries carry distinctive values and
+  whose L2 and BBO entry points are counted apart, so a decorator that answers the interface's zero, or downgrades an L2
+  update to a BBO one, fails a test instead of moving a session. `code` OK, `fast` green.
+
 ## The screen's top instrument fails the fill test, and the cut cache forgot which symbol it replayed (2026-11-25)
 
 - **`DNA-USDT-SWAP` was measured on the owner's seven-day portal download** and the same frozen cell as UP: seven to twenty
