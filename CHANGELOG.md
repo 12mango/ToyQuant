@@ -7,6 +7,31 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The link is measured, and it is the wall above the fee (2026-11-25)
+
+- **`okx_probe.py` gained `rtt`, `warm` and `touch`.** `rtt` places a `post_only` buy two percent under the best bid, so
+  the order must rest and the venue's reply is the placement's; it times that reply and the cancel after it, and prices
+  the same order one tick through the ask to see what the venue does with a crossing quote. `warm` does the same on one
+  kept-alive CONNECT tunnel, because `urllib` pays a connection and a TLS handshake per request and the two numbers
+  answer different questions. `touch` prices the quote at the best bid, where only a book that moved inside the round
+  trip can make it marketable, so its decline rate *is* the stale-on-arrival rate. The instrument list is read unsigned:
+  the demo header returns only the demo's own subset, which is how `UP-USDT-SWAP` first answered "does not list".
+- **Measured through the operator's proxy**: placement p50 **632 ms** (p95 977) on a fresh connection and **414 ms**
+  (p95 481) on a kept-alive one; cancel p50 584 and 341 ms. That is an order of magnitude above the 30-80 ms the latency
+  work had been assuming.
+- **`post_only` at the touch was declined 14 times out of 14** at a 553 ms round trip. At that latency the quote is stale
+  before it lands every time; the 87-of-172 decline rate of the recorded live session was a faster route than this one.
+- **`UP-USDT-SWAP` is not tradable in the demo environment**: eight placements, resting and crossing, every one
+  `code=1/sCode=51001` with no `ordId`. The link measurement therefore runs on `BTC-USDT-SWAP`, and the UP order leg stays
+  unmeasurable until the venue's demo lists it.
+- **At those two latencies the rescue configuration's fills are taker fills**: 8-13 a window at 414 ms and 4-9 at 632 ms,
+  capture negative on all seven days, `maker_notional_usd` zero on three of the seven and five of the seven with 17-63 bps
+  of fee on the rest. Those rows are under the thirty fills the project requires, so they say what the mechanism is and
+  nothing about P&L. `--latency-us` for this host is 414,000 or 632,000, and at either the instrument is not a maker here.
+- `docs/archive/studies.md` carries the tables; the frontier map's UP row now names the route as the first gate and the
+  fee tier as the second.
+- `docs` and `fast` green.
+
 ## The burst row was one day of five, and the tool now takes a day list (2026-11-25)
 
 - **`cascade_probe.py` takes `--days`**, so the multi-day test of a row is one command rather than a shell loop around

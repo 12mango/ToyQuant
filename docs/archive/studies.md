@@ -1652,13 +1652,84 @@ the latency also moves is the net, which is a mark: its median crosses zero some
 and comes back at 50 ms, so the honest statement is that the link moves the net's sign by a few tenths of a basis point
 without a monotone relation to the delay, while the closed capture stays above the fee from 0 to 80 ms.
 
+**The link, measured -- and it is the wall above the fee (2026-11-25).** Every latency row above is a replay setting;
+the venue's own round trip from this host had never been measured, and "30-80 ms" was an assumption. It is now three
+numbers and a rate. `tools/live/okx_probe.py rtt` places a `post_only` buy two percent under the best bid -- so the order
+has to rest and the venue's reply is the placement's -- times that reply and the cancel that follows it, and `touch`
+prices the same order at the best bid, where only a book that moved inside the round trip can make it marketable. The
+measurement is on `BTC-USDT-SWAP`, because `UP-USDT-SWAP` **is not tradable in the demo environment at all**: four resting
+and four crossing placements, eight of eight `code=1/sCode=51001`, no `ordId` at any price.
+
+| probe, through the operator's proxy | placement p50 | placement p95 | cancel p50 | cancel p95 |
+|---|---:|---:|---:|---:|
+| a fresh connection per request (n=12) | 632 ms | 977 ms | 584 ms | 907 ms |
+| one kept-alive CONNECT tunnel (n=12) | 414 ms | 481 ms | 341 ms | 536 ms |
+| quote at the touch (n=14) | 553 ms | 715 ms | 576 ms | 663 ms |
+
+The touch probe's verdict is a rate rather than a latency: **14 of 14 quotes at the best bid were declined**. The venue
+accepts the order and then cancels it as marketable on arrival -- the `post_only` decline this repository counts -- so at
+a 553 ms round trip the quote is stale before it lands every time. The 87-of-172 decline rate the recorded live session
+showed was a faster route than this one, and this one cannot rest a quote at the touch at all.
+
+**What the replay says at that latency.** The same seven days and the same rescue configuration, at each measured p50:
+
+| reading | 414,000 us each way | 632,000 us each way |
+|---|---|---|
+| fills in a two-hour window | 8 to 13 | 4 to 9 |
+| capture ticks, median of seven days | -1.00 | -1.07 |
+| maker notional | zero on three of seven days, 17 to 63 bps of fee on the rest | zero on five of seven |
+| net bps | -194 to +322 | -84 to +134 |
+
+A negative capture is what a **taker** fill looks like, and a fee rate above the maker's 2.00 bps is the same statement
+in the venue's own currency: the configuration does not become thin at the measured link, it becomes a taker, which is
+the one thing `--post-only` exists to prevent. The nets swing by hundreds of basis points on 8 to 13 fills, so they are
+under the thirty the project requires and conclude nothing -- the capture and the fee rate are the quotable part.
+
+So `--latency-us` for this host is **414,000** on a kept-alive tunnel or **632,000** on a fresh connection, not the
+30,000 the assumption was built on, and at either setting the replay says the instrument is not a maker here. What would
+reopen the row is a measured p50 under 50 ms on the same probe -- a direct or colocated route -- because between 0 and
+80 ms the numbers above are still +1.95 to +3.12 bps of closed capture. The fee tier is the second gate; the route is
+the first, and it was never measured until now.
+
+
+**The capacity arithmetic, and why the fee tier cannot be bought (2026-11-25).** The tier the instrument needs is about
+1.5 bps of maker fee, and the obvious question is whether this book can generate the volume that unlocks it. The inputs,
+each measured on the seven windows above:
+
+| input | value |
+|---|---|
+| fills in a two-hour window, rescue configuration, zero latency | 76 to 358, median 116 |
+| one contract | 10 UP; the windows' mids run 0.166 to 0.228, median 0.196, so **1.96 USD** |
+| level 1 of the book, time-weighted per window | bid 14 to 161 contracts (median 67), ask 27 to 143 (median 71) |
+| two levels of the book | bid 130 to 555 (median 257), ask 179 to 443 (median 329) |
+
+The depth rows are `tools/study/okx_book_depth.py` over the same seven cut windows, which is the tool
+`okx_book_window.py --emit` feeds; the fills and the mids are the replay's and the archive's own.
+
+A quote that is a tenth of the thinner level 1 is **1 to 12 contracts, median about 4** -- that is the size the book
+supports without the quote becoming the touch. At one contract a window trades 116 fills, so a month of four windows a day
+is `116 x 1 x 1.96 x 4 x 30` = **27,300 USD** of notional; at four contracts, **109,000 USD**, and that second number is an
+upper bound because the fills are assumed not to fall as the clip grows, which they would.
+
+Against a 5,000,000 USD thirty-day threshold (the account's own tier table, **not verified here**), one instrument of this
+size is **0.5 percent** of the tier at one contract and **2.2 percent** at four: the tier would take about **46 instruments
+of this depth**, each needing the seven-day treatment and the route this host does not have.
+
+**And buying it with volume does not work either.** The 5,000,000 USD that unlocks the tier costs `5,000,000 x 2.0 bps` =
+**1,000 USD** of fee a month at the retail rate, and what the tier then saves on the notional this line would trade anyway
+is `27,300 x 0.5 bps` = **1.37 USD**. The ratio is five to seven hundred times the wrong way. So the tier is not something
+the strategy can earn by trading -- it is something an account either already has (a balance threshold, or a rebate tier a
+broker passes through) or does not, which is why the frontier map lists it as an account question with a numeric trigger
+rather than as a research row.
+
+
 **What is next, and what would qualify another instrument.** The next measurement is a tiered re-screen of every swap
 inside the same 13:30-15:30 UTC window -- thirty ticker reads twenty seconds apart -- with the book's median width reported
 beside the half-spread, because a one-tick book cannot hold a quote three ticks behind the touch whatever its bps figure
 says. A candidate has to clear **1.2, 2.0 and 2.5 bps** under two more floors: a median spread of at least **two ticks** and
 a median **500,000 USD** of daily notional. Anything that passes gets the same seven-day treatment this instrument got: the
 window cut by `tools/study/okx_book_window.py`, the maker run by `tools/sweep/okx_maker_baseline.py` under the conservative
-fill model, and then `--latency-us` at 10, 30, 50 and 80 ms, which this instrument has now had.
+fill model, and `--latency-us` at the route's own measured value -- 414,000 or 632,000 on this host, not 30,000.
 
 One measurement error belongs in this record because it produced a table of zeros: OKX cuts its trade archive on midnight
 UTC+8 and its book archive on UTC, so a window starting at or after 16:00 UTC lives in the *next* trade file. Reading the
