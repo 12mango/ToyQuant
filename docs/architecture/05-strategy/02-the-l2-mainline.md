@@ -186,6 +186,14 @@ The run summary also records `audited_orders`, `audited_filled_orders`,
 `audited_cancelled_orders`, `cancelled_after_fill_orders`, `cancelled_before_fill_orders`, and
 `total_order_lifetime_cycles`. The last field counts quote decision cycles, not elapsed time.
 
+**The comparison is folded below, and the one thing worth keeping outside it is this**: the mainline was chosen on
+evidence rather than on taste -- `active_l2` has the highest captured edge per contract, the lowest fees and the smallest
+loss of the four strategies measured, while the one that maximises fills (`inventory_aware_l2`, 635 of them at 19.1 per
+cent) has the most negative edge per contract and the worst result. Everything else the table says is a reference for the
+afternoon a run needs to be compared, not a fork in the road.
+
+/// details | Strategy families and comparison
+
 ## 6.5 Strategy families and comparison
 
 Every strategy in the repository, by what it can actually do. The columns are the mechanisms that differ
@@ -322,3 +330,5 @@ The benchmark is an educational replay, not a live-trading validation. Its resul
 selected replay window, displayed BBO liquidity, fee assumptions, and the quality of the paired
 Trades+BBO data.
 
+
+///
