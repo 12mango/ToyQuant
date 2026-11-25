@@ -75,6 +75,7 @@ does not.
 | `tools/study/okx_book_depth.py` | the same cut's top two levels, time-weighted: the size a quote would stand behind, and the USD it is worth | hand |
 | `tools/study/okx_halfhour_profile.py` | a day's half-hour profile -- duration-weighted half spread and trades a second -- with no P&L, for deciding a window on the book rather than on a run | hand |
 | `tools/study/okx_tape_toxicity.py` | the tape's own adverse selection per half hour: each print's signed mid move over a stated horizon, as the passive side's markout -- mean, median and the share the mid moved on, with no strategy and no P&L | hand |
+| `tools/study/okx_quote_share.py` | how much of the book one quote is: the window's market turnover, the time-weighted USD resting at the level the quote joins, and the two ratios that say whether a size is invisible -- with `--order-units` so a size ladder reads on one scale | hand |
 | `tools/study/okx_fill_profile.py` | our own fills per half hour, from a run's trade stream: capture against the mid, markout at two horizons, the net contracts and the share of fills that opened a position -- the subset the quotes actually got | hand |
 | `tools/study/okx_spread_screen.py` | every swap's median half-spread and tick width over repeated ticker reads, against three thresholds, archiving its reads; `--quote-ticks` adds the basis points a quote that far behind the touch captures a fill, which is the column the fee is actually paid out of | hand |
 | `tools/study/plot_report.py` | quotes, distance, inventory and equity as one PNG | hand |

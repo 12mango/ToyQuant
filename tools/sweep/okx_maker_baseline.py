@@ -43,7 +43,7 @@ SLICE_TOOL = ROOT / "tools/fetch/slice.py"
 sys.path.insert(0, str(ROOT / "tools" / "lib"))
 from okx_data import depth_archive, trade_tape  # noqa: E402
 COLUMNS = ["day", "model", "base", "refresh", "latency_us", "fills", "fill_rate", "fees_bps", "gross_bps", "closed_bps",
-           "closed_per_fill_bps", "net_bps", "breakeven_bps", "capture_ticks", "markout_ticks", "zero_queue",
+           "closed_per_fill_bps", "net_bps", "net_usd", "notional_usd", "breakeven_bps", "capture_ticks", "markout_ticks", "zero_queue",
            "max_inv", "net_pos", "hold_s", "settle_bps", "settled_bps", "stale"]
 
 
@@ -232,6 +232,11 @@ def main():
                            "gross_bps": bps("gross_pnl_usd"), "closed_bps": bps("gross_closed_pnl_usd"),
                            "closed_per_fill_bps": bps("gross_closed_per_fill_usd"),
                            "net_bps": bps("net_pnl_usd"),
+                           # The two absolute figures the bps columns divide away. A size ladder is a question about
+                           # _dollars_ -- a rate that falls while the notional rises can still pay more -- and bps
+                           # alone cannot answer it.
+                           "net_usd": f"{float(fields.get('net_pnl_usd', 0.0) or 0.0):.4f}",
+                           "notional_usd": f"{float(fields.get('maker_notional_usd', 0.0) or 0.0):.2f}",
                            "breakeven_bps": f"{float(fields.get('breakeven_maker_rate', 0.0) or 0.0) * 1e4:.2f}",
                            "capture_ticks": fields.get("captured_edge_per_unit_ticks", "?"),
                            "markout_ticks": fields.get("markout_per_unit_ticks", "?"),

@@ -255,6 +255,52 @@ the thing that gets built next for no reason.
 | **amend instead of cancel and place** | one round trip instead of two, and no loss of queue priority | the queue half of the argument **does not apply here**: `queue_zero_orders` runs 20-40 against 19-37 fills a window, so nearly every quote joins an *empty* level three ticks out and is not queue-limited. What is left is the saved round trip -- 76 ms of a 118 ms reaction. And a replay has no amend in it, so this one is live-only: unmeasurable from a tape | a venue whose order leg works for this instrument (UP answers `51001` in the demo environment, which is the standing block) plus a measured amend-against-cancel latency difference |
 | **depth in bps, not ticks** | `max(2, ceil(TARGET_BPS / tick_bps))` instead of a fixed 3 ticks, so one rule fits every tick width | **the evidence is already in hand and it is the strongest of the four**: DNA's tick is 7.3 bps, so three ticks is 22 bps out and it fills 7-20 a window; at two ticks it fills 21 and reads +10.37. A fixed tick count is a different economic distance on every instrument. `TARGET_BPS` is a hypothesis -- 12 bps is roughly six fees and half of UP's own 3-tick capture (16.21) -- and not a measured optimum | the first candidate whose `tick_bps` is **below about 2**, where three fixed ticks is worth under 6 bps before toxicity; the screen already reports that column for all 555 instruments |
 
+### How visible the quote should be: the measured scale, and why this instrument cannot answer it
+
+The question behind a size ladder is whether the quote is *invisible* -- a rounding error that collects a fee-free
+measurement -- or whether it is a participant the book has to absorb. Two dimensionless ratios answer the first half of
+that, and `tools/study/okx_quote_share.py` measures them from the archive and the tape rather than estimating them:
+**one order over the USD resting at the level it joins**, and **our notional over the window's traded notional**. On the
+seven days this line was measured on, 13:30-15:30 UTC:
+
+| quantity | day range | median |
+|---|---:|---:|
+| the market's traded notional in the window | 0.56 to 1.85 M USD | **1.02 M USD** |
+| time-weighted USD resting three ticks behind the touch | 259 to 854 USD | **538 USD** |
+| at the touch, for scale | 149 to 908 USD | **561 USD** |
+| one order, one contract | 1.78 to 2.25 USD | **2.09 USD** |
+
+So one contract is **0.24 to 0.84 per cent of the level it joins (median 0.35)**, and about **0.005 per cent of the flow**.
+The line is not merely invisible; it is invisible by two orders of magnitude, which is what a benchmark is for and a
+problem for a business.
+
+**The ladder says the ceiling is not the book.** Everything frozen, only the size changed (the position cap scaled with it
+so the cap is not the binding constraint):
+
+| contracts per order | one order USD | order / level | fills a day, median | median net bps | **median net USD a day** | our notional / market |
+|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 2.09 | 0.39% | 26 | +15.13 | **+0.13** | 0.005% |
+| 5 | 10.4 | 1.93% | 34 | +10.67 | **+0.40** | 0.024% |
+| 10 | 20.9 | 3.88% | 37 | +24.11 | **+1.11** | 0.042% |
+| 20 | 41.7 | 7.75% | 48 | +28.93 | **+2.44** | 0.081% |
+
+**The dollars scale with the size and the rate does not fall**: twenty times the order pays 19.1 times the median day, so no
+absorption break appears anywhere in the tested range and the offline ceiling is *beyond* 20 contracts -- 7.75 per cent of
+the level, still under the 10 to 15 per cent at which a quote starts to matter. The limit this instrument does have is its
+own turnover: **at twenty contracts the median day pays 2.44 USD** on 825 USD of maker notional in two hours, because the
+market only trades about a million dollars there. Scaling cannot fix that, and a volume tier is not reachable from it --
+which is the same answer the capacity arithmetic gave about the fee tiers, from the other side.
+
+**Which is why the live stage is reserved rather than built here.** A candidate with a hundred times this turnover is where
+"can the book absorb us" and "does someone start picking us off" become different questions, and the escalation ladder
+(1x -> 3x -> 5x -> 8x every two to three sessions) belongs to a venue, not to a tape. What it would watch is the three
+things a replay cannot show: **the fill notional scaling with the size** (five times the order should bring 4.5 to 5 times
+the traded notional; a two-fold answer means someone is stepping in front), **the five-second markout** holding at its
+one-contract level (a fall means the flow that reaches a large quote is informed), and the **`post-only` refusal rate**
+staying flat (a rise means the book is racing the quote). The end form is the same measurement as a rule:
+`size = min(cap, floor(alpha x level_usd / one_order_usd))` with `alpha` set from the ratio above -- 5 per cent of today's
+538 USD level is about 13 contracts -- so a thin book shrinks the quote automatically and a deep one lets it out.
+
 **The order the numbers suggest, if one is built at all**: the bps-adaptive depth first, because its evidence is already in
 hand and it is one line rather than an architecture; then the inventory gate, whose prize is bounded and known; then the
 lead-lag gate, which needs the link below the lead *and* one overlapping day of the leader's depth; and the amend last,

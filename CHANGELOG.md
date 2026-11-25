@@ -20,7 +20,21 @@ site now points at `ToyQuant`.
   and a median net of -2.36, 21 and **+10.37**, 18 and -11.84 -- all under the thirty-fill floor, and four of seven at the
   best of them. And **the touch is the worst place to quote** even though it fills most, which is the tape's finding
   (informed at the touch, reverting two ticks through) read from the strategy's side.
-- **The sweep's cut and trade-slice names now carry the instrument.** They were keyed by day and window only, so the first
+- **The quote is two orders of magnitude smaller than the book**, measured rather than estimated:
+  `tools/study/okx_quote_share.py` reads the window's market turnover (median **1.02 M USD** over two hours) and the
+  time-weighted USD resting three ticks behind the touch (**538 USD**) from the archive and the tape, so one contract --
+  **2.09 USD** -- is **0.35 per cent of its level and 0.005 per cent of the flow**.
+- **A size ladder says the ceiling is not the book**: at 1 / 5 / 10 / 20 contracts the median day pays **+0.13 / +0.40 /
+  +1.11 / +2.44 USD** and the median rate does not fall (+15.13 / +10.67 / +24.11 / +28.93 bps), so twenty times the order
+  pays 19.1 times the median day and no absorption break appears through 7.75 per cent of the level. **What bounds this
+  instrument is its own turnover**, not its depth: 2.44 USD a day at 20 contracts on 825 USD of maker notional in two
+  hours, and a volume tier is not reachable from it.
+- **The live stage is therefore reserved, not built**: the 1x -> 3x -> 5x -> 8x escalation with three sensors (fill
+  notional scaling, five-second markout, `post-only` refusal rate) needs a candidate with a hundred times this turnover,
+  and the end form `size = min(cap, floor(alpha x level_usd / one_order_usd))` is anchored at 5 per cent of 538 USD, about
+  13 contracts today. `docs/RETROSPECTIVE.md` carries the table and the front table carries the promise.
+- `tools/sweep/okx_maker_baseline.py` gains `net_usd` and `notional_usd`, because a size ladder is a question about
+  dollars and the bps columns divide them away.
   DNA run replayed *UP's* cut (its `instId` read `UP-USDT-SWAP`) and every cell came back `?`. `okx_book_window.py` names
   its emit the same way, so the two sides agree; no recorded number came from the broken run.
 - **`data/v2/crypto/` is one folder per instrument** (UP, DNA, BTC, ETH and the single-day symbols), the eighteen
