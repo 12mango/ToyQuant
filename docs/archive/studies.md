@@ -1728,6 +1728,35 @@ and still cannot pay the fee, because its book is nine ticks wide *and its tick 
 point of capture. CT and PIEVERSE are the first candidates the frontier row asked for, the ones whose `tick_bps` is
 **below 2**, where a fixed tick count is the wrong unit and `--quote-distance-bps` is the right one.
 
+**The download ranking, in the two shapes the measured instruments define (2026-11-25).** Deciding *which* instrument is
+worth the one manual download has a shape, and the archive answers it in two groups named after the instruments that
+measured them. `tools/study/okx_download_rank.py --read data/v2/crypto/okx_tickers_20261125T133101Z.json` re-ranks the
+sample with the screen's own medians and the same three-tick arithmetic:
+
+| instrument | half spread bps | width ticks | tick bps | 3-tick capture bps | notional USD | depth on disk |
+|---|---:|---:|---:|---:|---:|---|
+| UP-USDT-SWAP | 5.82 | 2.00 | 5.82 | 17.47 | 3,248,216 | yes |
+| NES-USDT-SWAP | 5.77 | 2.00 | 5.77 | 17.31 | 1,939,237 | yes |
+| SSV-USDT-SWAP | 5.39 | 2.00 | 5.39 | 16.16 | 3,167,836 | |
+| OL-USDT-SWAP | 8.91 | 4.00 | 4.45 | 13.36 | 1,547,216 | |
+
+| instrument | half spread bps | width ticks | tick bps | 3-tick capture bps | notional USD | depth on disk |
+|---|---:|---:|---:|---:|---:|---|
+| PROS-USDT-SWAP | 3.21 | 4.50 | 1.43 | 4.28 | 16,553,709 | |
+| BLUR-USDT-SWAP | 2.17 | 4.00 | 1.08 | 3.25 | 10,747,697 | |
+| DGAI-USDT-SWAP | 2.48 | 5.00 | 0.99 | 2.98 | 8,544,878 | |
+| CT-USDT-SWAP | 3.04 | 8.00 | 0.76 | 2.28 | 3,618,313 | yes |
+| BABY-USDT-SWAP | 3.97 | 7.00 | 1.14 | 3.41 | 2,875,207 | |
+| ALLO-USDT-SWAP | 1.75 | 4.00 | 0.87 | 2.62 | 2,619,783 | |
+| ONE-USDT-SWAP | 2.17 | 4.00 | 1.09 | 3.26 | 2,299,142 | |
+| GRVT-USDT-SWAP | 5.84 | 14.50 | 0.81 | 2.42 | 2,112,372 | |
+
+The first group is UP's shape (two ticks wide, a tick worth 4.5 to 5.8 bps, 13 to 17 bps of capture) and the second is
+CT's (four or more ticks, a tick under 2.5 bps, so a 14 bps distance stays inside forty ticks). **The pools are four and
+eight, not the fifteen or twenty a reader might expect**: most of the 555 have a tick thin enough that three ticks is a
+couple of basis points, which is exactly why the screen's 127 width-passers are not 127 candidates. The next two
+downloads in order are **SSV** and **OL**, then **PROS** and **BLUR**.
+
 **Two mechanisms, registered before their runs, and both fail the bar (2026-11-25).** The frontier's method rows had two
 experiments that no data could block: the quote distance in basis points rather than ticks, and the one-sided retreat at
 high inventory. Both are in the tree now behind flags that default to off, so every earlier number stands, and both ran
