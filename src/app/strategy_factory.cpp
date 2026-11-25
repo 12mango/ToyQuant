@@ -151,6 +151,9 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
         base_config.amend_instead_of_cancel = config.amend_instead_of_cancel;
         base_config.flatten_band_units = config.flatten_band_units;
         auto active_config = make_active_l2_config(base_config);
+        // A zero leaves the strategy's own threshold, so a run that does not ask for the halt to move is unchanged.
+        if (config.pause_ticks_per_second > 0.0)
+            active_config.pause_after_ticks_per_second = config.pause_ticks_per_second;
         active_config.jump_window_ms = config.jump_window_ms;
         active_config.jump_ticks = config.jump_ticks;
         active_config.jump_cooldown_ms = config.jump_cooldown_ms;

@@ -171,6 +171,7 @@ StrategyFactoryConfig Application::strategy_config(const InstrumentSpec& instrum
         .onesided_inventory_frac = cfg_.onesided_inventory_frac,
         .layer_step_bps = cfg_.layer_step_bps,
         .amend_instead_of_cancel = cfg_.amend_instead_of_cancel,
+        .pause_ticks_per_second = cfg_.pause_ticks_per_second,
         .inventory_shift_ticks_override = cfg_.inventory_shift_ticks,
         .refresh_price_ticks_override = cfg_.refresh_price_ticks_override,
         .edge_cover_ticks_override = cfg_.edge_cover_ticks,
@@ -418,6 +419,7 @@ void Application::run_replay_mode() const
                                       .onesided_inventory_frac = cfg_.onesided_inventory_frac,
                                       .layer_step_bps = cfg_.layer_step_bps,
                                       .amend_instead_of_cancel = cfg_.amend_instead_of_cancel,
+                                      .pause_ticks_per_second = cfg_.pause_ticks_per_second,
                                       .inventory_shift_ticks_override = cfg_.inventory_shift_ticks,
                                       .refresh_price_ticks_override =
                                           cfg_.refresh_price_ticks_override,

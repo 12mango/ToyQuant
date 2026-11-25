@@ -1894,6 +1894,36 @@ mechanism is **closed at this latency, built and off by default**, and the row t
 already names: a few-millisecond round trip, where the saved 80 ms is the thing that decides whether the quote is a maker
 at all and the queue given up is smaller than the fill it costs.
 
+**And the halt, registered before its run (2026-11-25).** `ActiveL2MarketMaker`'s volatility halt is on in every recorded
+run at 9.0 ticks a second and has no switch: the speed it compares is built from view gaps (8.5 ms mean on this feed)
+rather than from the market, every threshold from 1.0 to 50.0 lands in the same place, and it fires `risk_pause_count` 513
+times across the two hours of 11-16. Whether that helps or costs has never been measured -- only argued from half-hour
+slices, where both halves lose a fill and the quiet one loses less. `--pause-ticks-per-second=D` exposes it now, with `0`
+leaving the 9.0 every recorded cell used, and the run is the frozen UP cell over the same seven days with the halt off
+(`D = 1e9`) against a re-derived default arm. **The bar, written here first: the halt is a tax if the fills reach 30 a
+window and the closed median is not worse on five of seven days; it is doing its job if either fails, and this row closes
+with that answer.** Both arms are the same configuration otherwise -- two layers, three ticks, 40 ms debounce,
+`--edge-cover-ticks=1`, 10 ms, `--post-only` -- and `risk_pause_count` is read from one direct run of each arm, because a
+pause count of zero in the off arm is the only thing that proves the flag moved the gate rather than the run.
+
+**The halt is doing its job, and the row closes (2026-11-25).** The arm that ran it with the switch on reproduces the frozen
+rows to the last digit, which is what says the flag defaults to the behaviour every recorded cell had; `risk_pause_count`
+reads **513** with the default and **0** at `D = 1e9`, which is what says the gate and not something else moved.
+
+| arm, UP 13:30-15:30, 10 ms, `--post-only`, 40 ms refresh | fills a window, median (range) | closed bps, median | days positive (closed) | worst day |
+|---|---:|---:|---:|---:|
+| halt on (the recorded cell) | 26 (19-50) | **+9.83** | 5 of 7 | -69.40 |
+| halt off (`D = 1e9`) | 26 (12-44) | **+6.38** | 5 of 7 | -87.88 |
+
+The fills do not reach thirty either way, so the bar's first condition fails and the second decides it: without the halt the
+closed median is lower (**+6.38** against +9.83), lower on six of the seven days, and the worst day falls from -69.40 to
+-87.88. The near-thirty half of the distribution goes the other way -- 11-20 improves from -8.63 to -3.91 -- but the
+median is the registered statistic and it moves the wrong way. So the halt is not a tax on this cell: the half-hour
+argument that stood in for a measurement ("both halves lose a fill and the quiet one loses less") now has its control, and
+the fear was that the halt removes the cheap minutes while removing it removes more. **The row closes with the halt on**,
+and the flag stays because the threshold is still built from view gaps rather than from the market: the next version of
+this rule is a tick range over a fixed window, and it will need this switch to be tested against the same cell.
+
 One defect came out of the first run and earns its line: the two prices were computed with `round` on the raw fraction,
 and a half-tick lands on a boundary where `round` answers to even, so the target came out equal to the start -- an amend
 asking for the price the order already had, reading 82.6 ms and meaning nothing. The prices are built from an integer

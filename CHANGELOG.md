@@ -9,6 +9,12 @@ site now points at `ToyQuant`.
 
 ## Amend, from the strategy layer down to the book (2026-11-25)
 
+- **`--pause-ticks-per-second=D`** exposes `ActiveL2MarketMaker`'s volatility halt, which had been on at 9.0 with no switch
+  in every recorded run. `0` leaves the strategy's own value, and the default arm reproduces the frozen rows to the last
+  digit; `1e9` turns it off and `risk_pause_count` reads 513 -> 0. The registered bar asked whether the halt was a tax:
+  fills 26 (19-50) with it and 26 (12-44) without do not reach thirty, and the closed median falls from **+9.83** to
+  **+6.38**, worse on six of seven days and worse on the worst day (-69.40 to -87.88). The halt stays on and the row closes.
+
 - **`--amend-instead-of-cancel`** moves a primary quote in place instead of pulling it and placing it again. The strategy
   emits the request, the pipeline routes it, and an engine that cannot amend receives the cancel the request replaced --
   so the flag is inert on an engine without an amend rather than an error.

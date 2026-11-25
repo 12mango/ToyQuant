@@ -97,6 +97,7 @@ constexpr std::string_view kQuoteDistanceBpsPrefix = "--quote-distance-bps=";
 constexpr std::string_view kOnesidedInventoryPrefix = "--onesided-inventory-frac=";
 constexpr std::string_view kLayerStepBpsPrefix = "--layer-step-bps=";
 constexpr std::string_view kAmendInsteadOfCancelFlag = "--amend-instead-of-cancel";
+constexpr std::string_view kPauseTicksPerSecondPrefix = "--pause-ticks-per-second=";
 constexpr std::string_view kJumpWindowPrefix = "--jump-window-ms=";
 constexpr std::string_view kJumpTicksPrefix = "--jump-ticks=";
 constexpr std::string_view kJumpCooldownPrefix = "--jump-cooldown-ms=";
@@ -265,7 +266,8 @@ void print_usage(const char* executable)
                      "points of the reference price, where one tick a layer would put them on almost the same price; "
                      "--amend-instead-of-cancel moves a primary quote in place instead of pulling it and placing it "
                      "again, which a venue that amends takes in one round trip and this replay's engine takes as the "
-                     "cancel it replaced\n";
+                     "cancel it replaced; --pause-ticks-per-second=D sets the active halt's threshold, which is 9.0 "
+                     "ticks a second and always on, so a large value is what turns it off\n";
         std::cerr << "   limits: --max-exposure-usd=N is the exposure ceiling the summary measures the run "
                      "against, enforced rather than reported once it is named, and --kill-switch-loss-usd=N "
                      "latches when the loss reaches N dollars, closes the position it was holding at the "
@@ -1282,6 +1284,15 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
             }
             else if (flag == kAmendInsteadOfCancelFlag)
                 cfg.amend_instead_of_cancel = true;
+            else if (flag.compare(0, kPauseTicksPerSecondPrefix.size(), kPauseTicksPerSecondPrefix) == 0)
+            {
+                std::istringstream stream(flag.substr(kPauseTicksPerSecondPrefix.size()));
+                double value = 0.0;
+                if (!(stream >> value) || value < 0.0)
+                    error = "--pause-ticks-per-second must be a speed in ticks a second, and a large one disables the halt";
+                else
+                    cfg.pause_ticks_per_second = value;
+            }
             else if (flag.compare(0, kJumpWindowPrefix.size(), kJumpWindowPrefix) == 0)
             {
                 if (!parse_unsigned(flag.substr(kJumpWindowPrefix.size()), cfg.jump_window_ms))
