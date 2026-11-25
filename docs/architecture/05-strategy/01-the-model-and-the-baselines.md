@@ -17,6 +17,19 @@ Eight files and four families, which is worth stating because the file names alo
 
 The root's class and its file both carry `Base`, because three names ending in `_l2_market_maker.h` read as siblings otherwise, and the one every other one extends is not the one a reader would pick. Each of the leaves derives from the root rather than holding one and forwarding each callback: a wrapper has to hand-forward every virtual, and a forgotten forward changes behaviour silently rather than failing to compile, which is what happened when `InventoryAwareL2MarketMaker` was written the other way and never forwarded `on_queue_activity`.
 
+**`active` in these names is the quoting policy, not the taker side.** Every class in the table above is a maker: it
+returns two quotes and never a crossing order. What `ActiveL2MarketMaker` adds is an *active decision about when to quote
+at all* -- a volatility halt, a forced-flow cooldown and a warmup -- and `passive_l2` is the same root with the baseline
+signal and no overrides, not a different kind of order. That is also why the recorded cells run `active_l2`: its factory
+branch (`src/app/strategy_factory.cpp:127`) is the only one that wires the research surface -- the basis-point distance,
+the layers and their step, the debounce, the edge cover, the closing side, the one-sided retreat and the amend -- while the
+`passive_l2` branch spells its configuration out and quietly ignores every one of those flags. Whether a run actually rests
+on the book is `--post-only`, a run flag the pipeline puts on each order (`src/app/app_config.cpp:77`), and the recorded
+maker cells report it working as `post_only_cancels`: quotes the venue declined rather than let cross. The two lines
+outside this family are the ones that are not makers, and both say so with their shapes -- `trend_l2` sets a target
+position and pays the **taker** fee to enter (514 of 514 fills in the pinned window), and `execution_l2` follows a parent
+order's schedule and has no direction of its own.
+
 The strategy is the decision layer, not the matching layer. It sees `TopOfBook`, keeps its own working-order and position state, and returns candidate `StrategyOrder` values. The pipeline later assigns IDs and converts them to `exchange::Order`.
 
 ```cpp
