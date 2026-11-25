@@ -107,6 +107,11 @@ struct L2MarketMakerBaseConfig
     // unchanged for this long, while the retreating side goes out at once. Zero, the default, leaves the symmetric
     // behaviour every recorded run was measured with.
     uint64_t advance_debounce_ms{0};
+    // The inventory skew that closes rather than adds: while the position is long the ask may come in to this many
+    // ticks from the reference price, and while it is short the bid may, so the side that reduces the position is the
+    // one that gets filled first. The adding side keeps `base_spread`, and both stay outside the touch. Zero, the
+    // default, leaves the symmetric distance alone.
+    double close_side_ticks{0.0};
     // Sides held back by the rule above, so a run can say how often it refused to chase.
     uint64_t advance_skips{0};
 };
@@ -427,6 +432,26 @@ class L2MarketMakerBase : public Strategy
         {
             bid_price = passive_bid;
             ask_price = passive_ask;
+        }
+        // The closing side comes in while there is inventory to close: a long position is reduced by the ask and a
+        // short one by the bid, so the side that takes the position down is the one the market reaches first. The
+        // adding side keeps its own distance, and neither side is allowed inside the touch -- the venue's post-only
+        // rule would decline it there, and the point is a fill rather than a refusal.
+        if (config_.close_side_ticks > 0.0 && config_.tick_size > 0.0 && position_ != 0)
+        {
+            const double close_offset = config_.close_side_ticks * config_.tick_size;
+            if (position_ > 0)
+            {
+                const double closing_ask =
+                    std::ceil((fair_price + close_offset) / config_.tick_size) * config_.tick_size;
+                ask_price = std::max(passive_ask, std::min(ask_price, closing_ask));
+            }
+            else
+            {
+                const double closing_bid =
+                    std::floor((fair_price - close_offset) / config_.tick_size) * config_.tick_size;
+                bid_price = std::min(passive_bid, std::max(bid_price, closing_bid));
+            }
         }
         if (!std::isfinite(bid_price) || !std::isfinite(ask_price) || bid_price >= ask_price)
             return orders;

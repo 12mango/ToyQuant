@@ -109,6 +109,8 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
         base_config.edge_cover_ticks = config.edge_cover_ticks_override;
         base_config.min_spread_ticks = config.min_spread_ticks_override;
         base_config.markout_cover = config.markout_cover;
+        base_config.advance_debounce_ms = config.advance_debounce_ms;
+        base_config.close_side_ticks = config.close_side_ticks_override;
         return std::make_unique<InventoryAwareL2MarketMaker>(
             InventoryAwareL2MarketMakerConfig{.base = base_config,
                                                .inventory_limit = inventory_limit,
@@ -136,6 +138,7 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
         base_config.min_spread_ticks = config.min_spread_ticks_override;
         base_config.markout_cover = config.markout_cover;
         base_config.advance_debounce_ms = config.advance_debounce_ms;
+        base_config.close_side_ticks = config.close_side_ticks_override;
         base_config.flatten_band_units = config.flatten_band_units;
         auto active_config = make_active_l2_config(base_config);
         active_config.jump_window_ms = config.jump_window_ms;

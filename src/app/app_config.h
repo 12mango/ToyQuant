@@ -308,6 +308,8 @@ struct AppConfig
     // for this long, while a quote that retreats goes out at once. 0 leaves the symmetric behaviour every recorded
     // run was measured with.
     uint64_t advance_debounce_ms = 0;
+    // The closing side's distance while the position is not flat, in ticks. 0 leaves the symmetric distance.
+    double close_side_ticks = 0.0;
     // 0 disables per-stage profiling. Otherwise this is the sampling interval in events,
     // so 64 times the 64th event of every 64.
     uint64_t profile_sample_interval = 0;

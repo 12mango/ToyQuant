@@ -1778,6 +1778,37 @@ fills is below the thirty this repository requires, so what is registered for th
 **thirty fills or more a window and a positive closed median on five of seven days** -- which needs a larger clip or an
 instrument that trades more, not a different threshold.
 
+**Three ways to get there were tried, and the cheapest one turns out to be the wrong trade (2026-11-25).** All three runs
+are at 10 ms with `--post-only` and the 40 ms asymmetric refresh, seven days, so they differ from the row above in one thing
+each:
+
+| experiment | fills a window | fee bps | closed bps, median | days positive |
+|---|---:|---:|---:|---|
+| the 13:30-15:30 window (the row above) | 13 to 27 | 2.00 | **+12.40** | 6 of 7 |
+| 08:00-16:00, the gates deciding when to quote | **49 to 93** | 2.00 | **-1.89** | 3 of 7 |
+| 16:00-24:00, one day for the shape | 2 | 2.00 | 0.00 | 0 of 1 |
+| 13:30-15:30 with `--close-side-ticks=1` | 14 to 26 | 2.00 | +11.41 | 4 of 7 |
+
+**Widening the clock buys the sample and gives up the edge.** Eight hours of the same configuration clears the thirty-fill
+floor on every day (49 to 93 fills) with the fee still the maker's 2.00 bps, and its closed median is **-1.89** with three
+of seven days positive, against **+12.40 and six of seven** in the two hours it was widened from. The two-hour window was
+not an arbitrary lock: it is the best part of the session, and the hours around it carry the same maker fee against a worse
+capture. The evening is not a candidate at all -- 16:00-24:00 UTC produced **two fills in eight hours** on the day it was
+cut, so the instrument's flow is a European-and-US-morning phenomenon.
+
+**The closing-side skew trades capture for turnover and does not pay.** Bringing the reducing side in to one tick while the
+position is not flat leaves the fills where they were (14 to 26 against 13 to 27) and lowers the closed median from +12.40
+to +11.41, with the positive days falling from six to four: the side that closes sooner closes worse, and the turnover it
+buys is not the constraint. That is a closure of the lever at this size, not a claim about inventory management in general
+-- and the existing `--inventory-shift-ticks` already moves both quotes with the position, which is the version of this
+idea the recorded runs carried.
+
+**The third one is registered and not built.** Two passive layers (three and four ticks behind the touch) inside the same
+risk caps and the same asymmetric refresh would widen the capture without moving the touch, and it needs two orders a side
+where the strategy places one. Its bar, written here before the build: at 10 ms with `--post-only`, **fills rise above the
+one-layer row and the closed median stays positive on five of seven days**, with `max_abs_inventory` unchanged. A layer that
+raises fills and lowers the median is the closing-side result again, and would be closed the same way.
+
 
 **What is next, and what would qualify another instrument.** The next measurement is a tiered re-screen of every swap
 inside the same 13:30-15:30 UTC window -- thirty ticker reads twenty seconds apart -- with the book's median width reported

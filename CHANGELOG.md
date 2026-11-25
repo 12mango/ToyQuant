@@ -7,6 +7,23 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## Three ways to reach thirty fills, and only one of them was left standing (2026-11-25)
+
+- **`--close-side-ticks=N`** brings the side that reduces the position in to N ticks while the position is not flat, and
+  leaves the adding side at its own distance. Zero is the default and every recorded number is unchanged; it is pinned by
+  `l2_strategy_test` (a long position moves the ask and not the bid).
+- **Widening the clock buys the sample and gives up the edge.** At 10 ms with `--post-only` and the 40 ms asymmetric
+  refresh, the 13:30-15:30 window reads 13-27 fills at a +12.40 bps closed median with 6 of 7 days positive; 08:00-16:00
+  reads **49-93 fills** at **-1.89** with 3 of 7. The two hours were never an arbitrary lock -- they are the best part of
+  the session -- and 16:00-24:00 UTC produced **two fills in eight hours**, so the evening is not a window at all.
+- **The closing-side skew does not pay at this size**: fills stay at 14-26 against 13-27 and the closed median falls from
+  +12.40 to +11.41, with the positive days from six to four. It trades capture for turnover, and turnover is not the
+  constraint.
+- **Multi-layer quoting is registered and not built**, with its bar in `docs/archive/studies.md`: two passive layers inside
+  the same caps and the same refresh, fills above the one-layer row and the closed median positive on 5 of 7, with
+  `max_abs_inventory` unchanged.
+- `docs` and `fast` green.
+
 ## Two execution mechanisms, registered before the run and measured (2026-11-25)
 
 - **Four flags, all defaulting to zero** -- `--jump-window-ms`/`--jump-ticks`/`--jump-cooldown-ms` (pull the quotes and

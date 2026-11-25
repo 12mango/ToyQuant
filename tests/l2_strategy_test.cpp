@@ -395,6 +395,33 @@ int main()
     assert(caught_up[0].side == Side::Buy);
     assert(caught_up[0].price > asymmetric_orders[0].price);
 
+    // The closing side comes in while there is inventory to close: a long position is reduced by the ask, so the ask
+    // is quoted closer to the fair while the bid keeps its own distance.
+    // The limit is huge so the existing inventory shift is negligible: this test is about the closing side's distance,
+    // not about the shift, which moves both quotes and would confound the comparison.
+    L2MarketMakerBase closing(L2MarketMakerBaseConfig{.order_size = 1,
+                                                      .base_spread = 1.5,
+                                                      .inventory_limit = 1000000000,
+                                                      .tick_size = 0.5,
+                                                      .close_side_ticks = 1.0});
+    L2MarketView flat_view = view;
+    flat_view.ts = 3000000;
+    const auto flat_orders = closing.on_l2_market_view(flat_view);
+    assert(flat_orders.size() == 2);
+    closing.on_order_submitted(
+        StrategyOrder{Side::Buy, view.symbol.str(), flat_orders[0].price, 1, 81});
+    closing.on_order_update(ExecutionReport{.order_id = 81, .side = exchange::Side::Buy,
+                                            .exec_type = ExecType::Trade,
+                                            .symbol = view.symbol.str(),
+                                            .price = flat_orders[0].price, .quantity = 1});
+    assert(closing.net_position() > 0);
+    const auto closing_orders = closing.on_l2_market_view(flat_view);
+    assert(closing_orders.size() == 2);
+    // The adding side did not move and the closing side came in, which is the whole of the rule.
+    assert(closing_orders[0].price == flat_orders[0].price);
+    assert(closing_orders[1].price < flat_orders[1].price);
+    assert(closing_orders[1].price > flat_view.top.ask_price);
+
     // The adverse-selection gate: a side is quoted only when the edge that fill would capture covers the maker
     // fee plus what passive fills at that distance have actually cost. The estimate arrives from the pipeline,
     // which is the only component that sees the midpoint after a fill, and the gate waits for samples before it

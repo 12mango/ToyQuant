@@ -93,6 +93,7 @@ constexpr std::string_view kJumpWindowPrefix = "--jump-window-ms=";
 constexpr std::string_view kJumpTicksPrefix = "--jump-ticks=";
 constexpr std::string_view kJumpCooldownPrefix = "--jump-cooldown-ms=";
 constexpr std::string_view kAdvanceDebouncePrefix = "--advance-debounce-ms=";
+constexpr std::string_view kCloseSidePrefix = "--close-side-ticks=";
 constexpr std::string_view kQueueChunksPrefix = "--queue-chunks=";
 constexpr std::string_view kQueueSeedPrefix = "--queue-seed=";
 constexpr std::string_view kArrivalSharePrefix = "--arrival-share=";
@@ -245,7 +246,9 @@ void print_usage(const char* executable)
                      "each of them at the strategy's own setting. --jump-window-ms=N, --jump-ticks=T and "
                      "--jump-cooldown-ms=C pull the quotes when the mid moves T ticks inside N milliseconds "
                      "and hold them off for C, and --advance-debounce-ms=D holds back only the side that would "
-                     "move towards the market, for D milliseconds after the fair price last moved\n";
+                     "move towards the market, for D milliseconds after the fair price last moved. "
+                     "--close-side-ticks=N brings the side that reduces the position in to N ticks while the "
+                     "position is not flat, leaving the adding side at its own distance\n";
         std::cerr << "   limits: --max-exposure-usd=N is the exposure ceiling the summary measures the run "
                      "against, enforced rather than reported once it is named, and --kill-switch-loss-usd=N "
                      "latches when the loss reaches N dollars, closes the position it was holding at the "
@@ -1224,6 +1227,17 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                     error = "--advance-debounce-ms must be a non-negative integer";
                     return false;
                 }
+            }
+            else if (flag.compare(0, kCloseSidePrefix.size(), kCloseSidePrefix) == 0)
+            {
+                double ticks = 0.0;
+                std::istringstream stream(flag.substr(kCloseSidePrefix.size()));
+                if (!(stream >> ticks) || ticks < 0.0)
+                {
+                    error = "--close-side-ticks must not be negative";
+                    return false;
+                }
+                cfg.close_side_ticks = ticks;
             }
             else if (flag.compare(0, kQueueChunksPrefix.size(), kQueueChunksPrefix) == 0)
             {
