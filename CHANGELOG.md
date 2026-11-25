@@ -23,6 +23,14 @@ site now points at `ToyQuant`.
 
 ## Amend, from the strategy layer down to the book (2026-11-25)
 
+- **The amend is asymmetric now, and the retreat-only arm has the best capture of the three measured.** Amending every
+  refresh lost (closed +9.83 -> -5.92, `zero_queue` 21-53 -> 239-296) because an amended quote sits at the fresh price,
+  i.e. at the back of the level it just cleared. Amending only a retreat, with a two-tick deadband, reads closed median
+  **+14.87** with `zero_queue` back at 35-64 -- and fills 19 against 26, outside the bar's 20 per cent, so the row stays
+  open on the deadband rather than on a threshold.
+- **`MatchingEngine::amend_order` keeps the queue position for a same-price size reduction**, the one amend a venue does
+  not charge for; `matching_engine_test` pins it with two orders at one price and the first cut from ten to five.
+
 - **`--pause-ticks-per-second=D`** exposes `ActiveL2MarketMaker`'s volatility halt, which had been on at 9.0 with no switch
   in every recorded run. `0` leaves the strategy's own value, and the default arm reproduces the frozen rows to the last
   digit; `1e9` turns it off and `risk_pause_count` reads 513 -> 0. The registered bar asked whether the halt was a tax:

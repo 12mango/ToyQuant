@@ -1936,6 +1936,22 @@ engine gained the other half of the venue's rule for the same reason: a same-pri
 position, which is the amend a maker uses when inventory is heavy, and `matching_engine_test` pins it -- two orders at one
 price, the first cut from ten to five, and the next trade still reaches it.
 
+**The retreat-only arm has the best capture of the three, and misses the fill bar by one lot (2026-11-25).**
+
+| arm, UP 13:30-15:30, 10 ms, `--post-only`, 40 ms refresh | fills a window, median (range) | closed bps, median | days positive (closed) | `zero_queue` orders |
+|---|---:|---:|---:|---:|
+| cancel, then place (the frozen cell) | 26 (19-50) | +9.83 | 5 of 7 | 21-53 |
+| amend every refresh (symmetric) | 49 (29-62) | -5.92 | 3 of 7 | 239-296 |
+| **amend a retreat only, 2-tick deadband** | **19 (11-34)** | **+14.87** | 4 of 7 | 35-64 |
+
+So the diagnosis was right and the cure costs turnover. Retreating with an amend has the highest closed median of the three
+arms -- 5.0 bps above the cancel path and 20.8 above the symmetric arm -- and the `zero_queue` count comes back to 35-64
+from 239-296, which is the queue position the symmetric version was throwing away. What it costs is fills: 19 a window
+against the cancel path's 26, which is outside the 20 per cent the bar allowed (the floor was 20.8), so **the bar is not
+met as written** and the row stays open on the one lever that is not a threshold: the deadband. At two ticks it suppresses
+the moves that would have kept the quote in the flow; the registered next step is the same arm at a one-tick deadband, and
+the arm to beat is now its own +14.87 rather than the cancel path's +9.83.
+
 One defect came out of the first run and earns its line: the two prices were computed with `round` on the raw fraction,
 and a half-tick lands on a boundary where `round` answers to even, so the target came out equal to the start -- an amend
 asking for the price the order already had, reading 82.6 ms and meaning nothing. The prices are built from an integer
