@@ -7,6 +7,20 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## Three defects behind the empty instrument boards (2026-11-25)
+
+- **Eight instruments had no specification**, so every replay of them exited 1 with `Error: no instrument specification
+  for L2 replay symbol: OL-USDT-SWAP` -- and the sweep wrote a row of `?` and `0.0000` instead of saying so. OL, PROS,
+  BLUR, DGAI, GRVT, ONE, BABY and ALLO are now registered from the venue's own instrument list: OL and ONE quote at 1e-6
+  and 1e-7 on 100-token contracts, PROS at 1e-4 on a one-token contract, BLUR and BABY at 1e-6, GRVT and ALLO at 1e-5,
+  DGAI at 1e-4 -- all on ten-token contracts except where stated.
+- **`okx_maker_baseline.py` turned a failed replay into a table of zeros.** It now stops with the day, the model and the
+  child's last stderr line, because a missing input is an error that names the symbol and never a row that reads
+  "measured, nothing happened".
+- **And the scripts passed `--tick 0.0001` for every instrument**, which cuts the book at a resolution the venue never
+  used: on OL that is a hundred ticks too coarse and on ONE a thousand. The runs now carry the venue's own tick, which
+  is also what makes `tick_bps` -- and every distance in basis points derived from it -- mean what it says.
+
 ## Amend, from the strategy layer down to the book (2026-11-25)
 
 - **`--pause-ticks-per-second=D`** exposes `ActiveL2MarketMaker`'s volatility halt, which had been on at 9.0 with no switch

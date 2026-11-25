@@ -216,6 +216,17 @@ def main():
                                "--fast-validation", f"--order-size={args.order_size}",
                                f"--inventory-limit={args.inv_limit}"] + shape + [p for p in args.extra.split() if p]
                     run = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
+                    # A failed replay used to become a row of `?` and 0.0000, which reads as "measured, nothing
+                    # happened" and hides the cause: measured 2026-11-25, OL/PROS/BLUR ran with no instrument
+                    # specification, every cell came out `?`, and the reason -- `Error: no instrument specification
+                    # for L2 replay symbol: OL-USDT-SWAP`, exit 1 -- was in a stderr nobody printed. A missing input
+                    # is an error that names the file or the symbol, never a table of zeros.
+                    if run.returncode != 0 or "trade_reports" not in summary_fields(run.stdout):
+                        detail = run.stderr.strip().splitlines()
+                        detail = detail[-1] if detail else run.stdout.strip()[:200]
+                        print(f"# {day_text} {model} base={base} refresh={refresh}: replay failed, exit "
+                              f"{run.returncode}: {detail}")
+                        return 2
                     fields = summary_fields(run.stdout)
                     notional = float(fields.get("maker_notional_usd", 0.0) or 0.0)
 

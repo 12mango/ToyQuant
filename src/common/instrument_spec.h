@@ -299,6 +299,43 @@ inline InstrumentSpec okx_pieverse_swap_spec(uint64_t quantity_scale = 1000000)
 {
     return okx_swap_spec("PIEVERSE-USDT-SWAP", 0.0001, 10.0, quantity_scale);
 }
+// The eight instruments the screen ranked after the first four. Every figure here was read from the venue's own
+// instrument list on 2026-11-25 (`/api/v5/public/instruments?instType=SWAP`), because guessing a tick or a contract
+// value is the failure this table exists to prevent: OL's tick is 1e-6 and its contract is 100 tokens, while BLUR's
+// tick is 1e-6 on a contract of 10 -- a sweep handed the wrong tick cuts a book at a resolution the venue never used,
+// and a wrong ctVal prices every fill by the wrong factor without failing anywhere.
+inline InstrumentSpec okx_ol_swap_spec(uint64_t quantity_scale = 1000000)
+{
+    return okx_swap_spec("OL-USDT-SWAP", 0.000001, 100.0, quantity_scale);
+}
+inline InstrumentSpec okx_pros_swap_spec(uint64_t quantity_scale = 1000000)
+{
+    return okx_swap_spec("PROS-USDT-SWAP", 0.0001, 1.0, quantity_scale);
+}
+inline InstrumentSpec okx_blur_swap_spec(uint64_t quantity_scale = 1000000)
+{
+    return okx_swap_spec("BLUR-USDT-SWAP", 0.000001, 10.0, quantity_scale);
+}
+inline InstrumentSpec okx_dgai_swap_spec(uint64_t quantity_scale = 1000000)
+{
+    return okx_swap_spec("DGAI-USDT-SWAP", 0.0001, 10.0, quantity_scale);
+}
+inline InstrumentSpec okx_grvt_swap_spec(uint64_t quantity_scale = 1000000)
+{
+    return okx_swap_spec("GRVT-USDT-SWAP", 0.00001, 10.0, quantity_scale);
+}
+inline InstrumentSpec okx_one_swap_spec(uint64_t quantity_scale = 1000000)
+{
+    return okx_swap_spec("ONE-USDT-SWAP", 0.0000001, 100.0, quantity_scale);
+}
+inline InstrumentSpec okx_baby_swap_spec(uint64_t quantity_scale = 1000000)
+{
+    return okx_swap_spec("BABY-USDT-SWAP", 0.000001, 10.0, quantity_scale);
+}
+inline InstrumentSpec okx_allo_swap_spec(uint64_t quantity_scale = 1000000)
+{
+    return okx_swap_spec("ALLO-USDT-SWAP", 0.00001, 10.0, quantity_scale);
+}
 // in this repository where the fee is not a multiple of a tick — one tick on a hundred dollar share is one
 // basis point, and a retail commission of a few tenths of a cent a share is a fraction of it, where the
 // perpetuals this repository traded before paid tens of ticks or more. The commission is per share and the rate
@@ -409,6 +446,46 @@ inline bool instrument_spec_of(const std::string& symbol, InstrumentSpec& out)
     if (symbol == "PIEVERSE-USDT-SWAP")
     {
         out = okx_pieverse_swap_spec();
+        return true;
+    }
+    if (symbol == "OL-USDT-SWAP")
+    {
+        out = okx_ol_swap_spec();
+        return true;
+    }
+    if (symbol == "PROS-USDT-SWAP")
+    {
+        out = okx_pros_swap_spec();
+        return true;
+    }
+    if (symbol == "BLUR-USDT-SWAP")
+    {
+        out = okx_blur_swap_spec();
+        return true;
+    }
+    if (symbol == "DGAI-USDT-SWAP")
+    {
+        out = okx_dgai_swap_spec();
+        return true;
+    }
+    if (symbol == "GRVT-USDT-SWAP")
+    {
+        out = okx_grvt_swap_spec();
+        return true;
+    }
+    if (symbol == "ONE-USDT-SWAP")
+    {
+        out = okx_one_swap_spec();
+        return true;
+    }
+    if (symbol == "BABY-USDT-SWAP")
+    {
+        out = okx_baby_swap_spec();
+        return true;
+    }
+    if (symbol == "ALLO-USDT-SWAP")
+    {
+        out = okx_allo_swap_spec();
         return true;
     }
     if (symbol == "SPY")
