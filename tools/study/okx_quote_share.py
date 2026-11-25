@@ -20,7 +20,7 @@ import json
 import statistics
 import sys
 import tarfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -39,13 +39,22 @@ def window_bounds(day_text, start, end):
     return start_ms, int(day.replace(hour=hour, minute=minute).timestamp() * 1000)
 
 
-def traded_notional(symbol, day_text, start_ms, end_ms, root):
-    """The market's USD turnover inside the window, from the day's tape.
+def tape_name(day_text, start_ms):
+    """The tape whose UTC+8 day covers `start_ms`.
 
-    The tape named D covers [D-1 16:00, D 16:00) UTC, so every window that ends before 16:00 lives in file D -- which is
-    the case for the two hours this line quotes in.
+    OKX cuts its trade archive on midnight UTC+8 while the depth archive is cut on UTC, so the file named D holds
+    [D-1 16:00, D 16:00) and a window starting at or after 16:00 lives in D+1. Reading file D for an evening window gave
+    two hours of book against zero trades in the sweep's own history, so the same rule is applied here rather than
+    assumed away by a window that happens to be in the morning.
     """
-    path = trade_tape(root, symbol, day_text)
+    day = datetime.strptime(day_text, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    sixteen = int(day.replace(hour=16).timestamp() * 1000)
+    return day_text if start_ms < sixteen else (day + timedelta(days=1)).strftime("%Y-%m-%d")
+
+
+def traded_notional(symbol, day_text, start_ms, end_ms, root):
+    """The market's USD turnover inside the window, from the day's tape."""
+    path = trade_tape(root, symbol, tape_name(day_text, start_ms))
     if path is None:
         return None
     total = 0.0

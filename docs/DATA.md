@@ -467,6 +467,13 @@ The application writes strategy orders and trades to:
 - data/runtime/orders.csv
 - data/runtime/trades.csv
 
+**This is the one folder inside `data/` that a run writes to**, and it is deliberate rather than an oversight: the paths are
+pinned by the performance history (`docs/performance/history-02-l2.md` re-derives their sha256 in a checked block), so
+moving them would re-record an artifact that is evidence of an earlier behaviour -- a worse trade than a folder whose
+contents are generated and ignored. What the rule protects is that nothing generated is *committed* and that a reader can
+tell input from output; `data/runtime/` is ignored by name and this paragraph is the label. Every tool that reads a fill
+stream takes the path as an argument, so nothing else depends on the location.
+
 Legacy CSV and UDP runs begin with `# source_ticks=...`; Trades+BBO replay runs begin with
 `# source_market_data=...`. Both then use the common output columns:
 
@@ -487,7 +494,7 @@ The generated built-in scenarios contain 1,000 ticks each, which is enough for a
 
 1. Select or generate a scenario file in `data/scenarios/`.
 2. Run the engine with that file.
-3. Inspect the generated outputs in `data/runtime/`.
+3. Inspect the generated outputs in `out/runtime/`.
 4. Reuse the same scenario and parameters to compare repeated results.
 
 The application's default paths follow this directory layout.

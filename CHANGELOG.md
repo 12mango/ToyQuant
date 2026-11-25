@@ -32,9 +32,14 @@ site now points at `ToyQuant`.
 - **The live stage is therefore reserved, not built**: the 1x -> 3x -> 5x -> 8x escalation with three sensors (fill
   notional scaling, five-second markout, `post-only` refusal rate) needs a candidate with a hundred times this turnover,
   and the end form `size = min(cap, floor(alpha x level_usd / one_order_usd))` is anchored at 5 per cent of 538 USD, about
-  13 contracts today. `docs/RETROSPECTIVE.md` carries the table and the front table carries the promise.
+  13 contracts today. `docs/RETROSPECTIVE.md` carries the table beside the four reserved directions.
 - `tools/sweep/okx_maker_baseline.py` gains `net_usd` and `notional_usd`, because a size ladder is a question about
   dollars and the bps columns divide them away.
+- **`data/runtime/` stays where it is, and now says why.** It is the one folder inside `data/` that a run writes to, and
+  moving it to `out/` looked like the obvious fix until the performance history turned out to pin the sha256 of both files
+  in a checked block: the move would re-record an artifact that is evidence of an earlier behaviour. `docs/DATA.md` states
+  the exception and the reason instead, and `okx_quote_share.py` picks the trade tape by the window's own start (a file
+  named D holds [D-1 16:00, D 16:00), so an evening window lives in D+1 -- the same rule the sweep learned the hard way).
   DNA run replayed *UP's* cut (its `instId` read `UP-USDT-SWAP`) and every cell came back `?`. `okx_book_window.py` names
   its emit the same way, so the two sides agree; no recorded number came from the broken run.
 - **`data/v2/crypto/` is one folder per instrument** (UP, DNA, BTC, ETH and the single-day symbols), the eighteen
