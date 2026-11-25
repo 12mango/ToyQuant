@@ -120,6 +120,11 @@ compatibility path. Everything below assumes that page.
 - **Batch the edits, then verify.** When a change spans files -- a header, its implementation, the test and the page
   that documents it -- make all of them in one pass and run the checks once at the end of the pass. Verifying between
   every file is how a task spends its budget on gates instead of on the change.
+- **A document edit is anchored on a line inside the section, never on the section's first line.** A replacement whose
+  anchor *is* the heading line deletes the heading, and the paragraph that followed then reads as if it had no title.
+  Measured twice on 2026-11-25, both times while inserting a new section in front of an existing one: the anchor was the
+  old section's opening sentence, the heading went with it, and the damage was only visible on reading the file back.
+  Anchor on a distinctive interior line, or include the heading in the replacement text.
 - **A red gate is not a prompt to retry it.** Go back to `smoke` or `code`, reproduce the failure on the smallest
   input that shows it, fix it there, and only then return to `fast`. Re-running the full gate against a guess is the
   other half of the same anti-pattern, and it hides which edit moved the number.

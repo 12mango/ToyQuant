@@ -306,6 +306,10 @@ def main():
                         # half-spread in bps and spread in ticks -- into the basis points a fill is actually paid, which
                         # is the column the instrument choice lives on rather than the width ranking.
                         "--quote-ticks", "--min-capture-bps",
+                        # `tools/study/okx_spread_screen.py` owns this one too: it re-derives a screen's table from an
+                        # archived sample instead of polling the venue, which is what makes a quoted screen checkable
+                        # after the window it was taken in has closed.
+                        "--read",
                         # `tools/study/okx_quote_share.py` owns this one: the size of one order in engine units, which is
                         # what turns the book's depth and the window's flow into the two ratios a size ladder is read on.
                         "--order-units"}:

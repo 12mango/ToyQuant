@@ -1706,6 +1706,28 @@ trip a `post_only` quote at the touch is still marketable on arrival every time,
 proxy produces. Its through-ask version rested six of six on the same direct route, which is the same staleness read
 from the other side: there the price quoted was one tick through the ask and the ask had moved up before it landed.
 
+**The registered screen, run inside its window (2026-11-25, 13:31:01-13:40:55 UTC).** Thirty reads twenty seconds
+apart, 555 instruments two-sided at least once, thresholds 1.2 bps of median half-spread, 2 ticks of median width and
+500,000 USD of daily notional: **127 pass the width screen (1.2 bps), 104 clear 2.0 and 87 clear 2.5**, and 101 of 555
+clear 2 bps of capture at a three-tick distance -- the maker fee. The reads are archived as
+`data/v2/crypto/okx_tickers_20261125T133101Z.json`, and `--read` re-derives this table from it.
+
+The capture ranking is where the mechanism lives, and the three instruments the owner downloaded land three different
+ways:
+
+| instrument | median half spread | median width | 3-tick capture | notional a day | verdict |
+|---|---:|---:|---:|---:|---|
+| DNA-USDT-SWAP | 7.75 bps | 2 ticks | **23.26 bps** | 12.4 M | rank 1, and already measured to fail the fill floor |
+| UP-USDT-SWAP | 5.82 bps | 2 ticks | 17.47 bps | 3.25 M | the instrument the line is frozen on |
+| NES-USDT-SWAP | 5.77 bps | 2 ticks | 17.31 bps | 1.94 M | UP's twin at rank 7 -- a candidate |
+| CT-USDT-SWAP | 3.04 bps | 8 ticks | 2.28 bps | 3.62 M | clears the fee by 0.28 bps, and its tick is 0.76 bps |
+| PIEVERSE-USDT-SWAP | 1.44 bps | 9 ticks | **0.96 bps** | 89.9 M | **fails**: the widest volume here cannot pay a 2 bps fee at three ticks |
+
+So the screen separates two things a single read had run together: PIEVERSE is the most liquid instrument on the list
+and still cannot pay the fee, because its book is nine ticks wide *and its tick is 0.32 bps* -- three ticks is one basis
+point of capture. CT and PIEVERSE are the first candidates the frontier row asked for, the ones whose `tick_bps` is
+**below 2**, where a fixed tick count is the wrong unit and `--quote-distance-bps` is the right one.
+
 **Two mechanisms, registered before their runs, and both fail the bar (2026-11-25).** The frontier's method rows had two
 experiments that no data could block: the quote distance in basis points rather than ticks, and the one-sided retreat at
 high inventory. Both are in the tree now behind flags that default to off, so every earlier number stands, and both ran
