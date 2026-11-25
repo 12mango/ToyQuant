@@ -451,6 +451,15 @@ class L2MarketMakerBase : public Strategy
             if (std::abs(target - order.price) < 0.5 * config_.tick_size) continue;
             amend_requests_.push_back(AmendRequest{entry.first, target, order.quantity});
             order.price = target;
+            // The primary price the next refresh compares against is this one. Without this the second refresh in a row
+            // cannot recognise the order it just moved -- `order.price` and `last_placed_*` disagree by the amend itself --
+            // and the mechanism silently degrades to the cancels it replaced. Measured 2026-11-25 on UP 11-16: the
+            // strategy's cancel count fell by 261 over 550 placements and the execution summary was identical to the
+            // baseline, which is how a one-line omission reads as "the flag does nothing".
+            if (order.side == Side::Buy)
+                last_placed_bid_ = target;
+            else
+                last_placed_ask_ = target;
         }
     }
 

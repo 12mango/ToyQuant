@@ -1875,6 +1875,25 @@ configuration stops being a maker, so the direction stays unbuilt until a venue 
 (`UP-USDT-SWAP` returns `51001` in the demo environment). The ruler was registered before the run -- inside 75 to 85 ms,
 half a repricing decision -- and it landed at 83.2.
 
+**The mechanism was then built into the replay and measured, and it loses on capture (2026-11-25).** With the venue's
+semantics modelled -- the order keeps its id and never leaves the book, but it re-queues at the back of the level it moves
+to, which is what a venue does and what a "free" amend would not be -- the frozen UP cell reads:
+
+| arm, UP 13:30-15:30, 10 ms, `--post-only`, 40 ms refresh | fills a window, median (range) | closed bps, median | days positive (closed) | net bps, median | `zero_queue` orders |
+|---|---:|---:|---:|---:|---:|
+| cancel, then place (the frozen cell) | 26 (19-50) | **+9.83** | 5 of 7 | +6.78 | 21-53 |
+| amend in place | **49 (29-62)** | **-5.92** | 3 of 7 | -1.82 | 239-296 |
+
+The fills nearly double and the capture goes negative. Both halves are the same fact: an amended quote is always at the
+fresh price and never spends the view the cancel-then-place pair spends being absent, so it is *reached* far more often --
+and each of those extra fills is a quote that the market walked into rather than one the market came back to. The
+`zero_queue` column says the same thing from the other side: 239 to 296 of the quotes were never behind anyone, against 21
+to 53 in the frozen cell, because the amended order lands on a level that had just been cleared. That is the queue
+position the venue's amend throws away, and at a 10 ms link it is worth more than the 79.9 ms the amend saves. So the
+mechanism is **closed at this latency, built and off by default**, and the row that would reopen it is the one the route
+already names: a few-millisecond round trip, where the saved 80 ms is the thing that decides whether the quote is a maker
+at all and the queue given up is smaller than the fill it costs.
+
 One defect came out of the first run and earns its line: the two prices were computed with `round` on the raw fraction,
 and a half-tick lands on a boundary where `round` answers to even, so the target came out equal to the start -- an amend
 asking for the price the order already had, reading 82.6 ms and meaning nothing. The prices are built from an integer

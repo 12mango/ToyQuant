@@ -643,10 +643,10 @@ void MatchingEngine::amend_order(uint64_t order_id, double price, uint64_t quant
         pit->second.orders.remove_if([&](const Order& o) { return o.id == order_id; });
         if (pit->second.orders.empty()) levels.erase(pit);
     };
-    const Side side = amended.side;
+    const exchange::Side side = amended.side;
     const PriceTick new_price = to_price_tick(amended.price, tick_size_);
     order_index_.erase(it);
-    if (side == Side::Buy)
+    if (side == exchange::Side::Buy)
         remove_from(book.bids);
     else
         remove_from(book.asks);
@@ -659,7 +659,7 @@ void MatchingEngine::amend_order(uint64_t order_id, double price, uint64_t quant
         level.orders.push_back(amended);
         order_index_[amended.id] = &level.orders.back();
     };
-    if (side == Side::Buy)
+    if (side == exchange::Side::Buy)
         place_at(book.bids);
     else
         place_at(book.asks);

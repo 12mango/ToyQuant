@@ -20,6 +20,11 @@ site now points at `ToyQuant`.
   closed bps *identically on six of seven days*, and differs on the one day whose price halved (2 ticks instead of 3). The
   recorded +26.18 does not re-derive from the flags the studies page records for it -- four further variants read +5.37,
   +17.93, +27.14 and +9.59 -- so it is quotable as "recorded" only.
+- **The amend was then measured in the replay and it loses on capture**: with the venue's semantics modelled (the order
+  keeps its id and re-queues at the back of the level it moves to), UP's frozen cell reads fills **26 → 49** a window,
+  closed median **+9.83 → -5.92**, positive days 5 → 3, net median **+6.78 → -1.82**, and quotes that were never behind
+  anyone 21-53 → 239-296. The amend doubles the fills by never being absent from the fresh price, and every extra fill is
+  a quote the market walked into. Closed at a 10 ms link: the 79.9 ms it saves is worth less than the queue it gives up.
 
 ## Two registered mechanisms, built, and both fail their bars (2026-11-25)
 
