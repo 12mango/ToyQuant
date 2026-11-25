@@ -239,3 +239,25 @@ bought: **one question a step, stated before the step; the measurement named bef
 re-derived by the binary; and two non-adjacent windows before anything is believed.**
 
 Total spent on data across all eight: **1.27 USD**, of which the funding histories were free.
+
+## Held for later: four directions, and the number that would buy each one
+
+The UP configuration is **frozen**: two structural upgrades (the asymmetric refresh and the second layer) took it to a
+closed median of +26.18 bps and a settled +11.22 on 5 of 7 days, and a seventh variant on the same seven days would be the
+window selection this record refuses. The four directions below are therefore *not built*, and each is written here with
+the measurement already in hand that constrains it and the quotient that would start it -- because an unconstrained idea is
+the thing that gets built next for no reason.
+
+| direction | what it would do | what we already measured that binds it | the number that would buy it |
+|---|---|---|---|
+| **cross-book lead-lag** (BTC's micro-price leads the alt) | pull or skew the quote when the leader jumps, before the sweep arrives | our own round trip is **118 ms a placement and 76 ms a cancel** direct, 414/341 through the proxy. If the lead is the 10-100 ms the literature reports (unmeasured here), it is *shorter than the reaction it would have to beat* and the signal lands after the print that mattered. The two books on disk also share no day -- BTC's 400-level archives are 2024-05-15, 2024-05-20 and 2026-01-07 while UP's are the seven days this record was measured on -- so even the offline test needs one portal download of the leader for a day the follower already has | a measured cancel round trip below the measured lead on this venue, and a replay that shows which prints the gate would have avoided. The leader's depth for one overlapping day is the price of the test |
+| **one-sided quoting at extreme inventory** | stop opening on the heavy side once \|net\| is near the cap, keep only the closing quote | the prize is bounded by the handover it would save: **0.73 to 4.88 bps a day** in the two hours. The nearest measured cousin, `--close-side-ticks=1`, lowered the closed median from +12.40 to +11.41 on 4 of 7 -- the same family, already slightly negative. `max_abs_inventory` reaches 4-10 contracts, so a gate at 6 acts on some days and not others | a candidate whose settlement reads **above 5 bps a day** (DNA reads 0.73 to 7.84), i.e. where the residual rather than the quoting is the leak. The ceiling is the settle number itself |
+| **amend instead of cancel and place** | one round trip instead of two, and no loss of queue priority | the queue half of the argument **does not apply here**: `queue_zero_orders` runs 20-40 against 19-37 fills a window, so nearly every quote joins an *empty* level three ticks out and is not queue-limited. What is left is the saved round trip -- 76 ms of a 118 ms reaction. And a replay has no amend in it, so this one is live-only: unmeasurable from a tape | a venue whose order leg works for this instrument (UP answers `51001` in the demo environment, which is the standing block) plus a measured amend-against-cancel latency difference |
+| **depth in bps, not ticks** | `max(2, ceil(TARGET_BPS / tick_bps))` instead of a fixed 3 ticks, so one rule fits every tick width | **the evidence is already in hand and it is the strongest of the four**: DNA's tick is 7.3 bps, so three ticks is 22 bps out and it fills 7-20 a window; at two ticks it fills 21 and reads +10.37. A fixed tick count is a different economic distance on every instrument. `TARGET_BPS` is a hypothesis -- 12 bps is roughly six fees and half of UP's own 3-tick capture (16.21) -- and not a measured optimum | the first candidate whose `tick_bps` is **below about 2**, where three fixed ticks is worth under 6 bps before toxicity; the screen already reports that column for all 555 instruments |
+
+**The order the numbers suggest, if one is built at all**: the bps-adaptive depth first, because its evidence is already in
+hand and it is one line rather than an architecture; then the inventory gate, whose prize is bounded and known; then the
+lead-lag gate, which needs the link below the lead *and* one overlapping day of the leader's depth; and the amend last,
+because it is live-only and blocked by the venue rather than by the market. None of them is a reason to touch the frozen
+configuration, and a candidate that fails the fill floor -- DNA did, at all three distances -- will not be rescued by any
+of the four.
