@@ -1817,6 +1817,38 @@ than on the rule. On UP the fills and the day count match the frozen cell and th
 recorded +26.18); **that gap is not attributed here**, and until it is the honest statement is that the rule reproduces the
 distance and not yet the cell's economics.
 
+**The gap is attributed, and it is not in the rule (2026-11-25).** The frozen arm was re-derived with the flags the page
+records for it -- `--base-spread-ticks=3`, two layers, 40 ms refresh, 10 ms link, `--post-only`, `--edge-cover-ticks=1` --
+over the same seven days, and compared to the `--quote-distance-bps=14` row day for day:
+
+| day | 3 ticks: fills, closed bps | `D = 14`: fills, closed bps | the rule's tick count that day |
+|---|---:|---:|---:|
+| 11-16 | 35, +37.04 | 35, +37.04 | 3 |
+| 11-17 | 26, +44.84 | **40, +28.31** | **2** |
+| 11-18 | 26, +3.99 | 26, +3.99 | 3 |
+| 11-19 | 50, +9.83 | 50, +9.83 | 3 |
+| 11-20 | 26, -8.63 | 26, -8.63 | 3 |
+| 11-21 | 19, +57.91 | 19, +57.91 | 3 |
+| 11-22 | 26, -69.40 | 26, -69.40 | 3 |
+
+Six of the seven days are identical to the last digit, and the seventh is the one whose price halved: across 0.108 to 0.173
+a tick is worth 9.3 to 5.8 bps, so `14 / tick_bps` falls to 1.5-2.2 and the rule reads **2 ticks** where the fixed count
+holds 3. That day buys fourteen more fills and gives up 16.5 bps of capture, which is the rule doing what it was written
+for: a distance in ticks is a function of the price, and a price that moved by a factor of two is exactly what a fixed
+count cannot follow. The tick count per day is not a reading of the rule's intent -- it is what the rule computes, and the
+sampled mid of each day's book says which bucket it lands in.
+
+**What does not re-derive is the cell, not the rule.** Both arms read a closed median of **+9.83** on this data, so the
+recorded row's **+26.18 is not reachable from the flags the page records for that row**. Four further variants were run to
+look for it, with `--advance-debounce-ms=40` and `--post-only` held: without `--edge-cover-ticks=1` the two-layer arm reads
+**+5.37** and the one-layer arm **+17.93** (19 fills, where the page records 17 and +12.40); at refresh 2 and 4 in the
+sweep's own column the two-layer arm reads **+27.14** and **+9.59**. None is +26.18, and the one-layer row does not reproduce either. So the
+statement is two-sided and both halves are worth quoting: `--quote-distance-bps=14` reproduces the frozen **geometry**
+exactly, day for day, wherever the instrument's tick sits in the same rounding bucket; and the frozen **cell** is recorded
+rather than re-derived -- +26.18 is quotable only as "recorded", until a run carrying the flags that produced it is found.
+The one alternative this leaves open is the day set: the seven days here are 11-16 to 11-22, the depth on disk, and a cell
+measured on a different seven cannot be re-derived from it.
+
 **The one-sided retreat buys the tail and pays for it in the median.** At twenty contracts, stopping the adding side at
 half the cap takes the worst day from **-215.52 to -138.01 bps** and three days' peak inventory down (1920 to 1320, 1400
 to 1000, 1340 to 1230 contracts), and it takes the medians with it: closed +14.87 to +9.62, net +27.14 to +4.84. That is
@@ -1971,7 +2003,8 @@ number of orders rather than by their size, which the clip sweep showed first.
 twenty-one; quadrupling it reaches twenty-four and costs the capture (the closed median falls from +20.46 to +11.76 and
 the positive days from six to four) -- more size through the same thin book is the closing-side result again. A second
 layer at the same size lifts the count to 26 with one day at 37 and raises the closed median to **+26.18**, which is the
-best cell in the table.
+best cell in the table, and the two capture figures beside it are recorded rather than re-derived -- the day-by-day
+attribution is above, under the distance rule's closure.
 
 **Its bar was three conditions and it meets two and a half.** Fills rose above the one-layer row (26 against 17), the
 closed median stayed positive on five of seven days, and `max_abs_inventory` did **not** stay unchanged: 3 to 9 contracts

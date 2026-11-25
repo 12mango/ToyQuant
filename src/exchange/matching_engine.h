@@ -244,6 +244,11 @@ class MatchingEngine : public IMatchingEngine
     void process_l2_top(const BboQuote& quote) override;
     void process_market_trade(const MarketTrade& trade) override;
     void cancel_order(uint64_t order_id) override;
+    // This engine can amend, and this is where the amend's price is paid as well as saved: the order keeps its id and
+    // never leaves the book as a cancel, but it lands at the back of the level it moves to, so an amended quote is a new
+    // queue position at a better price rather than the old position kept.
+    bool supports_amend() const override { return true; }
+    void amend_order(uint64_t order_id, double price, uint64_t quantity) override;
 
     // Counts a refusal and says why, on stderr, because a refusal emits no report.
     void reject_order(const exchange::Order& order, const char* reason);

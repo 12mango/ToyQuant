@@ -7,6 +7,20 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## Amend, from the strategy layer down to the book (2026-11-25)
+
+- **`--amend-instead-of-cancel`** moves a primary quote in place instead of pulling it and placing it again. The strategy
+  emits the request, the pipeline routes it, and an engine that cannot amend receives the cancel the request replaced --
+  so the flag is inert on an engine without an amend rather than an error.
+- **`MatchingEngine::amend_order`** implements the venue's semantics as far as a replay can need them: the id survives, the
+  order is re-priced onto the tick grid, it lands at the **back** of the level it moves to, a crossing post-only amend is
+  refused with the order left where it was, and **no execution report is emitted** -- a venue answers an amend with an
+  acknowledgement. `matching_engine_test` pins each of those, including the remainder arithmetic after a partial fill.
+- **The UP gap is attributed and it is not the rule**: `--quote-distance-bps=14` reproduces the frozen cell's fills and
+  closed bps *identically on six of seven days*, and differs on the one day whose price halved (2 ticks instead of 3). The
+  recorded +26.18 does not re-derive from the flags the studies page records for it -- four further variants read +5.37,
+  +17.93, +27.14 and +9.59 -- so it is quotable as "recorded" only.
+
 ## Two registered mechanisms, built, and both fail their bars (2026-11-25)
 
 - **`--quote-distance-bps=D`** turns the quote's half width into `max(2, round(D / tick_bps))` ticks, one tick being worth

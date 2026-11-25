@@ -594,6 +594,77 @@ void MatchingEngine::cancel_order_immediate(uint64_t order_id)
                            .cancel_reason = CancelReason::User});
 }
 
+void MatchingEngine::amend_order(uint64_t order_id, double price, uint64_t quantity)
+{
+    // A venue's amend moves the order it already holds. Three facts make it worth having -- one round trip instead of
+    // two, the id unchanged, and no gap at the level while the pair would have been in flight -- and one makes it
+    // expensive: the amended order re-queues, so the priority it had at the old price is gone. Modelling both is the
+    // point; a replay that kept the queue position would report an amend as free and the venue does not.
+    auto it = order_index_.find(order_id);
+    if (it == order_index_.end())
+    {
+        // The venue does not hold the order: a fill or a cancel got there first. The strategy updates its own record when
+        // it asks, so the report that follows is what corrects the two; inventing a terminal state here is the error the
+        // recovery path exists to avoid.
+        return;
+    }
+    Order& resting = *it->second;
+    const uint64_t filled = resting.qty - resting.remaining;
+    if (quantity == 0 || quantity <= filled || quantity % lot_size_ != 0 ||
+        quantity < min_order_quantity_ || !(price > 0.0))
+    {
+        reject_order(resting, "amend to a quantity or price the instrument does not accept");
+        return;
+    }
+
+    // The amended order, and the post-only check the venue applies before it moves anything: an amend into a price that
+    // would trade is refused, and the order stays where it was. Refusing before the removal is what makes that true.
+    Order amended = resting;
+    amended.price = to_price(to_price_tick(price, tick_size_), tick_size_);
+    amended.qty = quantity;
+    amended.remaining = quantity - filled;
+    const SymbolId id = symbol_id(amended.symbol);
+    auto& book = books_[id];
+    if (amended.post_only)
+    {
+        const uint64_t would_trade = external_available(amended, id) + internal_available(book, amended);
+        if (would_trade > 0)
+        {
+            reject_order(amended, "post-only amend would trade");
+            return;
+        }
+    }
+
+    // Out of the old level, without a cancel report: the order did not end.
+    const auto remove_from = [&](auto& levels)
+    {
+        auto pit = levels.find(to_price_tick(resting.price, tick_size_));
+        if (pit == levels.end()) return;
+        pit->second.orders.remove_if([&](const Order& o) { return o.id == order_id; });
+        if (pit->second.orders.empty()) levels.erase(pit);
+    };
+    const Side side = amended.side;
+    const PriceTick new_price = to_price_tick(amended.price, tick_size_);
+    order_index_.erase(it);
+    if (side == Side::Buy)
+        remove_from(book.bids);
+    else
+        remove_from(book.asks);
+
+    // Into the new level, at its back -- the same place a fresh placement would land, which is the cost of the amend.
+    const auto place_at = [&](auto& levels)
+    {
+        auto& level = levels[new_price];
+        if (level.orders.empty()) level.external_queue_ahead = displayed_quantity_ahead(amended);
+        level.orders.push_back(amended);
+        order_index_[amended.id] = &level.orders.back();
+    };
+    if (side == Side::Buy)
+        place_at(book.bids);
+    else
+        place_at(book.asks);
+}
+
 uint64_t MatchingEngine::match(MEOrderBook& book, const Order& incoming, bool rest_incoming)
 {
     Order new_order = incoming;  // Copy because matching updates remaining quantity.

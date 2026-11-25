@@ -954,4 +954,36 @@ int main()
         assert(instrument_spec_of("MESZ6", looked_up));
         assert(looked_up.multiplier == 5.0);
     }
+
+    // An amend moves the order the venue already holds: the id survives, the order is at its new price, and no execution
+    // report is emitted -- a venue answers an amend with an acknowledgement, not with a fill. What the amend costs is the
+    // queue position at the old price, which is why the strategy only ever amends a quote whose price has moved.
+    {
+        MatchingEngine amend_engine;
+        std::vector<ExecutionReport> amend_reports;
+        amend_engine.set_report_callback([&amend_reports](const ExecutionReport& report)
+                                         { amend_reports.push_back(report); });
+        amend_engine.send_order({40, "AMEND", exchange::Side::Buy, exchange::OrderType::Limit, 99.0, 5, 5, 40,
+                                 "MarketMaker"});
+        assert(amend_engine.supports_amend());
+        // A trade of two leaves three resting, so the amend's quantity arithmetic has a filled part to subtract.
+        amend_engine.process_market_trade({2, "AMEND", 99.0, 2, Side::Sell, 0, "test"});
+        assert(has_report(amend_reports, 40, ExecType::PartialFill, 3));
+        amend_reports.clear();
+        amend_engine.amend_order(40, 98.9, 5);
+        assert(amend_reports.empty());
+        assert(amend_engine.query_order(40) == OrderQuery::Working);
+        // The old price holds nothing of ours any more, and the new price holds the remainder rather than the whole
+        // size: five contracts amended after a two-contract fill leaves three to trade.
+        amend_engine.process_market_trade({3, "AMEND", 99.0, 10, Side::Sell, 0, "test"});
+        assert(amend_reports.empty());
+        amend_engine.process_market_trade({4, "AMEND", 98.9, 10, Side::Sell, 0, "test"});
+        assert(has_report(amend_reports, 40, ExecType::Filled, 0));
+        // An amend of an order the venue no longer holds changes nothing: a fill or a cancel got there first, and
+        // resurrecting it would invent an order the venue never had.
+        amend_reports.clear();
+        amend_engine.amend_order(40, 98.8, 5);
+        assert(amend_reports.empty());
+        assert(amend_engine.query_order(40) == OrderQuery::Unknown);
+    }
 }
