@@ -1869,13 +1869,79 @@ not: 08:00-13:00 prints at 1.3 to 2.1 a second against the good window's 1.7 to 
 at or above 2.5, two of them in the middle of the night, and 13:30 -- the middle of the window this instrument was measured
 in -- clears it on two days of seven. A gate at that number would shut almost every bucket, including the two hours the
 line actually earned in, while 02:30 would pass it on four days. **A density gate is therefore worth building only with a
-threshold read off this profile** -- 1.5 a second would open 08:00-16:00 and close the evening -- and as a *registered*
-experiment, not as an import from another market's screen.
+threshold read off this profile, and this one shows that such a threshold is not a window selector at all**: 1.5 a second
+clears fourteen of the sixteen buckets from 00:00 to 08:00 as well as the whole afternoon, so what it separates is the late
+evening and nothing else. It is a market-open switch, not a choice between the hours the line earns in and the hours it
+does not -- and the night run further down is the measurement that makes that distinction matter.
 
 **So the eight-hour loss is not the book's state.** Same half spread, comparable flow either side of the two hours, and the
 closed capture per fill fell about ten-fold. What differs is which prints the quotes met, and that is toxicity, which this
-profile cannot see: a half-hour table of the markout on the strategy's own fills is the measurement that would, and it is a
-different tool because it needs the run rather than the archive.
+profile cannot see: a per-bucket markout is the measurement that would, and the tape supplies part of it -- the section
+further down builds that tool -- while the part that needs our own fills is still open.
+
+
+**The night run: the same configuration over 00:00-08:00, and it loses (2026-11-25).** The profile left two things open.
+One is whether the two hours' edge belongs to those hours or to the only window anybody had run. The other it turned up
+itself: the night is as dense as the afternoon. So the frozen cell -- two layers, one contract, `--post-only`, a 40 ms
+refresh, 10 ms on both legs, `--edge-cover-ticks=1` -- was run over 00:00-08:00 of the same seven days, at three inventory
+caps, with nothing else changed.
+
+| inventory cap | fills a day | days net positive | median net bps |
+|---|---:|---:|---:|
+| ten contracts, the default | 51-152 | 2 of 7 | **-16.51** |
+| three contracts | 85-153 | 2 of 7 | **-6.80** |
+| one contract | 98-156 | 2 of 7 | **-7.20** |
+
+**The fills are not what the night is short of.** 117 fills in eight hours is 14.6 an hour, against the two-hour window's
+13 an hour at 26 fills -- so the density gate that reads 1.5 a second opens this block at the same rate it opens the
+afternoon, and the block loses. A gate calibrated on prints a second therefore cannot be the thing that separates them.
+
+**Most of the loss is inventory the two hours never had to carry.** Loosening the cap from three contracts to ten deepens
+the median from -6.80 to -16.51: ten of the seventeen bps. What is left under a three-contract cap is the fills' own
+economics, and there the night's closed capture is about zero a fill against the window's +0.71 (the median of the seven
+days' closed-per-fill column). That is the quotient the profile could not produce, and it says the night is not simply
+the same edge with fewer participants -- the flow does not come back to the other side.
+
+**And a forced exit cannot be priced in this harness.** `--close-out` appended to the same eight hours returned numbers
+identical to the run without it, to the last digit of every column: the replay's fills come from the tape, and an IOC at
+the touch has no counterparty once the input ends, so the residual position is marked again rather than closed. The
+desk's flatten step -- stop opening, then cross out of what is left -- is exactly the control this measurement cannot
+test. The cap and the clock are what it can, and the cap says halving the carry halves the loss without changing its sign.
+
+
+**Four windows, one configuration: the two hours are the only block that pays (2026-11-25).** The same frozen cell over
+every hour the tape is alive, so the window is compared against the rest of the day rather than against itself. Two
+medians are given because they answer different questions -- `net` is what a day's run banked, `closed` is the position
+flattened against the last midpoint -- and mixing them in one column is how a table quotes two definitions at once:
+
+| window UTC | hours | fills a day | days positive | median net bps | median closed bps | closed per fill bps |
+|---|---:|---:|---:|---:|---:|---:|
+| 00:00-08:00 | 8 | 51-152 | 2 of 7 | **-16.51** | -10.71 | -0.09 |
+| 08:00-13:30 | 5.5 | 61-97 | 4 of 7 | **+4.59** | +6.59 | +0.07 |
+| 13:30-15:30 | 2 | 26 | 5 of 7 | **+15.13** | **+26.18** | +0.71 |
+| 16:00-24:00 | 8 | 2 | 0 of 7 | not measurable | -- | -- |
+
+**The registered bar is what does the separating.** A block qualifies at 30 or more fills with a positive median on 5 of 7
+days: the two hours clear it, the morning has the fills and not the days (4 of 7), the night has more fills than either
+and loses on 5 of 7, and the evening has two fills in eight hours. So the two hours' edge is not an artefact of being the
+only window anybody ran -- the same mechanism, on the same days, at the same size and fee, is worth +0.71 bps a closed
+fill there, +0.07 in the morning and -0.09 at night.
+
+**The tape's toxicity is not a constant, it is a function of how far a print reached (2026-11-25).**
+`tools/study/okx_tape_toxicity.py` at a five-second horizon, run twice. Over every print the mean maker markout is negative
+in forty-three of forty-eight buckets, -0.03 to -2.99 bps, with 61 to 86 per cent of the prints moving the mid: the median
+print is informed, and a quote sitting on the touch is the passive side of it. Keeping only the prints that reached **two
+ticks or more through the mid** -- thirteen to twenty per cent of them -- flips the sign in thirty-one of the forty
+buckets measured (00:00 to 19:30): **+0.34 to +5.69 bps**, with 13:30 +1.67, 14:00 +1.21, 14:30 +1.37, 15:00 +2.11 and
+15:30 +0.51, and the night mostly the same (+2.43 at 00:00, +3.30 at 02:00, -0.89 at 07:00, -2.15 at 05:00). So the maker
+is not paid for the flow being uninformed; he is paid for standing where the sweeps reach and the touch does not, which is
+the shape `--base-spread-ticks=3` and its passive layer already have.
+
+**That puts the block difference back where the cap ladder found it.** The deep prints are *more* frequent at night (719 a
+day at 00:00, 1,153 at 05:00) than inside the two hours (410 at 13:30, 733 at 14:30), so the opportunity is not what the
+night lacks. What it lacks is conversion: the same fills do not become closed round trips, and the cap that would stop the
+carry only halves the loss. Which fills our own quotes actually get -- bucketed by half hour, from one full-day run a day
+with the fills recorded -- is therefore the next measurement, and a second strategy module is not.
 
 
 **What is next, and what would qualify another instrument.** The next measurement is a tiered re-screen of every swap

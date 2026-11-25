@@ -7,7 +7,38 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
-## The half-hour profile says the quiet hours are thin, not wide (2026-11-25)
+## The night is as dense as the good window and still loses, and the maker's edge is depth rather than hour (2026-11-25)
+
+- **`tools/study/okx_tape_toxicity.py`** measures the tape's own adverse selection with no strategy in it: for each print,
+  the mid's move over a stated horizon with the aggressor's sign, negated -- what the passive side made of that print --
+  as a mean, a median, the share of prints the mid moved on, and the count, per half hour. `--min-distance-ticks` keeps
+  only the prints that reached a stated distance through the mid, which is the subset a deeper quote is filled by.
+- **The frozen cell over four blocks of the same seven days**: 13:30-15:30 gives 26 fills a day, a closed median of
+  **+26.18** and a net median of **+15.13** on 5 of 7 days; 08:00-13:30 gives 61-97 fills and a net median of **+4.59** on
+  4 of 7; 00:00-08:00 gives 51-152 fills and **-16.51** on 2 of 7; 16:00-24:00 gives two fills in eight hours. So the two
+  hours are not a window chosen for being positive: they are the only block that clears the registered bar of 30 fills
+  with a positive median on 5 of 7, and the night -- which trades 14.6 times an hour against the window's 13 -- loses with
+  four times the fills. The two medians are stated separately because they are different quotients, and quoting a closed
+  median beside a net one is how a table ends up carrying two definitions.
+- **A density gate cannot be the selector it was meant to be.** At 1.5 prints a second the gate opens fourteen of the
+  sixteen night buckets as well as the whole afternoon, so what it separates is the late evening and nothing else.
+- **Most of the night's loss is inventory the two hours never carry**: the same eight hours at a ten-contract cap read
+  -16.51, at three contracts -6.80, at one -7.20. Loosening the cap accounts for ten of the seventeen bps, and the
+  residual is the fills' own economics -- about zero a fill against the window's +0.71. `--close-out` at the end of the
+  same run changes nothing, to the last digit: in the replay an IOC at the touch has no counterparty once the input ends,
+  so a forced exit is the one desk control this harness cannot price.
+- **The tape's adverse selection depends on how far a print reached, and that is the edge**: at a five-second horizon the
+  mean maker markout over every print is -0.03 to -2.99 bps in forty-three of forty-eight buckets, while the prints that
+  reached **two ticks or more through the mid** (thirteen to twenty per cent of them) read **+0.34 to +5.69 bps, positive in
+  thirty-one of the forty buckets measured** from 00:00 to 19:30, the two hours among them (13:30 +1.67, 14:30 +1.37,
+  15:00 +2.11) and the night mostly so too (00:00 +2.43, 02:00 +3.30). At the touch the flow is informed; deeper, it
+  reverts. At one second the median is zero everywhere, because half a basis point is one tick.
+- **So the night's missing thing is conversion rather than opportunity**: the deep prints are more frequent at night (719 a
+  day at 00:00, 1,153 at 05:00) than in the two hours (410 at 13:30, 733 at 14:30), and the closed capture a fill is
+  +0.71 bps inside the two hours against +0.07 in the morning and -0.09 at night. The measurement that can see it is our
+  own fills bucketed by half hour -- one full-day run a day with the fills recorded -- not a tape gate and not a second
+  strategy module. `docs/archive/studies.md` carries the tables; `docs/TOOLS.md` the tool. `docs` and `fast` green.
+
 
 - **`tools/study/okx_halfhour_profile.py`** profiles a day in half-hour buckets with two physical quantities and no P&L:
   the duration-weighted half spread and the prints a second, reported as medians across days with the worst day beside them
@@ -21,8 +52,9 @@ site now points at `ToyQuant`.
   quiet: 08:00-13:00 prints at 1.3-2.1 a second against the good window's 1.7-2.9.
 - **The equity screen's 2.5-prints-a-second gate does not transfer**: only six of forty-eight buckets have a median at or
   above it, two of them at 02:00-02:30, and 13:30 clears it on two days of seven. A gate at that number would close the two
-  hours the line earned in. A density gate is worth building only with a threshold read off this profile -- 1.5 a second
-  would open 08:00-16:00 and close the evening -- and as a registered experiment.
+  hours the line earned in. A density gate read off this profile separates the late evening and nothing else -- 1.5 a
+  second clears fourteen of the sixteen buckets from 00:00 to 08:00 too, so it is a market-open switch rather than a window
+  selector -- and the night run below is the measurement that shows why the distinction matters.
 - **So the eight-hour loss is toxicity rather than inactivity**: same half spread, comparable flow, and the closed capture
   per fill fell about ten-fold. The next measurement that could see it is a per-bucket markout on the strategy's own fills,
   which needs the run rather than the archive.
