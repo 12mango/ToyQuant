@@ -13,7 +13,7 @@
 #include "exchange/matching_engine.h"
 #include "market/merged_event_reader.h"
 #include "orderbook/l2_orderbook.h"
-#include "strategy/l2_market_maker_base.h"
+#include "strategy/maker/l2_market_maker_base.h"
 #include "support/test_support.h"
 
 namespace

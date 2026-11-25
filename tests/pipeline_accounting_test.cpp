@@ -9,8 +9,8 @@
 #include "exchange/matching_engine.h"
 #include "market/funding_rate.h"
 #include "orderbook/top_of_book.h"
-#include "strategy/l2_market_maker_base.h"
-#include "strategy/legacy/baseline_market_makers.h"
+#include "strategy/maker/l2_market_maker_base.h"
+#include "strategy/maker/legacy/baseline_market_makers.h"
 #include "support/test_support.h"
 #include "utils/logger.h"
 

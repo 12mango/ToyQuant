@@ -14,7 +14,7 @@
 #include "lines/paper_broker.h"
 #include "lines/reconciliation.h"
 #include "orderbook/top_of_book.h"
-#include "strategy/l2_market_maker_base.h"
+#include "strategy/maker/l2_market_maker_base.h"
 #include "support/test_support.h"
 
 namespace

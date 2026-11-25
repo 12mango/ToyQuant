@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <vector>
 
-#include "strategy/trend_l2.h"
+#include "strategy/signal/trend_l2.h"
 
 namespace
 {

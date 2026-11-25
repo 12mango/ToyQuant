@@ -4,7 +4,7 @@
 
 #include "app/strategy_factory.h"
 #include "lines/legacy/l1_market_maker.h"
-#include "strategy/legacy/baseline_market_makers.h"
+#include "strategy/maker/legacy/baseline_market_makers.h"
 
 uint64_t quantity_for_side(const std::vector<StrategyOrder>& orders, Side side)
 {

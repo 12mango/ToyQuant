@@ -2,7 +2,7 @@
 #include <cmath>
 #include <cstdint>
 
-#include "strategy/execution_l2.h"
+#include "strategy/execution/execution_l2.h"
 
 namespace
 {
