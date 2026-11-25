@@ -25,6 +25,9 @@
 // venue: a submission is matched against the recording's own row and the reports recorded for it are emitted
 // through the callback. It is what makes "the session's recording replays to the same [PNL] and [EXECUTION]"
 // a comparison rather than a hope -- the second run's ledger is fed the first run's reports, field for field.
+// It has no book, so the queue queries answer zero, which is also a live venue's answer: that is why the round
+// trip is exact for the live sessions this pair was built for, and not for a recording of a simulated one whose
+// strategy reads the queue -- measured 2026-11-25, such a replay refused at order 5 (`docs/L2_FLAGS.md`).
 class RecordingEngine : public IMatchingEngine
 {
    public:

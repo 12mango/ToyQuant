@@ -159,6 +159,17 @@ replay whose market data ends first releases the rest at the end and counts them
 `ws` only and both are refused on a two-book run, which has two engines; `--replay-orders` is also refused with
 `--live-orders` (a replay and a socket are two venues) and with `--record-orders` (a second file of the same answers).
 
+**What a replay cannot answer, and which sessions the round trip is exact for.** `RecordedVenue` has no book, so the six
+queue queries -- `queue_ahead_at`, the two `queue_ahead_consumed`, `queue_ahead_levels_cleared` and
+`queue_ahead_from_quantity_changes` -- answer zero, which is exactly what a live venue answers. The sessions this pair was
+built for are live ones, where the venue never had a book either: both sides read zero and the recording replays to the
+same `[PNL]` and the same counts. A **recording of a simulated session** is the other case, and since the decorator stopped
+downgrading L2 updates to BBO it no longer replays: measured 2026-11-25, the recorded `l2_replay` session refused at order
+5 -- `0.1635` asked against `0.1643` recorded -- because the recording run's strategy had the engine's queue and the
+replay's has none. The refusal names the file and the line, which is this format's own rule rather than a gap. What would
+lift it is recording the queue queries beside the venue's answers; nothing needs that today, because fills are measured
+from `data/runtime/trades.csv` and the order leg exists to make a live session checkable.
+
 **The live order leg.** `--live-orders --venue-endpoint=HOST:PORT --venue-max-orders=N` replaces the in-process matcher
 with `LiveVenue` over `TcpVenueTransport`, so the venue is the relay's order channel rather than a simulation; the run
 prints `[VENUE]` with the frames sent, the frames received and the reports decoded. The three flags are required
