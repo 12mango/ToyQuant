@@ -170,6 +170,8 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
         // The execution line: a parent order and a schedule, with no direction of its own. The parent arrives
         // from the run's configuration because on a desk it arrives from a client; nothing here decides to
         // trade, which is what makes the cost it reports a fact about the venue rather than about a signal.
+        // The tick travels with it because the follow's deadband is in ticks, and `--amend-deadband-ticks` is the one
+        // flag both lines read: 0 leaves each line's own default, which is 2.0 for the maker's retreat and 1.0 here.
         return std::make_unique<ExecutionL2Strategy>(
             ExecutionL2Config{.side = config.execution.side,
                               .quantity = config.execution.quantity,
@@ -178,7 +180,12 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
                               .slices = config.execution.slices,
                               .participation = config.execution.participation,
                               .post_first = config.execution.post_first,
-                              .post_timeout_us = config.execution.post_timeout_us});
+                              .post_timeout_us = config.execution.post_timeout_us,
+                              .amend_instead_of_cancel = config.amend_instead_of_cancel,
+                              .amend_deadband_ticks = config.amend_deadband_ticks > 0.0
+                                                           ? config.amend_deadband_ticks
+                                                           : 1.0,
+                              .tick_size = tick_size});
     }
     if (strategy_name == "trend_l2")
     {

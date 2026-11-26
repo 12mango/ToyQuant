@@ -7,7 +7,32 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
-## Three defects behind the empty instrument boards (2026-11-25)
+## The execution line's resting child follows the book (2026-11-26)
+
+- **`--amend-instead-of-cancel` now reaches `execution_l2`**, as one flag and one rule: a posted child whose near touch
+  has moved at least a tick -- either direction -- is amended to the new touch in place instead of waiting at the price it
+  joined for its whole timeout. The request carries the child's *total* quantity, because the venue recomputes the
+  remainder from what it has already filled; and an engine without an amend answers with the cancel it replaced, after
+  which the slice is **posted again at the new price rather than crossed** -- an amend is not a deadline, so turning it
+  into a taker fill would price the follow as the timeout it is not. `execution_l2_test` pins the deadband, the whole
+  quantity, the once-per-move record and the repost.
+- **The fourth close-out arm ran on the window the other three did** (15:15-15:30 UTC, seven days, UP and NES, a
+  ten-contract sell, `--algo=twap:10 --algo-entry=post:60`): the follow clears **0.5-0.7 of the parent on both seats**
+  against the 1.0 its registered bar asked, at `is_total_bps` **-17.68** (UP) and **+4.83** (NES) against the settle
+  bench of 1.56 and 4.01. It does act, and in the direction it was built for -- NES's fee falls from 1.78-3.42 to
+  1.00-2.62 bps and `maker_share` rises with it, the cost against the arrival mid improves by 3.4 and 4.3 bps, and the
+  child count falls because a followed child keeps its id -- but every amendment re-queues the child at the back of the
+  level it moves to, so the follow trades clearance for price. The wind-down stays `--settle-residual`.
+- **Three sentences about the engine were stale and are corrected.** `--amend-instead-of-cancel`'s help, `docs/L2_FLAGS.md`
+  and the retrospective said the replay's engine "takes the request as the cancel it replaced"; `MatchingEngine` has
+  amended in place since `a99aed0`, so the amend arms priced the queue reset as well as the choice, and the fallback is
+  now described as what an engine *without* an amend does.
+- **And two rows of the close-out table were re-derived rather than trusted**: the passive arm's `filled_ratio` had been
+  quoted from the run's `fill_rate` (fills per child: 0.857, 0.78-0.89) and UP's cost as -10.73, which is one day's value.
+  The parent's clearance is 0.5-0.7 on UP and 0.6-0.8 on NES, UP's median is **-21.04**, and the fourth arm's bar is
+  written on that column. `docs/archive/studies.md` carries both the correction and the arm.
+
+
 
 - **Eight instruments had no specification**, so every replay of them exited 1 with `Error: no instrument specification
   for L2 replay symbol: OL-USDT-SWAP` -- and the sweep wrote a row of `?` and `0.0000` instead of saying so. OL, PROS,

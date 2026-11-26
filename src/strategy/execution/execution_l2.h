@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <string>
 #include <unordered_map>
@@ -26,6 +27,12 @@ Two decisions, independent of each other:
   the entry      how a slice is sent: `cross` takes the far touch with an IOC, which pays the spread and the
                  taker fee; `post` rests at the near touch with a limit order and crosses only what the slice
                  has not filled when its own timeout expires.
+
+  the follow     with `--amend-instead-of-cancel`, a resting child is moved with the near touch instead of
+                 waiting at the price it joined: one request in place where the pair of pull-and-place is two,
+                 and no moment with the level empty. It is the peg the amend's 83.2 ms round trip exists for,
+                 and the strategy asks unconditionally because an engine without an amend receives the cancel
+                 the request replaced.
 
 The horizon is market time, not a view count: a view is 7 ms on the recorded slices and a different number on
 any other feed, and a schedule that meant "ten views" would mean something different on each. One child works
@@ -55,6 +62,16 @@ struct ExecutionL2Config
     // `post_first` false is the crossing entry every run before the flag used.
     bool post_first{false};
     uint64_t post_timeout_us{0};
+    // The follow, from --amend-instead-of-cancel: a resting child moves with the near touch in place rather than
+    // waiting at the price it joined. Off by default, so every recorded arm keeps the child it had.
+    bool amend_instead_of_cancel{false};
+    // How far the touch must move before the follow moves the child, in ticks. One is the peg's own floor: a child
+    // that does not follow a tick is not following the book. The maker's 2.0 is a different rule -- its amend is for
+    // a retreat from the mid, where the touch is this line's whole reference.
+    double amend_deadband_ticks{1.0};
+    // The instrument's tick, for that deadband. A zero refuses to follow rather than guessing a grid: an amend priced
+    // off a guessed tick is a request the venue declines, and a silent no-op is worse than no flag.
+    double tick_size{0.0};
 };
 
 class ExecutionL2Strategy : public Strategy
@@ -76,6 +93,7 @@ class ExecutionL2Strategy : public Strategy
     void on_market_trade(const MarketTrade& trade) override;
     void on_order_submitted(const StrategyOrder& order) override;
     std::vector<uint64_t> cancel_requests() override;
+    std::vector<AmendRequest> amend_requests() override;
     void on_order_update(const ExecutionReport& report) override;
 
     int64_t net_position() const override
@@ -121,6 +139,13 @@ class ExecutionL2Strategy : public Strategy
         return crossed_children_;
     }
 
+    // How many times the follow moved the child in place. On an engine that amends this is the only tell that the
+    // flag did anything: the child keeps its id, so no new child appears in the count.
+    uint64_t amend_count() const
+    {
+        return amend_count_;
+    }
+
    private:
     // What is still owed to the parent: the quantity less what has filled and what is still working. A child
     // that dies unfilled leaves this number where it was, so the schedule retries rather than silently
@@ -134,6 +159,8 @@ class ExecutionL2Strategy : public Strategy
     // The quantity the next child should carry, or zero when nothing is due yet. `crossed` says whether this
     // slice fell back to crossing.
     uint64_t next_slice_quantity(uint64_t ts, bool& crossed);
+    // Move the resting child to the near touch when the touch has moved at least the deadband away from it.
+    void follow_touch(const TopOfBook& top);
 
     ExecutionL2Config config_;
     bool started_{false};
@@ -155,6 +182,18 @@ class ExecutionL2Strategy : public Strategy
     uint64_t working_order_id_{0};
     uint64_t working_started_ts_{0};
     bool working_is_post_{false};
+    // Where the working child rests and what it was sent for. An amend carries the child's *total* quantity, because
+    // the venue recomputes the remainder from what it has already filled; `open_quantities_` holds the remainder, so
+    // passing that would shrink the child by what it had filled and the venue would decline the request.
+    double working_price_{0.0};
+    uint64_t working_quantity_{0};
+    // An amend is outstanding. A terminal report on the working child that is a cancel is then the request arriving as
+    // the cancel it replaced, and the slice is posted again at the new price rather than crossed: nothing expired it,
+    // and crossing is what a timeout asks for.
+    bool amend_pending_{false};
+    bool slice_repost_{false};
+    uint64_t amend_count_{0};
+    std::vector<AmendRequest> amend_requests_;
     std::unordered_map<uint64_t, uint64_t> open_quantities_;
     std::vector<uint64_t> cancel_queue_;
     StrategyMetrics metrics_{};
@@ -239,6 +278,31 @@ inline uint64_t ExecutionL2Strategy::next_slice_quantity(uint64_t ts, bool& cros
 }
 
 
+inline void ExecutionL2Strategy::follow_touch(const TopOfBook& top)
+{
+    // The peg. A resting child is only worth the queue it holds while it is at the touch: once the touch has moved
+    // a deadband away the child is either behind the market (no fill) or through it (a stale quote the sweep takes),
+    // and one amend puts it back with one round trip instead of the pair's two. Both directions are followed, unlike
+    // the maker's retreat-only asymmetry: that rule was measured for a quote whose payoff is capture, and this line
+    // has no direction of its own -- being at the touch is the whole of what it can ask for.
+    if (!usable(top) || config_.tick_size <= 0.0 || working_quantity_ == 0) return;
+    const double target = resting_price(top);
+    const double deadband = std::max(1.0, config_.amend_deadband_ticks) * config_.tick_size;
+    if (!std::isfinite(target) || std::abs(target - working_price_) < deadband - 1e-12) return;
+    amend_requests_.push_back(AmendRequest{working_order_id_, target, working_quantity_});
+    // The local record takes the new price at once, because the next view compares against it; without that the same
+    // move is amended again on every view and the child never settles.
+    working_price_ = target;
+    amend_pending_ = true;
+    ++amend_count_;
+}
+
+inline std::vector<Strategy::AmendRequest> ExecutionL2Strategy::amend_requests()
+{
+    std::vector<AmendRequest> pending;
+    pending.swap(amend_requests_);
+    return pending;
+}
 inline std::vector<StrategyOrder> ExecutionL2Strategy::on_l2_market_view(const L2MarketView& view)
 {
     last_view_ts_ = view.ts;
@@ -270,11 +334,18 @@ inline std::vector<StrategyOrder> ExecutionL2Strategy::on_l2_market_view(const L
                                       view.ts >= working_started_ts_ +
                                                      (config_.post_timeout_us / 1'000'000ULL) *
                                                          clock_units_per_second(view.ts);
-        if (!posted_timed_out) return orders;
+        if (!posted_timed_out)
+        {
+            // A resting child follows the touch in place while it waits. Without the follow it sits at the price it
+            // joined for the whole timeout, which on a moving book is a quote the market left behind.
+            if (config_.amend_instead_of_cancel && working_is_post_) follow_touch(view.top);
+            return orders;
+        }
         cancel_queue_.push_back(working_order_id_);
         open_quantities_.erase(working_order_id_);
         working_order_id_ = 0;
         working_is_post_ = false;
+        amend_pending_ = false;
         slice_must_cross_ = true;
     }
 
@@ -287,8 +358,10 @@ inline std::vector<StrategyOrder> ExecutionL2Strategy::on_l2_market_view(const L
     }
     else
     {
-        // The slice already exists and lost its child to the timeout: cross what it still owes.
-        crossed = true;
+        // The slice already exists and lost its child: cross what it still owes if a timeout released it, and post it
+        // again if the follow's own amend did. An amend is not a deadline, so it must not turn into a taker fill.
+        crossed = !slice_repost_;
+        slice_repost_ = false;
     }
 
     const double price = crossed ? crossing_price(view.top) : resting_price(view.top);
@@ -312,6 +385,11 @@ inline void ExecutionL2Strategy::on_order_submitted(const StrategyOrder& order)
     working_order_id_ = order.order_id;
     working_started_ts_ = last_view_ts_;
     working_is_post_ = order.time_in_force != TimeInForce::Ioc;
+    // Where the child rests and what it was sent for, kept for the follow: an amend carries the total quantity, and
+    // the price it is compared against is the one the child actually joined.
+    working_price_ = order.price;
+    working_quantity_ = order.quantity;
+    amend_pending_ = false;
     ++child_orders_;
     if (working_is_post_)
         ++posted_children_;
@@ -351,6 +429,11 @@ inline void ExecutionL2Strategy::on_order_update(const ExecutionReport& report)
         open_quantities_.erase(report.order_id);
         if (report.order_id == working_order_id_)
         {
+            // An amend the engine could not take arrives as the cancel it replaced. Nothing expired this child, so
+            // the slice is posted again at the new price instead of crossed -- and a cancel the venue sent for its own
+            // reasons is answered the same way, because the parent still has to be worked.
+            slice_repost_ = amend_pending_ && report.exec_type == ExecType::Cancelled;
+            amend_pending_ = false;
             working_order_id_ = 0;
             working_is_post_ = false;
         }

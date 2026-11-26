@@ -1908,20 +1908,57 @@ frozen cell with `--settle-residual` on.
 | symbol | close-out arm | `filled_ratio` | `is_fees_bps` | `maker_share` | `is_total_bps` median |
 |---|---|---|---|---|---|
 | UP | market + cross | **1.0** on 7 of 7 | 5.00 | 0 | **+11.08** |
-| UP | twap:10 + cross | **1.0** | 5.00 | 0 | -26.60 |
-| UP | twap:10 + post:60 | **0.857 on 4 of 7** | 1.0-2.6 | 0.25-1.0 | -10.73 (on a partial fill) |
+| UP | twap:10 + cross | **1.0** | 5.00 | 0 | -26.64 |
+| UP | twap:10 + post:60 | 0.5-0.7 on 7 of 7 | 1.00-2.61 | 0.43-1.00 | -21.04 (on a partial fill) |
 | NES | market + cross | **1.0** | 5.00 | 0 | **+13.33** |
 | NES | twap:10 + cross | **1.0** | 5.00 | 0 | +21.65 |
-| NES | twap:10 + post:60 | **0.78-0.89 on 7 of 7** | 1.0-3.4 | 0.25-0.57 | +9.09 (on a partial fill) |
+| NES | twap:10 + post:60 | 0.6-0.8 on 7 of 7 | 1.78-3.42 | 0.25-0.67 | +9.09 (on a partial fill) |
+| both | twap:10 + post:60 + the follow | 0.5-0.7 on 7 of 7 | 1.00-2.62 | 0.43-1.00 | -17.68 (UP) / +4.83 (NES) |
 | both | the maker's own `--settle-residual`, same window | -- | -- | -- | **0.40-9.19** (median 1.56 UP, 4.01 NES) |
 
+The two passive rows were re-derived from the same run's CSV files on 2026-11-26: the first version of this table quoted
+the run's `fill_rate` (fills per child, 0.857 and 0.78-0.89) under a `filled_ratio` header, and UP's cost as -10.73 --
+which is the fourth day's value, not the median's. The parent's clearance is the `[EXECUTION_ALGO]` `filled_ratio`, which
+is what the arm's bar is written on, and UP's median is -21.04.
+
 The passive arm is the one the premise was about, and the premise is half right: its blended fee lands exactly where it
-was expected (`is_fees_bps` 1.0 to 3.4, `maker_share` a quarter to all of it), and it **never clears the position** -- a
-sixty-second rest at the near touch is not enough queue on these books, so ten contracts leave 1.1 to 2.2 of them
-outstanding and the shortfall is measured on a partial fill. The arms that do clear read 11 to 13 bps of cost at their
-best, an order of magnitude above the settle number, because settle crosses only the *residual* at the far touch while an
-arm sells the whole position through the book. The fourth arm -- peg plus retreat amend -- cannot be run: `execution_l2`
-has `post_first` and `post_timeout_us` and no amend path.
+was expected (`is_fees_bps` 1.00 to 3.42 and `maker_share` a quarter to all of it, across the two seats), and it **never
+clears the position** -- a sixty-second rest at the near touch is not enough queue on these books, so it clears only 0.5
+to 0.8 of the parent and the shortfall is measured on a partial fill. The arms that do clear read 11 to 13 bps of cost at
+their best, an order of magnitude above the settle number, because settle crosses only the *residual* at the far touch
+while an arm sells the whole position through the book.
+
+**The fourth arm, registered before it ran (2026-11-26).** The gap the table above left was that `execution_l2` had
+`post_first` and `post_timeout_us` and no amend path, so "peg plus amend" could not be asked. The line carries the follow
+now (one flag, `--amend-instead-of-cancel`, and one rule: a resting child moves with the near touch at a one-tick
+deadband, both directions), and the arm is the passive arm plus that flag -- same parent, same seven days, same window,
+same 10 ms leg, the only difference being that the child follows instead of resting where it joined. **The bar, written
+before the run**: `filled_ratio` 1.0 on every day, and an `is_total_bps` median at or below the same window's
+`--settle-residual` median -- **1.56 bps on UP and 4.01 on NES** -- because the settle number is what the wind-down
+already pays and an arm that only matches it has bought nothing. The deadband is the peg's own one tick and is not tuned
+after the fact; if the arm starves its fills, the next arm is a wider deadband registered with this same bar, not the
+same arm read at a setting that happened to win.
+
+**The arm ran, and the follow is a price mechanism rather than a close-out (2026-11-26).** Same window, same days, same
+parent, same 10 ms leg as the passive arm; the only difference is the flag. Rows are per seat, `is_total_bps` positive
+meaning the execution cost money against the parent's arrival mid:
+
+| symbol | arm | `filled_ratio` | `is_fees_bps` | `maker_share` | `child_orders` | `is_total_bps` median |
+|---|---|---|---|---|---|---|
+| UP | post:60 + the follow | 0.5-0.7 | 1.00-2.31 | 0.57-1.00 | 5-7 | **-17.68** |
+| NES | post:60 + the follow | 0.5-0.7 | 1.00-2.62 | 0.43-1.00 | 5-7 | **+4.83** |
+
+The follow acted on every day, and it is the flag alone: the two arms read different numbers on all seven days of both
+seats, in a replay that is deterministic on the same input. What it bought is price and fee -- against the passive arm it
+extends, `is_total_bps` improves by 3.4 bps on UP (-21.04 to -17.68) and 4.3 on NES (+9.09 to +4.83), the blended fee
+falls (1.78-3.42 to 1.00-2.62 on NES) and `maker_share` rises with it, and NES's child count falls from 7-18 to 5-7
+because a followed child keeps its id where the old arm pulled and re-crossed. What it did not buy is the parent: 0.5 to
+0.7 of it cleared on both seats, unchanged on UP and **worse** on NES (0.6-0.8 to 0.5-0.7), because every amendment lands
+the child at the back of the level it moves to -- the queue reset the engine models, and the same one the maker's own
+amend arms had already priced. So the follow trades clearance for price, the first half of the registered bar refuses it
+on both seats, and on NES the second half refuses it too (+4.83 against the settle median of 4.01). The wind-down stays
+`--settle-residual`; what does clear a ten-contract parent inside fifteen minutes is the crossing arms, at 11.08 (UP) and
+13.33 (NES) bps one-shot, or twap+cross at -26.64 on UP and +21.65 on NES.
 
 | symbol | `--advance-debounce-ms` | fills a window | settled median | days positive |
 |---|---|---|---|---|

@@ -209,6 +209,78 @@ int main()
         assert(fallback[0].quantity == 60);
     }
 
+    // The follow, which is what `--amend-instead-of-cancel` means on this line: a resting child moves with the near
+    // touch in place, for its whole quantity, and only once the touch has moved at least the deadband. An engine with
+    // an amend takes the request in place; one without receives the cancel it replaced, and the slice is then posted
+    // again at the new price rather than crossed -- an amend is not a deadline, so turning it into a taker fill would
+    // price the follow as the timeout it is not.
+    {
+        auto config = parent(ExecutionAlgo::Market);
+        config.post_first = true;
+        config.post_timeout_us = 60'000'000;
+        config.amend_instead_of_cancel = true;
+        config.amend_deadband_ticks = 1.0;
+        config.tick_size = 0.5;
+        ExecutionL2Strategy strategy(config);
+        const auto posted = strategy.on_l2_market_view(view_at(1'000'000, 100.0));
+        assert(posted.size() == 1);
+        assert(posted[0].price == 99.5);  // joins the bid
+        assert(posted[0].time_in_force == TimeInForce::Gtc);
+        const auto child = identified(posted[0], 31);
+        strategy.on_order_submitted(child);
+        assert(strategy.amend_requests().empty());
+
+        // A move inside the deadband is not a move: half a tick leaves the child where it is.
+        assert(strategy.on_l2_market_view(view_at(2'000'000, 100.25)).empty());
+        assert(strategy.amend_requests().empty());
+        assert(strategy.amend_count() == 0);
+
+        // The bid rises one tick: the child follows it in place, carrying the quantity it was sent for.
+        assert(strategy.on_l2_market_view(view_at(3'000'000, 100.5)).empty());
+        const auto amends = strategy.amend_requests();
+        assert(amends.size() == 1);
+        assert(amends[0].order_id == child.order_id);
+        assert(std::abs(amends[0].price - 100.0) < 1e-9);
+        assert(amends[0].quantity == 100);
+        assert(strategy.amend_count() == 1);
+        // The same view asked once: the local record took the new price, so the next view is quiet.
+        assert(strategy.on_l2_market_view(view_at(4'000'000, 100.5)).empty());
+        assert(strategy.amend_requests().empty());
+        assert(strategy.amend_count() == 1);
+
+        // An engine without an amend answers the request with a cancel. The child ends, and the slice goes back out
+        // as a post at the new price, not as an IOC.
+        ExecutionReport pulled;
+        pulled.order_id = child.order_id;
+        pulled.exec_type = ExecType::Cancelled;
+        pulled.side = exchange::Side::Buy;
+        pulled.price = 100.0;
+        pulled.quantity = 100;
+        strategy.on_order_update(pulled);
+        const auto reposted = strategy.on_l2_market_view(view_at(5'000'000, 100.5));
+        assert(reposted.size() == 1);
+        assert(reposted[0].price == 100.0);
+        assert(reposted[0].quantity == 100);
+        assert(reposted[0].time_in_force == TimeInForce::Gtc);
+        assert(strategy.crossed_children() == 0);
+    }
+
+    // Off, the same move is nothing at all: the child waits at the price it joined, which is the arm every recorded
+    // run before the flag took.
+    {
+        auto config = parent(ExecutionAlgo::Market);
+        config.post_first = true;
+        config.post_timeout_us = 60'000'000;
+        config.tick_size = 0.5;
+        ExecutionL2Strategy strategy(config);
+        const auto posted = strategy.on_l2_market_view(view_at(1'000'000, 100.0));
+        assert(posted.size() == 1);
+        strategy.on_order_submitted(identified(posted[0], 41));
+        assert(strategy.on_l2_market_view(view_at(3'000'000, 100.5)).empty());
+        assert(strategy.amend_requests().empty());
+        assert(strategy.amend_count() == 0);
+    }
+
     // Without a parent the strategy is inert rather than guessing one.
     {
         ExecutionL2Strategy strategy(ExecutionL2Config{});
