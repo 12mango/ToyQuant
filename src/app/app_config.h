@@ -147,6 +147,17 @@ struct AppConfig
     uint64_t wind_down_skew_minutes = 0;
     double wind_down_end_minute = 0.0;
     double wind_down_skew_ticks = 1.0;
+    // From --max-depth-ratio / --depth-ladder-max: no rung larger than this share of the same side's displayed touch
+    // size, and this many rungs for a size above it. 0 leaves the fixed size every recorded run used.
+    double max_depth_ratio = 0.0;
+    uint64_t depth_ladder_max = 0;
+    // From --trend-signal=burst and --trend-burst: the trend line's signal source and its window, range, imbalance and
+    // hold. Off, the default, leaves the recorded EWMA cross in force.
+    bool trend_signal_burst = false;
+    double trend_burst_ticks = 0.0;
+    uint64_t trend_burst_window_ms = 0;
+    double trend_burst_obi = 0.0;
+    uint64_t trend_burst_hold_views = 0;
     // From --pause-ticks-per-second: the active_l2 volatility halt's threshold. 0 leaves the strategy's own 9.0,
     // because a floor here would change every recorded run that did not ask for one.
     double pause_ticks_per_second = 0.0;

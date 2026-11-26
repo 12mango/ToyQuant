@@ -103,6 +103,10 @@ constexpr std::string_view kToxicityImbalancePrefix = "--toxicity-imbalance=";
 constexpr std::string_view kWindDownMinutesPrefix = "--wind-down-skew-minutes=";
 constexpr std::string_view kWindDownEndPrefix = "--wind-down-end=";
 constexpr std::string_view kWindDownTicksPrefix = "--wind-down-skew-ticks=";
+constexpr std::string_view kMaxDepthRatioPrefix = "--max-depth-ratio=";
+constexpr std::string_view kDepthLadderMaxPrefix = "--depth-ladder-max=";
+constexpr std::string_view kTrendSignalPrefix = "--trend-signal=";
+constexpr std::string_view kTrendBurstPrefix = "--trend-burst=";
 constexpr std::string_view kPauseTicksPerSecondPrefix = "--pause-ticks-per-second=";
 constexpr std::string_view kJumpWindowPrefix = "--jump-window-ms=";
 constexpr std::string_view kJumpTicksPrefix = "--jump-ticks=";
@@ -280,7 +284,9 @@ void print_usage(const char* executable)
                      "past --toxicity-imbalance=F -- and keeps the cancel path while it is calm; "
                      "--wind-down-skew-minutes=M with --wind-down-end=HH:MM (a UTC clock) walks the closing side in by "
                      "--wind-down-skew-ticks=T (one by default) over the last M minutes and stops the adding side, so "
-                     "the residual is worked by the market rather than crossed; --pause-ticks-per-second=D sets "
+                     "the residual is worked by the market rather than crossed; --max-depth-ratio=F caps each quote rung at "
+                     "F of the same side's displayed touch size and --depth-ladder-max=N splits a larger quote into N rungs "
+                     "one tick behind each other; --pause-ticks-per-second=D sets "
                      "the active halt's threshold, which is 9.0 ticks a second and always on, so a large value is what "
                      "turns it off\n";
         std::cerr << "   limits: --max-exposure-usd=N is the exposure ceiling the summary measures the run "
@@ -305,6 +311,9 @@ void print_usage(const char* executable)
         std::cerr << "   trend entry: --trend-entry=side=touch|own[,ticks=N][,max_age=VIEWS][,cooldown=VIEWS] prices "
                      "that line's clip on our own side of the book so it rests and pays the maker rate; an entry "
                      "older than max_age views is cancelled and the next one waits cooldown views\n";
+        std::cerr << "   trend signal: --trend-signal=ewma|burst picks the source -- the recorded fast/slow cross, or a "
+                     "mid range of `--trend-burst=ticks=T,window_ms=W,obi=F,hold=VIEWS` inside W milliseconds of book "
+                     "time that the displayed-depth imbalance (F of one side, the same sign) agrees with\n";
         std::cerr << "   strategy: ";
         for (const std::string_view name : kStrategyNames)
         {
@@ -1366,6 +1375,90 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                 }
                 cfg.wind_down_skew_ticks = ticks;
             }
+            else if (flag.compare(0, kMaxDepthRatioPrefix.size(), kMaxDepthRatioPrefix) == 0)
+            {
+                double ratio = 0.0;
+                std::istringstream stream(flag.substr(kMaxDepthRatioPrefix.size()));
+                if (!(stream >> ratio) || !(ratio > 0.0) || ratio > 1.0)
+                {
+                    error = "--max-depth-ratio is the share of the same side's displayed touch size one rung may take, "
+                            "so it is above 0 and at most 1";
+                    return false;
+                }
+                cfg.max_depth_ratio = ratio;
+            }
+            else if (flag.compare(0, kDepthLadderMaxPrefix.size(), kDepthLadderMaxPrefix) == 0)
+            {
+                uint64_t rungs = 0;
+                std::istringstream stream(flag.substr(kDepthLadderMaxPrefix.size()));
+                if (!(stream >> rungs) || rungs == 0 || rungs > 20)
+                {
+                    error = "--depth-ladder-max is how many rungs a quote above the depth cap is split into, between "
+                            "1 and 20";
+                    return false;
+                }
+                cfg.depth_ladder_max = rungs;
+            }
+            else if (flag.compare(0, kTrendSignalPrefix.size(), kTrendSignalPrefix) == 0)
+            {
+                const std::string source = flag.substr(kTrendSignalPrefix.size());
+                if (source != "ewma" && source != "burst")
+                {
+                    error = "--trend-signal is ewma (the recorded cross) or burst (the jump plus displayed-depth "
+                            "imbalance)";
+                    return false;
+                }
+                cfg.trend_signal_burst = source == "burst";
+            }
+            else if (flag.compare(0, kTrendBurstPrefix.size(), kTrendBurstPrefix) == 0)
+            {
+                // `ticks=N,window_ms=W,obi=F,hold=VIEWS`, every key optional: the strategy's own defaults stay in force
+                // for the keys not named, so `--trend-burst=` alone asks for the burst signal's shape and nothing else.
+                const std::string text = flag.substr(kTrendBurstPrefix.size());
+                std::istringstream fields(text);
+                std::string field;
+                while (std::getline(fields, field, ','))
+                {
+                    const std::size_t equals = field.find('=');
+                    if (equals == std::string::npos)
+                    {
+                        error = "--trend-burst is ticks=T,window_ms=W,obi=F,hold=VIEWS";
+                        return false;
+                    }
+                    const std::string key = field.substr(0, equals);
+                    const std::string value = field.substr(equals + 1);
+                    std::istringstream item(value);
+                    double parsed = 0.0;
+                    item >> parsed;
+                    if (!item.eof()) item >> std::ws;
+                    const bool valid = !item.fail() && item.eof() && parsed > 0.0 && parsed <= 1000000.0;
+                    if (!valid)
+                    {
+                        error = "--trend-burst " + key + " must be a positive number";
+                        return false;
+                    }
+                    if (key == "ticks")
+                        cfg.trend_burst_ticks = parsed;
+                    else if (key == "window_ms")
+                        cfg.trend_burst_window_ms = static_cast<uint64_t>(parsed);
+                    else if (key == "obi")
+                    {
+                        if (parsed > 1.0)
+                        {
+                            error = "--trend-burst obi is a share of one side's displayed depth, so at most 1";
+                            return false;
+                        }
+                        cfg.trend_burst_obi = parsed;
+                    }
+                    else if (key == "hold")
+                        cfg.trend_burst_hold_views = static_cast<uint64_t>(parsed);
+                    else
+                    {
+                        error = "--trend-burst does not know '" + key + "'";
+                        return false;
+                    }
+                }
+            }
             else if (flag.compare(0, kPauseTicksPerSecondPrefix.size(), kPauseTicksPerSecondPrefix) == 0)
             {
                 std::istringstream stream(flag.substr(kPauseTicksPerSecondPrefix.size()));
@@ -1877,6 +1970,35 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
         {
             error = "--wind-down-skew-minutes is the maker's own inventory skew: it needs active_l2, adaptive_l2 or "
                     "inventory_aware_l2";
+            return false;
+        }
+        if (cfg.max_depth_ratio > 0.0 && !maker_with_state)
+        {
+            error = "--max-depth-ratio sizes a quote to the book the maker is quoting: it needs active_l2, adaptive_l2 "
+                    "or inventory_aware_l2";
+            return false;
+        }
+        if (cfg.max_depth_ratio > 0.0 && cfg.extra_layers > 0)
+        {
+            error = "--extra-layers and --max-depth-ratio both build a ladder -- one at a fixed step, one at a size the "
+                    "book can absorb; name one";
+            return false;
+        }
+        if (cfg.depth_ladder_max > 0 && cfg.max_depth_ratio <= 0.0)
+        {
+            error = "--depth-ladder-max sets how many rungs the depth cap builds and needs --max-depth-ratio";
+            return false;
+        }
+        if (cfg.trend_signal_burst && cfg.strategy_name != "trend_l2")
+        {
+            error = "--trend-signal=burst is the trend line's signal: it needs --strategy trend_l2";
+            return false;
+        }
+        if (!cfg.trend_signal_burst &&
+            (cfg.trend_burst_ticks > 0.0 || cfg.trend_burst_window_ms > 0 || cfg.trend_burst_obi > 0.0 ||
+             cfg.trend_burst_hold_views > 0))
+        {
+            error = "--trend-burst configures --trend-signal=burst, which this run does not ask for";
             return false;
         }
     }

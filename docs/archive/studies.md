@@ -1972,6 +1972,68 @@ the same thing: **the capture lives in suppressing the advancing side**, and it 
 configuration therefore carries `--advance-debounce-ms=40000` explicitly, which is now a labelled choice rather than an
 accident of the unit.
 
+**Two capacity questions registered before their arms ran (2026-11-26).**
+
+**A. Depth-proportional sizing** (`--max-depth-ratio=F`, `--depth-ladder-max=N`): no rung larger than F of the same
+side's displayed touch size, and a size above the cap split into up to N rungs one tick apart, the excess dropped and
+counted. The case it is for is the size wall the fine-tick branch hit -- **BLUR at thirteen ticks: +31.74 bps closed at
+one contract, +23.66 at ten, +9.32 with a net of -2.87 at a hundred** -- where a fixed size on a thin book is adverse
+selection by construction. **Bars, written first**: on BLUR's hundred-contract cap the closed median stays **positive on 5
+of 7** and above the uncapped arm's +9.32 with its net above -2.87, under **both** `prorata` and `conservative` (sizing to a
+displayed level is sizing to something a spoof can move, so one model is not the answer); and NES at ten contracts, which has
+never been sized, clears the same pair against its own uncapped control.
+
+**B. `trend_l2`'s signal, replaced rather than tuned** (`--trend-signal=burst --trend-burst=ticks=T,window_ms=W,obi=F,
+hold=VIEWS`). The framework keeps its target, its clips and its three exits and swaps the EWMA cross for the event the maker's
+halt fires on: a mid range of T ticks inside W milliseconds of book time, taken only when the displayed-depth imbalance is
+F of one side **on the same sign as the move**, held for `hold` views. The entry stays passive (`--trend-entry=side=own
+--post-only`), which is the only way its fee reads 2.00. **Bar, written first**: the closed median above **+4.00 bps** -- the
+two-sided fee -- with a net above zero, on **both** seats. Below it `trend_l2` is sealed as a family and the live question
+stays the maker.
+
+**A's arms ran, and the decomposition is the answer: the cap recovers the size wall and the ladder destroys the cell.**
+BLUR at its hundred-contract cap, thirteen ticks, seven days, against the uncapped arm recorded last week; NES at ten
+contracts against its own uncapped control, which had never been run:
+
+| seat | arm | fills (median) | `closed_bps` | positive closed days | `net_bps` | worst `closed_bps` |
+|---|---|---:|---:|---:|---:|---:|
+| BLUR | 100 contracts, uncapped (`bz_BLUR100`) | 38 | +9.32 | 5 of 7 | -2.87 | -129.65 |
+| BLUR | cap 0.10, four rungs | 6 | -2.15 | 1 of 7 | -35.38 | -61.52 |
+| BLUR | **cap 0.15, one rung** | 36 | **+43.76** | **5 of 7** | **+48.16** | -129.65 |
+| BLUR | cap 0.15, one rung, `conservative` | 36 | **+43.76** | **5 of 7** | +48.16 | -129.65 |
+| NES | 10 contracts, uncapped | 274 | +1.45 | 4 of 7 | -2.56 | -37.35 |
+| NES | cap 0.10, four rungs | 7 | 0.00 | 2 of 7 | -21.53 | -27.20 |
+| NES | cap 0.15, one rung | 223 | -5.87 | 1 of 7 | -24.61 | -47.91 |
+
+**The bar is met on BLUR and only on BLUR.** At a tenth of the touch with four rungs the cell is gone (38 fills to 6, +9.32
+to -2.15): the ladder puts the same size one to four ticks *behind* the quote the sweep was reaching, and on a thirteen-tick
+distance those rungs are adverse selection rather than capacity. One rung at 0.15 is the opposite result -- the closed median
+**4.7 times** the uncapped arm's, five of seven positive days and a net of +48.16, the same under `conservative`, which is the
+half of the bar that matters for a rule that sizes to something a spoof can move. On NES the cap only shrinks the fills: its
+touch is deep enough that 15% of it is a smaller quote than the ten-contract order, and the excess is dropped, so the cell goes
+from +1.45 on four days to -5.87 on one. So the lever is **a fine-tick one**: BLUR is exactly the seat the fine-tick branch
+refused at a hundred contracts, and the sizing rule gives that refusal back at the *capture* level (+9.32 to +43.76). What it
+does not give back is the **money**: BLUR's notional is still 0.67 to 10.63 USD a window, one day is -129.65, and a seat whose
+week is one day's capture is a cell to watch rather than a seat to add.
+
+**B's arms ran, and the burst signal is real but does not pay for the round trip.** Two seats, the same seven days, the entry
+inside the touch with `--post-only` so the fee reads exactly 2.00 on every day:
+
+| seat | fills a window (median) | positive days | `closed_bps` median | `net_bps` median | worst day |
+|---|---:|---:|---:|---:|---:|
+| UP | 8 | 1 of 7 | -5.18 | -7.18 | -47.35 |
+| NES | 6 | **5 of 7** | **+2.12** | +0.12 | -26.08 |
+
+The signal fires -- a target of zero would send nothing and fill nothing, and these are six to eight fills a window taken
+only when the displayed depth agrees with the move. On NES it is **the trend line's best cell ever measured**: five of seven
+positive days at +2.12 closed where the EWMA read 0 to 1 of 7 at a net of -2.00 to -11.28. On UP it loses on six days of
+seven. Neither seat reaches the +4.00 the bar asked for, so **`trend_l2` is sealed as a family** -- by the owner's
+instruction and on these numbers -- and the record says why: not because a microstructure signal is empty (NES says the
+opposite) but because this framework's capture, at its best, is half the round trip it pays. The one number that would reopen
+it is a seat where the burst's fills average above +4.00 closed. The signal's own attribution is `burst_count()` on the
+strategy -- an accessor rather than a printed field -- so the fills above are the evidence it fired: a target of zero sends
+nothing.
+
 **Two state switches registered before their arms ran (2026-11-26).** Both are flags that default to off, so every recorded
 number stands, and both bars were written down before the runs.
 

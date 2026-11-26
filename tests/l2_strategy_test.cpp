@@ -984,4 +984,95 @@ int main()
         assert(after.first.size() == 1);
         assert(std::abs(after.first[0].price - (unskewed_ask - 0.5)) < 1e-9);
     }
+
+    // The depth cap: no rung larger than a share of the same side's displayed touch size, and a size above it split into
+    // rungs one tick apart. The cap is the answer to the size wall BLUR showed -- +31.74 bps closed at one contract and
+    // +9.32 at a hundred -- because a fixed size on a thin book is adverse selection by construction.
+    {
+        L2MarketView thin = view;
+        thin.ts = 7'000'000;
+        thin.top.bid_size = 1000;
+        thin.top.ask_size = 1000;
+        thin.depth_imbalance = 0.0;
+        L2MarketMakerBase capped(L2MarketMakerBaseConfig{.order_size = 500,
+                                                        .base_spread = 1.0,
+                                                        .inventory_limit = 5000,
+                                                        .tick_size = 0.5,
+                                                        .signal_mode = L2SignalMode::Baseline,
+                                                        .max_depth_ratio = 0.10,
+                                                        .depth_ladder_max = 4});
+        const auto orders = capped.on_l2_market_view(thin);
+        // A tenth of a thousand is a hundred, five rungs are wanted and four are allowed: four a side, one tick apart.
+        uint64_t bids = 0;
+        uint64_t sells = 0;
+        for (const auto& order : orders)
+            (order.side == Side::Buy ? bids : sells) += 1;
+        assert(bids == 4);
+        assert(sells == 4);
+        assert(orders[0].quantity == 100);
+        assert(orders[3].quantity == 100);
+        assert(std::abs((orders[1].price - orders[0].price) + 0.5) < 1e-9);
+        assert(std::abs((orders[2].price - orders[0].price) + 1.0) < 1e-9);
+        // A hundred a side did not fit, and the run says so rather than quietly sending less.
+        assert(capped.depth_unquoted_quantity() == 200);
+        assert(capped.depth_capped_rungs() == 8);
+
+        // Off, the same quote is one order of the whole size: the recorded behaviour.
+        L2MarketMakerBase uncapped(L2MarketMakerBaseConfig{.order_size = 500,
+                                                           .base_spread = 1.0,
+                                                           .inventory_limit = 5000,
+                                                           .tick_size = 0.5,
+                                                           .signal_mode = L2SignalMode::Baseline});
+        const auto plain = uncapped.on_l2_market_view(thin);
+        assert(plain.size() == 2);
+        assert(plain[0].quantity == 500);
+        assert(uncapped.depth_unquoted_quantity() == 0);
+    }
+
+    // The trend line's burst signal: the maker's own event -- a mid range of N ticks inside a window of book time --
+    // taken only when the displayed-depth imbalance is one-sided in the same direction, and held for the views it was
+    // taken for. The EWMA is the default, so nothing recorded moves.
+    {
+        const auto burst_view = [&](uint64_t ts, double mid, double imbalance)
+        {
+            L2MarketView at;
+            at.symbol = view.symbol;
+            at.ts = ts;
+            at.top = TopOfBook{mid - 0.5, 1000, mid + 0.5, 1000};
+            at.micro_price = mid;
+            at.depth_imbalance = imbalance;
+            return at;
+        };
+        TrendL2Config config{};
+        config.order_size = 10;
+        config.max_position = 100;
+        config.tick_size = 0.5;
+        config.signal_source = TrendL2Config::SignalSource::Burst;
+        config.burst_ticks = 2.0;
+        config.burst_window_ms = 100;
+        config.obi_threshold = 0.5;
+        config.burst_hold_views = 2;
+        config.own_side_entry = true;
+        const uint64_t t0 = 1'794'834'900'007ULL;
+        TrendL2Strategy burst(config);
+        burst.on_l2_market_view(burst_view(t0, 100.0, 0.0));
+        assert(burst.target_position() == 0);
+        // Two ticks up inside twenty milliseconds with the bid side heavy: a burst, long.
+        burst.on_l2_market_view(burst_view(t0 + 20, 101.0, 0.8));
+        assert(burst.burst_count() == 1);
+        assert(burst.target_position() == 100);
+        // The hold is two views: it survives one and expires on the next.
+        burst.on_l2_market_view(burst_view(t0 + 200, 101.0, 0.8));
+        assert(burst.target_position() == 100);
+        burst.on_l2_market_view(burst_view(t0 + 400, 101.0, 0.8));
+        burst.on_l2_market_view(burst_view(t0 + 600, 101.0, 0.8));
+        assert(burst.target_position() == 0);
+
+        // The same move with the depth against it is not a burst: the print is one the book walked back.
+        TrendL2Strategy against(config);
+        against.on_l2_market_view(burst_view(t0, 100.0, 0.0));
+        against.on_l2_market_view(burst_view(t0 + 20, 101.0, -0.8));
+        assert(against.burst_count() == 0);
+        assert(against.target_position() == 0);
+    }
 }

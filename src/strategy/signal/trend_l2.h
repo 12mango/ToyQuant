@@ -4,10 +4,13 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <deque>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
+#include "common/clock_units.h"
 #include "exchange/execution_report.h"
 #include "strategy/strategy.h"
 
@@ -74,6 +77,24 @@ struct TrendL2Config
     // nobody hit is the one whose signal has already failed.
     uint64_t max_order_age_views{0};
     uint64_t entry_cooldown_views{0};
+    // The signal source. `Ewma` is the recorded one -- a fast and a slow average of the midpoint -- and `Burst` replaces
+    // it with the microstructure event the maker's halt fires on: a mid range of `burst_ticks` inside `burst_window_ms` of
+    // *book* time, accepted only when the displayed-depth imbalance agrees with the direction the mid moved. The EWMA was
+    // falsified on two seats (its passive entry holds the fee at 2.00 and its capture does not cover 4.00), so the burst is
+    // the same framework with a different signal rather than a new strategy. The default is the EWMA, so every recorded
+    // trend number keeps its rule.
+    enum class SignalSource : uint8_t
+    {
+        Ewma = 0,
+        Burst
+    };
+    SignalSource signal_source{SignalSource::Ewma};
+    double burst_ticks{2.0};
+    uint64_t burst_window_ms{100};
+    // How one-sided the displayed depth has to be for the burst to be taken, on the same sign as the move.
+    double obi_threshold{0.5};
+    // Views the burst's target is held for. The exits above still run: a stop, a time stop or a cooldown overrides it.
+    uint64_t burst_hold_views{200};
 };
 
 class TrendL2Strategy : public Strategy
@@ -119,9 +140,19 @@ class TrendL2Strategy : public Strategy
         return target_;
     }
 
+    // Bursts the signal accepted, for attribution: a signal that never fires reads exactly like a framework that does
+    // nothing, which is the trap the amend's first arm fell into.
+    uint64_t burst_count() const
+    {
+        return burst_count_;
+    }
+
    private:
     void update_signal(double mid);
     void update_target(double mid);
+    // The burst signal: record the mid, and accept a range of `burst_ticks` inside the window when the displayed-depth
+    // imbalance is one-sided in the same direction. It sets the target and the view it is held until.
+    void update_burst(const L2MarketView& view);
     bool stop_hit(double mid) const;
     // The price this line would quote on the current view, clamped so a passive entry never reaches the opposite
     // touch. Placing and deciding whether a working order still matches the book read the same function, because a
@@ -149,6 +180,11 @@ class TrendL2Strategy : public Strategy
     SubmittedOrders submitted_orders_;
     int64_t target_at_submit_{0};
     bool cancel_pending_{false};
+    // The burst's state: the mids inside the window, the target it set, and the view the target is held until.
+    std::deque<std::pair<uint64_t, double>> mid_samples_;
+    int64_t burst_target_{0};
+    uint64_t burst_until_view_{0};
+    uint64_t burst_count_{0};
     StrategyMetrics metrics_{};
 };
 
@@ -169,6 +205,47 @@ inline void TrendL2Strategy::update_signal(double mid)
         slow_mid_ += slow_alpha * (mid - slow_mid_);
     }
     if (views_ >= std::max<uint64_t>(1, config_.slow_views)) warm_ = true;
+}
+
+inline void TrendL2Strategy::update_burst(const L2MarketView& view)
+{
+    if (config_.signal_source != TrendL2Config::SignalSource::Burst || view.ts == 0 ||
+        config_.tick_size <= 0.0)
+        return;
+    const uint64_t units = clock_units_per_second(view.ts);
+    if (units == 0) return;
+    const double mid = (view.top.bid_price + view.top.ask_price) / 2.0;
+    mid_samples_.emplace_back(view.ts, mid);
+    // The window is milliseconds of *book* time: the view clock is milliseconds on an OKX cut and microseconds on the
+    // Deribit fixtures, so the setting is converted through `clock_units_per_second` rather than a constant. Getting that
+    // wrong is what made a 40 ms maker window forty seconds (measured and fixed 2026-11-26).
+    const uint64_t window = config_.burst_window_ms * units / 1'000ULL;
+    while (!mid_samples_.empty() && view.ts - mid_samples_.front().first > window)
+        mid_samples_.pop_front();
+    while (mid_samples_.size() > 256) mid_samples_.pop_front();
+    if (mid_samples_.size() < 2) return;
+
+    const double first = mid_samples_.front().second;
+    double low = first;
+    double high = first;
+    for (const auto& sample : mid_samples_)
+    {
+        low = std::min(low, sample.second);
+        high = std::max(high, sample.second);
+    }
+    if ((high - low) / config_.tick_size < config_.burst_ticks) return;
+
+    // The direction is the move's own, and the displayed depth has to agree: the side the mid moved towards is the side
+    // whose depth is heavier. That is the whole of "the burst is real flow rather than a print the book walks back".
+    const double move = mid - first;
+    if (move == 0.0) return;
+    if (std::abs(view.depth_imbalance) < config_.obi_threshold) return;
+    if ((move > 0.0) != (view.depth_imbalance > 0.0)) return;
+
+    const int64_t direction = move > 0.0 ? 1 : -1;
+    burst_target_ = direction * std::max<int64_t>(0, config_.max_position);
+    burst_until_view_ = views_ + config_.burst_hold_views;
+    ++burst_count_;
 }
 
 inline bool TrendL2Strategy::stop_hit(double mid) const
@@ -218,6 +295,15 @@ inline void TrendL2Strategy::update_target(double mid)
         return;
     }
 
+    // The burst source replaces the cross with the event and a hold: the target is what the burst set until the views it
+    // was taken for run out, and the stops and the cooldown above still outrank it.
+    if (config_.signal_source == TrendL2Config::SignalSource::Burst)
+    {
+        target_ = views_ <= burst_until_view_ ? burst_target_ : 0;
+        if (views_ > burst_until_view_) burst_target_ = 0;
+        return;
+    }
+
     if (!warm_)
     {
         target_ = 0;
@@ -261,6 +347,7 @@ inline std::vector<StrategyOrder> TrendL2Strategy::on_l2_market_view(const L2Mar
 
     ++views_;
     update_signal(mid);
+    update_burst(view);
     update_target(mid);
 
     // A target change, or a touch that moved away from a working order, is a cancel. The next view

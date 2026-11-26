@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <deque>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "common/clock_units.h"
@@ -163,6 +164,16 @@ struct L2MarketMakerBaseConfig
     double wind_down_skew_ticks{1.0};
     // Views the wind-down was active on, so an arm can be told from a window that never reached its last minutes.
     uint64_t wind_down_views{0};
+    // --max-depth-ratio: no rung may be larger than this share of the same side's displayed touch size, and a size above
+    // the cap is split into `depth_ladder_max` rungs one tick behind each other. A fixed size on a thin book is adverse
+    // selection by construction -- measured 2026-11-26, BLUR at thirteen ticks reads +31.74 bps closed at one contract and
+    // +9.32 at a hundred -- so the size is what to size to the book, not the price. Zero, the default, leaves every
+    // recorded number where it was.
+    double max_depth_ratio{0.0};
+    uint64_t depth_ladder_max{4};
+    // Rungs placed behind the primary by the cap, and the quantity it refused to send at all, for attribution.
+    uint64_t depth_capped_rungs{0};
+    uint64_t depth_unquoted_quantity{0};
 };
 
 // The L2 market maker. Strategies that add behaviour to it derive from it rather than holding one:
@@ -794,15 +805,63 @@ class L2MarketMakerBase : public Strategy
             }
         }
 
+        // The depth cap (--max-depth-ratio): no rung may be larger than a share of the same side's displayed touch size,
+        // and a size above the cap is split into rungs one step behind each other rather than sent as one large order the
+        // book has to absorb. `rungs_for` returns one rung of the whole size when the ratio is off, so a run that does
+        // not ask reads exactly what it did.
+        const auto depth_cap = [&](uint64_t want, bool buy) -> uint64_t
+        {
+            if (config_.max_depth_ratio <= 0.0) return want;
+            const uint64_t displayed = buy ? top.bid_size : top.ask_size;
+            const auto share =
+                static_cast<uint64_t>(config_.max_depth_ratio * static_cast<double>(displayed));
+            return std::max(config_.min_order_quantity, share);
+        };
+        const auto rungs_for = [&](uint64_t want, uint64_t cap) -> std::pair<uint64_t, uint64_t>
+        {
+            if (cap == 0 || want <= cap) return {1, want};
+            const uint64_t needed = (want + cap - 1) / cap;
+            const uint64_t rungs = std::min(std::max<uint64_t>(1, config_.depth_ladder_max), needed);
+            return {rungs, cap};
+        };
+        const auto [buy_rungs, buy_rung_quantity] = rungs_for(buy_quantity, depth_cap(buy_quantity, true));
+        const auto [sell_rungs, sell_rung_quantity] = rungs_for(sell_quantity, depth_cap(sell_quantity, false));
+        if (config_.max_depth_ratio > 0.0)
+        {
+            const uint64_t buy_placed = buy_quantity == 0 ? 0 : std::min(buy_quantity, buy_rungs * buy_rung_quantity);
+            const uint64_t sell_placed =
+                sell_quantity == 0 ? 0 : std::min(sell_quantity, sell_rungs * sell_rung_quantity);
+            config_.depth_capped_rungs += (buy_quantity > 0 ? buy_rungs : 0) + (sell_quantity > 0 ? sell_rungs : 0);
+            config_.depth_unquoted_quantity += (buy_quantity - buy_placed) + (sell_quantity - sell_placed);
+        }
+        const double depth_step = config_.tick_size;
+
         if (buy_quantity > 0)
         {
-            orders.emplace_back(Side::Buy, symbol, bid_price, buy_quantity, 0);
+            for (uint64_t rung = 0; rung < buy_rungs; ++rung)
+            {
+                // Never more than the cap a rung: when the allowed rungs cannot hold the whole size the excess is
+                // dropped *and counted*, because a ladder whose last rung is twice the cap is the fixed size again.
+                const uint64_t quantity =
+                    std::min(buy_rung_quantity, buy_quantity - buy_rung_quantity * rung);
+                if (quantity == 0) break;
+                const double price = bid_price - static_cast<double>(rung) * depth_step;
+                if (price <= 0.0) break;
+                orders.emplace_back(Side::Buy, symbol, price, quantity, 0);
+            }
             // The primary is what the next requote is compared against, whatever the layers behind it did.
             last_placed_bid_ = bid_price;
         }
         if (sell_quantity > 0)
         {
-            orders.emplace_back(Side::Sell, symbol, ask_price, sell_quantity, 0);
+            for (uint64_t rung = 0; rung < sell_rungs; ++rung)
+            {
+                const uint64_t quantity =
+                    std::min(sell_rung_quantity, sell_quantity - sell_rung_quantity * rung);
+                if (quantity == 0) break;
+                orders.emplace_back(Side::Sell, symbol, ask_price + static_cast<double>(rung) * depth_step,
+                                    quantity, 0);
+            }
             last_placed_ask_ = ask_price;
         }
         for (uint64_t layer = 1; layer <= config_.extra_layers; ++layer)
@@ -872,6 +931,8 @@ class L2MarketMakerBase : public Strategy
     [[nodiscard]] uint64_t min_spread_skips() const { return config_.min_spread_skips; }
     [[nodiscard]] uint64_t advance_skips() const { return config_.advance_skips; }
     [[nodiscard]] uint64_t markout_gate_skips() const override { return config_.markout_gate_skips; }
+    [[nodiscard]] uint64_t depth_capped_rungs() const { return config_.depth_capped_rungs; }
+    [[nodiscard]] uint64_t depth_unquoted_quantity() const { return config_.depth_unquoted_quantity; }
     [[nodiscard]] uint64_t flatten_orders() const override { return config_.flatten_orders; }
     [[nodiscard]] uint64_t flatten_quantity() const override { return config_.flatten_quantity; }
 };

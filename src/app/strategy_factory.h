@@ -57,6 +57,15 @@ struct StrategyFactoryConfig
     uint64_t wind_down_skew_minutes = 0;
     double wind_down_end_minute = 0.0;
     double wind_down_skew_ticks = 1.0;
+    // From --max-depth-ratio / --depth-ladder-max: the per-rung cap on the displayed touch size and the rung count.
+    double max_depth_ratio = 0.0;
+    uint64_t depth_ladder_max = 0;
+    // From --trend-signal=burst and --trend-burst: the trend line's signal source and its shape.
+    bool trend_signal_burst = false;
+    double trend_burst_ticks = 0.0;
+    uint64_t trend_burst_window_ms = 0;
+    double trend_burst_obi = 0.0;
+    uint64_t trend_burst_hold_views = 0;
     // From --pause-ticks-per-second: the active halt's threshold; 0 leaves the strategy's own 9.0.
     double pause_ticks_per_second = 0.0;
     // The inventory-aware strategy's quote shift at a full inventory, in ticks. 0 leaves its own default.

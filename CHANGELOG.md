@@ -7,6 +7,33 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## Capacity by sizing, and the trend line's signal replaced and sealed (2026-11-26)
+
+- **`--max-depth-ratio=F --depth-ladder-max=N`**: no quote rung larger than F of the same side's displayed touch size, and
+  a quote above the cap split into up to N rungs one tick apart, with the excess dropped **and counted**
+  (`depth_capped_rungs`, `depth_unquoted_quantity`). Refused with `--extra-layers` (two ladders) and on a strategy that does
+  not quote; off by default.
+- **The cap recovers BLUR's hundred-contract cell and the ladder destroys it.** At thirteen ticks and a hundred contracts:
+  uncapped **+9.32 closed on 5 of 7**, a 0.10 cap with **four rungs** 6 fills and **-2.15**, a 0.15 cap with **one rung**
+  **+43.76 on 5 of 7** and a net of +48.16 -- identically under `conservative`, which is the half of the bar that matters for
+  a rule that sizes to a level a spoof can move. NES at ten contracts is worse under either cap (+1.45 on four days
+  uncapped, -5.87 on one capped), so the lever is a fine-tick one and the money question (0.67 to 10.63 USD a window) is
+  untouched.
+- **`--trend-signal=burst --trend-burst=ticks=T,window_ms=W,obi=F,hold=VIEWS`** replaces the trend line's EWMA cross with
+  the maker's own event -- a mid range of T ticks inside W milliseconds of book time, taken only when the displayed-depth
+  imbalance is F of one side on the same sign -- and keeps the framework's target, clips and three exits. The EWMA is the
+  default, so every recorded trend number keeps its rule.
+- **And the replacement is sealed rather than seated.** With the entry priced inside the touch (`--post-only`, fee exactly
+  2.00 on every day) the burst reads **UP: 8 fills, 1 of 7 positive, -5.18 closed** and **NES: 6 fills, 5 of 7 positive,
+  +2.12 closed / +0.12 net** -- the line's best day count ever measured, at about half the 4.00 the round trip costs. The
+  bar was +4.00 on both seats, so `trend_l2` is sealed as a family on the owner's instruction, with the one number that
+  reopens it written down (a seat whose burst fills average above +4.00 closed).
+- `l2_strategy_test` pins both: the depth cap's rungs (four of a hundred, one tick apart, the excess counted, and the whole
+  size as one order when the ratio is off) and the burst (two ticks inside the window with the depth agreeing sets the
+  target, the depth against it does not, and the hold expires).
+
+
+
 ## Two state switches on the maker: a toxicity-selected amend and a wind-down (2026-11-26)
 
 - **`--amend-on-toxicity`** chooses between the two separately measured repricing arms by state instead of by run: the

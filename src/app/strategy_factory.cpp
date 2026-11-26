@@ -126,6 +126,9 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
         base_config.wind_down_end_minute = config.wind_down_end_minute;
         if (config.wind_down_skew_ticks > 0.0)
             base_config.wind_down_skew_ticks = config.wind_down_skew_ticks;
+        // The depth cap: a size the book can absorb, and its rungs.
+        base_config.max_depth_ratio = config.max_depth_ratio;
+        if (config.depth_ladder_max > 0) base_config.depth_ladder_max = config.depth_ladder_max;
         return std::make_unique<InventoryAwareL2MarketMaker>(
             InventoryAwareL2MarketMakerConfig{.base = base_config,
                                                .inventory_limit = inventory_limit,
@@ -171,6 +174,9 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
         base_config.wind_down_end_minute = config.wind_down_end_minute;
         if (config.wind_down_skew_ticks > 0.0)
             base_config.wind_down_skew_ticks = config.wind_down_skew_ticks;
+        // The depth cap: no rung larger than a share of the displayed touch size, and a ladder for a larger quote.
+        base_config.max_depth_ratio = config.max_depth_ratio;
+        if (config.depth_ladder_max > 0) base_config.depth_ladder_max = config.depth_ladder_max;
         base_config.flatten_band_units = config.flatten_band_units;
         auto active_config = make_active_l2_config(base_config);
         // A zero leaves the strategy's own threshold, so a run that does not ask for the halt to move is unchanged.
@@ -224,6 +230,13 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
         trend_config.entry_improve_ticks = config.trend_entry.improve_ticks;
         trend_config.max_order_age_views = config.trend_entry.max_age_views;
         trend_config.entry_cooldown_views = config.trend_entry.cooldown_views;
+        // The signal source: the recorded EWMA cross unless the run names the burst, whose shape is the run's or the
+        // strategy's own.
+        if (config.trend_signal_burst) trend_config.signal_source = TrendL2Config::SignalSource::Burst;
+        if (config.trend_burst_ticks > 0.0) trend_config.burst_ticks = config.trend_burst_ticks;
+        if (config.trend_burst_window_ms > 0) trend_config.burst_window_ms = config.trend_burst_window_ms;
+        if (config.trend_burst_obi > 0.0) trend_config.obi_threshold = config.trend_burst_obi;
+        if (config.trend_burst_hold_views > 0) trend_config.burst_hold_views = config.trend_burst_hold_views;
         return std::make_unique<TrendL2Strategy>(trend_config);
     }
     if (strategy_name == "l2" || strategy_name == "passive_l2" ||
