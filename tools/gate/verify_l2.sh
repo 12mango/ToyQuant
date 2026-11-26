@@ -219,6 +219,13 @@ tier1() {
   # `--snapshot-out` (l2_replay only, refused in `ws`) before a host did, and it catches every coupling of that shape
   # without anybody having to enumerate them.
   local live_cfg_ok=0 live_cfg_flags live_cfg_out
+  # The artifact must not carry the tree it was built in: a compile-time root put the CI runner's checkout directory inside
+  # a shipped binary and the host died creating its log directory there (the sixth deploy). `.rodata` holds string
+  # *constants*; DWARF paths live in `.debug_*`, so this reads the code's own data and not the symbols beside it.
+  if readelf -p .rodata "$BIN" 2>/dev/null | grep -qF "$(pwd)"; then
+    printf 'the binary carries its build tree as a string constant: %s\n' "$(pwd)" > "$LIVE_CFG_LOG"
+    live_cfg_ok=1
+  fi
   mapfile -t live_cfg_flags < <(python3 tools/live/live_config.py --flags config/live.example.yaml 2>&1)
   if [ "${#live_cfg_flags[@]}" -lt 3 ]; then
     printf 'the live template produced %s line(s):\n%s\n' "${#live_cfg_flags[@]}" "$(printf '%s\n' "${live_cfg_flags[@]}")" > "$LIVE_CFG_LOG"

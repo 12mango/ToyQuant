@@ -11,7 +11,9 @@
 #define PROJECT_ROOT_DIR "."
 #endif
 
-// Anchor relative paths to the project root while preserving absolute paths.
+// Relative paths are the operator's: they resolve against where the process runs, not against the tree it was built in. The
+// shipped binary carried that tree once -- the CI runner's own checkout directory -- and died on the host when it tried to
+// create its log directory there. `TOYQUANT_ROOT` pins the root when a run has to start from somewhere else.
 std::string to_abs_path(const std::string& input_path)
 {
     namespace fs = std::filesystem;
@@ -20,8 +22,17 @@ std::string to_abs_path(const std::string& input_path)
     {
         return p.string();
     }
-    // Use the project root provided by CMake.
-    return (fs::path(PROJECT_ROOT_DIR) / p).string();
+    if (const char* root = std::getenv("TOYQUANT_ROOT"); root != nullptr && *root != '\0')
+    {
+        return (fs::path(root) / p).string();
+    }
+    std::error_code error;
+    const fs::path here = fs::current_path(error);
+    if (error)
+    {
+        return p.string();
+    }
+    return (here / p).string();
 }
 
 int main(int argc, char** argv)

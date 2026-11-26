@@ -127,7 +127,7 @@ jobs:
           install -m 0755 "${{ env.BUILD_DIR }}/toy_quant" "$staging/toy_quant"
           install -m 0644 tools/live/venue_relay.py tools/live/live_config.py tools/live/okx_probe.py "$staging/tools/live/"
           install -m 0644 deploy/toyquant-live.service deploy/toyquant-relay.service "$staging/deploy/"
-          install -m 0755 deploy/bootstrap_server.sh deploy/check_health.sh deploy/rollback.sh "$staging/deploy/"
+          install -m 0755 deploy/bootstrap_server.sh deploy/check_health.sh deploy/rollback.sh deploy/preflight.sh "$staging/deploy/"
           install -m 0644 deploy/logrotate/toyquant "$staging/deploy/logrotate/"
           install -m 0644 config/live.example.yaml "$staging/config/"
           install -m 0644 .env.example "$staging/"
@@ -175,6 +175,9 @@ jobs:
              sudo tar -xzf /tmp/toyquant-deploy.tar.gz -C /opt/toyquant
              sudo bash /opt/toyquant/deploy/bootstrap_server.sh --repo-dir /opt/toyquant --etc-dir /etc/toyquant
              sudo systemctl daemon-reload
+             # The preflight answers "would this start" in a second; it runs before the restart so a broken artifact is a
+             # red job instead of a crash loop on a host that trades.
+             sudo bash /opt/toyquant/deploy/preflight.sh
              sudo systemctl reset-failed toyquant-relay toyquant-live || true
              sudo systemctl restart toyquant-relay toyquant-live
              sudo bash /opt/toyquant/deploy/check_health.sh'

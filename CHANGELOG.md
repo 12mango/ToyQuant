@@ -23,6 +23,24 @@ site now points at `ToyQuant`.
   gate fails both of its conditions. Refused on its registered bar; the next registration is a **stricter** toxic
   definition (`--jump-ticks=3`) whose bar needs the tail **and** the median at once.
 
+## The shipped binary carried its build tree, and the deploy now proves otherwise in a second (2026-11-27)
+
+- **`to_abs_path` resolved relative paths against the compile-time `PROJECT_ROOT_DIR`**, so an artifact built on a runner
+  carried that runner's own checkout path and the host died on `failed to create log directory ...: Permission denied` -- the
+  sixth deploy. A relative path now resolves against the process's own directory (the unit sets
+  `WorkingDirectory=/opt/toyquant`), with `TOYQUANT_ROOT` as the override for a run started elsewhere; `backtest_main.cpp`
+  had the same copy and is fixed the same way. Measured both ways: the binary's `.rodata` no longer holds the tree (0
+  matches), and a run started in an empty directory prints `[Mode: WebSocket]` and creates `./logs` there.
+- **The gate refuses an artifact that carries its build tree.** `verify_l2.sh` reads `.rodata` -- where a string *constant*
+  lives, unlike the DWARF paths in `.debug_*` -- and fails if the checkout's path is in it, which is the check the sixth
+  deploy needed and nobody had.
+- **`deploy/preflight.sh` answers "would this start?" in a second, before anything restarts.** It starts the binary, lets the
+  config emit its arguments, runs the engine as the service user from the unit's working directory and requires its `[Mode]`
+  line, and checks both relay sockets. The workflow now runs it before `systemctl restart`, so a broken artifact is a red job
+  rather than a crash loop on a host that trades -- and the owner can run `sudo bash /opt/toyquant/deploy/preflight.sh` by
+  hand whenever a file changes. Six deploys failed for six different reasons; every one of them was visible in the first
+  second of a run.
+
 ## A test warning was a missing default initializer, not a test defect (2026-11-27)
 
 - **`l2_strategy_test` and `malformed_input_test` compiled with warning noise** -- `-Wmissing-field-initializers`, eight

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <cstdlib>
 #include <filesystem>
 #include <iostream>
 #include <sstream>
@@ -163,7 +164,17 @@ std::string to_abs_path(const std::string& input_path)
     namespace fs = std::filesystem;
     fs::path p(input_path);
     if (p.is_absolute()) return p.string();
-    return (fs::path(PROJECT_ROOT_DIR) / p).string();
+    // A relative path is the operator's, resolved against where the process runs -- never against a path baked in at build
+    // time. `PROJECT_ROOT_DIR` is a compile-time macro, so a binary built on a CI runner carried that runner's own checkout
+    // directory inside it and died on the host with `failed to create log directory ...: Permission denied` (measured
+    // 2026-11-27, the sixth deploy). The unit sets `WorkingDirectory=/opt/toyquant`, so `logs` and `data/runtime` resolve
+    // there and are writable by the service user; `TOYQUANT_ROOT` overrides it for a run started from somewhere else.
+    if (const char* root = std::getenv("TOYQUANT_ROOT"); root != nullptr && *root != '\0')
+        return (fs::path(root) / p).string();
+    std::error_code error;
+    const fs::path here = fs::current_path(error);
+    if (error) return p.string();
+    return (here / p).string();
 }
 
 bool parse_integer(const std::string& value, int& result)
