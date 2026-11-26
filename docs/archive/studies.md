@@ -2015,6 +2015,15 @@ the capture of a fill rather than a day's sign. UP's `net` column falls for a di
 result: the control carried a larger position into a favourably marked week (+8.88 bps of mark over its closed median), and
 the arm's carried position was marked against it (-3.54); the closed columns are the mechanism's.
 
+**What A's run does not decide, and the next lever rather than another setting.** Two things are open on this row and
+neither is a threshold: **PROS's ten-tick cell pays 4.67 to 35.59 bps of fee** on its own days because it carries no
+`--post-only` -- the fee, not the capture, is what keeps its net negative and its day count at four -- so a post-only
+version of the same cell (the fee condition the trend line's entry was measured on, where every day read exactly 2.00) is a
+different arm with its own registration; and **the switch has never been run at a size above one contract**, where the
+queue reset an amend pays for is the thing that binds. Neither is a re-read of the numbers above, and neither is written
+off: the state lifts the capture of a fill on all three seats, so the question for PROS is its fee tier and for the frozen
+cell its size, not whether the state does anything.
+
 **B's arms ran, and the wind-down clears the tail at a price the settle number does not cover (2026-11-26).** The frozen
 cell with `--settle-residual` against the same cell plus `--wind-down-skew-minutes=15 --wind-down-end=15:30`, the same two
 hours and seven days on both seats. (The first pair was taken before the closing side was exempted from the advance
