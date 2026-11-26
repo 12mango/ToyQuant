@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""One row per day per queue model: the passive maker on OKX's own archive, inside one UTC window.
+"""One row per day per queue model for one L2 strategy on OKX's own archive, inside one UTC window.
+
+`--strategy` defaults to the maker (`active_l2`); `trend_l2` and `execution_l2` read the same cut, the same queue
+models and the same basis-point columns, so a row's provenance is the strategy name and not a second script.
 
 The fill rule is the whole point of the table. `conservative` never removes a cancelled unit from the queue ahead
 (`src/exchange/queue_model.h`), so a resting order fills only when trades consume everything in front of it; a cancel
@@ -149,6 +152,11 @@ def main():
     parser.add_argument("--archives", default="data/v2/crypto", help="where the day archives live")
     parser.add_argument("--cuts", default="/tmp/tq/upwin", help="where the window cuts and trade slices go")
     parser.add_argument("--models", default="conservative,prorata")
+    # The line under the table. `active_l2` is the maker; `trend_l2` and `execution_l2` read the same cut, the same
+    # queue models and the same bps columns, so one tool answers for all three and a row's strategy is part of its
+    # provenance rather than a different script.
+    parser.add_argument("--strategy", default="active_l2",
+                        help="the l2_replay strategy name the rows are measured on")
     parser.add_argument("--start", default="13:30")
     parser.add_argument("--end", default="15:30")
     parser.add_argument("--tick", type=float, default=0.0001)
@@ -212,7 +220,10 @@ def main():
                         shape.append("--settle-residual")
                         shape.append(f"--settle-taker-bps={args.settle_taker_bps:g}")
                         shape.append("--settle-slippage-ticks=1")
-                    command = [str(BIN), "l2_replay", str(trades), str(cut), args.symbol, "0", "active_l2", "1", model,
+                    # `--order-size` and `--inventory-limit` are the maker's names for two numbers every line reads: the
+                    # clip and the cap. For `trend_l2` the factory maps them to the clip and the full-signal target, so
+                    # the same sweep drives the non-maker line without a second tool.
+                    command = [str(BIN), "l2_replay", str(trades), str(cut), args.symbol, "0", args.strategy, "1", model,
                                "--fast-validation", f"--order-size={args.order_size}",
                                f"--inventory-limit={args.inv_limit}"] + shape + [p for p in args.extra.split() if p]
                     run = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)

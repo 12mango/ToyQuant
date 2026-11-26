@@ -318,6 +318,10 @@ def main():
                         # cell in the studies record names it, because the two models disagree about the fill count and
                         # the conclusion has to be readable without guessing which one produced it.
                         "--models",
+                        # `tools/sweep/okx_maker_baseline.py` owns this one: the line under the table. The maker is the
+                        # default and the two non-maker lines run on the same cut and the same columns, so the strategy
+                        # name is part of a row's provenance rather than a second tool.
+                        "--strategy",
                         # `tools/study/okx_quote_share.py` owns this one: the size of one order in engine units, which is
                         # what turns the book's depth and the window's flow into the two ratios a size ladder is read on.
                         "--order-units"}:

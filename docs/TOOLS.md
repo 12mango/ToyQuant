@@ -52,7 +52,7 @@ does not.
 | `tools/sweep/risk_check.sh` | four runs and the invariant each one holds | gate |
 | `tools/sweep/compare_runs.sh` | one row per field, one column per variant | hand |
 | `tools/sweep/f4_windows.sh` | the F4 and equity windows, re-run | hand |
-| `tools/sweep/okx_maker_baseline.py` | one row per day per queue model: fills, fees, gross, net, breakeven, and the inventory the window ended holding | hand |
+| `tools/sweep/okx_maker_baseline.py` | one row per day per queue model for one L2 strategy inside a UTC window -- fills, fees, gross, net, breakeven, and the inventory the window ended holding -- with `--strategy` choosing the line (the maker by default, `trend_l2` and `execution_l2` on the same cut and columns) | hand |
 | `tools/fetch/fetch_databento.py` | a downloaded day, split into a depth CSV and a trade CSV | hand |
 | `tools/fetch/fetch_deribit_options.py` | one straddle a month and its implied volatility | hand |
 | `tools/fetch/fetch_funding_rates.py` | one instrument's funding series as a CSV `carry` reads | hand |
