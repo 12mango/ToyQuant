@@ -32,7 +32,10 @@ and `--extra` rather than a single fixed shape.
 """
 
 import argparse
+import atexit
 import csv
+import os
+import shutil
 import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
@@ -145,6 +148,37 @@ def slice_trades(day_text, symbol, start_ms, end_ms, cuts):
     return target if run.returncode == 0 else None
 
 
+def take_lock(cuts):
+    """One sweep per cuts directory, because two of them write the same day files.
+
+    Measured 2026-11-26: a batch that was thought killed was still running when the next one started, and both cut the
+    same `--cuts` directory -- the same collision class the gate's "one verb at a time" rule exists for. The second
+    sweep refuses and names the pid rather than producing a table from a cut whose writer changed underneath it.
+    """
+    cuts.mkdir(parents=True, exist_ok=True)
+    lock = cuts / ".lock"
+    if lock.exists():
+        holder = lock.read_text().strip()
+        if holder.isdigit() and Path(f"/proc/{holder}").exists():
+            raise SystemExit(f"{cuts} is in use by pid {holder}: two sweeps sharing one cuts directory write the same "
+                             f"day files, so this one refuses rather than corrupting the other's table")
+    lock.write_text(str(os.getpid()))
+    atexit.register(lambda: lock.unlink(missing_ok=True))
+
+
+def require_free_space(cuts, threshold_gb=2.0):
+    """A full /tmp is a failure with no message, so it is refused here while it still has one.
+
+    Measured 2026-11-26: a fourteen-symbol sweep filled the 7.7 GB tmpfs and the two symbols that ran last died with
+    exit 120 and an empty log -- the interpreter could not flush its own traceback either. A symbol's seven-day cut is
+    about 1.5 GB, so the threshold is one symbol plus the room to write it.
+    """
+    free_gb = shutil.disk_usage(cuts).free / 1e9
+    if free_gb < threshold_gb:
+        raise SystemExit(f"{cuts} has {free_gb:.1f} GB free and one symbol's seven-day cut is about 1.5 GB; remove the "
+                         f"previous symbol's cuts or point --cuts at a larger filesystem")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--days", required=True, help="comma separated file days, as the archive names them")
@@ -185,6 +219,16 @@ def main():
     if 0 < args.latency_us < 1000:
         print(f"# warning: --latency-us={args.latency_us} is {args.latency_us / 1000.0:g} ms, which is not a round "
               f"trip; a millisecond value is 1000x this", file=sys.stderr)
+
+    # One sweep per cuts directory, and room to write it, before the first day is cut.
+    take_lock(Path(args.cuts))
+    require_free_space(Path(args.cuts))
+    # The resolved shape, in the log, because a unit slip here is invisible in the table: `--inv-limit` written a
+    # factor of ten too small once turned a ten-contract cap into one, and nothing in the row said so.
+    clips_to_cap = args.inv_limit / max(1, args.order_size)
+    print(f"# shape: strategy={args.strategy} clip={args.order_size} cap={args.inv_limit} "
+          f"({clips_to_cap:g} clips to the cap, {args.latency_us} us a leg)", file=sys.stderr)
+
 
     Path(args.cuts).mkdir(parents=True, exist_ok=True)
     bases = number_list(args.base_spread_grid)

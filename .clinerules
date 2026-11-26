@@ -129,7 +129,11 @@ compatibility path. Everything below assumes that page.
   input that shows it, fix it there, and only then return to `fast`. Re-running the full gate against a guess is the
   other half of the same anti-pattern, and it hides which edit moved the number.
 - **Tier 0 first, for its own reason**: a red unit test must not be able to pass a gate that only compares replay
-  output. That bug happened, and the tier exists because of it.
+  output. That bug happened, and the tier exists because of it. **The tiers also refuse a stale build** (2026-11-26,
+  twice in one session): `verify_l2.sh` compares the newest artifact in the build directory against `src/` and `tests/`
+  and stops with the file names and `run: bash .run.sh build`, because a gate that judges a binary older than its
+  sources reports a behaviour change that is really a missing build -- which is exactly how a red tier0 was read as a
+  test defect while it was a test that had never been compiled.
 - **CI runs only what needs no market data** (`check_written_fields.py`, `lint_prose.py docs`, `check_links.py`, and
   `mkdocs build --strict`). A local tier is green and CI is green only when both were run; the data-backed tiers stay
   local because the depth file is 1.5 GB.

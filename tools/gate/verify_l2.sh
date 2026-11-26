@@ -60,6 +60,27 @@
 set -u
 cd "$(dirname "$0")/../.." || exit 1
 
+# The gate judges the artifact it is handed, so an artifact older than its sources makes a green tier mean nothing.
+# Measured 2026-11-26, twice in one session: `code` and then `fast` reported a red tier against a *stale* binary, and
+# the "failure" was a test that had never been compiled -- the fix was a build, not a change. The tiers that execute
+# the binary therefore refuse a stale one and name the command, because a missing input is an error that names the
+# input (docs/TOOLS.md, convention 3) and a silent build inside a gate would move the tier times the rules quote.
+require_fresh_binary() {
+  local dir newest stale
+  [ -x "$BIN" ] || { echo "  $BIN is not executable; run: bash .run.sh build"; return 1; }
+  dir=$(dirname "$BIN")
+  newest=$(find "$dir" -maxdepth 1 -type f -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -1 | cut -d' ' -f2-)
+  [ -n "$newest" ] || return 0
+  stale=$(find src tests \( -name '*.h' -o -name '*.cpp' \) -newer "$newest" 2>/dev/null | head -3)
+  if [ -n "$stale" ]; then
+    echo "  the build is older than its sources, so this tier would judge a stale artifact:"
+    printf '    %s\n' $stale
+    echo "  run: bash .run.sh build"
+    return 1
+  fi
+  return 0
+}
+
 # Every verb but `docs` takes the binary as its second argument. `docs` takes pages instead, and the one verb whose
 # second argument is not a binary is the one that broke: `verify_l2.sh docs docs/PERFORMANCE.md` read the page as the
 # binary, so every block that names its own binary looked for `docs/ring_bench`. A page argument is not a path to a
@@ -618,13 +639,13 @@ smoke() {
 }
 
 case "${1:-fast}" in
-  smoke) smoke ;;
-  code) ensure_slices; rc=0; tier0 || rc=1; tier1 code || rc=1; exit $rc ;;
-  docs) shift; ensure_slices; BIN="${GATE_BIN:-$DEFAULT_BIN}"; tier1 docs "$@" ;;
-  fast) ensure_slices; rc=0; tier0 || rc=1; tier1 || rc=1; exit $rc ;;
-  ref)  ensure_slices; full_hash > "$REF_HASH"; echo "reference stored: $(cat "$REF_HASH")" ;;
-  full) ensure_slices; tier2 ;;
+  smoke) require_fresh_binary || exit 1; smoke ;;
+  code) require_fresh_binary || exit 1; ensure_slices; rc=0; tier0 || rc=1; tier1 code || rc=1; exit $rc ;;
+  docs) shift; ensure_slices; BIN="${GATE_BIN:-$DEFAULT_BIN}"; require_fresh_binary || exit 1; tier1 docs "$@" ;;
+  fast) require_fresh_binary || exit 1; ensure_slices; rc=0; tier0 || rc=1; tier1 || rc=1; exit $rc ;;
+  ref)  require_fresh_binary || exit 1; ensure_slices; full_hash > "$REF_HASH"; echo "reference stored: $(cat "$REF_HASH")" ;;
+  full) require_fresh_binary || exit 1; ensure_slices; tier2 ;;
   asan) ensure_slices; tier3 ;;
-  all)  ensure_slices; rc=0; tier0 || rc=1; tier1 || rc=1; tier2 || rc=1; tier3 || rc=1; exit $rc ;;
+  all)  require_fresh_binary || exit 1; ensure_slices; rc=0; tier0 || rc=1; tier1 || rc=1; tier2 || rc=1; tier3 || rc=1; exit $rc ;;
   *)    echo "usage: tools/gate/verify_l2.sh smoke|code|docs [paths]|fast|ref|full|asan|all [binary]" >&2; exit 2 ;;
 esac
