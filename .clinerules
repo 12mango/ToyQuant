@@ -158,6 +158,12 @@ compatibility path. Everything below assumes that page.
 - **Reproduce before you argue.** When a document and a run disagree, run it; when two documents disagree, find which
   definition each is using before rewriting either (the "quoting versus position" split in the equity section is the
   worked example).
+- **A registered arm carries its command, in the tree.** A cell described by reference -- "the frozen ten-contract cell
+  with `--settle-residual`" -- is not re-derivable, and 2026-11-27 spent a session finding that the two flags which make
+  it the recorded cell are `--extra-layers=1` and `--settle-slippage-ticks=1`: the previous driver lived in `/tmp`, one
+  wipe from gone. So the driver is a tracked script beside the tool it drives
+  (`tools/sweep/up_ten_contract_cell.sh`), with the bar and the measured rows in its header, and `/tmp` holds only its
+  output. A registration whose command lives in a shell history cannot be re-run by the reader who checks it.
 - **Deleting a tool breaks a document, not the program.** Before removing anything, grep the documents and the gate for
   it; if nothing names it, say so in the commit message.
 - **A live session is a verb, not a command typed into the tool's shell.** `bash .run.sh soak <post-only|baseline>` runs

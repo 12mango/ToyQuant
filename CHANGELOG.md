@@ -7,6 +7,38 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The stricter toxic definition closes the gate: the tail and the median are not from the same lever (2026-11-27)
+
+The registered arm on the ten-contract UP cell -- the frozen shape with `--amend-on-toxicity --jump-window-ms=40` at
+`--jump-ticks=3`, seven days at 13:30-15:30 UTC -- with the control and the loose arm re-run first so the third row is
+comparable rather than adjacent. Both reproduce their recorded CSVs to the digit.
+
+| column | control | `--jump-ticks=2` | **`--jump-ticks=3`** |
+|---|---:|---:|---:|
+| fills (median) | 50 | 42 | **44** |
+| `closed_bps` median | **+10.32** | +2.05 | **+0.76** |
+| positive closed days | **5 of 7** | 4 of 7 | **4 of 7** |
+| worst `net_bps` day | **-202.88** | -76.38 | **-76.38** |
+| `settled_bps` median | **+11.33** | -9.42 | **-13.56** |
+| leave-one-out median | **+8.38** | -4.07 | **-6.79** |
+
+The bar was the worst net day at **-120 bps or better** *and* the closed median positive on **5 of 7** at **40 fills or
+more**. The tail clause clears -120 by 43.6 bps; the median clause fails on the day count. **So the line closes with the
+sentence the registration named**: at ten contracts the tail and the median are not available from the same lever, and the
+effort moves to the controls that do not quote.
+
+**The stricter threshold is dominated, and that is the durable finding.** It is identical to `--jump-ticks=2` on four of
+the seven days -- including 11-22, the worst, because that day is toxic under both definitions -- and worse on two of the
+three that move. What the switch buys on the bad day is the *carried mark* (the control's -168.76 against the arm's
+-6.38), not a better read of the state: the amendment keeps inventory from being built into the run, and that effect is
+saturated at two ticks. Raising the threshold only suppresses the calm-day amendments, which is where the residual capture
+was.
+
+**The cell is now a script.** The studies entry described it by reference, and rebuilding it took this pass several tries
+because the two flags that make it the recorded cell -- `--extra-layers=1` and `--settle-slippage-ticks=1` -- are not in
+the record, and the previous session's driver was in `/tmp`, one wipe from gone. `tools/sweep/up_ten_contract_cell.sh`
+carries the three arms, the bar and these numbers in its header.
+
 ## The deploy job stopped compiling what the verify job had already built (2026-11-27)
 
 - **Two jobs built the same tree, and one of them shipped none of it.** `verify` compiled 149 build edges, ran the
