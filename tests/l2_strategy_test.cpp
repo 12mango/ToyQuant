@@ -439,39 +439,66 @@ int main()
     assert(std::abs(layered_orders[3].price - (layered_orders[1].price + 0.5)) < 1e-9);
     assert(layered_orders[2].quantity == layered_orders[0].quantity);
 
-    // Moving a primary quote in place: with the flag on, a refresh emits an amend for the side whose target moved and
-    // leaves that order out of the cancels; with it off, the same view cancels both. The request is a request -- this
-    // replay's engine has no amend, so the pipeline turns it into the cancel it replaced and no recorded number moves.
+    // Moving a quote in place, and the asymmetry that made it a measurement rather than a preference: an amend is for a
+    // retreat. With the flag on, a side whose target moves *away* from the touch by at least the deadband is moved in
+    // place and left out of the cancels; a side that advances keeps the cancel path, because the views a cancel leaves
+    // the level absent are a filter and an amend removes it -- measured on UP 11-16, amending both ways took fills from
+    // 26 to 49 a window and the closed median from +9.83 to -5.92 bps. A move inside the deadband amends nothing.
+    struct Refresh
     {
-        const auto drive_refresh = [&](bool amend) {
-            L2MarketMakerBase strategy(amend ? L2MarketMakerBaseConfig{.order_size = 1,
-                                                                      .base_spread = 1.0,
-                                                                      .inventory_limit = 100,
-                                                                      .tick_size = 0.5,
-                                                                      .amend_instead_of_cancel = true}
-                                            : L2MarketMakerBaseConfig{.order_size = 1,
-                                                                      .base_spread = 1.0,
-                                                                      .inventory_limit = 100,
-                                                                      .tick_size = 0.5});
-            const auto placed = strategy.on_l2_market_view(view);
-            assert(placed.size() == 2);
-            strategy.on_order_submitted(StrategyOrder{placed[0].side, view.symbol.str(), placed[0].price, 1, 30});
-            strategy.on_order_submitted(StrategyOrder{placed[1].side, view.symbol.str(), placed[1].price, 1, 31});
-            L2MarketView moved = view;
-            moved.ts = 5000000;
-            moved.top.bid_price += 1.0;
-            moved.top.ask_price += 1.0;
-            strategy.on_l2_market_view(moved);
-            return std::pair{strategy.cancel_requests(), strategy.amend_requests()};
-        };
-        const auto plain = drive_refresh(false);
-        assert(plain.first.size() == 2);
-        assert(plain.second.empty());
-        const auto amended = drive_refresh(true);
-        assert(amended.first.empty());
-        assert(amended.second.size() == 2);
-        assert(std::abs(amended.second[0].price - amended.second[1].price) > 0.5);
-    }
+        std::vector<StrategyOrder> placed;
+        std::vector<uint64_t> cancels;
+        std::vector<Strategy::AmendRequest> amends;
+    };
+    const auto drive_refresh = [&](bool amend, double shift) -> Refresh
+    {
+        L2MarketMakerBase strategy(amend ? L2MarketMakerBaseConfig{.order_size = 1,
+                                                                  .base_spread = 1.0,
+                                                                  .inventory_limit = 100,
+                                                                  .tick_size = 0.5,
+                                                                  .amend_instead_of_cancel = true}
+                                        : L2MarketMakerBaseConfig{.order_size = 1,
+                                                                  .base_spread = 1.0,
+                                                                  .inventory_limit = 100,
+                                                                  .tick_size = 0.5});
+        Refresh out;
+        out.placed = strategy.on_l2_market_view(view);
+        assert(out.placed.size() == 2);
+        strategy.on_order_submitted(StrategyOrder{out.placed[0].side, view.symbol.str(), out.placed[0].price, 1, 30});
+        strategy.on_order_submitted(StrategyOrder{out.placed[1].side, view.symbol.str(), out.placed[1].price, 1, 31});
+        L2MarketView moved = view;
+        moved.ts = 5000000;
+        moved.top.bid_price += shift;
+        moved.top.ask_price += shift;
+        strategy.on_l2_market_view(moved);
+        // The cancels are read first: `cancel_requests` is what consults the pending amend list to leave those orders out.
+        out.cancels = strategy.cancel_requests();
+        out.amends = strategy.amend_requests();
+        return out;
+    };
+    // Off, the same move cancels both and amends nothing.
+    const auto plain = drive_refresh(false, 1.0);
+    assert(plain.cancels.size() == 2);
+    assert(plain.amends.empty());
+    // On, a retreat of two ticks: the bid is moved in place, so only the ask is pulled.
+    const auto retreat = drive_refresh(true, -1.0);
+    assert(retreat.cancels.size() == 1);
+    assert(retreat.cancels[0] == 31);
+    assert(retreat.amends.size() == 1);
+    assert(retreat.amends[0].order_id == 30);
+    assert(std::abs(retreat.amends[0].price - (retreat.placed[0].price - 1.0)) < 1e-9);
+    // On, the same move the other way: the sides swap roles, because a target is symmetric about the fair price -- a
+    // parallel rise is a retreat for the ask and an advance for the bid, so the ask is moved and the bid is pulled.
+    const auto upward = drive_refresh(true, 1.0);
+    assert(upward.cancels.size() == 1);
+    assert(upward.cancels[0] == 30);
+    assert(upward.amends.size() == 1);
+    assert(upward.amends[0].order_id == 31);
+    assert(std::abs(upward.amends[0].price - (upward.placed[1].price + 1.0)) < 1e-9);
+    // On, a retreat inside the deadband (one tick): nothing is amended and both are pulled.
+    const auto inside = drive_refresh(true, -0.5);
+    assert(inside.cancels.size() == 2);
+    assert(inside.amends.empty());
 
     // A layer's step in basis points: the default is one tick, which on a fine tick puts the second layer on almost the
     // first layer's price. At ten bps a layer the step here -- fair 6421.25, tick 0.5 -- is 6.42 of price, 12.8 ticks,
