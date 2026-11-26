@@ -531,6 +531,32 @@ int main()
         assert(parent.parent_summary().filled_quantity == 6);
     }
 
+    // The deadline is in the clock's unit, not the flag's. A sixty-second parent on a millisecond clock -- an OKX cut
+    // prints `1794834900007` -- closes sixty thousand ticks later, and the report's span is sixty seconds. Before this the
+    // horizon was added to the timestamp in *microseconds*, so the deadline sat eighty-three days out and the
+    // `[EXECUTION_ALGO]` line read `span_seconds=0 complete=0` on every OKX window (measured 2026-11-26).
+    {
+        RunAccounting millis;
+        millis.set_parent_order({.side = Side::Sell, .quantity = 10, .horizon_us = 60'000'000});
+        const uint64_t start = 1'794'834'900'007ULL;
+        millis.start_parent(start, 100.0, 0.0, 1.0, 1);
+        assert(!millis.parent_horizon_reached(start + 59'999));
+        assert(millis.parent_horizon_reached(start + 60'000));
+        millis.finish_parent(start + 60'000, 100.0);
+        const auto summary = millis.parent_summary();
+        assert(summary.complete);
+        assert(std::abs(summary.span_seconds - 60.0) < 1e-9);
+    }
+
+    // The microsecond fixtures keep their meaning: the same horizon on a microsecond clock is sixty million ticks.
+    {
+        RunAccounting micros;
+        micros.set_parent_order({.side = Side::Buy, .quantity = 1, .horizon_us = 60'000'000});
+        micros.start_parent(1'000, 100.0, 0.0, 1.0, 1);
+        assert(!micros.parent_horizon_reached(1'000 + 59'999'999));
+        assert(micros.parent_horizon_reached(1'000 + 60'000'000));
+    }
+
     // The execution mix behind [EXECUTION_ALGO]: the same parent worked half by resting and half by crossing. The
     // split matters because every venue prices the two roles differently, and "the fee was 3.2 bps" says nothing
     // about whether the parent took the cheap role or paid for the expensive one.

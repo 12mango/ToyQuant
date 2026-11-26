@@ -2034,6 +2034,49 @@ it is a seat where the burst's fills average above +4.00 closed. The signal's ow
 strategy -- an accessor rather than a printed field -- so the fills above are the evidence it fired: a target of zero sends
 nothing.
 
+**Three registered questions, written before their runs (2026-11-26, maintenance pass).**
+
+1. **PROS at its registered ten-tick cell with `--post-only`.** The cell's own fee reads 4.67 to 35.59 bps because it carries
+   no post-only, and the trend line's passive entry is the demonstration that the flag is what makes a fee read 2.00. **Bar**:
+   five of seven positive closed days at thirty fills or more, with `fees_bps` exactly 2.00 -- the seat bar on the lever the
+   record names, and not a new threshold.
+2. **BLUR at thirteen ticks, the 0.15 cap with one rung, at ten times the notional** (a thousand contracts against the
+   hundred the +43.76 cell was measured at). **Bar**: still five of seven positive and a closed median above half of
+   +43.76 -- the uncapped arm decayed to a quarter from one contract to ten, so a quarter here is the expected shape and a
+   collapse is the answer.
+3. **The frozen cell at ten contracts on UP**, the size `--advance-debounce-ms=40000` has never been asked at. **Bar**: the
+   filled notional grows with the size, the closed median stays positive on five of seven and at least half the one-contract
+   cell's +5.37, and fills stay at thirty or more -- the same bar structure as the fine-tick branch's size ladder.
+
+**The three ran, and one clears its bar.** Same days and window as everything else; the fee column is `fees_bps`.
+
+| # | arm | fills (median) | `fees_bps` | `closed_bps` | positive closed days | `net_usd` median |
+|---|---|---:|---:|---:|---:|---:|
+| 1 | PROS ten ticks **+ `--post-only`** | 29 | **2.00** | -6.06 | **2 of 7** | -0.006 |
+| 2 | BLUR 13 ticks, 0.15 cap, one rung, **10x notional** | 37 | 2.12-167.35 | +17.36 | 4 of 7 (one day no round trip) | +0.31 |
+| 3 | UP frozen cell **at ten contracts** | **50** | **2.00** | **+20.30** | **5 of 7** | **+0.73** |
+
+**1. PROS with `--post-only`: the fee is bought and the fills are given up.** The flag does exactly what the trend line's
+entry showed -- `fees_bps` reads **2.00 on every day**, against 4.67 to 35.59 for the same cell without it -- and the capture
+collapses with it: the closed median is **-6.06** on **2 of 7**, and the median fill count falls from 59 to **29**, under the
+thirty the seat bar asks. The original cell's +5.82 lived on its taker fills; at ten ticks the resting quote is not reached
+often enough to replace them. So the lever the record named is **measured and refused**, and PROS stays closed on fee.
+
+**2. BLUR at ten times the notional: the decay is real and it lands under the bar.** Ten times the hundred-contract cell's
+size reads a closed median of **+17.36 on 4 of 7** where that cell read +43.76 on 5 of 7, with fees climbing to 167 bps on the
+best day and one day with two fills and no round trip. The bar asked half of +43.76 (+21.88) and five days: both fail, and
+the direction of the decay says the same thing the uncapped arm did -- **the capture falls faster than the notional grows**.
+What is left unsaid is a size between them: a three-times or five-times arm is a new registration, not a re-read.
+
+**3. The frozen cell at ten contracts clears its bar, and it is the pass of the pass.** The size the debounce was settled at
+had never been run above one contract; at ten it reads **50 fills a day** (against 30), a closed median of **+20.30 on 5 of
+7** (the bar asked half of the one-contract cell's +5.37), `fees_bps` **2.00 on every day** -- post-only still holds at the
+larger clip -- and a net median of **+0.73 USD a day** against the one-contract cell's single-digit cents. The tail is there
+too (one day -202.88 net bps and -11.14 USD), and the inventory reaches the cap of ten contracts; but on this window the
+suppression the frozen configuration encodes is **not paid for in fills** at ten contracts, which is what the open item
+asked. What it does not say is that ten contracts is the right size: the ladder to twenty already showed the worst day
+doubling.
+
 **Two state switches registered before their arms ran (2026-11-26).** Both are flags that default to off, so every recorded
 number stands, and both bars were written down before the runs.
 

@@ -21,22 +21,47 @@ import sys
 # Every key the engine's live path reads, and the flag it becomes. The mapping is deliberately explicit: a key that is not
 # here is refused, which is what makes the template a contract rather than a suggestion.
 FLAGS = {
-    # Positional in `ws` mode, listed here so the parser knows the key; `POSITIONAL` below fixes their order.
+    # Positional in `ws` mode, listed here so the parser knows the keys; `POSITIONAL` below fixes their order.
     ("link", "market_endpoint"): "",
     ("engine", "symbol"): "",
     ("engine", "strategy"): "",
+    # Optional positionals, after the strategy: the clip scale and the queue model.
+    ("engine", "quantity_scale"): "",
+    ("engine", "queue_model"): "",
     ("engine", "base_spread_ticks"): "--base-spread-ticks",
+    ("engine", "quote_distance_bps"): "--quote-distance-bps",
     ("engine", "refresh_price_ticks"): "--refresh-price-ticks",
     ("engine", "order_size"): "--order-size",
     ("engine", "inventory_limit"): "--inventory-limit",
+    ("engine", "inventory_shift_ticks"): "--inventory-shift-ticks",
+    ("engine", "onesided_inventory_frac"): "--onesided-inventory-frac",
+    ("engine", "extra_layers"): "--extra-layers",
+    ("engine", "layer_step_bps"): "--layer-step-bps",
+    ("engine", "edge_cover_ticks"): "--edge-cover-ticks",
+    ("engine", "min_spread_ticks"): "--min-spread-ticks",
+    ("engine", "max_depth_ratio"): "--max-depth-ratio",
+    ("engine", "depth_ladder_max"): "--depth-ladder-max",
     ("engine", "post_only"): "--post-only",
     ("engine", "advance_debounce_ms"): "--advance-debounce-ms",
+    ("engine", "pause_ticks_per_second"): "--pause-ticks-per-second",
+    ("engine", "amend_on_toxicity"): "--amend-on-toxicity",
+    ("engine", "amend_deadband_ticks"): "--amend-deadband-ticks",
+    ("engine", "markout_cover"): "--markout-cover",
     ("engine", "wind_down_skew_minutes"): "--wind-down-skew-minutes",
     ("engine", "wind_down_end"): "--wind-down-end",
     ("engine", "settle_residual"): "--settle-residual",
+    ("engine", "close_out"): "--close-out",
+    ("engine", "close_out_cross_bps"): "--close-out-cross-bps",
+    ("engine", "starting_cash"): "--starting-cash",
+    ("engine", "max_exposure_usd"): "--max-exposure-usd",
+    ("engine", "kill_switch_loss_usd"): "--kill-switch-loss-usd",
+    ("engine", "fat_finger_bps"): "--fat-finger-bps",
+    ("engine", "max_orders_per_second"): "--max-orders-per-second",
     ("link", "order_latency_us"): "--order-latency-us",
     ("link", "cancel_latency_us"): "--cancel-latency-us",
     ("link", "venue_endpoint"): "--venue-endpoint",
+    ("link", "venue_max_orders"): "--venue-max-orders",
+    ("link", "venue_orders_per_second"): "--venue-orders-per-second",
     ("link", "snapshot_out"): "--snapshot-out",
 }
 
@@ -44,11 +69,16 @@ FLAGS = {
 SWITCHES = {
     ("engine", "post_only"),
     ("engine", "settle_residual"),
+    ("engine", "close_out"),
+    ("engine", "markout_cover"),
+    ("engine", "amend_on_toxicity"),
 }
 
 # The keys that are positional in `ws` mode, in the order the engine reads them: the relay's market-data endpoint, the
-# symbol, then the strategy. They are not flags, and emitting them as flags would be a command line the parser refuses.
+# symbol, then the strategy, and -- only when the file names them -- the clip scale and the queue model. They are not
+# flags, and emitting them as flags would be a command line the parser refuses.
 POSITIONAL = (("link", "market_endpoint"), ("engine", "symbol"), ("engine", "strategy"))
+POSITIONAL_OPTIONAL = (("engine", "quantity_scale"), ("engine", "queue_model"))
 
 # A value that has to be present for the file to be a live configuration at all.
 REQUIRED = POSITIONAL
@@ -85,8 +115,10 @@ def flags(values):
     """The engine's arguments, one a line: the positionals first, then `--name=value` -- the two forms the parser reads.
     A switch is a bare flag when true and absent when false."""
     arguments = [values[name] for name in POSITIONAL]
+    # The optional positionals come straight after the strategy and before any flag, because that is the order `ws` reads.
+    arguments.extend(values[name] for name in POSITIONAL_OPTIONAL if name in values)
     for name in sorted(FLAGS):
-        if name not in values or name in POSITIONAL:
+        if name not in values or name in POSITIONAL or name in POSITIONAL_OPTIONAL:
             continue
         value = values[name]
         if name in SWITCHES:

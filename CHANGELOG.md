@@ -7,6 +7,24 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The parent's deadline is in the clock's unit (2026-11-26)
+
+- **`span_seconds` and `complete` read 0 on every OKX window, and the cause was the deadline rather than the summary.**
+  `RunAccounting` added the parent's horizon *in microseconds* to the path's timestamp, and an OKX cut counts
+  **milliseconds**: a two-hour parent's deadline sat eighty-three days out, `finish_parent` never ran, and the
+  `[EXECUTION_ALGO]` line reported a span of zero for a schedule that had finished. The unit now comes from
+  `common/clock_units.h` at the first event, the L1 path keeps its explicit override, and the two numbers read
+  **`span_seconds=7200 complete=1`** on UP 11-16 through the binary. `pipeline_accounting_test` pins a millisecond clock
+  (sixty seconds is sixty thousand ticks) beside the microsecond fixtures' sixty million.
+- **The live config's key list grew with the flags a live session names.** `tools/live/live_config.py` now maps 34 keys --
+  the risk limits (`starting_cash`, `max_exposure_usd`, `kill_switch_loss_usd`, `fat_finger_bps`,
+  `max_orders_per_second`), the adapter's own bounds, the quote geometry, the two state switches and the sizing cap --
+  plus the two optional positionals `quantity_scale` and `queue_model`, and `config/live.example.yaml` carries the risk
+  block rather than only the demo shape. Every flag name in the map was checked against the parser's own prefixes; an
+  unknown key is still refused by name.
+
+
+
 ## Capacity by sizing, and the trend line's signal replaced and sealed (2026-11-26)
 
 - **`--max-depth-ratio=F --depth-ladder-max=N`**: no quote rung larger than F of the same side's displayed touch size, and

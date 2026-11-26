@@ -323,15 +323,13 @@ class Pipeline
         accounting_.set_markout_horizon(cycles);
     }
 
-    // The parent order an execution run works, from --parent. The pipeline measures the parent itself rather
-    // than asking the strategy: a measurement that trusted what it measures could report the schedule the
-    // strategy meant to run instead of the one it ran. [EXECUTION_ALGO] is printed only when this is set.
-    //
-    // `horizon_ticks` is in the caller's event clock and `ticks_per_second` says which one that is: the L2 path
-    // carries microseconds and the L1 readers keep the venue's milliseconds, so the deadline is not assumed to
-    // be in one unit everywhere.
+    // The parent's deadline in the caller's clock. `ticks_per_second` says which unit that clock counts, and zero derives
+    // it from the first event's timestamp (`common/clock_units.h`): the L2 path is milliseconds on an OKX cut and
+    // microseconds on the Deribit fixtures, so a caller that assumed one of them put a two-hour deadline eighty-three days
+    // out and the `[EXECUTION_ALGO]` line reported `span_seconds=0 complete=0` on every OKX window (measured 2026-11-26).
+    // The L1 path keeps its explicit 1'000 because it converts the horizon itself.
     void set_parent_order(Side side, uint64_t quantity, uint64_t horizon_ticks,
-                          uint64_t ticks_per_second = 1'000'000)
+                          uint64_t ticks_per_second = 0)
     {
         accounting_.set_parent_order({.side = side,
                                       .quantity = quantity,

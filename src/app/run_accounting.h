@@ -225,15 +225,17 @@ class RunAccounting
     // ---- The execution line's parent order --------------------------------------------------------------
     // The pipeline records the parent rather than reading it from the strategy, because a measurement that
     // trusted the thing it measures could report a schedule the strategy did not run. The parent is pure
-    // configuration: a side, a quantity and a deadline in the path's own clock ticks. The L2 path counts
-    // microseconds and the L1 path counts milliseconds, so `ticks_per_second` is what turns the deadline back
-    // into seconds for the report.
+    // configuration: a side, a quantity and a deadline. `horizon_us` is in microseconds -- the flag's unit -- and
+    // `ticks_per_second` says what the path's clock counts; zero means "derive it from the first timestamp", which is what
+    // `common/clock_units.h` does for every other time-based setting in this tree.
     struct ParentSpec
     {
         Side side{Side::Unknown};
         uint64_t quantity{0};
         uint64_t horizon_us{0};
-        uint64_t ticks_per_second{1'000'000};
+        // 0 derives the unit from the first event's timestamp; a non-zero value is an explicit override, which the L1
+        // path uses because it keeps the venue's milliseconds and passes the horizon already converted.
+        uint64_t ticks_per_second{0};
     };
 
     void set_parent_order(const ParentSpec& spec);
@@ -272,7 +274,12 @@ class RunAccounting
     // True once the parent's deadline has passed in market time, which is when the measurement closes.
     bool parent_horizon_reached(uint64_t ts) const
     {
-        return parent_started_ && !parent_finished_ && ts >= parent_start_ts_ + parent_spec_.horizon_us;
+        if (!parent_started_ || parent_finished_) return false;
+        const uint64_t units = std::max<uint64_t>(1, parent_units_per_second_);
+        const uint64_t horizon = parent_spec_.ticks_per_second > 0
+                                     ? parent_spec_.horizon_us
+                                     : parent_spec_.horizon_us * units / 1'000'000ULL;
+        return ts >= parent_start_ts_ + horizon;
     }
 
     // Closes the measurement at the horizon: what the parent never got is charged at the midpoint then, which
@@ -382,6 +389,10 @@ class RunAccounting
     bool parent_started_{false};
     bool parent_finished_{false};
     uint64_t parent_start_ts_{0};
+    // The clock's own unit, taken from the first event's timestamp (`common/clock_units.h`) or from an explicit override.
+    // Without it a two-hour parent on a millisecond clock closed after 83 days, and [EXECUTION_ALGO] read
+    // `span_seconds=0 complete=0` on every OKX window (measured 2026-11-26).
+    uint64_t parent_units_per_second_{1'000'000};
     double parent_decision_mid_{0.0};
     double parent_decision_usd_{0.0};
     double parent_unit_notional_usd_{0.0};

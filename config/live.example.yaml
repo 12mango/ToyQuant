@@ -12,6 +12,8 @@
 engine:
   symbol: UP-USDT-SWAP            # the demo instrument; a live list belongs in config/live.yaml
   strategy: active_l2
+  # quantity_scale: 1             # optional positionals, when the file has to name them
+  # queue_model: prorata
   base_spread_ticks: 3            # the frozen cell's shape: three ticks out, refreshed every tick
   refresh_price_ticks: 1
   order_size: 10000000            # one contract on this instrument's grid
@@ -22,9 +24,29 @@ engine:
   # wind_down_skew_minutes: 15    # only meaningful for a session that ends at a named clock
   # wind_down_end: "15:30"
 
+  # The risk limits, which a live session names rather than inherits: the account's ceiling, the loss that latches the
+  # switch, the distance a mispriced order may sit at, and the rate the venue's quota allows. Their defaults are the
+  # engine's, and they are written here because a live file that leaves them out is a live file nobody can audit.
+  starting_cash: 1000
+  max_exposure_usd: 200
+  kill_switch_loss_usd: 50
+  fat_finger_bps: 200
+  max_orders_per_second: 8
+
+  # close_out: true               # flatten at the end of the input (a replay-only control)
+  # close_out_cross_bps: 20
+  # markout_cover: true           # the adverse-selection gate, when the run has fills to learn from
+  # pause_ticks_per_second: 9.0
+  # amend_on_toxicity: true
+  # amend_deadband_ticks: 2
+  # max_depth_ratio: 0.15         # no rung larger than this share of the displayed touch; one rung, no ladder
+  # depth_ladder_max: 1
+
 link:
   market_endpoint: 127.0.0.1:8765     # the relay's market-data socket, on the same host
   venue_endpoint: 127.0.0.1:8766      # the relay's order channel (the same relay, --order-listen)
   order_latency_us: 10000             # the measured route is 77 to 118 ms; 10 ms is what the cells were measured at
   cancel_latency_us: 10000
+  venue_max_orders: 20                # the adapter's own bound, under the venue's quota
+  venue_orders_per_second: 5
   snapshot_out: data/runtime/live-snapshot.json   # the file a restart reconciles from

@@ -1,6 +1,7 @@
 #include "app/run_accounting.h"
 
 #include <algorithm>
+#include "common/clock_units.h"
 
 #include "backtest/performance.h"
 #include "common/instrument_spec.h"
@@ -351,6 +352,11 @@ void RunAccounting::start_parent(uint64_t ts, double decision_mid, double unit_n
     if (!parent_requested_ || parent_started_ || decision_mid <= 0.0) return;
     parent_started_ = true;
     parent_start_ts_ = ts;
+    // The unit comes from the clock, not from the flag: the L2 path is milliseconds on an OKX cut and microseconds on the
+    // Deribit fixtures, and a horizon added in the flag's unit to a timestamp in another is the 83-day deadline this
+    // comment sits beside.
+    parent_units_per_second_ = parent_spec_.ticks_per_second > 0 ? parent_spec_.ticks_per_second
+                                                                : clock_units_per_second(ts);
     parent_decision_mid_ = decision_mid;
     parent_unit_notional_usd_ = unit_notional_usd;
     parent_multiplier_ = multiplier;
@@ -435,7 +441,7 @@ void RunAccounting::finish_parent(uint64_t ts, double horizon_mid)
     parent_horizon_mid_ = horizon_mid;
     parent_span_seconds_ = ts > parent_start_ts_
                                ? static_cast<double>(ts - parent_start_ts_) /
-                                     static_cast<double>(std::max<uint64_t>(1, parent_spec_.ticks_per_second))
+                                     static_cast<double>(std::max<uint64_t>(1, parent_units_per_second_))
                                : 0.0;
 
     const uint64_t unfilled = parent_spec_.quantity > parent_filled_quantity_
