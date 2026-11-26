@@ -7,6 +7,52 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The two seats do not share their bad days, and the pair needs more margin than 100 USDT has at 3x (2026-11-27)
+
+UP at ten contracts and NES at five, the same seven days at 13:30-15:30 UTC, merged into one account by
+`tools/study/portfolio_stress.py` (the seats' own recorded CSVs, each row's mark and closed P&L converted to USD at that
+day's notional):
+
+| day | UP net | NES net | **pair net** | pair closed | pair mark |
+|---|---:|---:|---:|---:|---:|
+| 11-16 | +3.139 | -0.878 | **+2.261** | +1.011 | +1.250 |
+| 11-17 | +0.733 | +1.935 | **+2.667** | +2.589 | +0.079 |
+| 11-18 | +0.858 | +0.496 | **+1.353** | +1.898 | -0.544 |
+| 11-19 | +0.161 | -3.254 | **-3.093** | -2.802 | -0.292 |
+| 11-20 | -0.628 | +0.456 | **-0.172** | +0.913 | -1.085 |
+| 11-21 | +1.852 | +6.310 | **+8.162** | +3.263 | +4.899 |
+| 11-22 | -11.145 | +0.992 | **-10.153** | -0.792 | **-9.362** |
+
+**The bad days do not coincide, and at seven days that is the whole of the claim.** The correlation on the daily net is
+**r = 0.039** (`rho = 0.071`); UP's worst day (11-22, -11.14) is a *gain* day for NES (+0.99), and NES's worst (11-19,
+-3.25) is one of UP's smallest gains (+0.16). So the "same-day resonance" hypothesis the batch asked about reads **no** in
+this window -- stated as a rank observation, because a coefficient on seven points is not a statistic.
+
+**The merge passes the dispersion gate that one seat fails.** On the tool's own basis points UP alone is 3.31x its median
+and outside the 3x line, NES is 2.94x and just inside it; merged in USD the pair reads a closed median of **+1.011**, a
+leave-one-out median of **+0.962** and a worst day at **2.77x** -- inside the line, with the worst day falling from
+**15.2x** UP's own median to **7.5x** the portfolio's. That is what a second instrument buys when its losses land on other
+days: not a better median, a smaller multiple.
+
+**What the merge does not fix is the tail, and the margin arithmetic says it is the binding constraint.** The week nets
+**+1.03 USD**, and one day is **-10.15 USD** of it -- a tenth of a 100 USDT account in one session, of which UP's carried
+mark is -9.27 and NES's is -0.09. At the peaks the seats actually touched, the pair holds UP 840 coins (198.1 USD) and NES
+500 (149.4 USD) -- **347.5 USD gross, 3.47x equity**:
+
+| | value |
+|---|---:|
+| margin at 3x | 115.8 USD = **116% of equity** (the account cannot hold it) |
+| margin at 5x | 69.5 USD = 69% of equity |
+| liquidation distance at 1% maintenance | **27.8%** adverse move on both books together |
+
+**So the answer to the leverage question is that the pair as measured does not fit a 100 USDT account at 3x**, and at 5x it
+fits with a 28% liquidation distance while UP alone moved **14%** on 11-22 (0.206 to 0.2358) -- a repeat of that day is
+half the distance to a margin call. The lever is the account's own cap, not the venue's: `--max-exposure-usd` is a
+*portfolio* number now, and 60-70 USD a seat (1.2-1.4x gross) is what gives a 3x venue its 100% headroom back.
+
+`tools/study/portfolio_stress.py --up <csv> --nes <csv>` re-derives every row above, with `--equity`, `--leverage` and
+`--maintenance` as the account's own numbers rather than constants.
+
 ## The stricter toxic definition closes the gate: the tail and the median are not from the same lever (2026-11-27)
 
 The registered arm on the ten-contract UP cell -- the frozen shape with `--amend-on-toxicity --jump-window-ms=40` at
