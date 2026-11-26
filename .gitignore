@@ -92,10 +92,27 @@ secrets/
 !.env.example
 
 # --------------------------------------------------
+# The private side of the publication boundary: never tracked
+# --------------------------------------------------
+# Everything that is a trading decision, a money figure or a machine fact lives here and nowhere else. The public tree
+# carries the instrument and the method; `private/` carries the ledger, the seat list and the notes that quote them.
+# `tools/gate/check_leaks.py` reads `git ls-files`, so a file ignored here cannot reach a commit, a CI run or a
+# reviewer's bundle. The deny-list it enforces is `private/leak_denylist.txt`, which is ignored for the same reason.
+private/
+local_reports/
+# A deploy's own secrets, when a host keeps them beside the repository rather than in `secrets/`.
+deploy/secrets/
+# Key material by extension, so a key file cannot ride in under a name this file did not anticipate.
+*.pem
+*.key
+*.p12
+*.pfx
+
+# --------------------------------------------------
 # Where the sync writes: a machine-local path, never a repository fact
 # --------------------------------------------------
 # `tools/export/push_windows.sh` reads this file for the Windows folder a Drive client uploads from. It is ignored
-# because the path is the machine's -- a public repository has no business carrying `G:\...` -- and because an empty or
+# because the path is the machine's -- a public repository has no business carrying a drive path -- and because an empty or
 # absent file is what makes the sync fail loudly instead of writing somewhere plausible.
 .drive-target
 # The read-only reviewer's brief: a workflow instruction for a second model, not a repository fact. See `.clinerules`

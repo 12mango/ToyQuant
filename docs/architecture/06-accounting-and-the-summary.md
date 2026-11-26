@@ -126,7 +126,7 @@ contract and a short, pins the notional basis and the sign rule, and checks that
 unknown symbol and an unpriced price-quoted instrument all accrue nothing. There is deliberately no
 data plumbing yet: the mechanism is checkable before a rate series exists, the way the queue model was
 checked before live fills were discussed. The order of the remaining steps is scoped in
-[Roadmap](../archive/studies.md#the-carry-line-financing-flows-before-carry-strategies)
+[Roadmap](../archive/studies.md)
 
 The rate then arrives from a file, which is `src/market/funding_rate.*`. Two shapes are recognised by
 their own header: an OKX daily funding archive, which holds every swap on the venue in one file, and a

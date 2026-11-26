@@ -48,7 +48,8 @@ claim.**
 | find the meaning of a term in a table | [Glossary](GLOSSARY.md) | the field that prints it, in the [Learning Path](LEARNING.md) |
 | look up a flag, or what it changes in a run | [The L2 replay flags](L2_FLAGS.md) | the guide's part 1 for the run itself |
 | write your own strategy | [Writing your own strategy](using/08-writing-a-strategy.md) | [the strategy layer](architecture/05-strategy.md) for how the existing ones decide |
-| put it on a server | [Live and carry](using/04-live-and-carry.md) | the deploy section there: what a deploy carries and what it must not (the two templates beside their ignored files, the `SIGTERM` sequence, the workflow), and the unit in `deploy/toyquant-live.service` |
+| put it on a server | [Live and carry](using/04-live-and-carry.md) | the deploy section there: the host's three directories, `deploy/bootstrap_server.sh`, `deploy/check_health.sh`, `deploy/rollback.sh`, the two operator files at `/etc/toyquant`, and the `SIGTERM` sequence |
+| know what may be published | [Tools](TOOLS.md) row for `check_leaks.py` | the boundary itself is `.clinerules` section 7: what `docs/` carries, what `private/` carries, and what the scanner refuses |
 
 
 ## Who owns what

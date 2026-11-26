@@ -10,7 +10,7 @@
 # what its file says. The credentials are not here: `.env.example` names the environment variables the relay reads.
 
 engine:
-  symbol: UP-USDT-SWAP            # the demo instrument; a live list belongs in config/live.yaml
+  symbol: BTC-USDT-SWAP          # an example instrument; the seat a session trades belongs in config/live.yaml
   strategy: active_l2
   # quantity_scale: 1             # optional positionals, when the file has to name them
   # queue_model: prorata

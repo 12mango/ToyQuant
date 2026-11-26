@@ -23,6 +23,34 @@ site now points at `ToyQuant`.
   gate fails both of its conditions. Refused on its registered bar; the next registration is a **stricter** toxic
   definition (`--jump-ticks=3`) whose bar needs the tail **and** the median at once.
 
+## The publication boundary is a check, and the deploy is a closed loop (2026-11-26)
+
+- **`tools/gate/check_leaks.py` is the boundary, and its first run found the tree on the wrong side of it.** Structural
+  rules refuse a key shape, a drive letter followed by a backslash, a POSIX home path, the cloud-drive folder name, a
+  filled credential, and a tracked `config/live*.yaml`, `.env`, `secrets/`, `private/` or `local_reports/`; they scan
+  `git ls-files` because that is the list a reviewer's bundle carries. A deny-list at `private/leak_denylist.txt` (ignored)
+  carries the policy half with a `[block]` section that fails and an `[audit]` section that is counted and printed, so the
+  same tool measures the migration and then enforces it. Wired into `verify_l2.sh` (every tier), CI and the deploy's
+  `verify` job, with `--self-test` covering both directions of every rule.
+- **Thirteen machine paths left the tracked tree.** One drive letter with a backslash, three `/home/<operator>/` paths and
+  the cloud-drive folder name were in `.clinerules`, `CHANGELOG.md`, `docs/ROADMAP.md`, `.gitignore` and
+  `tools/export/push_windows.sh`; each is now a spelling a document may use (`X:/sync`, `<the folder .drive-target names>`,
+  "a path in the operator's home directory") so the lesson travels and the machine does not.
+- **`private/` exists, and stage 1 of the migration is in it.** The research ledger (`docs/archive/studies.md`) and the
+  four parts of the performance history moved with `git rm --cached` + `mv` into `private/docs/`, and each path now carries
+  a stub that says what the page recorded, which public page documents the same method, and who may ask for the numbers.
+  Nine inbound `page.md#anchor` links were dropped to the page in the same change, because a stub has no sections. The
+  deny-list's audit count -- 22 files naming the first seat, 4 the second -- is what stage 2 has left.
+- **`.gitignore` covers the private side**: `private/`, `local_reports/`, `deploy/secrets/` and key material by extension.
+- **The deploy is a closed loop, and the unit had a defect.** `ExecStart` pointed at `/opt/toyquant/out/build/linux-debug/toy_quant`,
+  a path no bundle ever ships; it now runs `/opt/toyquant/toy_quant` under an unprivileged `toyquant` account, reads
+  `/etc/toyquant/live.yaml`, and `TimeoutStopSec=12` is documented as the engine's own 10 s shutdown deadline plus a margin.
+  `deploy/bootstrap_server.sh` (idempotent: packages, account, directories, logrotate, unit, and the two operator files
+  seeded at `0640` and never rewritten), `deploy/check_health.sh` (five questions: active, exactly one process, no
+  error-severity journal line, binary present, snapshot parses and is fresh, credentials not world-readable) and
+  `deploy/rollback.sh` (one command, from the `toy_quant.prev` the deploy backs up). The workflow now backs the binary up,
+  runs the bootstrap, restarts, and **fails the job on a red health check**.
+
 ## The tail's exit price is not a lever, and the two seats get their sizes (2026-11-26)
 
 - **`--wind-down-adverse-bps=X` makes the wind-down conditional**, and the arm it was built for refuses the mechanism. The
@@ -1838,7 +1866,7 @@ site now points at `ToyQuant`.
 ## The sync that was running and failing for ten days (2026-11-14)
 
 - **The workflow was persisted, and it was broken in a way nobody could see.** `.git/hooks/post-commit` already called a
-  sync -- `/home/mango12/tq_snapshot.py`, a script outside the repository. Its default repo was the pre-rename checkout
+  sync -- a script outside the repository, at a path in the operator's home directory. Its default repo was the pre-rename checkout
   directory, so from the moment that directory stopped existing every commit wrote
   `ERROR: <that directory> is not a git repository` into `/tmp/tq_gdrive_sync.log` and nothing else. The Drive folder
   stayed at `7035823` (2026-11-03) while the tree moved through two hundred commits. The log is the whole explanation,
@@ -1847,7 +1875,7 @@ site now points at `ToyQuant`.
   `bundle.py --sync` into `out/export`, copies the four files to the Windows folder named by `.drive-target` (ignored:
   a machine path is not a repository fact), and then compares each file's **remote size and sha256** with the local
   ones. Measured on the first run: `ok code.txt 2236301B 21fe6c715cd4`, `ok docs.txt 1117433B`, `ok manifest.txt
-  26376B`, `synced 2a06abc -> G:\我的云端硬盘\AI_Code_Sync`.
+  26376B`, `synced 2a06abc -> <the folder named by .drive-target>`.
 - **`tools/export/install_post_commit.sh` installs the hook *before* its final `exit 0`.** The first version of this
   block was appended after `exit 0` and would never have run; the installer now inserts before the last `exit 0` and is
   idempotent, so a fresh clone is one command from the same workflow.

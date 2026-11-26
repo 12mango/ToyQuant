@@ -1,9 +1,14 @@
 # Performance History
 
 This is the lab notebook: every measurement taken, in the order it was taken, superseded ones included. It is not the
-place to read conclusions — [Design Review](DESIGN_REVIEW.md) carries those and [Retrospective](RETROSPECTIVE.md) says
-which markets they closed — but it is the place to find out *how a number was obtained*, and every block marked here is
-re-derived by `tools/gate/check_docs.py` on each gate run.
+place to read conclusions -- [Design Review](DESIGN_REVIEW.md) carries those and [Retrospective](RETROSPECTIVE.md) says
+which markets they closed -- but it is the place to find out *how a number was obtained*.
+
+**The four parts' numbers are retained outside the public tree.** A part is a trading result as much as a measurement --
+sizes, fills and money on named instruments -- so the full text lives privately (`private/docs/performance/`) and each page
+here is its public face: the question it asked, the method it used, and a pointer to the public page that documents that
+method. The split is enforced by `tools/gate/check_leaks.py`, which refuses a tracked secret, a machine path or a private
+file, and reports the count of what is still public.
 
 It is four parts, split by what the measurements were about rather than by date, because that is how a reader arrives:
 with a question about the engine, about the mainline strategy, about one of the studies, or about a venue that is not a

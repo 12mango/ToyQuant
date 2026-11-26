@@ -10,15 +10,20 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+# An unprivileged account, created by `deploy/bootstrap_server.sh`: a bug in the quote loop must not be a bug in the host.
+User=toyquant
+Group=toyquant
 # The credentials are a file, never a unit field: `systemctl cat` is readable by every local user, and a key in it is a key
-# in `journalctl`. The file is the operator's, at a path the template (.env.example) names.
+# in `journalctl`. The file is the operator's, at a path the bootstrap seeds from the template.
 EnvironmentFile=-/etc/toyquant/live.env
-# The configuration is read from config/live.yaml, which is ignored: the command line below carries no symbol and no size.
+Environment=PYTHONUNBUFFERED=1
+# The configuration is read from a file beside the credentials, which is ignored: the command line carries no symbol and
+# no size. `--flags` turns that file into the engine's arguments, in the order `ws` reads them.
 WorkingDirectory=/opt/toyquant
-# The positionals are the relay's socket, the symbol and the strategy, and the rest of the flags come from the file -- so a
-# change to the size or to the symbol never edits this unit. `--flags` emits both halves in the order `ws` reads them.
-ExecStart=/bin/bash -c 'exec /opt/toyquant/out/build/linux-debug/toy_quant ws $(python3 /opt/toyquant/tools/live/live_config.py --flags /opt/toyquant/config/live.yaml)'
-# SIGTERM is the signal the session answers with "stop new orders, cancel what is live, confirm zero, exit".
+ExecStart=/bin/bash -c 'exec /opt/toyquant/toy_quant ws $(python3 /opt/toyquant/tools/live/live_config.py --flags /etc/toyquant/live.yaml)'
+# SIGTERM is the signal the session answers with "stop new orders, cancel what is live, confirm zero, exit". The engine's
+# own deadline is 10 s (`SessionShutdown`'s `deadline_ms`), and this waits 12: the two numbers move together, and a unit
+# that gave up first would SIGKILL a session mid-cancel.
 KillSignal=SIGTERM
 TimeoutStopSec=12
 Restart=on-failure

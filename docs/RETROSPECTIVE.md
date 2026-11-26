@@ -94,7 +94,7 @@ own payoff rather than on a cost.
   The structural ceiling is lower still, and it is a ratio rather than a window: the half-spread this instrument
   measures is 0.101 bps (the 2026-11-17 window's `[WIND-DOWN] spread_bps`), so a maker that captured a *whole* half-spread
   on every fill would still pay twenty times the fee it collects -- 2.00 / 0.101 = 19.8, and the same table for four
-  markets is in [the fee history](performance/history-04-the-fee-is-not-the-wall.md#the-ratio-across-the-markets-this-repository-owns).
+  markets is in [the fee history](performance/history-04-the-fee-is-not-the-wall.md).
   What the same three windows establish about the *infrastructure* is the other half: every fill, cancel, refusal, late
   fill and position reconciled against the venue's own statement at both ends of every session -- worst
   `equity_break_usd=-0.00386365`, one session comparing a nonzero position to the contract (`-1400` against `-1400`), and
@@ -129,7 +129,7 @@ own payoff rather than on a cost.
   schedule is 0.65 a contract with a 1.00 floor an order -- so the fee axis passed for the first time in this project.
   What closed the venue is the number of times a monthly series trades: 5 to 246 prints in two hours against its own price
   moving tens of dollars a contract, best R_max 56 against the reference of 71
-  ([the studies](archive/studies.md#test-a-executed-the-high-flow-names-at-20-to-45-days-which-closes-the-options-line)).
+  ([the studies](archive/studies.md)).
 * **Whether a crypto venue offers a zero or rebate maker fee at a retail tier.** The recorded venues charge 0.0002,
   which is positive, so a claim of a negative fee needs a named venue, tier and pair before it is used.
 * **Which instrument explains an inventory's move at the horizon it is held.** The MES measurement above is one row

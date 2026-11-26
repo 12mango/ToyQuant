@@ -1,0 +1,16 @@
+# The session's own log files. `copytruncate` because the engine holds its log open and cannot be asked to reopen it on a
+# signal: the copy is taken while the file is in use and the original is truncated in place, which can lose the lines
+# written during the copy and never loses the file.
+#
+# The journal is rotated by systemd rather than here; bound it on the host with
+# `journalctl --vacuum-time=30d` or `SystemMaxUse=` in `/etc/systemd/journald.conf.d/toyquant.conf`.
+/opt/toyquant/logs/*.log {
+    daily
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+    su toyquant toyquant
+}

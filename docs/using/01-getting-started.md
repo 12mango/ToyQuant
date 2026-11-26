@@ -159,7 +159,7 @@ fast  slow  entry_ticks  exit_ticks  stop_ticks  fills  net_pnl_usd  fees_paid  
 
 106 taker clips pay 5.3 USD of fees against a gross loss of 0.74, so the signal has no forecast that covers the cost of
 taking liquidity. The full 27-cell grid and the rest of that table are in
-[Performance History](../performance/history-03-studies.md#the-non-market-making-signal-what-27-parameter-sets-say).
+[Performance History](../performance/history-03-studies.md).
 
 ///
 

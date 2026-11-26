@@ -871,10 +871,49 @@ case (an inherited set from a snapshot is cancelled before the session can call 
 pinned in `venue_relay.py --self-test`, which also raises a real `SIGTERM` through the installed handler. `docs/TOOLS.md`
 lists both tools.
 
-> The deploy workflow (`.github/workflows/deploy.yml`) builds, runs the checks that need no market data, packages the
-> binary with the relay, the config reader, the unit and the two templates, sends it over `scp` and runs
-> `systemctl restart toyquant-live`. It does **not** run `verify_l2.sh fast`: that tier reads a 1.5 GB depth archive the
-> repository does not carry, so it runs on the self-hosted runner that holds the archive, behind a dispatch input.
+### The host: first boot, health and rollback
+
+A host has three directories and one account, and `deploy/bootstrap_server.sh` creates all four idempotently -- it is run
+by the deploy on every release and by hand on a fresh machine, and the second run is a no-op with a report:
+
+| path | what lives there | who writes it |
+|---|---|---|
+| `/opt/toyquant` | the program, the relay, the config reader, the deploy scripts | the bundle, on every deploy |
+| `/opt/toyquant/data/runtime`, `/opt/toyquant/logs` | the snapshot a restart reconciles from, the session's log files | the session, as `toyquant` |
+| `/etc/toyquant` | `live.yaml` and `live.env` -- the instrument, the size and the three credentials | the operator, once |
+| `/etc/systemd/system/toyquant-live.service` | the unit, installed from `deploy/toyquant-live.service` | the bootstrap |
+
+The two operator files are seeded from the tracked templates with mode `0640`, owned by `root:toyquant`, and the bootstrap
+never rewrites one that exists -- a live configuration is an action a person takes. On a fresh host:
+
+```bash
+sudo bash /opt/toyquant/deploy/bootstrap_server.sh            # packages, account, directories, unit, logrotate
+sudoedit /etc/toyquant/live.yaml                              # the instrument, the size, the quoting shape
+sudoedit /etc/toyquant/live.env                               # OKX_API_KEY, OKX_API_SECRET, OKX_PASSPHRASE
+sudo systemctl restart toyquant-live
+sudo bash /opt/toyquant/deploy/check_health.sh                # exits 0 only when all five answers are yes
+```
+
+`check_health.sh` asks five questions, each of which is a failure a deploy can cause: the unit is active; **exactly one**
+session process is running (two sessions on one account is a position neither of them sees); no error-severity journal line
+since boot; the binary the unit names exists; and the snapshot parses, is younger than `MAX_SNAPSHOT_AGE_S`, and holds no
+more than the session itself claims. It also refuses a credential file that is readable by others. The snapshot's *content*
+is reported rather than judged -- whether a position is the right one is the accounting question `[RECONCILE]` answers.
+
+The two numbers the unit and the engine share: the engine's shutdown deadline is **10 s** (`SessionShutdown`'s
+`deadline_ms`) and `TimeoutStopSec` is **12**. A unit that gave up first would `SIGKILL` a session mid-cancel, which leaves
+the orders a restart then has to reconcile.
+
+`sudo bash /opt/toyquant/deploy/rollback.sh` puts the previous binary back -- the deploy copies the running one to
+`toy_quant.prev` before it unpacks -- restarts, and runs the same health check. It is one command and it is deliberately
+not automatic: an unattended rollback can flap a live session.
+
+> The deploy workflow (`.github/workflows/deploy.yml`) builds, runs the checks that need no market data *and*
+> `tools/gate/check_leaks.py`, packages the binary with the relay, the config reader, the unit, the deploy scripts and the
+> two templates, sends it over `scp`, backs the running binary up, runs the bootstrap, restarts the unit and then **fails
+> the job on a red health check** -- a deploy that reports success on a session that came back wrong is the one failure the
+> chain exists to prevent. It does **not** run `verify_l2.sh fast`: that tier reads a 1.5 GB depth archive the repository
+> does not carry, so it runs on the self-hosted runner that holds the archive, behind a dispatch input.
 
 ## Carry: Two Legs Over Two Funding Histories
 
@@ -920,7 +959,7 @@ rate, and `carry_to_fees` divides it by the fees: the acceptance number. `carry_
 comparison in the form a decision needs, because the fees are paid once and the carry accrues every interval —
 here the position must be held 745 hours to pay for its fees and it was held for 728, which is why the net is
 just below zero. The run is recorded with its numbers in
-[Performance History](../performance/history-03-studies.md#the-acceptance-number)
+[Performance History](../performance/history-03-studies.md)
 
 The replay then reports a `[PNL]` line for every run, which splits what completed from what is still open and
 adds the fees back to each:

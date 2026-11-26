@@ -37,6 +37,11 @@ jobs:
       - name: Every link and anchor resolves
         run: python3 tools/gate/check_links.py
 
+      # The publication boundary: no secret, machine path or private file is tracked, and the deny-list's audit section
+      # is printed so the count of what is still public is visible on every CI run. It needs no market data.
+      - name: Nothing private is tracked
+        run: python3 tools/gate/check_leaks.py
+
       # The decision records keep one fact in two places, the record's status line and the index table. It needs no
       # market data, so it runs here as well as in the local gate: a superseded decision that never said so is a
       # documentation drift, which is the class this workflow exists to catch.

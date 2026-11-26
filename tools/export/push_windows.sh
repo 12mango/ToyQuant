@@ -5,7 +5,7 @@
 # powershell.exe: the bundle is written here (a Linux directory), copied to the Windows path, and then the remote file
 # sizes and sha256 are compared with the local ones. A copy nobody checked is what the stale snapshot was.
 #
-# The destination is read from .drive-target (git-ignored, one line, e.g. G:\我的云端硬盘\AI_Code_Sync) or from
+# The destination is read from .drive-target (git-ignored, one line, e.g. X:/sync/ai-code) or from
 # $TOYQUANT_DRIVE_DIR. A missing destination is an error that names it -- never a silent skip.
 set -u
 cd "$(dirname "$0")/../.." || exit 1

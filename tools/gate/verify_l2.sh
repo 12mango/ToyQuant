@@ -93,6 +93,7 @@ PROSE_CHECK_LOG="$(mktemp)"
 TOOL_CHECK_LOG="$(mktemp)"
 VERDICT_CHECK_LOG="$(mktemp)"
 RISK_CHECK_LOG="$(mktemp)"
+LEAK_CHECK_LOG="$(mktemp)"
 TRADES=data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz
 L1_TRADES=data/v2/fixtures/test_aggTrades_5k.csv
 L1_BBO=data/v2/fixtures/test_bookTicker_5k.csv
@@ -199,7 +200,7 @@ tier1() {
   # Declared unconditionally because a mode skips blocks, and `set -u` refuses to read a counter that the skipped
   # block would have declared: the summary asks about every one of them whichever half was run.
   local fields_check=0 prose_check=0 verdict_check=0 risk_check=0 rec_ok=0 thr_ok=0 broker_ok=0 multi_ok=0 \
-        session_ok=0 close_ok=0 halt_ok=0 depth_guard_ok=0 doc_check=0 tool_check=0
+        session_ok=0 close_ok=0 halt_ok=0 depth_guard_ok=0 doc_check=0 tool_check=0 leak_check=0
   # Every metric field a summary prints has to be written somewhere. A field that is read but never
   # written looks exactly like a field whose value is zero, and this project shipped four of those in
   # one line before. Source-level, so it costs nothing and runs on every edit.
@@ -207,6 +208,10 @@ tier1() {
   if [ "$mode" != docs ]; then
   python3 tools/gate/check_written_fields.py > "$FIELD_CHECK_LOG" 2>&1 || fields_check=1
   fi
+  # The publication boundary. A secret, a machine path or a private file that is tracked is one commit away from being
+  # published, and this is the last place that can see all of them at once; the deny-list's `[audit]` section prints
+  # what is still public without failing the tier, so the count is a progress bar rather than a permanent red.
+  python3 tools/gate/check_leaks.py > "$LEAK_CHECK_LOG" 2>&1 || leak_check=1
   # Prose is not covered by check_docs.py, which only reads marked number blocks, and a paragraph that
   # describes a stale model set is exactly what that leaves behind. This compares the claims against the
   # source: flags, queue models and tool paths.
@@ -560,6 +565,7 @@ tier1() {
      [ $depth_guard_ok -eq 0 ] &&
      [ $doc_check -eq 0 ] &&
      [ $fields_check -eq 0 ] && [ $prose_check -eq 0 ] && [ $tool_check -eq 0 ] &&
+     [ $leak_check -eq 0 ] &&
      [ $verdict_check -eq 0 ]; then
     echo "$label OK"
     return 0
@@ -579,6 +585,7 @@ tier1() {
   [ $depth_guard_ok -eq 0 ] ||
     echo "  depth: an empty depth file or a crossed book was not reported, or the recorded window acquired a crossed one"
   [ $fields_check -eq 0 ] || sed 's/^/  fields: /' "$FIELD_CHECK_LOG"
+  [ $leak_check -eq 0 ] || sed 's/^/  leak: /' "$LEAK_CHECK_LOG"
   [ $prose_check -eq 0 ] || sed 's/^/  prose: /' "$PROSE_CHECK_LOG"
   [ $tool_check -eq 0 ] || sed 's/^/  tool: /' "$TOOL_CHECK_LOG"
   [ $verdict_check -eq 0 ] || grep -v '^     also:' "$VERDICT_CHECK_LOG" | sed 's/^/  verdict: /'

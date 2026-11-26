@@ -329,7 +329,11 @@ def main():
                         # under -- the leave-one-out median and the worst day's multiple of it -- which archived the BLUR
                         # size ladder. They are the summary tool's arguments rather than the engine's knobs, and both the
                         # studies record and `docs/TOOLS.md` name them.
-                        "--gate", "--worst-multiple"}:
+                        "--gate", "--worst-multiple",
+                        # `tools/gate/check_leaks.py` owns these three: the migration's progress report and its
+                        # enforcement switch. The boundary rules themselves are not flags; these are how a reader asks
+                        # what the deny-list still finds and how the gate tightens once the count is zero.
+                        "--audit", "--strict", "--self-test"}:
             problems.append(f"{flag} is mentioned in a document and is not a flag the binary accepts")
     for model in sorted(models):
         if model not in text.lower():

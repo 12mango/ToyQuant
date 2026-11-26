@@ -54,6 +54,18 @@ jobs:
       - name: Every decision record agrees with the index
         run: python3 tools/gate/check_adr.py
 
+      # The publication boundary runs before anything is shipped, not after: a deploy is the moment a tracked secret
+      # would reach a host *and* a public history, and the check is the last one that can see every tracked file at once.
+      - name: Nothing private is tracked
+        run: python3 tools/gate/check_leaks.py
+
+      # The deploy's own scripts are shell, and a shell script that only runs on the operator's machine is a script that
+      # has never been read. `bash -n` is a parse, not a test, but it is the one check a hosted runner can run.
+      - name: The deploy scripts parse
+        run: |
+          for script in deploy/*.sh; do bash -n "$script"; done
+          test -f deploy/logrotate/toyquant
+
       # The config template is a contract (an unknown key is refused, never dropped) and the relay's shutdown machine is
       # what keeps a restart from leaving an orphan order.
       - name: The live config and the relay's shutdown machine
@@ -98,10 +110,12 @@ jobs:
           set -euo pipefail
           staging=out/deploy
           rm -rf "$staging"
-          mkdir -p "$staging/tools/live" "$staging/deploy" "$staging/config"
+          mkdir -p "$staging/tools/live" "$staging/deploy/logrotate" "$staging/config"
           install -m 0755 "${{ env.BUILD_DIR }}/toy_quant" "$staging/toy_quant"
           install -m 0644 tools/live/venue_relay.py tools/live/live_config.py tools/live/okx_probe.py "$staging/tools/live/"
           install -m 0644 deploy/toyquant-live.service "$staging/deploy/"
+          install -m 0755 deploy/bootstrap_server.sh deploy/check_health.sh deploy/rollback.sh "$staging/deploy/"
+          install -m 0644 deploy/logrotate/toyquant "$staging/deploy/logrotate/"
           install -m 0644 config/live.example.yaml "$staging/config/"
           install -m 0644 .env.example "$staging/"
           tar -C "$staging" -czf out/toyquant-deploy.tar.gz .
@@ -132,18 +146,30 @@ jobs:
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/tmp/toyquant-deploy.tar.gz"
 
       # The restart is the one step with a claim in it: the engine answers SIGTERM by cancelling what it holds and only then
-      # leaving, and the unit waits twelve seconds for that. The step fails if the service does not come back.
-      - name: Unpack and restart
+      # leaving, and the unit waits twelve seconds for that. The step fails if the service does not come back, and the
+      # health check after it fails if the process came back wrong -- two sessions, an error in the journal, a missing
+      # credential file. The running binary is copied aside first, so `deploy/rollback.sh` is one command on the host.
+      - name: Unpack, restart and check health
         run: |
           set -euo pipefail
           ssh -i "$HOME/.ssh/deploy_key" -o BatchMode=yes \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
             'set -euo pipefail
              sudo mkdir -p /opt/toyquant
+             if [ -x /opt/toyquant/toy_quant ]; then
+               sudo cp -a /opt/toyquant/toy_quant /opt/toyquant/toy_quant.prev
+             fi
              sudo tar -xzf /tmp/toyquant-deploy.tar.gz -C /opt/toyquant
-             sudo install -m 0644 /opt/toyquant/deploy/toyquant-live.service /etc/systemd/system/toyquant-live.service
+             sudo bash /opt/toyquant/deploy/bootstrap_server.sh --repo-dir /opt/toyquant --etc-dir /etc/toyquant
              sudo systemctl daemon-reload
              sudo systemctl restart toyquant-live
-             sleep 2
-             systemctl is-active --quiet toyquant-live
-             systemctl status --no-pager --lines=20 toyquant-live'
+             sleep 3
+             sudo bash /opt/toyquant/deploy/check_health.sh'
+
+      # A failed health check leaves the previous binary on the host and the previous release one command away. This does
+      # not roll back by itself: a rollback that runs unattended can flap a live session, and the operator's decision is
+      # what the failure is for.
+      - name: Say how to roll back
+        if: failure()
+        run: |
+          echo "::error::the deploy did not come up healthy. On the host: sudo bash /opt/toyquant/deploy/rollback.sh"

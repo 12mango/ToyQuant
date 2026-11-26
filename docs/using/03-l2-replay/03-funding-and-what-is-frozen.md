@@ -59,7 +59,7 @@ both archives rather than a Deribit series, so the runnable example uses the v2 
 
 `tools/fetch/fetch_funding_rates.py` fetches either format for one instrument, and [`DATA.md`](../../DATA.md) records what
 the two files hold. A ten-minute window that does hold a position at a settlement is recorded, with its command, in
-[Performance History](../../performance/history-03-studies.md#funding-rates-as-an-input).
+[Performance History](../../performance/history-03-studies.md).
 
 ## Comparing strategies: the benchmark
 

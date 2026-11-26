@@ -58,7 +58,7 @@ Three rules decide what a run *looks* like before any flag is passed:
 > [sizing](../../L2_FLAGS.md#sizing-and-the-trap-under-it) is the arithmetic. The queue model is the largest single
 > choice in a run: `conservative` and `optimistic` are the bounds, `prorata` the calibrated one, `lumpy` the same mean
 > with real variance, and what each decides is in
-> [the queue section](../../performance/history-03-studies.md#what-the-queue-model-decides-and-what-the-per-order-floor-does).
+> [the queue section](../../performance/history-03-studies.md).
 
 ## Where the rest of that path lives
 
