@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A windowed true range, and the two-bucket join that makes it a measurement instead of a knob.
 
-`src/strategy/active_l2_market_maker.h` carries a volatility state and the note that it cannot do its job: the
+`src/strategy/maker/active_l2_market_maker.h` carries a volatility state and the note that it cannot do its job: the
 halt compares an EWMA of |change in mid| per second against a threshold, and the same file records that every
 threshold from 1.0 to 50.0 lands in the same place on this feed, because a speed built from tick-to-tick moves
 measures the gap distribution rather than the market. The note names what would mean something -- "a tick range

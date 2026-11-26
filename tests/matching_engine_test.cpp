@@ -1011,4 +1011,35 @@ int main()
             second_filled |= report.order_id == 51 && report.exec_type == ExecType::Filled;
         assert(!second_filled);
     }
+
+    // The instrument registry is what makes a sweep of a new symbol mean what it says. Every figure below came from the
+    // venue's own instrument list on 2026-11-25, and the three that are easy to get wrong are the reason the test exists:
+    // OL quotes at 1e-6 on a contract of **100** tokens and ONE at 1e-7, so a fixed three-tick distance is a different
+    // economic distance on each, and a wrong `contract_size` prices every fill by the wrong factor without failing
+    // anywhere. `min_order_quantity` is checked as the derivation the venue's one-contract minimum implies, not as a
+    // second literal.
+    {
+        struct Expected
+        {
+            const char* symbol;
+            double tick;
+            double contract;
+        };
+        const Expected expected[] = {{"UP-USDT-SWAP", 0.0001, 10.0},    {"DNA-USDT-SWAP", 0.0001, 10.0},
+                                     {"NES-USDT-SWAP", 0.0001, 10.0},   {"SSV-USDT-SWAP", 0.001, 0.1},
+                                     {"CT-USDT-SWAP", 0.00001, 10.0},   {"PIEVERSE-USDT-SWAP", 0.0001, 10.0},
+                                     {"OL-USDT-SWAP", 0.000001, 100.0}, {"PROS-USDT-SWAP", 0.0001, 1.0},
+                                     {"BLUR-USDT-SWAP", 0.000001, 10.0}, {"DGAI-USDT-SWAP", 0.0001, 10.0},
+                                     {"GRVT-USDT-SWAP", 0.00001, 10.0}, {"ONE-USDT-SWAP", 0.0000001, 100.0},
+                                     {"BABY-USDT-SWAP", 0.000001, 10.0}, {"ALLO-USDT-SWAP", 0.00001, 10.0}};
+        for (const auto& row : expected)
+        {
+            InstrumentSpec spec{};
+            assert(instrument_spec_of(row.symbol, spec));
+            assert(std::abs(spec.tick_size - row.tick) < 1e-12);
+            assert(std::abs(spec.contract_size - row.contract) < 1e-12);
+            const double one_contract = row.contract * static_cast<double>(spec.quantity_scale);
+            assert(std::abs(static_cast<double>(spec.min_order_quantity) - one_contract) <= 1.0);
+        }
+    }
 }

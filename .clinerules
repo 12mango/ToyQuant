@@ -358,6 +358,12 @@ review of one change needs the change.
   `/home/mango12/tq_snapshot.py`, a script outside the repository whose default repo was the pre-rename checkout
   directory, so every commit for ten days wrote `ERROR: <that directory> is not a git repository` into a log nobody
   opened and the Drive copy stayed at `7035823`. A sync is a copy that was checked, not a command that ran.
+- **A commit's path list is derived from `git status`, never typed.** Three commits in one session -- `a99aed0`,
+  `a9b2734`, `07ccb07` -- named their files by hand, missed one each time, and left a commit that did not build
+  while the gate that approved it was green on the *working tree*: the includes had moved in the tree and not in
+  the commit. So the list is `git status --porcelain`, and the two checks after a commit are `git status` empty and
+  a build from `HEAD`, not from the tree the gate just saw.
+
 - **A commit is not finished when `git commit` returns.** The hook syncs and pushes as a child of the shell that
   committed, so the next command typed into that shell kills it between the manifest and the copy -- observed twice, and
   what it leaves is an empty `diff.patch` for the change under review. Leave the shell alone until
