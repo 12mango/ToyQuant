@@ -33,11 +33,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure
-        run: cmake --preset ${{ env.BUILD_PRESET }}
+      # The compiler cache is what makes the second run of a change cheap: a build of 149 edges recompiles what the
+      # previous run already compiled from identical input, and the unchanged translation units are most of them. The
+      # key carries the source hash so a source change still recompiles, and the prefix restores the nearest older cache
+      # as a starting point -- ccache itself decides per file, so a partial restore is not a stale binary.
+      - name: Install ccache
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends ccache
 
+      - name: Restore the compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'src/**', 'tests/**') }}
+          restore-keys: |
+            ccache-${{ runner.os }}-
+
+      - name: Configure
+        env:
+          CCACHE_DIR: ~/.ccache
+        run: cmake --preset ${{ env.BUILD_PRESET }} -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      # `-j "$(nproc)"` rather than `-j 2`: the hosted runner has four vCPUs and half of them were idle, which is the
+      # difference between a two-minute build and a one-minute one. The count is printed so a change in the runner's
+      # size is visible in the log rather than inferred from a stopwatch.
       - name: Build
-        run: cmake --build ${{ env.BUILD_DIR }} -j 2
+        env:
+          CCACHE_DIR: ~/.ccache
+        run: |
+          echo "vCPUs: $(nproc)"
+          ccache --zero-stats || true
+          cmake --build ${{ env.BUILD_DIR }} -j "$(nproc)"
+          ccache --show-stats || true
 
       - name: Unit tests
         run: ctest --test-dir ${{ env.BUILD_DIR }} --output-on-failure
@@ -90,6 +116,24 @@ jobs:
           python3 tools/live/live_config.py --self-test
           python3 tools/live/venue_relay.py --self-test
 
+      # The program travels as a tar, not as a bare file: `upload-artifact` zips, and a zip does not carry the
+      # executable bit, so a downloaded `toy_quant` arrives 0644 and the host's bundle is a program nobody can run.
+      # With it here rather than rebuilt below, the deploy job stops compiling the same 149 edges a second time --
+      # a build whose 68 program edges it already has and whose 81 test edges it never ships.
+      - name: Keep the shipped program
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          tar -C "${{ env.BUILD_DIR }}" -czf "out/toy_quant-${{ env.BUILD_PRESET }}.tar.gz" toy_quant
+          sha256sum out/toy_quant-*.tar.gz
+
+      - name: Upload the program
+        uses: actions/upload-artifact@v4
+        with:
+          name: toy-quant-program
+          path: out/toy_quant-${{ env.BUILD_PRESET }}.tar.gz
+          retention-days: 14
+
   # The data-backed gate, on a runner that holds the archive. Opt-in twice: the dispatch input asks for it, and the
   # repository variable `TOYQUANT_DATA_RUNNER=yes` says such a runner is registered. Without the second condition, a
   # dispatch that ticks the box queues this job on a label nothing serves -- measured 2026-11-27, deploy #8: `deploy`
@@ -104,7 +148,7 @@ jobs:
       - name: The full local gate, fast tier
         run: |
           cmake --preset linux-debug
-          cmake --build out/build/linux-debug -j 4
+          cmake --build out/build/linux-debug -j "$(nproc)"
           bash tools/gate/verify_l2.sh fast
 
   deploy:
@@ -116,11 +160,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure
-        run: cmake --preset ${{ env.BUILD_PRESET }}
+      # No configure and no build: the program this job ships is the one `verify` already built, tested and started.
+      # It arrives as a tar so the mode survives, and `test -x` is the one check worth repeating -- a tar that lost its
+      # bit is caught here rather than on the host.
+      - name: The program the verify job built
+        uses: actions/download-artifact@v4
+        with:
+          name: toy-quant-program
+          path: out
 
-      - name: Build
-        run: cmake --build ${{ env.BUILD_DIR }} -j 2
+      - name: Unpack it where the packaging step looks for it
+        run: |
+          set -euo pipefail
+          mkdir -p "${{ env.BUILD_DIR }}"
+          tar -C "${{ env.BUILD_DIR }}" -xzf "out/toy_quant-${{ env.BUILD_PRESET }}.tar.gz"
+          test -x "${{ env.BUILD_DIR }}/toy_quant" || { echo "the artifact is not executable"; exit 1; }
+          "${{ env.BUILD_DIR }}/toy_quant" --help > /dev/null || { echo "the artifact does not start"; exit 1; }
+          sha256sum "${{ env.BUILD_DIR }}/toy_quant"
 
       # What travels: the binary, the tools the live path runs, the deploy unit and the two templates. Nothing from
       # `data/`, and no `config/live.yaml` -- a deploy never carries a symbol list or a key, which is the point of the two

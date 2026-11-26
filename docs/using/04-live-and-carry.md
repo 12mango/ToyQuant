@@ -951,6 +951,21 @@ With no `notify.env`, or with it still holding placeholders, the notifier says s
 unconfigured alerting path must not become a second failure on top of the one it reports. The mail is deliberately short:
 the unit, the host, `ActiveState`/`SubState`/`Result`/`NRestarts`/`ExecMainStatus`, and the last thirty journal lines.
 
+**The deploy builds the program once, and the job that ships it builds nothing.** `verify` compiles 149 edges, runs the
+tests, and keeps the `toy_quant` it produced inside a tar (`upload-artifact` zips, and a zip loses the executable bit, so
+the program would arrive 0644); the `deploy` job downloads that tar and packages it. Measured on the tree of this page,
+`ninja -n` on two fresh configurations: **149 build edges with the tests, 68 without**, and the 68 take 72.7 s cold at
+`-j4` on an eight-core host. A second job compiling the same 149 edges was ~2.5 minutes of work whose only product was a
+binary the first job had already tested. The two jobs also build with `-j "$(nproc)"` instead of `-j 2` -- half of the
+hosted runner's four vCPUs were idle -- and with ccache, keyed on the source hash, so a re-run of an unchanged tree is
+link-only work.
+
+**A build that only needs the program asks for one.** `cmake --preset linux-deploy` inherits `linux-relwithdebinfo` (so
+the portable instruction set is named once) and sets `TOYQUANT_BUILD_TESTS=OFF`: 68 edges instead of 149, no test
+executables, and no `ctest` registrations. It is the right preset for a host-side rebuild and for the quick loop of "does
+the binary still start", and it cannot drift from the shipped one because the option only drops targets -- the compiler
+flags come from the same parent.
+
 **The journal has a ceiling of its own.** `deploy/journald/toyquant.conf` is installed as
 `/etc/systemd/journald.conf.d/toyquant.conf` -- `SystemMaxUse=500M`, `SystemMaxFileSize=100M`,
 `MaxRetentionSec=30day` -- because `logrotate` bounds the engine's files under `/opt/toyquant/logs` and nothing bounded

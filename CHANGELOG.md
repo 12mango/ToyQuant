@@ -7,6 +7,25 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The deploy job stopped compiling what the verify job had already built (2026-11-27)
+
+- **Two jobs built the same tree, and one of them shipped none of it.** `verify` compiled 149 build edges, ran the
+  tests, and threw the binary away; `deploy` configured and compiled the same 149 edges and shipped the 68 program edges
+  out of them. The program now travels from `verify` to `deploy` as a tar artifact -- a tar rather than a bare file
+  because `upload-artifact` zips and a zip does not carry the executable bit, so a downloaded `toy_quant` would arrive
+  0644. The deploy job configures nothing, builds nothing, unpacks, checks that the artifact is executable and starts,
+  and packages it.
+- **Both jobs used half of the runner.** `-j 2` on a four-vCPU hosted runner is two idle cores through a two-minute build;
+  it is `-j "$(nproc)"` now, with the count printed so a change in runner size is visible in the log.
+- **The compiler cache makes a re-run of an unchanged tree link-only.** `ccache` is installed, `~/.ccache` is cached under
+  a key of the source hash with a prefix restore, and `CMAKE_CXX_COMPILER_LAUNCHER=ccache` is set in the workflow rather
+  than in the preset -- a developer's local build is not silently routed through a cache they did not ask for.
+- **A build that only needs the program asks for one.** `TOYQUANT_BUILD_TESTS` (default ON) wraps the whole test section;
+  `cmake --preset linux-deploy` inherits `linux-relwithdebinfo` and turns it off. Measured with `ninja -n` on two fresh
+  configurations of this tree: **149 build edges with the tests, 68 without**, and the 68 take **72.7 s** cold at `-j4`
+  on an eight-core host. The preset inherits the portable instruction set from its parent, so the two builds cannot drift
+  in compiler flags -- the option only drops targets.
+
 ## The host gained a journal ceiling, a daily report and a browser menu (2026-11-27)
 
 - **The journal had no ceiling.** `logrotate` bounded the engine's files under `/opt/toyquant/logs` and nothing bounded

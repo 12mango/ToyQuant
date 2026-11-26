@@ -14,11 +14,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The same two things the deploy's verify job does, for the same reason: `-j "$(nproc)"` uses all four vCPUs the
+      # hosted runner has, and the compiler cache turns a re-run of an unchanged tree into link-only work.
+      - name: Install ccache
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends ccache
+
+      - name: Restore the compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'src/**', 'tests/**') }}
+          restore-keys: |
+            ccache-${{ runner.os }}-
+
       - name: Configure
-        run: cmake --preset linux-debug
+        env:
+          CCACHE_DIR: ~/.ccache
+        run: cmake --preset linux-debug -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build
-        run: cmake --build out/build/linux-debug -j 2
+        env:
+          CCACHE_DIR: ~/.ccache
+        run: |
+          echo "vCPUs: $(nproc)"
+          ccache --zero-stats || true
+          cmake --build out/build/linux-debug -j "$(nproc)"
+          ccache --show-stats || true
 
       - name: Unit tests
         run: ctest --test-dir out/build/linux-debug --output-on-failure

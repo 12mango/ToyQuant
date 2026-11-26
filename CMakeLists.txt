@@ -211,6 +211,13 @@ endif()
 set_target_properties(venue_relay PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
 # ==================== Tests ====================
+# A build that only needs the program can leave the forty test executables out: `cmake --preset linux-deploy` is the
+# shipped binary and its layers, which is far fewer build edges than the gate's build -- measured 2026-11-27 with
+# `ninja -n` on the same tree. It is an option rather than a second source list, because a target that exists in one
+# build and not another is how a test stops being compiled by the gate.
+option(TOYQUANT_BUILD_TESTS "Build the test executables and register them with ctest" ON)
+
+if(TOYQUANT_BUILD_TESTS)
 enable_testing()
 
 # Every test makes the same three decisions -- one file, the whole stack, and checked in every build -- so
@@ -276,3 +283,4 @@ add_toy_test(multi_book_test)
 add_toy_test(session_state_test)
 add_toy_test(session_shutdown_test)
 add_toy_test(strategy_benchmark_test)
+endif()  # TOYQUANT_BUILD_TESTS

@@ -40,6 +40,20 @@
       }
     },
     {
+      "name": "linux-deploy",
+      "displayName": "Linux deploy (the shipped program, no tests)",
+      "description": "What a host runs: the portable binary and nothing the host does not need. Inherits the deploy preset, so the instruction set is named once.",
+      "inherits": "linux-relwithdebinfo",
+      "cacheVariables": {
+        "TOYQUANT_BUILD_TESTS": "OFF"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
       "name": "linux-asan",
       "displayName": "Linux ASan + UBSan",
       "description": "Debug build under AddressSanitizer and UndefinedBehaviorSanitizer, run by tier 3 of tools/gate/verify_l2.sh.",
@@ -148,6 +162,10 @@
     {
       "name": "linux-relwithdebinfo",
       "configurePreset": "linux-relwithdebinfo"
+    },
+    {
+      "name": "linux-deploy",
+      "configurePreset": "linux-deploy"
     },
     {
       "name": "linux-asan",
