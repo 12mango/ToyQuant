@@ -1785,6 +1785,14 @@ closed on 4 of 6) and it fills **14 times a window against the thirty the bar as
 22,000 prints a day where NES carries 450,000. A wide book with no prints is the actions gate, not the fee gate -- the
 shape the options line closed on, one market over.
 
+**OL closes on the actions gate, and it is the third of the trio.** Seven days at three ticks: **13 fills a window**
+(median, 7 to 24), a closed median of **-10.97** positive on 3 of 7, and `fees_bps` **2.00 on every day** -- so unlike the
+second pool it never paid the taker rate and no rate stands between the row and a seat. What stops it is turnover: 13
+fills is under the thirty the bar asks, the same wall SSV hit at 14, and its maker notional of 2.5 to 8.1 USD a window says
+one contract is a few thousandths of a unit at best. So the trio resolves to **NES as the second seat** (46 fills and +9.07
+on 5 of 7, as this record carries it), with **SSV and OL closed on action rather than on price** -- a wall a distance cannot
+move, because the tape carries too few prints for a quote to be hit.
+
 **CT is closed from the other side of the same arithmetic.** A 0.76 bps tick turns 14 bps of distance into eighteen ticks
 against a book eight ticks wide, so the quote rests where almost nothing sweeps: 2 to 12 fills a window at 14 bps, 0 to 4
 at 28. What that does **not** close is the fine-tick branch itself, whose last two representatives are the high-turnover
@@ -1844,7 +1852,41 @@ contract is ten tokens of a coin worth a hundredth of a dollar, and one day insi
 the size at the same thirteen ticks, keeping a positive closed median on 5 of 7**: that run asks whether +31.74 bps is a
 per-fill rate or an artefact of quoting a size too small to be picked off.
 
-**What this table does not close is the fine-tick branch's own bar.** That bar is registered above --
+**The size arm, run the same day: the cell survives ten times the size.** `--order-size 100000000 --inv-limit 1000000000`
+against the same thirteen ticks and the same seven days:
+
+| size | fills median | `closed_bps` median | days positive | `net_bps` median | maker notional a window |
+|---|---|---|---|---|---|
+| one contract | 33 | +31.74 | 5 of 7 | +26.12 | 0.13-1.07 USD |
+| ten contracts | 35 | **+23.66** | **5 of 7** | **+12.41** | 0.67-10.63 USD |
+
+The count holds (33 to 35) and the capture decays by about a quarter, which is what a larger quote should cost at a level
+it now has to clear rather than what an artefact of invisibility should do: a size too small to be picked off would be
+*unchanged* by ten times itself or would improve, and this one gives up 8 bps. So the +31.74 is a per-fill rate and not a
+visibility effect, and the cell is a seat candidate at both sizes. Two things stay open and both are named rather than
+argued: the absolute notional is still 0.67 to 10.63 USD a window, and one day of the seven reads -283 bps net on three
+fills, which is a single adverse print dominating a small position rather than a rate.
+
+**The amend line's three arms, and what the deadband buys (2026-11-26).** The same frozen shape (prorata, base 3 ticks,
+refresh 1, 10 ms, UP, seven days) under three settings of `--amend-instead-of-cancel`:
+
+| arm | fills a window | `closed_bps` median | days positive | `fees_bps` | `zero_queue` |
+|---|---|---|---|---|---|
+| off (the frozen cell) | 26 | +9.83 | 5 of 7 | 2.00 | 19-37 |
+| amend every refresh | 49 | -5.92 | -- | 2.00 | 239-296 |
+| amend a retreat of two ticks | 19 | **+14.87** | 4 of 7 | 2.00 | 35-64 |
+| amend a retreat of one tick | 105 | +1.28 | 5 of 7 | 4.45-12.48 | 123-194 |
+
+The middle two rows are one mechanism read at two deadbands: at two ticks the quote is only moved when it is genuinely
+running away, so it keeps the maker rate (`fees_bps` exactly 2.00 on all seven days) and captures +14.87 on 19 fills; at
+one tick it is moved on almost every refresh, which is the symmetric arm returning through a smaller door -- the fills
+come back to 105 and the fee goes to 4.45-12.48, because the quote that keeps arriving at the fresh price is the quote
+the adverse print lands on. So the deadband is a **trade between capture a fill and fills**, and neither end clears both
+halves of the bar: two ticks starves the count at 11 to 34 against the 30-fill floor, one tick clears the count and pays
+two to six times the maker fee. The row's line is therefore that the amend's value is the retreat, and its seat question
+is unresolved rather than answered by either arm.
+
+**What the three-tick rows do not close is the fine-tick branch's own bar.** That bar is registered above --
 PROS at ten ticks and BLUR at thirteen, against thirty fills -- and a three-tick quote on a 1.1 to 1.4 bps tick is three
 to four bps of distance, which is under the round trip's fee by construction. The three-tick rows answer "is the distance
 wide enough", and the answer is no on every symbol here.
