@@ -159,6 +159,17 @@ class ExecutionL2Strategy : public Strategy
     StrategyMetrics metrics_{};
 };
 
+// The view clock's unit, inferred from its magnitude: an OKX book window prints `1794834900007`, which is
+// milliseconds, while the Deribit fixtures print sixteen digits, which are microseconds. The horizon arrives in
+// seconds, so without this a 7,200-second parent became an 8.3-day slice interval on the OKX cut and the run sent
+// exactly one child (measured 2026-11-26: `child_orders=1 span_seconds=0` on a two-hour window).
+inline uint64_t clock_units_per_second(uint64_t ts)
+{
+    // Milliseconds are 1.7e12 today (an OKX book cut starts at 1794834900007); microseconds are 1.7e15, and the
+    // unit tests use small microsecond clocks. Anything at or above 1e11 is therefore taken as milliseconds.
+    return ts >= 100'000'000'000ULL ? 1'000ULL : 1'000'000ULL;
+}
+
 inline uint64_t ExecutionL2Strategy::remaining_quantity() const
 {
     uint64_t working = 0;
@@ -216,9 +227,13 @@ inline uint64_t ExecutionL2Strategy::next_slice_quantity(uint64_t ts, bool& cros
             if (ts < next_slice_ts_) return 0;
             const uint64_t quantity = std::min(slice_quantity(), remaining_quantity());
             // Advance by the slice interval rather than by a view count, so a slow view rate stretches the
-            // schedule instead of piling several slices onto one view.
+            // schedule instead of piling several slices onto one view. The interval is seconds of horizon turned
+            // into the view clock's own unit, which is milliseconds on an OKX book cut and microseconds on the
+            // Deribit fixtures -- getting that wrong is what made the first run send one child in two hours.
             const uint64_t slices = std::max<uint64_t>(1, config_.slices);
-            const uint64_t interval = std::max<uint64_t>(1, config_.horizon_us / slices);
+            const uint64_t units = clock_units_per_second(ts);
+            const uint64_t seconds = std::max<uint64_t>(1, config_.horizon_us / 1'000'000ULL);
+            const uint64_t interval = std::max<uint64_t>(1, seconds / slices) * units;
             next_slice_ts_ = ts + interval;
             return quantity;
         }
@@ -237,7 +252,9 @@ inline std::vector<StrategyOrder> ExecutionL2Strategy::on_l2_market_view(const L
     if (!started_)
     {
         started_ = true;
-        end_ts_ = view.ts + std::max<uint64_t>(1, config_.horizon_us);
+        const uint64_t units = clock_units_per_second(view.ts);
+        const uint64_t seconds = std::max<uint64_t>(1, config_.horizon_us / 1'000'000ULL);
+        end_ts_ = view.ts + seconds * units;
         next_slice_ts_ = view.ts;
     }
     if (view.ts > end_ts_ || filled_quantity_ >= config_.quantity) return orders;
@@ -246,12 +263,19 @@ inline std::vector<StrategyOrder> ExecutionL2Strategy::on_l2_market_view(const L
     // view: the fallback is the whole point of post-first, so it must not wait for the next slice. A crossing
     // child should die with its own IOC, so one still working after a view is pulled too -- that is the
     // time-in-force override case rather than the post case.
+    // A working child blocks the next one, and a **crossing** child blocks it until its own report arrives: an IOC
+    // either fills or dies at the venue, so pulling it and re-sending the same slice while it is in flight
+    // double-submits. Measured 2026-11-26, the first execution run: at a 10 ms order latency the pull-and-resend
+    // path executed **5.1 times the parent** in 51 child orders for a ten-slice schedule. A posted child is still
+    // pulled on its timeout -- that is what the fallback is for -- and a crossing child's report is what releases
+    // the slot.
     if (working_order_id_ != 0)
     {
         const bool posted_timed_out = working_is_post_ && config_.post_timeout_us > 0 &&
-                                      view.ts >= working_started_ts_ + config_.post_timeout_us;
-        const bool crossing_still_working = !working_is_post_ && view.ts > working_started_ts_;
-        if (!posted_timed_out && !crossing_still_working) return orders;
+                                      view.ts >= working_started_ts_ +
+                                                     (config_.post_timeout_us / 1'000'000ULL) *
+                                                         clock_units_per_second(view.ts);
+        if (!posted_timed_out) return orders;
         cancel_queue_.push_back(working_order_id_);
         open_quantities_.erase(working_order_id_);
         working_order_id_ = 0;

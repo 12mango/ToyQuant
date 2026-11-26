@@ -101,8 +101,33 @@ int main()
         assert(orders[0].quantity == 100);
     }
 
-    // A crossing child that is still open after the view it was sent on is pulled on the next view, so a venue
-    // or an override that ignores the time in force cannot leave two children working at once.
+    // The view clock decides what a second is worth. An OKX book cut prints milliseconds (`1794834900007`), so a
+    // ten-second horizon on ten slices is one child per thousand milliseconds; the same parent on a microsecond clock
+    // is one child per million. Before this the horizon was compared against the raw clock and a two-hour parent sent
+    // exactly one child (`child_orders=1 span_seconds=0`, measured 2026-11-26), because 7,200 s of microseconds read
+    // as 8.3 days of milliseconds.
+    {
+        ExecutionL2Strategy strategy(parent(ExecutionAlgo::Twap));
+        const uint64_t start_ms = 1'794'834'900'007ULL;  // the OKX cut's own first timestamp
+        uint64_t children = 0;
+        uint64_t next_id = 0;
+        for (uint64_t ms = 0; ms <= 10'000; ms += 250)
+        {
+            for (const auto& order : strategy.on_l2_market_view(view_at(start_ms + ms, 100.0)))
+            {
+                ++children;
+                fill(strategy, identified(order, ++next_id));
+            }
+        }
+        assert(children == 10);
+        assert(strategy.child_orders() == 10);
+        assert(strategy.filled_quantity() == 100);
+    }
+
+    // A crossing child blocks the next child until its own report arrives, and is not pulled meanwhile: an IOC either
+    // fills or dies at the venue, so a pull-and-resend while it is in flight double-submits the slice. This block used
+    // to assert the opposite -- "pulled on the next view" -- and that rule executed 5.1 times the parent in the first
+    // replay (51 children for a ten-slice schedule at a 10 ms order latency), which is why the assertion moved.
     {
         ExecutionL2Strategy strategy(parent(ExecutionAlgo::Market));
         const auto first = strategy.on_l2_market_view(view_at(1'000'000, 100.0));
@@ -110,10 +135,24 @@ int main()
         const auto sent = identified(first[0], 7);
         strategy.on_order_submitted(sent);
         assert(strategy.cancel_requests().empty());
-        strategy.on_l2_market_view(view_at(2'000'000, 100.0));
-        const auto stale = strategy.cancel_requests();
-        assert(stale.size() == 1);
-        assert(stale[0] == sent.order_id);
+        // The next view finds the child still working: nothing is sent and nothing is pulled.
+        assert(strategy.on_l2_market_view(view_at(2'000'000, 100.0)).empty());
+        assert(strategy.cancel_requests().empty());
+        // Its own report releases the slot, and because the parent is then complete no further child appears.
+        ExecutionReport trade;
+        trade.order_id = sent.order_id;
+        trade.exec_type = ExecType::Trade;
+        trade.side = exchange::Side::Sell;
+        trade.price = sent.price;
+        trade.quantity = sent.quantity;
+        strategy.on_order_update(trade);
+        ExecutionReport done;
+        done.order_id = sent.order_id;
+        done.exec_type = ExecType::Filled;
+        strategy.on_order_update(done);
+        assert(strategy.on_l2_market_view(view_at(3'000'000, 100.0)).empty());
+        assert(strategy.child_orders() == 1);
+        assert(strategy.filled_quantity() == 100);
     }
 
     // Post-first: the child joins the near touch and waits. When its slice's timeout passes it is pulled, and
