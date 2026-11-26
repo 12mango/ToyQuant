@@ -310,6 +310,14 @@ def main():
                         # archived sample instead of polling the venue, which is what makes a quoted screen checkable
                         # after the window it was taken in has closed.
                         "--read",
+                        # `tools/study/benchmark_l2_strategies.py` owns this one: the benchmark's legacy row, which is
+                        # opt-in because the class it builds lives under `src/strategy/maker/legacy/` and has no pinned
+                        # run, so a row for it beside the mainline would read as a mainline option.
+                        "--include-legacy",
+                        # `tools/sweep/okx_maker_baseline.py` owns this one: the fill rule a row is read under. Every
+                        # cell in the studies record names it, because the two models disagree about the fill count and
+                        # the conclusion has to be readable without guessing which one produced it.
+                        "--models",
                         # `tools/study/okx_quote_share.py` owns this one: the size of one order in engine units, which is
                         # what turns the book's depth and the window's flow into the two ratios a size ladder is read on.
                         "--order-units"}:

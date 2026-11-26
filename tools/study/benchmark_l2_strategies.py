@@ -9,12 +9,16 @@ import tempfile
 from pathlib import Path
 
 
+# The names the factory still builds, split by what the mainline keeps. `inventory_aware_l2` lives in
+# `src/strategy/maker/legacy/` and has no pinned `run:` block, so it is compared only when `--include-legacy` asks for
+# it: a legacy mode sitting in a row beside the mainline reads as a mainline option, and this table exists to compare
+# the options the project keeps.
 PRIMARY_STRATEGIES = (
     "passive_l2",
-    "inventory_aware_l2",
     "flow_aware_l2",
     "active_l2",
 )
+LEGACY_STRATEGIES = ("inventory_aware_l2",)
 EXPERIMENTAL_STRATEGIES = ("l2_depth", "l2_micro", "l2_flow")
 # Below this many fills, no PnL or per-fill edge conclusion is supported. The fill-attribution work
 # reached this number the hard way: every recorded window fills fewer than thirty times, which is why
@@ -462,6 +466,8 @@ def main():
     parser.add_argument("--queue-model", choices=("conservative", "prorata", "lumpy", "optimistic"),
                         default="conservative")
     parser.add_argument("--include-experimental", action="store_true", help="also run internal L2 signal aliases")
+    parser.add_argument("--include-legacy", action="store_true",
+                        help="also run inventory_aware_l2, which lives under src/strategy/maker/legacy/")
     parser.add_argument("--csv", type=Path, help="optional output CSV path")
     args = parser.parse_args()
 
@@ -479,7 +485,9 @@ def main():
         overlap_trades = count_overlap(sliced_trades, sliced_depth)
 
         rows = []
-        strategies = PRIMARY_STRATEGIES + (EXPERIMENTAL_STRATEGIES if args.include_experimental else ())
+        strategies = (PRIMARY_STRATEGIES +
+                      (LEGACY_STRATEGIES if args.include_legacy else ()) +
+                      (EXPERIMENTAL_STRATEGIES if args.include_experimental else ()))
         for strategy in strategies:
             row = {"strategy": strategy}
             row.update(run_strategy(args.binary, sliced_trades, sliced_depth, args.symbol,

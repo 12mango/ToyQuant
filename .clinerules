@@ -245,7 +245,11 @@ compatibility path. Everything below assumes that page.
 - **`/tmp` is scratch with a size.** Never append a file to itself (`x >> x` filled `/tmp` to 100% and took `tail` down
   with it); check `df -h /tmp` before cutting slices (a 200k-row 25-level snapshot is ~130 MB, a full day is
   gigabytes); and a number that depends on a `/tmp` slice is re-cut by the gate rather than assumed, because the system
-  wipes them.
+  wipes them. Measured 2026-11-26: a fourteen-symbol, seven-day sweep costs about **1.5 GB of cut a symbol** and filled
+  the 7.7 GB tmpfs, and the two symbols that ran last died with **exit 120 and a completely empty log** -- the
+  interpreter could not flush its own traceback either. That pair is the tell for a full `/tmp` rather than a
+  traceback, so read `df -h /tmp` before blaming the tool, and let the driver remove a symbol's cuts as soon as its row
+  is written instead of at the end of the batch.
 - **Do not run destructive commands outside the repository**, and do not `git add -A` in a tree with untracked data
   files unless `git status` was read first.
 - **Commit style**: an imperative sentence as the subject, a body that says what the number now is, which gate proved it

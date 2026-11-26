@@ -97,6 +97,7 @@ constexpr std::string_view kQuoteDistanceBpsPrefix = "--quote-distance-bps=";
 constexpr std::string_view kOnesidedInventoryPrefix = "--onesided-inventory-frac=";
 constexpr std::string_view kLayerStepBpsPrefix = "--layer-step-bps=";
 constexpr std::string_view kAmendInsteadOfCancelFlag = "--amend-instead-of-cancel";
+constexpr std::string_view kAmendDeadbandPrefix = "--amend-deadband-ticks=";
 constexpr std::string_view kPauseTicksPerSecondPrefix = "--pause-ticks-per-second=";
 constexpr std::string_view kJumpWindowPrefix = "--jump-window-ms=";
 constexpr std::string_view kJumpTicksPrefix = "--jump-ticks=";
@@ -266,8 +267,10 @@ void print_usage(const char* executable)
                      "points of the reference price, where one tick a layer would put them on almost the same price; "
                      "--amend-instead-of-cancel moves a primary quote in place instead of pulling it and placing it "
                      "again, which a venue that amends takes in one round trip and this replay's engine takes as the "
-                     "cancel it replaced; --pause-ticks-per-second=D sets the active halt's threshold, which is 9.0 "
-                     "ticks a second and always on, so a large value is what turns it off\n";
+                     "cancel it replaced, and --amend-deadband-ticks=N is how far the target must retreat before that "
+                     "amend fires (2.0 by default, 1 the arm registered against it); --pause-ticks-per-second=D sets "
+                     "the active halt's threshold, which is 9.0 ticks a second and always on, so a large value is what "
+                     "turns it off\n";
         std::cerr << "   limits: --max-exposure-usd=N is the exposure ceiling the summary measures the run "
                      "against, enforced rather than reported once it is named, and --kill-switch-loss-usd=N "
                      "latches when the loss reaches N dollars, closes the position it was holding at the "
@@ -1284,6 +1287,16 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
             }
             else if (flag == kAmendInsteadOfCancelFlag)
                 cfg.amend_instead_of_cancel = true;
+            else if (flag.compare(0, kAmendDeadbandPrefix.size(), kAmendDeadbandPrefix) == 0)
+            {
+                std::istringstream stream(flag.substr(kAmendDeadbandPrefix.size()));
+                double value = 0.0;
+                if (!(stream >> value) || value < 1.0)
+                    error = "--amend-deadband-ticks must be at least one tick; the amend is for a retreat, and a "
+                            "sub-tick deadband amends on the noise every refresh";
+                else
+                    cfg.amend_deadband_ticks = value;
+            }
             else if (flag.compare(0, kPauseTicksPerSecondPrefix.size(), kPauseTicksPerSecondPrefix) == 0)
             {
                 std::istringstream stream(flag.substr(kPauseTicksPerSecondPrefix.size()));

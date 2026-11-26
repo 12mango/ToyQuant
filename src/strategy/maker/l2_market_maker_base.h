@@ -379,11 +379,16 @@ class L2MarketMakerBase : public Strategy
         return true;
     }
 
-    // The two prices a quote would rest at, before the gates and their counters: the half width (a tick count or a
-    // basis-point distance), the inventory skew, the weak-flow shift, the clamp outside the touch, the neutral quote at
-    // the touch and the closing side. `quote()` still computes these inline because its gates mutate the quantities
-    // between the prices and the placement, and a refresh view must not count a skip it never acted on; the next change
-    // to that block makes this the only copy. Until then the two agree by construction: same inputs, same arithmetic.
+    // The two prices a quote rests at, and the only copy of that arithmetic: the half width (a tick count or an
+    // economic distance), the inventory skew, the weak-flow shift, the clamp outside the touch, the neutral quote at
+    // the touch and the closing side. `quote()` used to compute the same block inline, because its gates mutate the
+    // *quantities* between the prices and the placement; they still do and they still run there, but the prices no
+    // longer have a second copy to drift from.
+    //
+    // The half width when the run asked for a basis-point distance: one tick is worth `tick_size / fair_price` of the
+    // price, so a target of `D` basis points is `max(2, round(D / tick_bps))` ticks -- the same economic distance on
+    // every instrument, which a fixed count is not. The floor of two ticks is the narrowest book the rule can rest in
+    // without quoting the touch.
     struct QuoteTargets
     {
         double bid{0.0};
@@ -522,19 +527,6 @@ class L2MarketMakerBase : public Strategy
         if (fair_price <= 0.0) fair_price = (top.bid_price + top.ask_price) / 2.0;
 
         const double inventory_ratio = position_ratio();
-        // The half width the quote is built on: a tick count, or an economic distance when the run asked for one.
-        // One tick is worth `tick_size / fair_price` of the price, so a target of `D` basis points is `D / tick_bps`
-        // ticks -- the same distance on every instrument, which a fixed count is not. The floor of two ticks is the
-        // narrowest book the rule can rest in without quoting the touch.
-        double half_width = config_.base_spread;
-        if (config_.base_spread_bps > 0.0 && config_.tick_size > 0.0 && fair_price > 0.0)
-        {
-            const double tick_bps = config_.tick_size / fair_price * 1e4;
-            half_width =
-                std::max(2.0, std::round(config_.base_spread_bps / tick_bps)) * config_.tick_size;
-        }
-        const double inventory_shift = inventory_ratio * half_width;
-        double weak_flow_spread_shift = 0.0;
         uint64_t buy_quantity = config_.order_size;
         uint64_t sell_quantity = config_.order_size;
         if (position_ >= config_.inventory_limit) buy_quantity = 0;
@@ -559,7 +551,6 @@ class L2MarketMakerBase : public Strategy
             if (std::abs(flow) > config_.weak_flow_threshold &&
                 std::abs(inventory_ratio) > config_.neutral_inventory_band)
             {
-                weak_flow_spread_shift = config_.weak_flow_spread_shift_ticks * config_.tick_size;
                 const double weak_scale = std::max(0.0, config_.weak_flow_quote_scale);
                 buy_quantity = static_cast<uint64_t>(std::max(
                     0.0, static_cast<double>(buy_quantity) * weak_scale));
@@ -575,50 +566,12 @@ class L2MarketMakerBase : public Strategy
         };
         buy_quantity = at_least_minimum(buy_quantity);
         sell_quantity = at_least_minimum(sell_quantity);
-        const double raw_bid_price = std::floor(
-                                         (fair_price - half_width - inventory_shift -
-                                          weak_flow_spread_shift) /
-                                         config_.tick_size) *
-                                     config_.tick_size;
-        const double raw_ask_price = std::ceil(
-                                         (fair_price + half_width - inventory_shift +
-                                          weak_flow_spread_shift) /
-                                         config_.tick_size) *
-                                     config_.tick_size;
-        const double passive_bid =
-            std::floor(top.bid_price / config_.tick_size) * config_.tick_size;
-        const double passive_ask =
-            std::ceil(top.ask_price / config_.tick_size) * config_.tick_size;
-        double bid_price = std::min(raw_bid_price, passive_bid);
-        double ask_price = std::max(raw_ask_price, passive_ask);
-        if (config_.quote_at_best_when_neutral && std::abs(inventory_ratio) < 0.25 &&
-            std::abs(trade_imbalance()) < config_.toxicity_flow_threshold)
-        {
-            bid_price = passive_bid;
-            ask_price = passive_ask;
-        }
-        // The closing side comes in while there is inventory to close: a long position is reduced by the ask and a
-        // short one by the bid, so the side that takes the position down is the one the market reaches first. The
-        // adding side keeps its own distance, and neither side is allowed inside the touch -- the venue's post-only
-        // rule would decline it there, and the point is a fill rather than a refusal.
-        if (config_.close_side_ticks > 0.0 && config_.tick_size > 0.0 && position_ != 0)
-        {
-            const double close_offset = config_.close_side_ticks * config_.tick_size;
-            if (position_ > 0)
-            {
-                const double closing_ask =
-                    std::ceil((fair_price + close_offset) / config_.tick_size) * config_.tick_size;
-                ask_price = std::max(passive_ask, std::min(ask_price, closing_ask));
-            }
-            else
-            {
-                const double closing_bid =
-                    std::floor((fair_price - close_offset) / config_.tick_size) * config_.tick_size;
-                bid_price = std::min(passive_bid, std::max(bid_price, closing_bid));
-            }
-        }
-        if (!std::isfinite(bid_price) || !std::isfinite(ask_price) || bid_price >= ask_price)
-            return orders;
+        // The prices come from the one function that computes them, and every gate below reads them without moving
+        // them: the closing side, the clamp outside the touch and the neutral quote are inside `target_prices`.
+        const auto targets = target_prices(top, fair_price, inventory_ratio, trade_imbalance());
+        if (!targets.valid) return orders;
+        double bid_price = targets.bid;
+        double ask_price = targets.ask;
 
         // The conditional rule, applied before the price gate because it is about the situation rather than
         // about the quote: a one tick book cannot offer anything but the touch, and the touch is the fill that

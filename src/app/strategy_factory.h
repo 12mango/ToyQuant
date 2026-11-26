@@ -46,6 +46,8 @@ struct StrategyFactoryConfig
     double layer_step_bps = 0.0;
     // From --amend-instead-of-cancel: the strategy moves a primary quote in place rather than pulling and placing it.
     bool amend_instead_of_cancel = false;
+    // From --amend-deadband-ticks: how far the target must retreat before that amend fires; 0 leaves the strategy's 2.0.
+    double amend_deadband_ticks = 0.0;
     // From --pause-ticks-per-second: the active halt's threshold; 0 leaves the strategy's own 9.0.
     double pause_ticks_per_second = 0.0;
     // The inventory-aware strategy's quote shift at a full inventory, in ticks. 0 leaves its own default.

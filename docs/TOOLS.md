@@ -61,7 +61,7 @@ does not.
 | `tools/fetch/slice.py` | a bounded window, streamed, from a file too large to replay | both |
 | `tools/fetch/inspect_source.py` | delimiter, types, timestamp columns, implied top of book | hand |
 | `tools/study/analyze_l2_windows.py` | one row per time window per strategy | hand |
-| `tools/study/benchmark_l2_strategies.py` | the strategy set on one window, marking thin rows | hand |
+| `tools/study/benchmark_l2_strategies.py` | the strategy set on one window, marking thin rows; `--include-legacy` adds `inventory_aware_l2`, which lives under `src/strategy/maker/legacy/` and has no pinned run | hand |
 | `tools/study/benchmark_replay_windows.py` | the replay benchmark per time window | hand |
 | `tools/study/calibrate_queue_model.py` | how a level decrease splits into trades and cancels | hand |
 | `tools/study/capacity_table.py` | what a book costs to run, by capital, breadth and tier | both |

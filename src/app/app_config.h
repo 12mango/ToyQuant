@@ -132,6 +132,10 @@ struct AppConfig
     double layer_step_bps = 0.0;
     // From --amend-instead-of-cancel: move a primary quote in place instead of pulling it and placing again.
     bool amend_instead_of_cancel = false;
+    // From --amend-deadband-ticks: how far a target must move away from a resting quote before the amend fires. 0
+    // leaves the strategy's own 2.0, which is the deadband the first run was taken with; 1 is the arm registered
+    // against it, because the symmetric version amended on a single tick and lost the fills it bought.
+    double amend_deadband_ticks = 0.0;
     // From --pause-ticks-per-second: the active_l2 volatility halt's threshold. 0 leaves the strategy's own 9.0,
     // because a floor here would change every recorded run that did not ask for one.
     double pause_ticks_per_second = 0.0;
