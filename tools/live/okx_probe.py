@@ -9,11 +9,16 @@ the ledger does not know about.
 
     set -a; . secrets/okx-demo.env; set +a
     python3 tools/live/okx_probe.py all            # equity, position, pending orders
+
     python3 tools/live/okx_probe.py market S 1     # one contract short, at the market
     python3 tools/live/okx_probe.py order B 1      # one contract long, IOC at the venue's own touch
     python3 tools/live/okx_probe.py rtt UP-USDT-SWAP 12   # place/cancel round trips and the post-only decline rate
     python3 tools/live/okx_probe.py warm BTC-USDT-SWAP 12 # the same two, on one kept-alive tunnel
     python3 tools/live/okx_probe.py amend BTC-USDT-SWAP 12 # amend against cancel+place, one tunnel, alternating order
+
+On a host the file is `/etc/toyquant/live.env` and this tool reads it itself when the environment carries no credentials, so
+`sudo python3 /opt/toyquant/tools/live/okx_probe.py pending` is the whole command; a checkout's `secrets/okx-demo.env` is
+the second place it looks, in that order, and neither overrides a name the environment already set.
 
 `amend` is the repricing question rather than the link's: a strategy that moves a resting quote either cancels and
 places again, which is two round trips and leaves the level without our quote between them, or amends the order in
@@ -56,6 +61,48 @@ INST = os.environ.get("INST_ID", "BTC-USDT-SWAP")
 # refusal of the request and is a refusal of its name.
 UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
       "Chrome/120.0.0.0 Safari/537.36")
+
+# The three credentials the relay and this probe share. A host keeps them in `/etc/toyquant/live.env` (root-only, seeded
+# by the deploy) and a checkout in `secrets/okx-demo.env`; both are read only when a name is missing from the environment,
+# so `set -a; . file; set +a` keeps working and a run that set them itself is never overridden. A missing name is an error
+# that names the variable and the file to put it in: measured 2026-11-27 on the first host, this was a bare
+# `KeyError: 'TOYQUANT_API_KEY'` with a traceback, which reads like a defect in the tool rather than a step an operator
+# skipped when the answer is "the file is there, you did not read it".
+CREDENTIAL_NAMES = ("TOYQUANT_API_KEY", "TOYQUANT_API_SECRET", "TOYQUANT_PASSPHRASE")
+ENV_FILES = (os.environ.get("TOYQUANT_ENV_FILE") or "/etc/toyquant/live.env", "secrets/okx-demo.env")
+
+
+def load_credentials():
+    """Put the three credentials in the environment from the first file that has them, or say which are missing."""
+    if all(os.environ.get(name) for name in CREDENTIAL_NAMES):
+        return
+    unreadable = []
+    for path in ENV_FILES:
+        try:
+            handle = open(path)
+        except FileNotFoundError:
+            continue
+        except PermissionError:
+            unreadable.append(path)
+            continue
+        with handle:
+            for line in handle:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                name, _, value = line.partition("=")
+                name = name.strip()
+                if name.startswith("export "):
+                    name = name[len("export "):].strip()
+                os.environ.setdefault(name, value.strip().strip('"').strip("'"))
+        if all(os.environ.get(name) for name in CREDENTIAL_NAMES):
+            return
+    missing = [name for name in CREDENTIAL_NAMES if not os.environ.get(name)]
+    hint = ""
+    if unreadable:
+        hint = f"\n  {unreadable[0]} exists but is not readable by this user: run this with sudo."
+    raise SystemExit("okx_probe: the venue credentials are not set: " + ", ".join(missing)
+                     + "\n  put them in " + " or ".join(ENV_FILES) + " as KEY=value lines" + hint)
 
 
 def request(method, path, body=""):
@@ -544,6 +591,7 @@ def rtt(inst, rounds, gap_s, touch=False):
 
 
 def main():
+    load_credentials()
     command = sys.argv[1] if len(sys.argv) > 1 else "all"
     if command in ("equity", "all"):
         emit({"cmd": "equity", "ccy": "USDT", "eq": balance()})

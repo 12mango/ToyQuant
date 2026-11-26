@@ -2,11 +2,12 @@
 # Answer one question in about a second: would this binary start on this host, with this configuration? It touches no unit
 # and restarts nothing.
 #
-# Six deploys in a row failed for six different reasons, and every one of them was visible in the first second of a run:
+# Seven deploys failed in a row for seven different reasons, and every one of them was visible in the first second of a run:
 # an illegal instruction (a `-march=native` build on another CPU), a market socket nobody opened, a flag the engine refuses
-# (`--snapshot-out` in `ws`), an argument list the config reader could not produce, and a log directory that resolved to the
-# *build* tree (the runner's checkout, which the host cannot write). None of them needed the restart, the crash loop, the
-# journal or the report; all of them needed this script, which is why it is now run before the deploy restarts anything.
+# (`--snapshot-out` in `ws`), an argument list the config reader could not produce, a log directory that resolved to the
+# *build* tree (the runner's checkout, which the host cannot write), and a relay whose credentials were still a template's.
+# None of them needed the restart, the crash loop, the journal or the report; all of them needed this script, which is why
+# it runs before the deploy restarts anything.
 #
 #   sudo bash /opt/toyquant/deploy/preflight.sh
 set -euo pipefail
@@ -22,10 +23,16 @@ fail() { echo "preflight: FAIL $*" >&2; failures=$((failures + 1)); }
 ok() { echo "preflight: ok $*"; }
 
 # 1. The binary starts at all. An artifact built for another CPU dies here, before anything that could explain it.
-if start=$(("$PROGRAM" --help 2>&1 | head -1)); then
-  ok "the binary starts: $(printf '%.70s' "$start")"
+#    The first version of this check was `start=$(($PROGRAM --help ...))`: `$(( ))` is arithmetic, not a command
+#    substitution, so bash printed `syntax error: operand expected` and the pipeline swallowed it into an `ok`.
+#    Measured 2026-11-27 on the first host to run this file.
+help_rc=0
+help_out=$("$PROGRAM" --help 2>&1) || help_rc=$?
+if [ "$help_rc" -eq 0 ]; then
+  ok "the binary starts: $(printf '%s\n' "$help_out" | head -1 | cut -c1-70)"
 else
-  fail "the binary does not start (an illegal instruction reads as exit 132)"
+  fail "the binary does not start (exit $help_rc; an illegal instruction reads as 132)"
+  printf '%s\n' "$help_out" | head -3 | sed 's/^/preflight:   /' >&2
 fi
 
 # 2. The configuration translates into the engine's arguments, and a live file must yield at least the three positionals.
@@ -64,9 +71,35 @@ if [ -n "$flags" ]; then
   fi
 fi
 
-# 4. The relay's two sockets, which the engine dials at startup and which `After=` alone does not guarantee are open.
+# 4. The credentials the relay logs in with, and whether they are still a template's. A placeholder passes every check
+#    above -- the binary starts, the engine reaches `[Mode]`, the sockets listen -- and then the venue refuses the login and
+#    every reconciliation reads `n/a` / `status=unknown`, which looks like a venue answer rather than a missing key. Names
+#    are printed, values never: this output ends up in a deploy log.
+if [ -r "$ETC_DIR/live.env" ]; then
+  unset_creds=$(
+    set -a
+    # shellcheck disable=SC1091  # the operator's file, sourced for its names only
+    . "$ETC_DIR/live.env" >/dev/null 2>&1 || true
+    set +a
+    for name in TOYQUANT_API_KEY TOYQUANT_API_SECRET TOYQUANT_PASSPHRASE; do
+      value=${!name:-}
+      case "$value" in
+        ''|*replace*|*REPLACE*|*changeme*|*CHANGEME*|*your*|*YOUR*|'<'*) printf '%s\n' "$name" ;;
+      esac
+    done
+  )
+  if [ -z "$unset_creds" ]; then
+    ok "the three credentials are set in $ETC_DIR/live.env"
+  else
+    fail "unset or still a template's in $ETC_DIR/live.env: $(printf '%s ' $unset_creds)"
+  fi
+else
+  fail "$ETC_DIR/live.env is not readable, and the relay logs in from it"
+fi
+
+# 5. The relay's two sockets, which the engine dials at startup and which `After=` alone does not guarantee are open.
 for port in "${RELAY_MARKET_PORT:-8765}" "${RELAY_ORDER_PORT:-8766}"; do
-  if ss -ltn 2>/dev/null | grep -q "127.0.0.1:$port"; then
+  if ss -ltn 2>/dev/null | grep -qE "127\.0\.0\.1:$port([[:space:]]|$)"; then
     ok "something listens on 127.0.0.1:$port"
   else
     fail "nothing listens on 127.0.0.1:$port"

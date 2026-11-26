@@ -7,6 +7,26 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The one-second preflight had two lies, and the probe had a traceback (2026-11-27)
+
+- **The preflight's first check never ran the binary.** `start=$(("$PROGRAM" --help ...))` is *arithmetic* expansion, not a
+  command substitution, so bash printed `syntax error: operand expected` and the pipeline's status swallowed it into an `ok`
+  -- a check that reported the binary started without starting it. Measured on the first host, in the first output this
+  script ever produced there. It now captures the output and the exit status separately and prints the first three lines of a
+  failure, so a missing program reads `exit 127` and an illegal instruction `exit 132`.
+- **The socket check answered about a port it was not asked about.** `grep -q "127.0.0.1:$port"` is a substring match:
+  asked for port `2` on a host where only `:22` listens, it said `ok` -- measured here before the fix. The pattern is now
+  anchored to the end of the address, and `nothing listens on 127.0.0.1:2` is the answer it gives.
+- **A fifth question: are the three credentials set, and are they still a template's?** A placeholder passes every other
+  check -- the binary starts, the engine reaches `[Mode]`, the sockets listen -- and then the venue refuses the login and
+  every reconciliation reads `n/a` with `status=unknown`, which looks like a venue answer rather than a missing key. The
+  relay's first session on the real host printed exactly that (`venue_equity_usd=n/a ledger_equity_usd=1000
+  status=unknown`). Names are printed, values never: this output lands in a deploy log.
+- **`okx_probe.py` read its credentials with `os.environ[...]`**, so a host that had them in `/etc/toyquant/live.env` got
+  `KeyError: 'TOYQUANT_API_KEY'` and a traceback -- a defect in the tool, as far as the reader could tell. It now reads that
+  file (then a checkout's `secrets/okx-demo.env`) when the environment carries no credentials, never overrides a name that
+  is already set, and refuses with one sentence naming the missing variable and the file to put it in.
+
 - **The recorded `+26.18` of the frozen cell is archived as not re-derivable, and `+9.83` is the number that stands.** The
   cell's own flags with `--advance-debounce-ms=40000` -- forty **seconds**, the arithmetic the cooldown defect was doing
   when the cell was measured -- read the same seven days identical to the last digit to the 40 ms arm, so the debounce is

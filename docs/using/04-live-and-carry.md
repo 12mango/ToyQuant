@@ -916,21 +916,35 @@ sockets listening and `ExecMainStatus=1`.
 
 ```bash
 sudo bash /opt/toyquant/deploy/bootstrap_server.sh            # packages, account, directories, both units, logrotate
-python3 /opt/toyquant/tools/live/okx_probe.py spec <inst>      # the venue's four numbers, the instIdCode and the units
+sudo python3 /opt/toyquant/tools/live/okx_probe.py spec <inst> # the venue's four numbers, the instIdCode and the units
 sudoedit /etc/toyquant/live.env                               # credentials, the seat, the route
 sudoedit /etc/toyquant/live.yaml                              # the size, the quoting shape, the risk block
 python3 /opt/toyquant/tools/live/live_config.py --flags /etc/toyquant/live.yaml   # refuses a key it does not know
+sudo bash /opt/toyquant/deploy/preflight.sh                   # the five questions below, in about a second
 sudo systemctl restart toyquant-relay toyquant-live
 sudo bash /opt/toyquant/deploy/check_health.sh                # exits 0 only when every answer is yes
 ```
+
+**`preflight.sh` is the one command to run after any edit, and it is the answer to "would this start?".** Five questions,
+each of which a deploy has failed on: the binary starts at all (an artifact built for another CPU is `exit 132`), the
+config translates into arguments, the engine reaches its `[Mode]` line as the service user from the unit's directory, the
+three credentials are set and are not still a template's, and both relay sockets listen. It restarts nothing and touches
+no unit, so a red line is a file to fix rather than a session to stop -- and the deploy workflow runs it before
+`systemctl restart`, so a broken artifact is a red job instead of a crash loop on a host that trades. Names of missing
+credentials are printed, values never.
+
+`okx_probe.py` needs no sourced file on a host: it reads `/etc/toyquant/live.env` itself when the environment carries no
+credentials, and a name it cannot find is an error that says which one and where to put it.
 
 **Demo and live are three lines apart, and the two keys are not interchangeable.** The demo private socket is
 `wss://wspap.okx.com:443/ws/v5/private?brokerId=9999` with `RELAY_ORDER_LIVE=0` -- a placement then carries
 `x-simulated-trading: 1`, which is what the demo host requires and what the live host refuses. A funded key belongs on
 `wss://ws.okx.com:8443/ws/v5/private` with `RELAY_ORDER_LIVE=1`, and a demo key there answers `401`.
-`deploy/check_health.sh` reports which route is in force by reading nothing from the file: it asks whether the two sockets
-listen, whether each unit is the only process of its kind, whether the journal has an error line, and whether the snapshot
-parses -- and reports the snapshot's content rather than judging it.
+`deploy/check_health.sh` reports which route is in force by reading nothing from the file: it waits for both units to be
+active, requires `NRestarts` to be zero and no `Failed with result` in the window, checks that each unit is the only process
+of its kind and that both relay sockets listen, and requires the engine's own `[Mode]` line, because that line -- not a
+snapshot file a live session cannot write -- is what proves a session started. On a red answer it attaches the last sixty
+journal lines, since systemd's state says what a unit *is* and its stdout says what it *said*.
 
 The two numbers the units and the engine share: the engine's shutdown deadline is **10 s** (`SessionShutdown`'s
 `deadline_ms`) and `TimeoutStopSec` is **12**. A unit that gave up first would `SIGKILL` a session mid-cancel, which leaves

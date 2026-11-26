@@ -6,14 +6,18 @@
 #
 # The checks are chosen so that each one names a failure the deploy can cause or the engine can have:
 #
-#   1. the unit is active                          -- a restart that did not take
-#   2. exactly one session process                 -- two sessions on one account is a position neither sees
-#   3. no error-severity journal line since boot   -- the relay's or the engine's own complaint
-#   4. the binary is where the unit expects it     -- a bundle unpacked without the program
-#   5. the snapshot parses and is not stale        -- a session that is running and not recording its own state
+#   1. the unit is active, waited for rather than slept through    -- a restart that did not take
+#   2. NRestarts is zero, and no `Failed with result` in the window -- a unit that is up *between* crashes
+#   3. exactly one session process, by the unit's own MainPID       -- two sessions on one account is a position neither sees
+#   4. the relay is active, alone, and both of its sockets listen    -- an engine that dials a closed port
+#   5. the journal carries the engine's `[Mode]` line               -- the only proof that a *session* started
+#   6. the program is executable and the two operator files are 640 -- a bundle unpacked without its program
 #
-# The snapshot's *content* is reported, not judged: whether a position is the right one is an accounting question that
-# `[RECONCILE]` in the run's own log answers, and a health check that guessed it would fail every time the market moved.
+# Each of these was written because a deploy failed in a way the previous report could not name: a `pgrep` sampled between
+# two restarts and read zero, `-p err` showed nothing while systemd wrote 35 `Failed with result` lines at its own
+# severity, and a snapshot that a live session cannot write was being read as the proof of a session. The snapshot's
+# *content* is still not judged: whether a position is the right one is an accounting question that `[RECON]` in the run's
+# own log answers, and a health check that guessed it would fail every time the market moved.
 set -euo pipefail
 
 ETC_DIR=${ETC_DIR:-/etc/toyquant}
