@@ -7,6 +7,38 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The deploy was audited end to end, and five of its checks could not see what they claimed (2026-11-27)
+
+The audit walked the path as the `toyquant` account on the host -- identity, configuration, ordering, the venue handshake,
+the health check and the failure hook -- and every finding below was visible in the repository, without a host.
+
+- **The health check read `ss` once, immediately after the restart, and matched a substring.** `grep -q '127.0.0.1:8765'`
+  answers yes for `127.0.0.1:87650` and for nothing at all after a slow bind, and the first read happened a second after
+  `systemctl restart`. Both sockets are waited for now, with a bound (`WAIT_LISTEN_S`, 15 s), an anchored match, and an
+  address that comes from `MARKET_ENDPOINT`/`ORDER_ENDPOINT` rather than from a constant.
+- **The engine unit waited for one of the two sockets it dials.** `ExecStartPre` watched 8765 and nothing watched 8766, so
+  the order leg raced the relay's second bind -- and `Wants=toyquant-relay.service` let the engine start after a failed
+  relay at all. It is `Requires=` now, and the wait names both ports and says which one never opened.
+- **Nothing checked that the account that reads `/etc/toyquant/*` can read it.** `0640 root:root` passes every root-side
+  check and is a relay whose `EnvironmentFile=` fails; the engine's `-` prefix turns the same defect into silence. Both
+  `preflight.sh` and `check_health.sh` now run `runuser -u toyquant -- test -r`, and neither reads a credential to do it.
+- **`preflight.sh` checked the wrong ports.** It asked about its own defaults while `live.yaml` names the endpoints, so a
+  host whose config moved the sockets would pass a preflight and hang in the session. It now takes the engine's two
+  endpoints out of the flags it just generated, compares them with the relay's `RELAY_*_LISTEN`, and checks those.
+- **There was no failure notification at all** -- the `notify.py` this audit was asked about did not exist. Added:
+  `deploy/notify.py`, `deploy/toyquant-notify@.service`, `OnFailure=` on both units, and a seeded
+  `/etc/toyquant/notify.env` template (`0640 root:toyquant`). It mails the unit, the host, the four properties that name
+  the ending and the journal tail; with no configuration it says so and exits 0, because a notifier that fails is a second
+  failure on top of the first. `--dry-run` prints the mail, `--self-test` pins both paths.
+- **Eight of these were two files disagreeing, so the check is a tool, not a paragraph.** `tools/gate/check_deploy.py`
+  verifies: the env template against the names the relay reads (both ways), the template's keys against
+  `live_config.py`'s map, the engine's endpoints against the relay's listeners, the units' `After=`/`Before=`/`Requires=`,
+  `TimeoutStopSec` against the engine's own `deadline_ms`, every program a unit names against `deploy.yml`'s package step,
+  `RELAY_ORDER_LIVE` against the venue it names, and `OnFailure=` against a notifier the bundle ships. `--self-test` fires
+  each rule on a defect and stays quiet on a clean copy; it runs in `verify_l2.sh`'s tool check, in CI and in the deploy's
+  `verify` job. Its first run on the real tree found `RELAY_ORDER_INST_TYPE`, which the relay reads and the template never
+  defined -- the class of defect, on the first try.
+
 ## The deployed relay refused the engine's own queries, and a close was one of them (2026-11-27)
 
 - **The Python relay spoke `ORDER` and `CANCEL` and nothing else.** The engine asks `PENDING`, `EQUITY` and `POSITION` on

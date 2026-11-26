@@ -42,8 +42,25 @@ jobs:
       - name: Nothing private is tracked
         run: python3 tools/gate/check_leaks.py
 
+      # The deploy's own invariants, and the reason this file carries them: every deploy failure so far was two files in
+      # this repository disagreeing -- a name the relay reads and the template does not define, an endpoint the engine
+      # dials and a listener that is elsewhere, a unit that starts before its dependency, a directory the operator owns
+      # and the service cannot read. None of them needed a host to see, and all of them cost a round trip.
+      - name: The deploy's invariants
+        run: |
+          python3 tools/gate/check_deploy.py --self-test
+          python3 tools/gate/check_deploy.py
+
+      # The deploy's own scripts are shell, and a shell script that only runs on the operator's machine is a script that
+      # has never been read. `bash -n` is a parse, not a test, but it is the one check a hosted runner can run.
+      - name: The deploy scripts parse
+        run: |
+          for script in deploy/*.sh; do bash -n "$script"; done
+          test -f deploy/logrotate/toyquant
+
       # The decision records keep one fact in two places, the record's status line and the index table. It needs no
       # market data, so it runs here as well as in the local gate: a superseded decision that never said so is a
       # documentation drift, which is the class this workflow exists to catch.
       - name: Every decision record agrees with the index
         run: python3 tools/gate/check_adr.py
+

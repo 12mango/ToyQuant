@@ -4,14 +4,20 @@ Description=ToyQuant live session (relay and engine)
 # real host crash-looped 35 times (SIGILL from a `-march=native` build) while the health check was reading "activating".
 StartLimitIntervalSec=300
 StartLimitBurst=5
+# A unit that stops is a session that stopped, and nobody watches a journal: the notifier names the unit, the host, the
+# four properties that say how it ended and the tail of its journal. `oneshot` and unconfigured-safe -- without
+# /etc/toyquant/notify.env it says so and exits 0, because a notifier that fails is a second failure on top of the first.
+OnFailure=toyquant-notify@%n.service
 # The engine is restarted by a deploy, so the unit has to be up before it and stop after it: the relay dies with the engine
 # on the same signal, and an order left resting at the venue is the failure this file's shutdown path exists to prevent.
 After=network-online.target
 Wants=network-online.target
 # The relay is what the two sockets below are: the engine reads market data from it and sends orders to it, so it starts
-# first and stops last.
+# first and stops last -- and `Requires=` rather than `Wants=`, because an engine without a relay is a session that dials
+# two closed ports, fails, and is restarted by systemd until the start limit stops it. A unit that cannot start its
+# dependency should not start at all.
 After=toyquant-relay.service
-Wants=toyquant-relay.service
+Requires=toyquant-relay.service
 # systemd gives the session ten seconds to finish its cancels; the engine's own deadline is the same number, so the unit
 # stops waiting at the same moment the session stops trying. Past it, SIGKILL -- a session that cannot cancel is one that
 # must be restarted and reconciled, not one that should live.
@@ -34,11 +40,13 @@ WorkingDirectory=/opt/toyquant
 # engine fault and is a configuration one. Measured 2026-11-27: the report showed `ExecMainStatus=1` and `MainPID=0` while
 # the sentence that explained it was in `live_config.py`'s mouth.
 ExecStartPre=/bin/bash -c 'python3 /opt/toyquant/tools/live/live_config.py --check /etc/toyquant/live.yaml'
-# The relay binds its market socket a moment after systemd considers it started, and the engine connects exactly once at
+# The relay binds its two sockets a moment after systemd considers it started, and the engine connects exactly once at
 # startup -- so without this wait the first start of the pair races and the engine exits on a refused connection, which
-# systemd then restarts forever. The wait reads the listening table rather than connecting: a probe connection would be
-# *accepted* by the relay (its accept loop takes one client) and the handshake would fail, killing the relay.
-ExecStartPre=/bin/bash -c 'for i in $(seq 1 30); do ss -ltn 2>/dev/null | grep -q "127.0.0.1:8765" && exit 0; sleep 1; done; echo "waited 30s for the relay to listen on 127.0.0.1:8765" >&2; exit 1'
+# systemd then restarts forever. **Both** addresses are waited for: 8765 is where the book comes from and 8766 is where an
+# order goes, and a wait that names only the first leaves the engine's order leg racing the relay's second bind. The wait
+# reads the listening table rather than connecting: a probe connection would be *accepted* by the relay (its accept loop
+# takes one client) and the handshake would fail, killing the relay.
+ExecStartPre=/bin/bash -c 'wait_port() { for i in $(seq 1 30); do ss -ltn 2>/dev/null | grep -qE "127\.0\.0\.1:$1([[:space:]]|$)" && return 0; sleep 1; done; echo "waited 30s for the relay to listen on 127.0.0.1:$1 (the engine dials it once, at startup)" >&2; return 1; }; wait_port 8765 && wait_port 8766'
 # The flags are captured and checked before the engine starts: an empty substitution would call `toy_quant ws` with no
 # endpoint, symbol or strategy, and the engine answers with its full usage text -- which reads like an engine fault and is a
 # configuration one, buried under forty lines of help. Measured 2026-11-27, twice. The `--check` above catches a refused

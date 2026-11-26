@@ -80,7 +80,9 @@ fi
 SERVICE_NAME=${SERVICE_NAME:-toyquant-live}
 RELAY_SERVICE_NAME=${RELAY_SERVICE_NAME:-toyquant-relay}
 units=""
-for unit in "$RELAY_SERVICE_NAME" "$SERVICE_NAME"; do
+# The notifier is a template unit (`name@.service`), so it is installed under the name it is instantiated from and never
+# enabled: `OnFailure=` in the two units above is its only caller.
+for unit in "$RELAY_SERVICE_NAME" "$SERVICE_NAME" toyquant-notify@; do
   if [ -f "$REPO_DIR/deploy/$unit.service" ]; then
     run "install $unit" install -m 0644 "$REPO_DIR/deploy/$unit.service" "/etc/systemd/system/$unit.service"
     units="$units $unit"
@@ -90,7 +92,12 @@ for unit in "$RELAY_SERVICE_NAME" "$SERVICE_NAME"; do
 done
 if [ -n "$units" ]; then
   run "reload systemd" systemctl daemon-reload
-  for unit in $units; do run "enable $unit at boot" systemctl enable "$unit"; done
+  for unit in $units; do
+    case "$unit" in
+      *@) : ;;  # a template is not enabled: nothing starts it but `OnFailure=`
+      *) run "enable $unit at boot" systemctl enable "$unit" ;;
+    esac
+  done
 fi
 
 # The two operator files. This script creates them *from the templates* when they are absent, so that the first deploy
@@ -109,6 +116,13 @@ if [ ! -f "$ETC_DIR/live.env" ]; then
       "$REPO_DIR/.env.example" "$ETC_DIR/live.env"
     echo "bootstrap: $ETC_DIR/live.env carries placeholders -- fill them in before the first real session"
   fi
+fi
+# Notifications are optional, and seeding the template is what makes the notifier's first failure a mail rather than a
+# journal line about a missing file. Created like the other two and never rewritten: it holds an SMTP password.
+if [ ! -f "$ETC_DIR/notify.env" ] && [ -f "$REPO_DIR/deploy/notify.env.example" ]; then
+  run "seed $ETC_DIR/notify.env from the template" install -m 0640 -g "$SERVICE_USER" \
+    "$REPO_DIR/deploy/notify.env.example" "$ETC_DIR/notify.env"
+  echo "bootstrap: $ETC_DIR/notify.env carries placeholders -- fill them in to receive a mail when a unit fails"
 fi
 
 if [ "$DRY_RUN" = 0 ]; then

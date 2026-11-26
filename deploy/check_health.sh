@@ -37,12 +37,36 @@ WAIT_ACTIVE_S=${WAIT_ACTIVE_S:-15}
 # quoted the first and not the second (the sentence that explained them was one `journalctl` away).
 HEALTH_WINDOW_S=${HEALTH_WINDOW_S:-600}
 HEALTH_JOURNAL_LINES=${HEALTH_JOURNAL_LINES:-60}
+# The account the units run as, and the two addresses the engine dials. The addresses are the engine's, not the relay's:
+# a health check that asks about 8765 while `live.yaml` names 9000 passes on a host whose session cannot connect.
+SERVICE_USER=${SERVICE_USER:-toyquant}
+MARKET_ENDPOINT=${MARKET_ENDPOINT:-127.0.0.1:8765}
+ORDER_ENDPOINT=${ORDER_ENDPOINT:-127.0.0.1:8766}
+# A unit that is `active` has not necessarily bound its sockets yet: the relay prints "listening" from the accept loop and
+# the engine binds nothing at all, so the first read of `ss` after a restart is a race. Measured 2026-11-27 on the first
+# host: the deploy's own restart is followed by this script within a second.
+WAIT_LISTEN_S=${WAIT_LISTEN_S:-15}
 failures=0
 
 wait_active() {  # wait_active <unit>
   local unit=$1 waited=0
   while [ "$waited" -lt "$WAIT_ACTIVE_S" ]; do
     [ "$(systemctl is-active "$unit" 2>/dev/null || true)" = active ] && return 0
+    sleep 1
+    waited=$((waited + 1))
+  done
+  return 1
+}
+
+# A listening address, matched to the end of the field: `grep -q "127.0.0.1:$port"` is a substring, and asked for port 2
+# on a host where only :22 listens it answers yes -- measured in `deploy/preflight.sh` on this host before the same fix.
+wait_listening() {  # wait_listening <host:port> <seconds>
+  local endpoint=$1 seconds=$2 waited=0
+  command -v ss > /dev/null 2>&1 || return 0
+  while [ "$waited" -lt "$seconds" ]; do
+    if ss -ltn 2>/dev/null | grep -qE "127\\.0\\.0\\.1:${endpoint##*:}([[:space:]]|$)"; then
+      return 0
+    fi
     sleep 1
     waited=$((waited + 1))
   done
@@ -123,18 +147,16 @@ if [ "$relays" -ne 1 ]; then
 else
   ok "one relay process"
 fi
-if command -v ss > /dev/null 2>&1; then
-  if ss -ltn 2>/dev/null | grep -q '127.0.0.1:8765'; then
-    ok "the market-data socket is listening on 127.0.0.1:8765"
+for endpoint in "$MARKET_ENDPOINT" "$ORDER_ENDPOINT"; do
+  port=${endpoint##*:}
+  what="the market-data socket"
+  [ "$endpoint" = "$ORDER_ENDPOINT" ] && what="the order socket"
+  if wait_listening "$endpoint" "$WAIT_LISTEN_S"; then
+    ok "$what is listening on 127.0.0.1:$port"
   else
-    fail "nothing listens on 127.0.0.1:8765 -- the engine will read a closed port"
+    fail "nothing listens on 127.0.0.1:$port after ${WAIT_LISTEN_S}s -- $what the engine dials is closed"
   fi
-  if ss -ltn 2>/dev/null | grep -q '127.0.0.1:8766'; then
-    ok "the order socket is listening on 127.0.0.1:8766"
-  else
-    fail "nothing listens on 127.0.0.1:8766 -- an order would have nowhere to go"
-  fi
-fi
+done
 
 if [ ! -x "$PROGRAM" ]; then
   fail "$PROGRAM is missing or not executable -- the bundle was unpacked without the program"
@@ -173,16 +195,27 @@ if [ -f "$SNAPSHOT" ]; then
   fi
 fi
 
-# The two operator files, by existence and mode only: the check never reads a credential.
+# The two operator files, by existence, mode, owner and -- the check this script was missing -- the service user's own
+# access. `root:root 0600` satisfies every other line here and is a file the relay cannot read, which systemd reports as
+# `EnvironmentFile=` failing (the relay) or, with the `-` prefix the engine unit carries, as nothing at all. The check
+# never reads a credential: `test -r` only answers whether the account that runs the unit could.
 for file in "$ETC_DIR/live.yaml" "$ETC_DIR/live.env"; do
   if [ ! -f "$file" ]; then
     fail "$file is missing -- see deploy/bootstrap_server.sh for the templates"
+    continue
+  fi
+  mode=$(stat -c '%a' "$file")
+  owner=$(stat -c '%U:%G' "$file")
+  if [ "${mode: -1}" != "0" ]; then
+    fail "$file is mode $mode; a credential file must not be readable by others"
   else
-    mode=$(stat -c '%a' "$file")
-    if [ "${mode: -1}" != "0" ]; then
-      fail "$file is mode $mode; a credential file must not be readable by others"
+    ok "$file present (mode $mode, $owner)"
+  fi
+  if id "$SERVICE_USER" > /dev/null 2>&1; then
+    if command -v runuser > /dev/null 2>&1 && runuser -u "$SERVICE_USER" -- test -r "$file"; then
+      ok "$SERVICE_USER can read $file"
     else
-      ok "$file present (mode $mode)"
+      fail "$SERVICE_USER cannot read $file ($mode, $owner): the unit runs as $SERVICE_USER, so its EnvironmentFile is unreadable -- install -m 0640 -g $SERVICE_USER is what bootstrap does"
     fi
   fi
 done

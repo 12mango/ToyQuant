@@ -1,0 +1,19 @@
+[Unit]
+Description=ToyQuant failure notification for %i
+# A notification must not be able to keep a failing session's host busy: one attempt, short timeout, no retry.
+[Service]
+Type=oneshot
+User=toyquant
+Group=toyquant
+# The journal is read as the unit's own account, which is how a non-root reader is allowed to see it -- the alternative
+# is running the notifier as root for a read the journal already supports.
+SupplementaryGroups=systemd-journal
+EnvironmentFile=-/etc/toyquant/notify.env
+Environment=PYTHONUNBUFFERED=1
+WorkingDirectory=/opt/toyquant
+ExecStart=/usr/bin/python3 /opt/toyquant/deploy/notify.py --unit %i
+TimeoutStartSec=60
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true

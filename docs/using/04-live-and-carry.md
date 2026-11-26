@@ -936,6 +936,29 @@ credentials are printed, values never.
 `okx_probe.py` needs no sourced file on a host: it reads `/etc/toyquant/live.env` itself when the environment carries no
 credentials, and a name it cannot find is an error that says which one and where to put it.
 
+**A unit that stops sends one mail, and it is configured in a third operator file.** Both units carry
+`OnFailure=toyquant-notify@%n.service`, which runs `deploy/notify.py` as `toyquant` (with `systemd-journal` in its groups,
+so no root is needed to read the journal it attaches). The settings are six names in `/etc/toyquant/notify.env`, seeded
+from `deploy/notify.env.example` at `0640 root:toyquant`:
+
+```bash
+sudoedit /etc/toyquant/notify.env                            # SMTP_HOST, PORT, USER, PASS, FROM, NOTIFY_TO
+python3 /opt/toyquant/deploy/notify.py --unit toyquant-live --dry-run   # the mail, printed instead of sent
+systemctl list-units 'toyquant-notify@*'                    # what the last failure said
+```
+
+With no `notify.env`, or with it still holding placeholders, the notifier says so in the journal and exits 0 -- an
+unconfigured alerting path must not become a second failure on top of the one it reports. The mail is deliberately short:
+the unit, the host, `ActiveState`/`SubState`/`Result`/`NRestarts`/`ExecMainStatus`, and the last thirty journal lines.
+
+**The unit's stop window outlasts the engine's own cancel sweep, and the check is a rule rather than a habit.** The engine
+gives up cancelling at `deadline_ms` (10 s, `src/lines/session_shutdown.h`) and the unit waits 12; a unit that gave up
+first would `SIGKILL` a session between two cancels and leave what it held at the venue. `tools/gate/check_deploy.py`
+reads both numbers and refuses the pair when the margin is gone, along with seven other couplings the host would otherwise
+find: the env template against the names the relay reads, the template's keys against the reader's map, the engine's
+endpoints against the relay's listeners, the units' ordering, the package step against the units' paths,
+`RELAY_ORDER_LIVE` against the venue it names, and `OnFailure=` against a notifier the bundle ships.
+
 **The relay the units ship answers the engine's three queries, and a close is an order.** That relay translated only
 `ORDER` and `CANCEL` until 2026-11-27, so a deployed session's `PENDING`, `EQUITY` and `POSITION` were answered
 `REJECT … venue` and both `[RECON]` lines read `n/a` with `status=unknown` -- a venue that would not say, as far as the log

@@ -39,6 +39,8 @@ does not.
 | `tools/gate/check_layering.py` | the include that crosses a layer boundary | gate |
 | `tools/gate/check_links.py` | `checked N link(s), 0 problem(s)` | gate |
 | `tools/gate/check_adr.py` | a decision and its index row that disagree | gate |
+| `tools/gate/check_deploy.py` | eight couplings between `deploy/`, `.env.example`, `config/live.example.yaml` and `deploy.yml` that a host would otherwise discover: the env names the relay reads, the template's keys, the engine's endpoints against the relay's listeners, the units' ordering, the stop window against the engine's deadline, the package step against the units' paths, `RELAY_ORDER_LIVE` against its venue, and `OnFailure=` against a shipped notifier | gate |
+| `deploy/notify.py` | one mail when a unit fails: the unit, the host, the four properties that name the ending and the journal tail; unconfigured-safe, `--dry-run` prints it, `--self-test` pins both paths | host |
 | `tools/gate/check_leaks.py` | a secret, a machine path or a private file that a commit would publish; `--audit` reports the deny-list's remaining public surface without failing | gate |
 | `tools/gate/check_sweep_columns.py` | `sweep columns: ok` -- the sweep's CSV against the two one-minute runs the gate makes | gate |
 | `tools/gate/lint_prose.py` | a flag, model, path or size figure the documents get wrong | gate |

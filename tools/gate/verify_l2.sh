@@ -567,6 +567,13 @@ tier1() {
   # so they run here rather than being trusted. `tests/relay_order_channel_test` drives the simulated backend with
   # the real adapter; this runs the private route's own checks with no key and no endpoint.
   python3 tools/live/venue_relay.py --self-test >> "$TOOL_CHECK_LOG" 2>&1 || tool_check=1
+  # The deploy's invariants are two files in this tree disagreeing, which is a thing a local gate can see and a host
+  # cannot: a `RELAY_*` name the relay reads and the template does not define, the engine's endpoint and the relay's
+  # listener naming different ports, a unit ordered before its dependency by `Wants=` only, a `TimeoutStopSec` shorter
+  # than the engine's own cancel sweep, a program a unit names and the bundle never ships. Every one of those cost a
+  # deploy round trip before this line existed (audit of 2026-11-27, rules 1-8 in the tool's docstring).
+  python3 tools/gate/check_deploy.py --self-test >> "$TOOL_CHECK_LOG" 2>&1 || tool_check=1
+  python3 tools/gate/check_deploy.py >> "$TOOL_CHECK_LOG" 2>&1 || tool_check=1
   # The live config is a contract: the template's keys are the engine's flags, and an unknown key is refused by name. That
   # is what keeps `config/live.yaml` from silently becoming a different run than its file says.
   python3 tools/live/live_config.py --self-test >> "$TOOL_CHECK_LOG" 2>&1 || tool_check=1

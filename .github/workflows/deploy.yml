@@ -60,11 +60,15 @@ jobs:
         run: python3 tools/gate/check_leaks.py
 
       # The deploy's own scripts are shell, and a shell script that only runs on the operator's machine is a script that
-      # has never been read. `bash -n` is a parse, not a test, but it is the one check a hosted runner can run.
-      - name: The deploy scripts parse
+      # has never been read. `bash -n` is a parse, not a test, but it is the one check a hosted runner can run. The
+      # invariants beside it are the ones a host discovers the hard way -- an env name the relay reads and the template
+      # does not define, an endpoint the engine dials and a listener elsewhere, a unit before its dependency.
+      - name: The deploy scripts parse and agree with each other
         run: |
           for script in deploy/*.sh; do bash -n "$script"; done
           test -f deploy/logrotate/toyquant
+          python3 tools/gate/check_deploy.py --self-test
+          python3 tools/gate/check_deploy.py
 
       # The artifact a session runs is built here, once, and started here: a binary that cannot print its own help is a
       # binary the host will crash-loop on, and the first deploy proved it (SIGILL from a `-march=native` build whose
@@ -129,8 +133,10 @@ jobs:
           mkdir -p "$staging/tools/live" "$staging/deploy/logrotate" "$staging/config"
           install -m 0755 "${{ env.BUILD_DIR }}/toy_quant" "$staging/toy_quant"
           install -m 0644 tools/live/venue_relay.py tools/live/live_config.py tools/live/okx_probe.py "$staging/tools/live/"
-          install -m 0644 deploy/toyquant-live.service deploy/toyquant-relay.service "$staging/deploy/"
+          install -m 0644 deploy/toyquant-live.service deploy/toyquant-relay.service deploy/toyquant-notify@.service "$staging/deploy/"
           install -m 0755 deploy/bootstrap_server.sh deploy/check_health.sh deploy/rollback.sh deploy/preflight.sh "$staging/deploy/"
+          install -m 0755 deploy/notify.py "$staging/deploy/"
+          install -m 0644 deploy/notify.env.example "$staging/deploy/"
           install -m 0644 deploy/logrotate/toyquant "$staging/deploy/logrotate/"
           install -m 0644 config/live.example.yaml "$staging/config/"
           install -m 0644 .env.example "$staging/"

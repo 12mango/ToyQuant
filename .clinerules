@@ -430,6 +430,38 @@ in tracked files:
   and the health check reads `NRestarts` and `ExecMainStatus`, because systemd's `Failed with result` lines are not
   severity `err` and `journalctl -p err` will not show them.
 
+### A deploy is four questions, and each failure was one of them unanswered
+
+Seven deploys failed for seven reasons, and the audit that followed (2026-11-27) found that all seven fit one frame. It is
+written here so the eighth is caught in the tree rather than on the host.
+
+- **Identity** -- the account that writes a file is not the account that reads it. `0640 root:toyquant` written by a
+  bootstrap is right; the same file written by hand as `root:root 0640` is a relay whose `EnvironmentFile=` fails, and the
+  engine's `-` prefix turns that into silence. The only check that proves it is
+  `runuser -u toyquant -- test -r <file>`, which `deploy/preflight.sh` and `deploy/check_health.sh` both run.
+- **Ordering** -- `After=` sequences a start and does not prevent one: a unit whose dependency failed still starts, so the
+  engine `Requires=` the relay. And a check that reads `ss` immediately after `systemctl restart` is a race, so both scripts
+  wait for the address with a bound and name the port that never opened. Waiting for one socket when the engine dials two is
+  the same defect one layer down.
+- **Failure echo** -- a check that cannot say *which* port, unit, variable or file failed costs the round trip it was
+  written to save. Every message names the thing; `check_health.sh` attaches the failed units' last sixty journal lines and
+  `notify.py` mails the same summary, because nobody watches a journal.
+- **Content** -- the unit on the host is only as complete as the bundle: every program, unit and template a unit names has
+  to be in `deploy.yml`'s package step, or the host runs a unit for a file it never received.
+
+**The three questions before touching `deploy/` or `.github/workflows/`.** (1) *Identity*: which account writes this file,
+which reads it, and does the second one have access? (2) *Ordering*: what must already be bound, written or running before
+this line, and what names it when it is not? (3) *Failure echo*: when this line is the one that fails, does the report name
+the file, the variable or the port? A change that cannot answer all three is not ready to ship.
+
+**The part of that a machine can answer is `tools/gate/check_deploy.py`, and a new coupling means a new rule there.** Its
+eight rules are the audit's: the env template against the names the relay reads, the template's keys against the reader's
+map, the engine's endpoints against the relay's listeners, the units' ordering, `TimeoutStopSec` against the engine's own
+deadline, the package step against the units' paths, `RELAY_ORDER_LIVE` against the venue it names, and `OnFailure=`
+against the notifier that has to exist. It runs in `verify_l2.sh`'s tool check, in CI and in the deploy's `verify` job. A
+deploy failure that a static check could have caught belongs in that file in the same change, not in the next
+retrospective.
+
 ## Definition of done
 
 1. The change is in the part of the tree that owns it, and nothing under `data/` moved.

@@ -50,6 +50,16 @@ if [ -n "$flags" ]; then
   fi
 fi
 
+# The two addresses the engine will actually dial, taken from the file it is handed rather than from this script's
+# defaults: `link.market_endpoint` is the first positional and `link.venue_endpoint` the `--venue-endpoint=` token. A
+# preflight that hardcoded 8765 while the file named 9000 would pass on a host whose session connects to nothing.
+engine_market=""
+engine_order=""
+if [ -n "$flags" ]; then
+  engine_market=$(printf '%s\n' "$flags" | head -1)
+  engine_order=$(printf '%s\n' "$flags" | sed -n 's/^--venue-endpoint=//p' | head -1)
+fi
+
 # 3. The engine accepts them and gets past its own startup -- the log directory, the mode line, everything that happens
 #    before the first connect. `127.0.0.1:1` is a port nothing listens on, so the run is expected to end there; the `[Mode]`
 #    line is what proves it got that far. Runs as the service user, because a path the operator can write and the service
@@ -97,14 +107,49 @@ else
   fail "$ETC_DIR/live.env is not readable, and the relay logs in from it"
 fi
 
-# 5. The relay's two sockets, which the engine dials at startup and which `After=` alone does not guarantee are open.
-for port in "${RELAY_MARKET_PORT:-8765}" "${RELAY_ORDER_PORT:-8766}"; do
-  if ss -ltn 2>/dev/null | grep -qE "127\.0\.0\.1:$port([[:space:]]|$)"; then
-    ok "something listens on 127.0.0.1:$port"
+# 5. The two files as the account that will read them, not as root. `root:root 0600` passes every root-side check and is
+#    a file systemd cannot read as `toyquant`: the relay's `EnvironmentFile=` then fails the unit outright, and the
+#    engine's `-` prefix turns it into silence.
+if id "$SERVICE_USER" > /dev/null 2>&1 && command -v runuser > /dev/null 2>&1; then
+  for file in "$CONFIG" "$ETC_DIR/live.env"; do
+    if [ ! -f "$file" ]; then
+      fail "$file is missing: the operator's file was never seeded (deploy/bootstrap_server.sh does it from the template)"
+    elif runuser -u "$SERVICE_USER" -- test -r "$file" 2>/dev/null; then
+      ok "$SERVICE_USER can read $file"
+    else
+      fail "$SERVICE_USER cannot read $file ($(stat -c '%a %U:%G' "$file")): the unit runs as $SERVICE_USER"
+    fi
+  done
+fi
+
+# 6. The two addresses agree, and the one the engine dials is open. The relay's side comes from its own environment file,
+#    because that is what systemd will hand it: an engine pointed at a port the relay does not serve waits forever, and the
+#    only symptom is a session that starts and does nothing -- the failure this whole script exists to name.
+relay_market=""
+relay_order=""
+if [ -r "$ETC_DIR/live.env" ]; then
+  relay_market=$(set -a; . "$ETC_DIR/live.env" > /dev/null 2>&1 || true; printf '%s' "${RELAY_MARKET_LISTEN:-}")
+  relay_order=$(set -a; . "$ETC_DIR/live.env" > /dev/null 2>&1 || true; printf '%s' "${RELAY_ORDER_LISTEN:-}")
+fi
+
+check_endpoint() {  # check_endpoint <name> <the engine's address> <the relay's address>
+  local name=$1 engine=$2 relay=$3 port
+  [ -z "$engine" ] && return 0
+  if [ "$engine" = "$relay" ]; then
+    ok "the engine's $name endpoint is the relay's listener ($engine)"
   else
-    fail "nothing listens on 127.0.0.1:$port"
+    fail "the engine dials $engine for $name and the relay listens on $relay: live.yaml and live.env disagree"
   fi
-done
+  port=${engine##*:}
+  if ss -ltn 2>/dev/null | grep -qE "127\.0\.0\.1:$port([[:space:]]|$)"; then
+    ok "something listens on $engine"
+  else
+    fail "nothing listens on $engine, which is where the engine will look"
+  fi
+}
+
+check_endpoint market "$engine_market" "${relay_market:-127.0.0.1:8765}"
+check_endpoint order "$engine_order" "${relay_order:-127.0.0.1:8766}"
 
 if [ "$failures" -eq 0 ]; then
   echo "preflight: OK -- this host would start a session"

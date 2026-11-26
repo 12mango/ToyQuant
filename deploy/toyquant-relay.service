@@ -4,6 +4,9 @@ Description=ToyQuant venue relay (the only process that holds a key)
 # something a reader can see, instead of a counter climbing while every restart hammers the venue's login.
 StartLimitIntervalSec=300
 StartLimitBurst=5
+# The engine's notification policy, applied to the relay too: a relay that stopped is a session whose orders have nowhere
+# to go, and it is the half that holds the key, so its failures are the ones worth a mail.
+OnFailure=toyquant-notify@%n.service
 # The relay is the half that talks to the venue, and the engine reads the two sockets it serves. Started before the
 # engine, stopped after it, so a restart of either does not leave the other reading a closed port.
 After=network-online.target

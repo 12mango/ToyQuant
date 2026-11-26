@@ -333,7 +333,12 @@ def main():
                         # `tools/gate/check_leaks.py` owns these three: the migration's progress report and its
                         # enforcement switch. The boundary rules themselves are not flags; these are how a reader asks
                         # what the deny-list still finds and how the gate tightens once the count is zero.
-                        "--audit", "--strict", "--self-test"}:
+                        "--audit", "--strict", "--self-test",
+                        # `deploy/notify.py` owns these two: the unit a failure mail is about and the switch that prints
+                        # the mail instead of sending it. Both are in the live page's command block, because the way an
+                        # operator checks that alerting works without waiting for a crash is `--dry-run`, and it is the
+                        # notifier's flag rather than the engine's.
+                        "--dry-run", "--unit"}:
             problems.append(f"{flag} is mentioned in a document and is not a flag the binary accepts")
     for model in sorted(models):
         if model not in text.lower():
