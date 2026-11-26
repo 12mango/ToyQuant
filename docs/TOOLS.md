@@ -10,7 +10,7 @@ kind of tool a file is:
 | `gate/` | the gate, the six lints it calls, `lib.sh` (the shared shell helpers) and `detach.sh` (one long command, started detached) | the lints, on every tier 1 run; `check_docs.py` on the pages a docs run names |
 | `sweep/` | the measurements that vary one thing over a window and print a table | `risk_check.sh` |
 | `fetch/` | getting data in and cutting it down: five venue fetchers, `slice.py`, `inspect_source.py` | `slice.py window`, `fetch_iex_hist.py --self-test` |
-| `study/` | the studies: one question each, and the drivers that turn a window into a row | five `--self-test`s, and `viability.py` |
+| `study/` | the studies: one question each, and the drivers that turn a window into a row | six `--self-test`s, and `viability.py` |
 | `live/` | the seven tools that speak to a socket or a live config: relay, config reader, sender, soak, tracer, resume, and the account probe | `venue_relay.py --self-test`, `live_config.py --self-test` |
 | `export/` | the bundle a reader that cannot clone the tree is given | no |
 | `bench/` | two harnesses for the performance line: the paired A/B runner and the libc call counter | no |
@@ -91,6 +91,7 @@ does not.
 | `tools/study/viability.py` | the eight closed lines, re-derived | gate |
 | `tools/study/volatility_window.py` | a windowed true range and its median split | both |
 | `tools/study/walk_forward.py` | chosen on the past, scored on the next window | both |
+| `tools/study/sweep_summary.py` | one sweep CSV in, the median **and its spread** out: closed min/max, positive days, fills, fee range and the absolute residual, because a median carried by one day hid the BLUR size ladder's ending | gate |
 | `tools/live/venue_relay.py` | market data to the engine and the order leg both ways, on the venue's grid; the reference the engine's order session was ported from, kept for review. `SIGTERM` refuses new orders, cancels what the relay placed and leaves only once nothing is live | both |
 | `tools/live/live_config.py` | turns `config/live.yaml` into the engine's arguments -- the positionals first, then one `flag=value` a line -- and refuses a key it does not know, so the ignored live file is a contract rather than a second copy of the flags | gate |
 | `tools/live/websocket_sender.py` | a local venue streaming two recorded files | hand |

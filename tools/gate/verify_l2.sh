@@ -510,6 +510,9 @@ tier1() {
   # on, and its selection rule, its tie rule, its handling of a missing cell and its two refusals are arithmetic a
   # document quotes: they run here so a change to any of them fails a gate rather than a re-read.
   python3 tools/study/walk_forward.py --self-test >> "$TOOL_CHECK_LOG" 2>&1 || tool_check=1
+  # The summary tool is what turns a sweep CSV into the row a document quotes, and the spread it prints beside the median
+  # is what told the last size ladder's story: a median carried by one day is not a curve.
+  python3 tools/study/sweep_summary.py --self-test >> "$TOOL_CHECK_LOG" 2>&1 || tool_check=1
   # The volatility window is the tick range over a fixed window that `src/strategy/maker/active_l2_market_maker.h`
   # records as the thing its per-second speed cannot be. A range, the two averages and the median split are what a
   # document would quote, and the split's tie rule is the kind of detail that drifts silently, so it is checked.
