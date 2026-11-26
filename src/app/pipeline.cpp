@@ -448,6 +448,10 @@ void Pipeline::submit_strategy_actions(uint64_t ts, std::vector<StrategyOrder> o
         }
     }
 
+    // The graceful stop's first half, and the reason it sits here: the strategy's cancels and amends above have already
+    // gone out, so a signalled session keeps pulling what it holds while placing nothing new.
+    if (stop_submissions_) return;
+
     // The switch is checked once a cycle, after the strategy's own cancels and before its orders. The account
     // metrics are read only when the switch is armed, which keeps a run that does not ask for it on the path
     // it was on before the control existed.

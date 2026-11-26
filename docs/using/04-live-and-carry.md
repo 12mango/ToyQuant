@@ -841,6 +841,41 @@ looking like it has the wrong key.
 ///
 
 
+## What a Deploy Carries, and What It Must Not
+
+The live settings and the credentials are the two things that never enter this repository, and both have a tracked
+template beside an ignored file:
+
+| what | tracked | ignored |
+|---|---|---|
+| the configuration, including the symbol and the size | `config/live.example.yaml` -- the demo instrument and a size that costs nothing | `config/live.yaml`, `config/live.*.yaml`, `config/prod.yaml` |
+| the credentials | `.env.example` -- placeholders, read through `VenueCredentials.from_environment` | `.env`, `.env.*`, `secrets/` |
+
+`tools/live/live_config.py --flags config/live.yaml` turns the ignored file into the engine's command line -- the three
+positionals `ws` reads, then one `flag=value` argument a line -- and **refuses a key it does not know** instead of dropping
+it: a typo the run silently ignored would be a run trading something other than what its file says.
+`deploy/toyquant-live.service` is the unit that calls it, so a change to the size or the symbol never edits the unit.
+
+**The stop is a sequence, not an exit.** `SIGTERM` is what a deploy sends, and a process that exits on it leaves every
+resting order alive at the venue. Both halves of the live path answer it in the same three steps:
+
+1. **stop new orders** -- the pipeline stops submitting, and the relay refuses an `ORDER` that was in flight;
+2. **cancel what is live** -- every id the ledger (engine) or the relay's own placed set holds is cancelled, and the venue
+   is asked to settle before the next question;
+3. **confirm zero, then leave** -- a later answer that holds nothing ends the session. A venue that stops answering is
+   bounded by a deadline; the session then leaves with a `[SHUTDOWN] step=timeout` line rather than pretending, and the
+   restart reconciles through the snapshot.
+
+`tests/session_shutdown_test.cpp` pins every transition of the engine's machine with mock counts, including the restart
+case (an inherited set from a snapshot is cancelled before the session can call itself stopped); the relay's machine is
+pinned in `venue_relay.py --self-test`, which also raises a real `SIGTERM` through the installed handler. `docs/TOOLS.md`
+lists both tools.
+
+> The deploy workflow (`.github/workflows/deploy.yml`) builds, runs the checks that need no market data, packages the
+> binary with the relay, the config reader, the unit and the two templates, sends it over `scp` and runs
+> `systemctl restart toyquant-live`. It does **not** run `verify_l2.sh fast`: that tier reads a 1.5 GB depth archive the
+> repository does not carry, so it runs on the self-hosted runner that holds the archive, behind a dispatch input.
+
 ## Carry: Two Legs Over Two Funding Histories
 
 A carry is a position and its hedge, so it needs two instruments and it does not need a book: what it earns is

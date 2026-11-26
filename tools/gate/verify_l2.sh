@@ -525,6 +525,9 @@ tier1() {
   # so they run here rather than being trusted. `tests/relay_order_channel_test` drives the simulated backend with
   # the real adapter; this runs the private route's own checks with no key and no endpoint.
   python3 tools/live/venue_relay.py --self-test >> "$TOOL_CHECK_LOG" 2>&1 || tool_check=1
+  # The live config is a contract: the template's keys are the engine's flags, and an unknown key is refused by name. That
+  # is what keeps `config/live.yaml` from silently becoming a different run than its file says.
+  python3 tools/live/live_config.py --self-test >> "$TOOL_CHECK_LOG" 2>&1 || tool_check=1
   # A figure that no longer matches the script that draws it is a picture of a system that changed, and neither the
   # site build nor the prose lint reads a `.svg`. Both figures are checked here for that reason: the same contract,
   # and the path figures are the ones a reader meets before any number.

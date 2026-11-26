@@ -70,6 +70,17 @@ data/v2/
 reports/
 
 # --------------------------------------------------
+# The live configuration: a symbol list and a size are trading decisions
+# --------------------------------------------------
+# The tracked file is the template. A real configuration is copied from it and is ignored, because a public repository has
+# no business carrying which instruments are being traded and at what size. `tools/live/live_config.py` reads the real
+# file and prints the engine's arguments, so the template is not a second copy of the flags that nothing reads.
+config/live.yaml
+config/live.*.yaml
+!config/live.example.yaml
+config/prod.yaml
+
+# --------------------------------------------------
 # Local credentials: never committed, never in a run's [Mode] line
 # --------------------------------------------------
 # API keys and passphrases live in `secrets/`, which is ignored on purpose: a key in a tracked file is a key in

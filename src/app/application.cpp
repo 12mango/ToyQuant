@@ -1,5 +1,4 @@
 #include "app/application.h"
-
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -27,10 +26,12 @@
 #include "app/session_state.h"
 #include "app/strategy_factory.h"
 #include "common/instrument_spec.h"
+#include "common/termination.h"
 #include "exchange/matching_engine.h"
 #include "lines/order_gateway.h"
 #include "lines/paper_broker.h"
 #include "lines/recorded_venue.h"
+#include "lines/session_shutdown.h"
 #include "common/tick.h"
 #include "lines/legacy/tick_pipeline.h"
 #include "lines/legacy/csv_feed.h"
@@ -911,6 +912,12 @@ void Application::run_l2_session_mode() const
     // live session brings neither: it has one reader over one socket, and the feed that owns that socket
     // outlives it because it is declared above the L2 feed built below.
     std::unique_ptr<WebSocketFeed> live_feed;
+    // The graceful stop: `SIGTERM` only records a request (`common/termination.h`); the three steps run on the consumer
+    // thread, where the venue's answers are applied and the order path can be closed without a second thread racing the
+    // first. `stop_session` is filled once the feed exists -- a `done` without it would leave a process running with a
+    // flat book, the mirror image of the orphan order this exists to prevent.
+    SessionShutdown shutdown;
+    std::function<void()> stop_session;
     std::unique_ptr<IMarketEventReader> live_events;
     std::unique_ptr<IMarketEventReader> trades_reader;
     std::unique_ptr<IMarketEventReader> depth_reader;
@@ -925,6 +932,12 @@ void Application::run_l2_session_mode() const
                 .idle_wait_us = cfg_.idle_wait_us});
         live_feed->start();
         live_events = live_feed->event_reader();
+        // A signalled session ends by stopping the feed it is reading: the consumer's `done` has already cancelled and
+        // confirmed, so the only thing left is to let `feed->run()` return.
+        stop_session = [&live_feed]
+        {
+            if (live_feed) live_feed->stop();
+        };
     }
     else
     {
@@ -958,6 +971,27 @@ void Application::run_l2_session_mode() const
             // A live venue's replies first, so a fill that arrived between this event and the last one is in the
             // account before the strategy's next decision reads it.
             drain_venue();
+            // The graceful stop, on the thread that can see the venue: stop new orders, cancel what it still holds, and
+            // end the session only once it answers zero. A feed that never ends (a live socket) is stopped here rather
+            // than waited out, and a replay that is signalled takes the same path -- nothing live, so `done` at once.
+            if (termination::requested() && !shutdown.finished())
+            {
+                pipeline.stop_submissions();
+                const uint64_t now_ms = static_cast<uint64_t>(
+                    std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now().time_since_epoch())
+                        .count());
+                const auto cancel_now = shutdown.advance(now_ms, pipeline.working_order_ids());
+                if (!cancel_now.empty()) pipeline.cancel_orders(cancel_now);
+                // A venue answers a cancel on its own connection, so the next step asks about the set again rather than
+                // reading the one it already had.
+                if (live_venue) live_venue->settle_queries();
+                if (shutdown.finished())
+                {
+                    logger.log(shutdown.to_log_string());
+                    if (stop_session) stop_session();
+                }
+            }
             // The recorded venue answers on the recorded clock: a report is released once the run's own clock is past
             // the time it was recorded at, which is why this is here rather than inside the venue.
             if (recorded_venue) recorded_venue->advance_to(market_event_timestamp(event));

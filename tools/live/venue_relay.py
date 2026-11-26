@@ -55,6 +55,7 @@ import json
 import math
 import os
 import queue
+import signal
 import socket
 import ssl
 import struct
@@ -850,6 +851,92 @@ class SimulatedVenue:
                                           "sMsg": "operation not supported"}]}]
 
 
+class ShutdownController:
+    """SIGTERM -> stop new orders -> cancel what is live -> confirm zero -> exit.
+
+    The relay is the last process that knows what it placed, so a relay that exits on the signal is the one that leaves
+    orphan orders at the venue -- and the failure is invisible until someone reads the venue's pending list. The three
+    steps are explicit states with counts, because "it shut down" is not a claim anybody can check afterwards; what can
+    be checked is that every id the relay placed was cancelled and that no answer afterwards named one as still live.
+
+    `advance` returns the ids to cancel now, which keeps the wire in the caller's hands and lets the self-test pin every
+    transition with a fake venue and no socket. The clock is injectable for the same reason.
+    """
+
+    STEPS = ("running", "stop-new-orders", "cancel-working", "confirming", "done", "timeout")
+
+    def __init__(self, cancel_retry_seconds=0.25, deadline_seconds=10.0, clock=time.monotonic):
+        self.requested = False
+        self.step = "running"
+        self.live = set()
+        self.rounds = 0
+        self.cancels_sent = 0
+        self.requested_at = None
+        self.last_round_at = None
+        self.cancel_retry_seconds = cancel_retry_seconds
+        self.deadline_seconds = deadline_seconds
+        self.clock = clock
+
+    # -- the signal handler: record only. A handler that did IO would be the one call the interpreter cannot finish.
+    def begin(self):
+        """Starts the sequence, idempotently. Called by the handler and by the path where the engine has gone away."""
+        if not self.requested:
+            self.requested = True
+            self.requested_at = self.clock()
+
+    def request(self, *_args):
+        if self.requested:
+            # A second signal is the operator asking again: stop now with the status a killed relay has.
+            os._exit(143)
+        self.begin()
+
+    def install(self):
+        signal.signal(signal.SIGTERM, self.request)
+        signal.signal(signal.SIGINT, self.request)
+        return self
+
+    # -- what the venue holds, as far as this process know
+    def note_placed(self, cl_ord_id):
+        self.live.add(str(cl_ord_id))
+
+    def note_terminal(self, cl_ord_id):
+        self.live.discard(str(cl_ord_id))
+
+    @property
+    def finished(self):
+        return self.step in ("done", "timeout")
+
+    def advance(self):
+        """The ids to cancel now, or an empty list when there is nothing to do yet or the session is over."""
+        if not self.requested:
+            return []
+        if self.step == "running":
+            self.step = "stop-new-orders"
+        elapsed = self.clock() - self.requested_at
+        if elapsed >= self.deadline_seconds:
+            self.step = "timeout"
+            return []
+        if not self.live:
+            # Zero is a confirmation exactly when this process holds nothing: a session that placed nothing is done at
+            # once, and one that cancelled everything is done because the venue's answers removed the ids.
+            self.step = "done"
+            return []
+        self.step = "cancel-working"
+        if self.rounds and self.clock() - self.last_round_at < self.cancel_retry_seconds:
+            self.step = "confirming"
+            return []
+        self.rounds += 1
+        self.last_round_at = self.clock()
+        order_ids = sorted(self.live)
+        self.cancels_sent += len(order_ids)
+        return order_ids
+
+    def log(self):
+        elapsed_ms = 0.0 if self.requested_at is None else (self.clock() - self.requested_at) * 1000.0
+        return (f"[SHUTDOWN] step={self.step} working={len(self.live)} cancels={self.cancels_sent} "
+                f"rounds={self.rounds} elapsed_ms={elapsed_ms:.0f}")
+
+
 def serve_orders(listen, instrument, max_quantity=100, capture=None, mapping=None):
     """Serves the engine's order leg on a line socket, one frame a line, until the engine goes away.
 
@@ -869,13 +956,47 @@ def serve_orders(listen, instrument, max_quantity=100, capture=None, mapping=Non
     print(f"engine connected from {peer[0]}:{peer[1]}", flush=True)
     translator = OrderTranslator(instrument, mapping=mapping)
     venue = SimulatedVenue(max_quantity)
+    # The graceful stop: `SIGTERM` refuses new orders, cancels what this relay placed, and leaves only once nothing is
+    # live. A relay that exits on the signal is what leaves an orphan order at the venue when the engine died first.
+    shutdown = ShutdownController().install()
     sink = open(capture, "a", encoding="utf-8") if capture else None
     orders = cancels = replies = refused = 0
+
+    def pump(request):
+        nonlocal replies
+        for message in venue.messages(request):
+            for reply in translator.decode(message):
+                try:
+                    conn.sendall(reply.encode() + b"\n")
+                except OSError:
+                    return
+                replies += 1
+                # `ACK` is the venue holding an order; `CANCELED` and `REJECT` are it letting go. A fill is not an ending
+                # for this purpose -- it can be partial -- and an id this relay believes is live is one cancel too many
+                # rather than an orphan.
+                token = reply.split()
+                if len(token) < 2:
+                    continue
+                if token[0] == "ACK":
+                    shutdown.note_placed(token[1])
+                elif token[0] in ("CANCELED", "REJECT"):
+                    shutdown.note_terminal(token[1])
+
     pending = b""
+
     try:
         while True:
             chunk = conn.recv(4096)
             if not chunk:
+                # The engine left without its cancels (a crash, a `kill -9`): the ids this relay placed are exactly the
+                # orphans this machine exists for. Bounded by the controller's deadline, and printed either way.
+                shutdown.begin()
+                while not shutdown.finished:
+                    for order_id in shutdown.advance():
+                        pump(translator.encode(f"CANCEL {order_id}"))
+                    if not shutdown.finished:
+                        time.sleep(min(shutdown.cancel_retry_seconds, 0.05))
+                print(shutdown.log(), flush=True)
                 break
             pending += chunk
             while b"\n" in pending:
@@ -894,16 +1015,35 @@ def serve_orders(listen, instrument, max_quantity=100, capture=None, mapping=Non
                     refused += 1
                     continue
                 if text.startswith("ORDER"):
+                    if shutdown.requested:
+                        # Step one, and it lives here as well as in the engine: a request that was in flight when the
+                        # signal arrived must not become a new resting order.
+                        cl_ord_id = (request.get("args") or [{}])[0].get("clOrdId", "0")
+                        conn.sendall(f"REJECT {cl_ord_id} relay shutting down\n".encode())
+                        refused += 1
+                        continue
                     orders += 1
                 else:
                     cancels += 1
                 if sink is not None:
                     sink.write(json.dumps(request) + "\n")
                     sink.flush()
-                for message in venue.messages(request):
-                    for reply in translator.decode(message):
-                        conn.sendall(reply.encode() + b"\n")
-                        replies += 1
+                pump(request)
+            # The cancel rounds, once per read: the controller owns the retry interval, so a venue that answered the
+            # first cancel with nothing gets the same ids again rather than a cancel per byte.
+            while shutdown.requested and not shutdown.finished:
+                order_ids = shutdown.advance()
+                if order_ids:
+                    for order_id in order_ids:
+                        pump(translator.encode(f"CANCEL {order_id}"))
+                    continue
+                if shutdown.step == "confirming":
+                    time.sleep(min(shutdown.cancel_retry_seconds, 0.05))
+                    continue
+                break
+            if shutdown.finished:
+                print(shutdown.log(), flush=True)
+                break
     finally:
         if sink is not None:
             sink.close()
@@ -1998,9 +2138,54 @@ def self_test():
     # A websocket route with no subscription still needs its socket: that is where its requests go.
     assert venue_order_route(None, False) == (False, True, False)
 
+    # The shutdown machine: a signal refuses new orders, cancels what this relay placed, and only leaves once nothing is
+    # live. The clock is injected, so every transition is arithmetic rather than a sleep -- the same reason the order leg
+    # has a `--max-seconds` and a fake venue.
+    elapsed = {"now": 0.0}
+    controller = ShutdownController(cancel_retry_seconds=0.25, deadline_seconds=10.0,
+                                    clock=lambda: elapsed["now"])
+    assert controller.advance() == [] and controller.step == "running"
+    controller.note_placed("11")
+    controller.note_placed("12")
+    controller.request()
+    first = controller.advance()
+    assert first == ["11", "12"], first
+    assert controller.step == "cancel-working" and controller.rounds == 1
+    # Nothing has come back yet: no second round inside the retry interval, and the step says the session is confirming.
+    elapsed["now"] = 0.1
+    assert controller.advance() == [] and controller.step == "confirming"
+    # One cancel is answered; the session stays open until the other is.
+    controller.note_terminal("11")
+    elapsed["now"] = 0.3
+    assert controller.advance() == ["12"]
+    controller.note_terminal("12")
+    assert controller.advance() == [] and controller.step == "done" and controller.finished
+    assert "step=done" in controller.log() and "working=0" in controller.log()
+
+    # A venue that stops answering: the deadline ends the sequence rather than hanging a deploy on it.
+    elapsed["now"] = 0.0
+    stuck = ShutdownController(cancel_retry_seconds=0.1, deadline_seconds=0.5,
+                               clock=lambda: elapsed["now"])
+    stuck.note_placed("21")
+    stuck.request()
+    assert stuck.advance() == ["21"]
+    elapsed["now"] = 0.2
+    assert stuck.advance() == ["21"]   # the retry interval has passed: the same id again
+    elapsed["now"] = 0.25
+    assert stuck.advance() == []       # inside the interval: confirming, not another round
+    elapsed["now"] = 0.6
+    assert stuck.advance() == [] and stuck.step == "timeout" and stuck.finished
+
+    # A real SIGTERM through the installed handler: the handler records and nothing else, which is what makes it safe to
+    # run inside the interpreter's signal delivery. The loop turns the record into the three steps.
+    signalled = ShutdownController(cancel_retry_seconds=0.01, deadline_seconds=1.0).install()
+    signal.raise_signal(signal.SIGTERM)
+    assert signalled.requested and signalled.step == "running"
+    assert signalled.advance() == [] and signalled.step == "done"
+    signal.signal(signal.SIGTERM, signal.SIG_DFL)
+
     print("self-test OK")
     return 0
-
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__,

@@ -87,6 +87,39 @@ class Pipeline
         hold_submissions_until_ = ts;
     }
 
+    // The first half of a graceful stop: no new order leaves this process after it. The strategy keeps deciding and its
+    // cancels keep flowing -- a stop that also muted the cancels would be the opposite of one.
+    void stop_submissions()
+    {
+        stop_submissions_ = true;
+    }
+
+    [[nodiscard]] bool submissions_stopped() const { return stop_submissions_; }
+
+    // The second half: cancel the named orders through the engine, which is the venue adapter in a live session, and say
+    // how many the ledger accepted. The ids come from `working_order_ids()`, so what is cancelled is what this process
+    // believes it still has resting rather than what a strategy happened to remember.
+    std::size_t cancel_orders(const std::vector<uint64_t>& order_ids)
+    {
+        std::size_t sent = 0;
+        for (uint64_t order_id : order_ids)
+        {
+            if (!ledger_.begin_cancel(order_id, engine_)) continue;
+            ++cancel_requests_;
+            engine_.cancel_order(order_id);
+            ++sent;
+        }
+        return sent;
+    }
+
+    // The ids behind `working_orders()`, for a caller that cancels rather than reports (the graceful stop).
+    std::vector<uint64_t> working_order_ids() const
+    {
+        std::vector<uint64_t> ids;
+        for (const auto& order : ledger_.working_orders()) ids.push_back(order.id);
+        return ids;
+    }
+
     // Where the marks of the *whole* account come from, for a run that carries several books into it. A pipeline
     // knows one symbol and cannot value the other legs, but the hard exposure cap belongs to the account, so this
     // is how much of it the other books have already used. Unset -- which is every single-book run -- leaves the
@@ -433,6 +466,8 @@ class Pipeline
     std::function<std::unordered_map<std::string, double>()> account_marks_;
     // The clock a resumed session starts trading again at. Zero, the default, holds nothing.
     uint64_t hold_submissions_until_{0};
+    // Set by `stop_submissions()`, which is the graceful stop's first half. False for every run that was not signalled.
+    bool stop_submissions_{false};
     // What a latched kill switch closed and what that exit cost, in the same units `--close-out` reports: the halt is
     // the control doing something rather than only stopping, and the two numbers say what it did.
     uint64_t kill_switch_closed_quantity_{0};

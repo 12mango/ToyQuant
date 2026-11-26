@@ -1,0 +1,30 @@
+# The live configuration, as a template -- copy it to `config/live.yaml`, which is ignored.
+#
+# `config/live.yaml` is where a symbol list and a size live, and both are trading decisions: a public repository has no
+# business carrying either, so the tracked file is this template and nothing else. The values below are the generic test
+# defaults -- the demo instrument, one contract a clip, the suppression the frozen configuration carries -- so a file
+# copied from this one trades something that costs almost nothing.
+#
+# `tools/live/live_config.py --flags config/live.yaml` turns the file into the engine's arguments and refuses a key it
+# does not know rather than dropping it, because a typo a run silently ignores is a run that trades something other than
+# what its file says. The credentials are not here: `.env.example` names the environment variables the relay reads.
+
+engine:
+  symbol: UP-USDT-SWAP            # the demo instrument; a live list belongs in config/live.yaml
+  strategy: active_l2
+  base_spread_ticks: 3            # the frozen cell's shape: three ticks out, refreshed every tick
+  refresh_price_ticks: 1
+  order_size: 10000000            # one contract on this instrument's grid
+  inventory_limit: 100000000      # ten contracts
+  post_only: true
+  advance_debounce_ms: 40000      # forty seconds of book time, the frozen configuration's suppression
+  settle_residual: true
+  # wind_down_skew_minutes: 15    # only meaningful for a session that ends at a named clock
+  # wind_down_end: "15:30"
+
+link:
+  market_endpoint: 127.0.0.1:8765     # the relay's market-data socket, on the same host
+  venue_endpoint: 127.0.0.1:8766      # the relay's order channel (the same relay, --order-listen)
+  order_latency_us: 10000             # the measured route is 77 to 118 ms; 10 ms is what the cells were measured at
+  cancel_latency_us: 10000
+  snapshot_out: data/runtime/live-snapshot.json   # the file a restart reconciles from
