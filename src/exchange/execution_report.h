@@ -98,13 +98,17 @@ struct ExecutionReport
     uint64_t order_id{};
     exchange::Side side{};
     ExecType exec_type{};
-    std::string symbol;
+    // The two strings carry `{}` like every other member: an aggregate initializer that names only some of these fields
+    // is the common shape in the tests, and a member without a default initializer makes that a `-Wmissing-field-initializers`
+    // warning at every call site (GCC is silent when the omitted member has one). Measured 2026-11-27 on
+    // `l2_strategy_test`, which omits `owner` in eight places.
+    std::string symbol{};
     double price{};
     // Trade reports this execution's fill quantity. PartialFill, Filled, Resting, and
     // Cancelled report the order's remaining quantity.
     uint64_t quantity{};
     uint64_t ts{};
-    std::string owner;
+    std::string owner{};
     LiquidityRole liquidity_role{LiquidityRole::Unknown};
     double fee{0.0};
     // Only meaningful when exec_type is Rejected. Kept at the end so every existing aggregate

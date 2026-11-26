@@ -23,6 +23,20 @@ site now points at `ToyQuant`.
   gate fails both of its conditions. Refused on its registered bar; the next registration is a **stricter** toxic
   definition (`--jump-ticks=3`) whose bar needs the tail **and** the median at once.
 
+## A test warning was a missing default initializer, not a test defect (2026-11-27)
+
+- **`l2_strategy_test` and `malformed_input_test` compiled with warning noise** -- `-Wmissing-field-initializers`, eight
+  sites in one and four in the other. The cause is the aggregate initializers naming only the fields they care about:
+  `ExecutionReport::symbol` and `::owner`, and `MarketDepthSnapshot::symbol`, `::bids`, `::asks` and `::exchange`, were the
+  only members without a default initializer, and GCC is silent when an omitted member has one and warns when it does not
+  (measured with 15.2.0). So the fix is one `{}` per member rather than an edit at each of twelve call sites, and it covers
+  the next call site too.
+- **A clean build of both presets reports zero warnings**: `linux-debug` from an empty directory (137 objects, `BUILD_RC=0`,
+  no line matching `warning:`), and the `linux-relwithdebinfo` artifact the deploy ships (114 objects rebuilt through the
+  two headers, zero). An incremental build could not have said that, because only the objects it recompiled would have been
+  read.
+- The size table follows the two headers: `common` 1180, `exchange` 1511, total **32,754**.
+
 ## The live template named an l2_replay flag, and the gate now asks the engine (2026-11-27)
 
 - **`link.snapshot_out` was in the live template and `ws` refuses it** -- `--snapshot-out and --snapshot-in are l2_replay

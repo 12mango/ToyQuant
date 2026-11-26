@@ -52,11 +52,14 @@ struct DepthLevel
 struct MarketDepthSnapshot
 {
     uint64_t ts{};
-    std::string symbol;
+    // Every member carries a default initializer, so a snapshot built by naming only some of them is not a
+    // `-Wmissing-field-initializers` warning: GCC is silent when the omitted member has one, and the tests build
+    // snapshots exactly that way (`{.ts = ..., .symbol = ..., .sequence = ...}`, measured 2026-11-27).
+    std::string symbol{};
     uint64_t sequence{};
-    std::vector<DepthLevel> bids;
-    std::vector<DepthLevel> asks;
-    std::string exchange;
+    std::vector<DepthLevel> bids{};
+    std::vector<DepthLevel> asks{};
+    std::string exchange{};
 };
 
 struct IncrementalBookUpdate
