@@ -48,9 +48,13 @@ SLICE_TOOL = ROOT / "tools/fetch/slice.py"
 # The archive and the trade tape live in `<root>/<SYMBOL>/` or in the flat root; one module owns both layouts.
 sys.path.insert(0, str(ROOT / "tools" / "lib"))
 from okx_data import depth_archive, trade_tape  # noqa: E402
-COLUMNS = ["day", "model", "base", "refresh", "latency_us", "fills", "fill_rate", "fees_bps", "gross_bps", "closed_bps",
+COLUMNS = ["day", "model", "strategy", "base", "refresh", "latency_us", "fills", "fill_rate", "fees_bps", "gross_bps", "closed_bps",
            "closed_per_fill_bps", "net_bps", "net_usd", "notional_usd", "breakeven_bps", "capture_ticks", "markout_ticks", "zero_queue",
-           "max_inv", "net_pos", "hold_s", "settle_bps", "settled_bps", "stale"]
+           "max_inv", "net_pos", "hold_s", "settle_bps", "settled_bps",
+           # The execution line's own decomposition, from the `[EXECUTION_ALGO]` block: `n/a` on every row a strategy other
+           # than `execution_l2` produced. They are here because a close-out's cost can only be read against a benchmark
+           # when the shortfall is beside the fee it paid, and a column that has to be grepped out of a log is not a table.
+           "filled_ratio", "is_filled_bps", "is_fees_bps", "is_total_bps", "maker_share", "child_orders", "stale"]
 
 
 def number_list(text, cast=float):
@@ -338,7 +342,7 @@ def main():
                         value = float(fields.get(name, 0.0) or 0.0)
                         return f"{value / notional * 1e4:.2f}" if notional else "n/a"
 
-                    row = {"day": day_text, "model": model,
+                    row = {"day": day_text, "model": model, "strategy": args.strategy,
                            "base": "" if base is None else f"{base:g}",
                            "refresh": "" if refresh is None else f"{refresh:g}",
                            "latency_us": str(args.latency_us),
@@ -365,6 +369,14 @@ def main():
                            # marked result with that cost taken out. Both are the engine's own figures.
                            "settle_bps": fields.get("settle_cost_bps", "n/a"),
                            "settled_bps": fields.get("settled_net_bps", "n/a"),
+                           # The execution decomposition, `n/a` for every other strategy: a run that is not working a
+                           # parent prints no `[EXECUTION_ALGO]` line, and "0.00" there would read as a measured zero.
+                           "filled_ratio": fields.get("filled_ratio", "n/a"),
+                           "is_filled_bps": fields.get("is_filled_bps", "n/a"),
+                           "is_fees_bps": fields.get("is_fees_bps", "n/a"),
+                           "is_total_bps": fields.get("is_total_bps", "n/a"),
+                           "maker_share": fields.get("maker_share", "n/a"),
+                           "child_orders": fields.get("child_orders", "n/a"),
                            "stale": fields.get("stale_trades", "0")}
                     rows.append(row)
                     print(f"# {day_text} {model} base={row['base']} refresh={row['refresh']}: "

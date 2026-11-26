@@ -473,6 +473,29 @@ tier1() {
   local tool_check=0
   if [ "$mode" != docs ]; then
   python3 tools/sweep/okx_maker_baseline.py --self-test > "$TOOL_CHECK_LOG" 2>&1 || tool_check=1
+  # The sweep's CSV is the contract between a C++ run and the table every research cell is read from, and until now
+  # nothing ran the tool at all. Two one-minute sweeps -- the maker and an execution parent -- and then the column
+  # check: about a second each once the day's cut is cached, and it catches the two failures that were invisible in the
+  # table (a taker-only row's `n/a` fee, and an `[EXECUTION_ALGO]` block that stopped being parsed).
+  sweep_archive=$(ls data/v2/crypto/*/*L2orderbook-400lv-2026-11-22.tar.gz 2>/dev/null | head -1)
+  if [ -n "$sweep_archive" ]; then
+    sweep_symbol=$(basename "$sweep_archive" | sed 's/-L2orderbook.*//')
+    sweep_work=$(mktemp -d)
+    SWEEP_GATE_CUTS=/tmp/tq/gate_sweep
+    python3 tools/sweep/okx_maker_baseline.py --symbol "$sweep_symbol" --days 2026-11-22 \
+      --start 14:59 --end 15:00 --cuts "$SWEEP_GATE_CUTS" --models prorata --base-spread-grid 3 \
+      --refresh-grid 1 --out "$sweep_work/maker.csv" > "$sweep_work/maker.log" 2>&1
+    python3 tools/sweep/okx_maker_baseline.py --symbol "$sweep_symbol" --days 2026-11-22 \
+      --start 14:59 --end 15:00 --strategy execution_l2 --cuts "$SWEEP_GATE_CUTS" --models prorata \
+      --base-spread-grid "" --refresh-grid "" \
+      --extra="--parent=sell:10000000:60 --algo=market --algo-entry=cross" \
+      --out "$sweep_work/execution.csv" > "$sweep_work/execution.log" 2>&1
+    python3 tools/gate/check_sweep_columns.py "$sweep_work/maker.csv" "$sweep_work/execution.csv" \
+      >> "$TOOL_CHECK_LOG" 2>&1 || tool_check=1
+    rm -rf "$sweep_work"
+  else
+    echo "sweep columns: skipped, no 400-level archive on disk" >> "$TOOL_CHECK_LOG"
+  fi
   python3 tools/fetch/fetch_iex_hist.py --self-test >> "$TOOL_CHECK_LOG" 2>&1 || tool_check=1
   # The capacity table is arithmetic over the fee schedule, and that schedule is what every equities row in the
   # documents is priced with: a table of money is worth what its arithmetic is, so its own hand-checked cells run

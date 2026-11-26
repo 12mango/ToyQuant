@@ -39,6 +39,7 @@ does not.
 | `tools/gate/check_layering.py` | the include that crosses a layer boundary | gate |
 | `tools/gate/check_links.py` | `checked N link(s), 0 problem(s)` | gate |
 | `tools/gate/check_adr.py` | a decision and its index row that disagree | gate |
+| `tools/gate/check_sweep_columns.py` | `sweep columns: ok` -- the sweep's CSV against the two one-minute runs the gate makes | gate |
 | `tools/gate/lint_prose.py` | a flag, model, path or size figure the documents get wrong | gate |
 | `tools/gate/lib.sh` | `field_of` and `emit_block`, sourced by the shell tools | sourced |
 | `tools/gate/detach.sh` | the log path; the status lands in `/tmp/<name>.exit` beside it | hand |

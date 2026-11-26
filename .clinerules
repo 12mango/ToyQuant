@@ -102,7 +102,7 @@ compatibility path. Everything below assumes that page.
   |---|---|---|
   | nothing compiles yet | `cmake --build out/build/linux-debug -j4` | ~16 s after one source file |
   | one line changed, does it still run | `bash tools/gate/verify_l2.sh smoke` | ~1 s |
-  | a change under `src/` or `tests/` | `bash tools/gate/verify_l2.sh code` | ~26 s |
+  | a change under `src/` or `tests/` | `bash tools/gate/verify_l2.sh code` | ~12 s warm, ~34 s cold -- the second figure is the one-minute sweep the tier now makes (2026-11-26), whose cut is cached in `/tmp/tq/gate_sweep` |
   | a change under `docs/` | `bash tools/gate/verify_l2.sh docs <the pages you touched>` | ~6 s a page, ~107 s for the set on this host |
   | the task is finished, before the commit | `bash tools/gate/verify_l2.sh fast` | **~1.5-2.5 min on this host**, once (70 s and 1 min 47 s on 2026-11-16; 2 min 16 s, 1 min 43 s and 1 min 33 s on 2026-11-25, after the burst section gained two full-day probe runs) |
   | accepting a change for good | `bash tools/gate/verify_l2.sh full` then `... asan` | ~26 s for the hash, ~10 s for the sanitizers on a built tree and ~10 min for a cold one |
