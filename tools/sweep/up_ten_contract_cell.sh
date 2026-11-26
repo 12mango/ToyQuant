@@ -60,4 +60,8 @@ want() { [ "$arm" = all ] || [ "$arm" = "$1" ]; }
 want f1_control && run f1_control ""
 want f1_tox2 && run f1_tox2 "--amend-on-toxicity --jump-window-ms=40 --jump-ticks=2"
 want f1_tox3 && run f1_tox3 "--amend-on-toxicity --jump-window-ms=40 --jump-ticks=3"
-echo "== done $(date -u +%H:%M:%S) -- rows in $OUT/f1_*.csv"
+# Frontier 3: the size throttle at the same 15 bps trigger P0.1 was refused at, with the adding side paused and then cut
+# to one contract. The closing side keeps its full size in both arms -- that is the whole point of the lever.
+want f3_throttle0 && run f3_throttle0 "--throttle-adverse-bps=15 --throttle-units=0"
+want f3_throttle1 && run f3_throttle1 "--throttle-adverse-bps=15 --throttle-units=10000000"
+echo "== done $(date -u +%H:%M:%S) -- rows in $OUT/f*.csv"

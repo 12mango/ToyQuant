@@ -114,6 +114,8 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
         base_config.extra_layers = config.extra_layers;
         base_config.base_spread_bps = config.base_spread_bps;
         base_config.onesided_inventory_frac = config.onesided_inventory_frac;
+        base_config.throttle_adverse_bps = config.throttle_adverse_bps;
+        base_config.throttle_units = config.throttle_units;
         base_config.layer_step_bps = config.layer_step_bps;
         base_config.amend_instead_of_cancel = config.amend_instead_of_cancel;
         if (config.amend_deadband_ticks > 0.0)
@@ -162,6 +164,8 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
         base_config.extra_layers = config.extra_layers;
         base_config.base_spread_bps = config.base_spread_bps;
         base_config.onesided_inventory_frac = config.onesided_inventory_frac;
+        base_config.throttle_adverse_bps = config.throttle_adverse_bps;
+        base_config.throttle_units = config.throttle_units;
         base_config.layer_step_bps = config.layer_step_bps;
         base_config.amend_instead_of_cancel = config.amend_instead_of_cancel;
         // A zero leaves the strategy's own 2.0, so a run that does not ask for a deadband reads exactly what it did

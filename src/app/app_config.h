@@ -128,6 +128,10 @@ struct AppConfig
     double base_spread_bps = 0.0;
     // From --onesided-inventory-frac: the adding side stops at this share of the inventory cap. 0 quotes both sides.
     double onesided_inventory_frac = 0.0;
+    // The size throttle: the adding side's size once the carried position is marked against us by this many basis
+    // points, and the size it is cut to (zero pauses that side). Zero on the threshold leaves the rule off.
+    double throttle_adverse_bps = 0.0;
+    uint64_t throttle_units = 0;
     // From --layer-step-bps: the step between extra layers in basis points of the reference price. 0 leaves one tick.
     double layer_step_bps = 0.0;
     // From --amend-instead-of-cancel: move a primary quote in place instead of pulling it and placing again.

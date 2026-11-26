@@ -42,6 +42,10 @@ struct StrategyFactoryConfig
     double base_spread_bps = 0.0;
     // The adding side stops at this fraction of the inventory cap, from --onesided-inventory-frac. 0 quotes both sides.
     double onesided_inventory_frac = 0.0;
+    // From --throttle-adverse-bps/--throttle-units: cut the adding side to that size once the position is that far under
+    // water. Zero on the threshold leaves it off.
+    double throttle_adverse_bps = 0.0;
+    uint64_t throttle_units = 0;
     // The step between extra layers in basis points, from --layer-step-bps; 0 leaves one tick a layer.
     double layer_step_bps = 0.0;
     // From --amend-instead-of-cancel: the strategy moves a primary quote in place rather than pulling and placing it.

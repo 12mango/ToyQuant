@@ -96,6 +96,9 @@ constexpr std::string_view kMinSpreadPrefix = "--min-spread-ticks=";
 // The quote distance as an economic distance rather than a tick count, and the one-sided retreat at high inventory.
 constexpr std::string_view kQuoteDistanceBpsPrefix = "--quote-distance-bps=";
 constexpr std::string_view kOnesidedInventoryPrefix = "--onesided-inventory-frac=";
+// The size throttle's two knobs: the adverse mark that arms it, and the size the adding side is cut to while armed.
+constexpr std::string_view kThrottleAdversePrefix = "--throttle-adverse-bps=";
+constexpr std::string_view kThrottleUnitsPrefix = "--throttle-units=";
 constexpr std::string_view kLayerStepBpsPrefix = "--layer-step-bps=";
 constexpr std::string_view kAmendInsteadOfCancelFlag = "--amend-instead-of-cancel";
 constexpr std::string_view kAmendDeadbandPrefix = "--amend-deadband-ticks=";
@@ -284,7 +287,9 @@ void print_usage(const char* executable)
                      "L further passive layers one tick behind the first; --quote-distance-bps=D sets the half width "
                      "in basis points of the reference price -- max(2, round(D / tick_bps)) ticks, the same "
                      "economic distance on every instrument -- and --onesided-inventory-frac=F stops the adding "
-                     "side at F of the inventory cap; --layer-step-bps=D sets the step between extra layers in basis "
+                     "side at F of the inventory cap, while --throttle-adverse-bps=X cuts the adding side's size to "
+                     "--throttle-units=U (zero pauses it) once the carried position is marked against us by X basis "
+                     "points and leaves the closing side at its full size; --layer-step-bps=D sets the step between extra layers in basis "
                      "points of the reference price, where one tick a layer would put them on almost the same price; "
                      "--amend-instead-of-cancel moves a quote in place instead of pulling it and placing it again: a "
                      "maker's primary quote, or the execution line's resting child following the near touch; the "
@@ -1296,6 +1301,28 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                     return false;
                 }
                 cfg.base_spread_bps = bps;
+            }
+            else if (flag.compare(0, kThrottleAdversePrefix.size(), kThrottleAdversePrefix) == 0)
+            {
+                std::istringstream stream(flag.substr(kThrottleAdversePrefix.size()));
+                double bps = 0.0;
+                if (!(stream >> bps) || bps < 0.0)
+                {
+                    error = "--throttle-adverse-bps must not be negative";
+                    return false;
+                }
+                cfg.throttle_adverse_bps = bps;
+            }
+            else if (flag.compare(0, kThrottleUnitsPrefix.size(), kThrottleUnitsPrefix) == 0)
+            {
+                std::istringstream stream(flag.substr(kThrottleUnitsPrefix.size()));
+                uint64_t units = 0;
+                if (!(stream >> units))
+                {
+                    error = "--throttle-units is a quantity in engine units; zero pauses the adding side";
+                    return false;
+                }
+                cfg.throttle_units = units;
             }
             else if (flag.compare(0, kOnesidedInventoryPrefix.size(), kOnesidedInventoryPrefix) == 0)
             {

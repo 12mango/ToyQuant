@@ -130,6 +130,14 @@ struct L2MarketMakerBaseConfig
     // alone instead of being carried into the mark; `inventory_limit` is the same rule at 1.0. Zero, the default,
     // quotes both sides until the cap.
     double onesided_inventory_frac{0.0};
+    // The size throttle, which is the *state* version of the rule above: once the carried position is marked against us
+    // by more than `throttle_adverse_bps` (a negative `open_pnl_bps`), the side that would add to it quotes
+    // `throttle_units` -- zero pauses that side -- while the closing side keeps its full size. It removes adverse flow
+    // without moving a price, which is what the wind-down's price skew was refused for. Off at zero.
+    double throttle_adverse_bps{0.0};
+    uint64_t throttle_units{0};
+    // Quotes that took the throttle, so an arm can say the rule fired rather than inferring it from the fills.
+    uint64_t throttled_quotes{0};
     // The distance between extra layers, in basis points of the reference price, when a fixed tick would collapse them:
     // at a 0.76 bps tick "one more tick" puts the second layer on almost the same price as the first. Rounded outward to
     // the tick grid and floored at one tick, so a layer is never closer than the run asked for. Zero, the default,
@@ -691,6 +699,19 @@ class L2MarketMakerBase : public Strategy
                 buy_quantity = 0;
             else if (static_cast<double>(position_) <= -opening_at)
                 sell_quantity = 0;
+        }
+        // The size throttle: while the carried position is marked against us by at least `throttle_adverse_bps`, the
+        // side that would ADD to it quotes `throttle_units` -- zero pauses that side entirely -- and the closing side
+        // keeps its full size. It is the non-price answer to the question the wind-down's skew was refused for: remove
+        // adverse flow without walking the exit into the book. Off at zero, so every recorded run stands.
+        if (config_.throttle_adverse_bps > 0.0 && position_ != 0 &&
+            -open_pnl_bps() >= config_.throttle_adverse_bps)
+        {
+            if (position_ > 0)
+                buy_quantity = std::min(buy_quantity, config_.throttle_units);
+            else
+                sell_quantity = std::min(sell_quantity, config_.throttle_units);
+            ++config_.throttled_quotes;
         }
         // The wind-down, before the other quantity rules so nothing further down can re-open the side it closes: in the
         // last minutes before the named end the position is worked by the closing side alone. Zero progress -- the

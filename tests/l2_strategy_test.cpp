@@ -609,6 +609,38 @@ int main()
         assert(retreat[0].side == Side::Sell);
     }
 
+    // The size throttle: the adding side is cut once the carried position is marked against us, and the closing side
+    // keeps its full size. The long here is entered at the ask (6421.5) against a midpoint of 6421.25, so it is 0.39 bps
+    // under water: a 0.5 bps threshold leaves both sides quoting, and a 0.3 bps threshold removes the buy alone. That
+    // is the difference between this control and the wind-down's price skew -- nothing moves, one side shrinks.
+    {
+        const auto drive = [&](double threshold) {
+            L2MarketMakerBase strategy_with_flag(L2MarketMakerBaseConfig{.order_size = 1,
+                                                                        .base_spread = 1.0,
+                                                                        .inventory_limit = 100,
+                                                                        .tick_size = 0.5,
+                                                                        .throttle_adverse_bps = threshold});
+            const auto both = strategy_with_flag.on_l2_market_view(view);
+            assert(both.size() == 2);
+            strategy_with_flag.on_order_submitted(
+                StrategyOrder{Side::Buy, view.symbol.str(), both[0].price, 1, 11});
+            strategy_with_flag.on_order_update(ExecutionReport{.order_id = 11,
+                                                              .side = exchange::Side::Buy,
+                                                              .exec_type = ExecType::Trade,
+                                                              .symbol = view.symbol.str(),
+                                                              .price = view.top.ask_price,
+                                                              .quantity = 1,
+                                                              .owner = "MarketMaker"});
+            return strategy_with_flag.on_l2_market_view(view);
+        };
+        const auto quiet = drive(0.5);
+        assert(quiet.size() == 2);
+        const auto throttled = drive(0.3);
+        assert(throttled.size() == 1);
+        assert(throttled[0].side == Side::Sell);
+        assert(throttled[0].quantity == 1);
+    }
+
     // The adverse-selection gate: a side is quoted only when the edge that fill would capture covers the maker
     // fee plus what passive fills at that distance have actually cost. The estimate arrives from the pipeline,
     // which is the only component that sees the midpoint after a fill, and the gate waits for samples before it

@@ -7,6 +7,35 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The size throttle is the first lever in this family to clear its bar (2026-11-27)
+
+Frontier 3 of the batch. The ten-contract UP cell, seven days at 13:30-15:30, with the adding side cut when the carried
+position is 15 bps under water -- the same trigger P0.1 was refused at, so only the response differs: size instead of
+price. The closing side keeps its full size in both arms.
+
+| arm | fills (median) | `closed_bps` median | positive | worst `net_bps` | `settled_bps` median | peak coins |
+|---|---:|---:|---:|---:|---:|---:|
+| control | 50 | **+10.32** | 5 of 7 | **-202.88** | +11.33 | 840 |
+| **throttle, adding side paused** | 56 | **+3.36** | **5 of 7** | **-27.78** | **+0.95** | 660 |
+| throttle, cut to one contract | 50 | +5.27 | 5 of 7 | -163.23 | -1.31 | 580 |
+
+The bar was the worst net day at **-120 bps or better**, the closed median positive on **5 of 7** at **40 fills or more**,
+and the settled median **above zero**. The paused arm clears **all four clauses**: the worst day improves by **175 bps**,
+the day count that both toxicity thresholds lost is **kept at five**, the fills **rise** (56 against 50, because the
+capital is freed to work the closing side), and the settled median stays positive. The one-contract arm fails the tail and
+turns the settled median negative, so the answer is the blunt end of the lever rather than the half measure.
+
+**Why this one works where the price levers did not.** On 11-22 the control loses **-202.88** and the paused arm reads
+**+2.31**: the loss was never the spread, it was the carried mark from *continuing to add* into a one-way move. Removing
+the adding side removes the flow that builds the mark, and leaves the side that reduces the position quoting at its normal
+distance -- which is exactly what the wind-down's skew was refused for doing the wrong way round.
+
+**What it costs, and what is still open.** The closed median falls from +10.32 to +3.36 (two thirds of the capture), and
+the settled median is **+0.95** -- thin enough that the exit's cost is nearly the whole edge. So the finding is a
+*mechanism*, not a seat: the next question is the trigger's value (15 bps was inherited from P0.1, not chosen here) and
+whether the paused side can be re-armed sooner without giving the mark back. `tools/sweep/up_ten_contract_cell.sh` carries
+all five arms and the bar; `tests/l2_strategy_test` pins that the rule cuts the adding side and leaves the closing one.
+
 ## The two seats do not share their bad days, and the pair needs more margin than 100 USDT has at 3x (2026-11-27)
 
 UP at ten contracts and NES at five, the same seven days at 13:30-15:30 UTC, merged into one account by
