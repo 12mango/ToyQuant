@@ -28,6 +28,11 @@ MAX_SNAPSHOT_AGE_S=${MAX_SNAPSHOT_AGE_S:-600}
 # (it came up in one). This waits for the state and then judges it, bounded so a unit that never comes up fails the check
 # instead of hanging it.
 WAIT_ACTIVE_S=${WAIT_ACTIVE_S:-15}
+# How far back the journal questions look, and how much of the two units' own output a failure attaches. The systemd state
+# is what a unit *is*; its stdout is what it *said*, and the first three deploys each cost a round trip because the report
+# quoted the first and not the second (the sentence that explained them was one `journalctl` away).
+HEALTH_WINDOW_S=${HEALTH_WINDOW_S:-600}
+HEALTH_JOURNAL_LINES=${HEALTH_JOURNAL_LINES:-25}
 failures=0
 
 wait_active() {  # wait_active <unit>
@@ -73,12 +78,11 @@ fi
 # `HEALTH_WINDOW_S` seconds rather than "since boot": a counter that only a reboot clears would keep a repaired unit red
 # forever, which is the same failure as a check that cannot go green.
 if command -v journalctl > /dev/null 2>&1; then
-  window=${HEALTH_WINDOW_S:-600}
-  crashed=$(journalctl -u "$SERVICE_NAME" --since "-${window}s" --no-pager -q 2>/dev/null | grep -c "Failed with result" || true)
+  crashed=$(journalctl -u "$SERVICE_NAME" --since "-${HEALTH_WINDOW_S}s" --no-pager -q 2>/dev/null | grep -c "Failed with result" || true)
   if [ "${crashed:-0}" -gt 0 ]; then
-    fail "$crashed 'Failed with result' line(s) in the last ${window}s; last: $(journalctl -u "$SERVICE_NAME" --since "-${window}s" --no-pager -q 2>/dev/null | grep "Failed with result" | tail -1)"
+    fail "$crashed 'Failed with result' line(s) in the last ${HEALTH_WINDOW_S}s; last: $(journalctl -u "$SERVICE_NAME" --since "-${HEALTH_WINDOW_S}s" --no-pager -q 2>/dev/null | grep "Failed with result" | tail -1)"
   else
-    ok "no 'Failed with result' line in the last ${window}s"
+    ok "no 'Failed with result' line in the last ${HEALTH_WINDOW_S}s"
   fi
 fi
 
@@ -137,12 +141,12 @@ fi
 # The journal is where a refused order or a rejected key lands. `-p err` is severity 3 and above, and the window is this
 # boot, because a line from last week is not this deploy's failure.
 if command -v journalctl > /dev/null 2>&1; then
-  errors=$(journalctl -u "$SERVICE_NAME" -b -p err --no-pager -q 2>/dev/null | wc -l)
+  errors=$(journalctl -u "$SERVICE_NAME" --since "-${HEALTH_WINDOW_S}s" -p err --no-pager -q 2>/dev/null | wc -l)
   if [ "${errors:-0}" -gt 0 ]; then
-    fail "$errors error-severity journal line(s) since boot:"
-    journalctl -u "$SERVICE_NAME" -b -p err --no-pager -q 2>/dev/null | tail -5 | sed 's/^/health:   /' >&2
+    fail "$errors error-severity journal line(s) in the last ${HEALTH_WINDOW_S}s:"
+    journalctl -u "$SERVICE_NAME" --since "-${HEALTH_WINDOW_S}s" -p err --no-pager -q 2>/dev/null | tail -5 | sed 's/^/health:   /' >&2
   else
-    ok "no error-severity journal line since boot"
+    ok "no error-severity journal line in the last ${HEALTH_WINDOW_S}s"
   fi
 fi
 
@@ -184,6 +188,15 @@ for file in "$ETC_DIR/live.yaml" "$ETC_DIR/live.env"; do
 done
 
 if [ "$failures" -ne 0 ]; then
+  # The program's own words, which is the part a systemd summary cannot carry: an argument the parser refused, a venue
+  # answer, a traceback. Attached only on failure, because a green report with fifty journal lines under it is a report
+  # nobody reads to the end.
+  if command -v journalctl > /dev/null 2>&1; then
+    for unit in "$RELAY_SERVICE_NAME" "$SERVICE_NAME"; do
+      echo "health: --- last ${HEALTH_JOURNAL_LINES} lines of $unit" >&2
+      journalctl -u "$unit" -n "$HEALTH_JOURNAL_LINES" --no-pager -q 2>/dev/null | sed 's/^/health:   /' >&2
+    done
+  fi
   echo "health: $failures failure(s)" >&2
   # Both units carry a start limit, so a crash loop that has been fixed still refuses to start until the counter is
   # cleared -- and a refusal reads exactly like a fresh fault. Naming the command is cheaper than the reader's hour.

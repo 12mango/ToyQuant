@@ -908,6 +908,12 @@ wants ten of them writes `100000000`. The risk block is the other half of that a
 order whose notional is above it, so an instrument whose one contract is worth more than the account may hold is a session
 that places nothing -- `one contract ≈ price × ctVal` is the number to compare against `max_exposure_usd` before choosing.
 
+**The four `link.venue_*` keys are one decision with `engine.live_orders: true`.** Without the switch the venue is the
+in-process matcher, and the engine refuses an endpoint that reaches nothing; with the switch on and no endpoint it refuses
+the reverse. `live_config.py` therefore checks the coupling too and refuses the file by name, which is one sentence instead
+of a unit that exits 1 and is restarted every five seconds -- measured 2026-11-27, the third deploy, with both relay
+sockets listening and `ExecMainStatus=1`.
+
 ```bash
 sudo bash /opt/toyquant/deploy/bootstrap_server.sh            # packages, account, directories, both units, logrotate
 python3 /opt/toyquant/tools/live/okx_probe.py spec <inst>      # the venue's four numbers, the instIdCode and the units

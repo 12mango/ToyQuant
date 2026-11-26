@@ -20,6 +20,11 @@ engine:
   order_size: 10000000            # one contract on this instrument's grid
   inventory_limit: 100000000      # ten contracts
   post_only: true
+  # The live order leg: `live_orders: true` is what makes the two `link` endpoints below a venue instead of the
+  # in-process matcher, and the engine refuses one without it -- so this file is refused by `live_config.py` too, in one
+  # sentence rather than on a host as a unit that exits 1 and is restarted. Turning it off is a rehearsal against a
+  # simulated venue; the template leaves it on because it is the shape a host actually runs.
+  live_orders: true
   advance_debounce_ms: 40000      # forty seconds of book time, the frozen configuration's suppression
   settle_residual: true
   # wind_down_skew_minutes: 15    # only meaningful for a session that ends at a named clock

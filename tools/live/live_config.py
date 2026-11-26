@@ -52,6 +52,11 @@ FLAGS = {
     ("engine", "wind_down_skew_ticks"): "--wind-down-skew-ticks",
     ("engine", "wind_down_adverse_bps"): "--wind-down-adverse-bps",
     ("engine", "settle_residual"): "--settle-residual",
+    # The opt-in that makes the venue a socket instead of the in-process matcher, and the four `venue_*` keys below are
+    # part of it: the engine refuses them without it (`--venue-endpoint ... part of --live-orders`). Missing this key was
+    # the third deploy's failure -- the unit started, exited 1 on that message and was restarted, with both relay sockets
+    # listening and nothing to place an order with.
+    ("engine", "live_orders"): "--live-orders",
     ("engine", "close_out"): "--close-out",
     ("engine", "close_out_cross_bps"): "--close-out-cross-bps",
     ("engine", "starting_cash"): "--starting-cash",
@@ -63,6 +68,7 @@ FLAGS = {
     ("link", "cancel_latency_us"): "--cancel-latency-us",
     ("link", "venue_endpoint"): "--venue-endpoint",
     ("link", "venue_max_orders"): "--venue-max-orders",
+    ("link", "venue_max_notional"): "--venue-max-notional",
     ("link", "venue_orders_per_second"): "--venue-orders-per-second",
     ("link", "snapshot_out"): "--snapshot-out",
 }
@@ -71,6 +77,7 @@ FLAGS = {
 SWITCHES = {
     ("engine", "post_only"),
     ("engine", "settle_residual"),
+    ("engine", "live_orders"),
     ("engine", "close_out"),
     ("engine", "markout_cover"),
     ("engine", "amend_on_toxicity"),
@@ -113,9 +120,35 @@ def parse(text, source="<text>"):
     return values
 
 
+VENUE_KEYS = (("link", "venue_endpoint"), ("link", "venue_max_orders"), ("link", "venue_orders_per_second"),
+              ("link", "venue_max_notional"))
+
+
+def validate(values, source="<text>"):
+    """The couplings the engine enforces, checked where the file is read rather than on the host.
+
+    `--venue-endpoint` and its three neighbours are *part of* `--live-orders`: the engine refuses them without it, and on a
+    host that refusal is a unit that exits 1 and is restarted every five seconds. Measured 2026-11-27, the third deploy:
+    both relay sockets listening, `ExecMainStatus=1`, `MainPID=0`, and the sentence that explained it sitting in the
+    journal unread because nothing in the report quoted the program's own words. One refusal here is cheaper than that.
+    """
+    live = str(values.get(("engine", "live_orders"), "false")).strip().lower() in ("true", "yes", "on", "1")
+    named = [f"{section}.{key}" for section, key in VENUE_KEYS if (section, key) in values]
+    if named and not live:
+        raise ValueError(f"{source}: {', '.join(named)} is part of --live-orders: add `engine.live_orders: true`, or "
+                         f"remove the venue keys (the engine refuses an endpoint that reaches no venue)")
+    if live:
+        missing = [f"{section}.{key}" for section, key in VENUE_KEYS[:2] if (section, key) not in values]
+        if missing:
+            raise ValueError(f"{source}: engine.live_orders needs {', '.join(missing)}: the relay's order channel is "
+                             f"named, not guessed, and the adapter's own cap is the limit ADR 0005 decision 4 asks for")
+    return values
+
+
 def flags(values):
     """The engine's arguments, one a line: the positionals first, then `--name=value` -- the two forms the parser reads.
     A switch is a bare flag when true and absent when false."""
+    validate(values)
     arguments = [values[name] for name in POSITIONAL]
     # The optional positionals come straight after the strategy and before any flag, because that is the order `ws` reads.
     arguments.extend(values[name] for name in POSITIONAL_OPTIONAL if name in values)
@@ -154,6 +187,25 @@ link:
     # A false switch is absent, not `--post-only false`, which the engine does not accept.
     values[("engine", "post_only")] = "false"
     assert "--post-only" not in flags(values), flags(values)
+    # The live order leg is one decision across five keys, and the coupling is checked here rather than on a host: the
+    # engine refuses `--venue-endpoint` without `--live-orders`, which on a host is a unit that exits 1 and is restarted.
+    values[("link", "venue_endpoint")] = "127.0.0.1:8766"
+    try:
+        flags(values)
+    except ValueError as error:
+        assert "engine.live_orders" in str(error), str(error)
+    else:
+        raise AssertionError("an endpoint without live_orders was accepted")
+    values[("engine", "live_orders")] = "true"
+    try:
+        flags(values)
+    except ValueError as error:
+        assert "link.venue_max_orders" in str(error), str(error)
+    else:
+        raise AssertionError("live_orders without the adapter's cap was accepted")
+    values[("link", "venue_max_orders")] = "20"
+    assert "--live-orders" in flags(values), flags(values)
+    assert "--venue-endpoint=127.0.0.1:8766" in flags(values), flags(values)
     # An unknown key is refused with its name, and a missing required one names itself.
     for bad, expect in (
         ("engine:\n  symboll: UP\n", "engine.symboll"),
@@ -189,11 +241,24 @@ def main():
         print(f"Error: {error}", file=sys.stderr)
         return 1
     if arguments.check:
+        # `--check` is the one-command question "is this file a live configuration", so it runs the couplings too: a file
+        # that parses and would be refused by the engine on the host is not a live configuration.
+        try:
+            validate(values, target)
+        except ValueError as error:
+            print(f"Error: {error}", file=sys.stderr)
+            return 1
         print(f"{target}: {len(values)} setting(s), a live configuration")
         return 0
-    print("\n".join(flags(values)))
+    try:
+        printed = flags(values)
+    except ValueError as error:
+        # The couplings are validated inside `flags`, so this is where a file that parses but would be refused on the host
+        # becomes one sentence instead of a unit that exits 1 and is restarted every five seconds.
+        print(f"Error: {error}", file=sys.stderr)
+        return 1
+    print("\n".join(printed))
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

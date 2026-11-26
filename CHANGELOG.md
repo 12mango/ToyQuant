@@ -23,6 +23,23 @@ site now points at `ToyQuant`.
   gate fails both of its conditions. Refused on its registered bar; the next registration is a **stricter** toxic
   definition (`--jump-ticks=3`) whose bar needs the tail **and** the median at once.
 
+## The live file could not name `--live-orders`, and the engine said so into an unread journal (2026-11-27)
+
+- **The engine makes the four `venue_*` flags *part of* `--live-orders` and refuses them without it**, and neither the
+  template nor the config reader had the switch: the generated command line carried `--venue-endpoint`,
+  `--venue-max-orders` and `--venue-orders-per-second`, no opt-in, and the unit started, exited 1 on
+  `--venue-endpoint ... are part of --live-orders` and was restarted -- `ExecMainStatus=1`, `MainPID=0` between two
+  attempts, and both relay sockets listening, which is the third deploy's report.
+- **`engine.live_orders` and `link.venue_max_notional` are mapped**, and `live_config.py` now **validates the coupling
+  itself**, in `--flags` and in `--check`: a venue key without the switch is refused by name, and the switch without
+  `link.venue_endpoint`/`venue_max_orders` the same way. The self-test drives all three cases, so a file that would be
+  refused on a host is refused where it is written. The template sets `live_orders: true`, because that is the shape a host
+  runs.
+- **The health report attaches the program's own words.** Three deploys in a row cost a round trip because the report quoted
+  systemd's state and not the unit's stdout, where each explanation already was: on failure it now prints the last
+  `HEALTH_JOURNAL_LINES` (25) lines of both units, and the error-severity count is windowed by `HEALTH_WINDOW_S` like the
+  other two checks, so a repaired unit can go green without a reboot.
+
 ## The relay served one socket, not two (2026-11-27)
 
 - **A relay given both `--listen` and `--order-listen` served the order channel and returned.** The order channel was a
