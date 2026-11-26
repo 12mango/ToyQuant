@@ -86,10 +86,13 @@ jobs:
           python3 tools/live/live_config.py --self-test
           python3 tools/live/venue_relay.py --self-test
 
-  # The data-backed gate, on a runner that holds the archive. Opt-in because it is the only way it can run: a hosted
-  # runner has the source and not the depth file.
+  # The data-backed gate, on a runner that holds the archive. Opt-in twice: the dispatch input asks for it, and the
+  # repository variable `TOYQUANT_DATA_RUNNER=yes` says such a runner is registered. Without the second condition, a
+  # dispatch that ticks the box queues this job on a label nothing serves -- measured 2026-11-27, deploy #8: `deploy`
+  # finished green and `data-gate` sat at "Waiting for a runner to pick up this job" for the rest of the day. A skipped
+  # job says "no runner is registered" instead.
   data-gate:
-    if: github.event_name == 'workflow_dispatch' && inputs.data_gate
+    if: github.event_name == 'workflow_dispatch' && inputs.data_gate && vars.TOYQUANT_DATA_RUNNER == 'yes'
     runs-on: [self-hosted, toyquant-data]
     steps:
       - uses: actions/checkout@v4
