@@ -1901,6 +1901,40 @@ because the quote is computed at the view's book and arrives ten milliseconds la
 cell** -- 93 fills, `fees_bps` 2.00 on every day, net positive on one of seven (+11.08 on 11-20) and negative on the rest --
 so what UP measured is the rule and not the instrument.
 
+**The last fifteen minutes: three arms, the settle bench, and the debounce settled (2026-11-26).** Everything below is one
+window, 15:15-15:30, seven days, `prorata`, 10 ms a leg. The close-out arms sell ten contracts; the debounce arms are the
+frozen cell with `--settle-residual` on.
+
+| symbol | close-out arm | `filled_ratio` | `is_fees_bps` | `maker_share` | `is_total_bps` median |
+|---|---|---|---|---|---|
+| UP | market + cross | **1.0** on 7 of 7 | 5.00 | 0 | **+11.08** |
+| UP | twap:10 + cross | **1.0** | 5.00 | 0 | -26.60 |
+| UP | twap:10 + post:60 | **0.857 on 4 of 7** | 1.0-2.6 | 0.25-1.0 | -10.73 (on a partial fill) |
+| NES | market + cross | **1.0** | 5.00 | 0 | **+13.33** |
+| NES | twap:10 + cross | **1.0** | 5.00 | 0 | +21.65 |
+| NES | twap:10 + post:60 | **0.78-0.89 on 7 of 7** | 1.0-3.4 | 0.25-0.57 | +9.09 (on a partial fill) |
+| both | the maker's own `--settle-residual`, same window | -- | -- | -- | **0.40-9.19** (median 1.56 UP, 4.01 NES) |
+
+The passive arm is the one the premise was about, and the premise is half right: its blended fee lands exactly where it
+was expected (`is_fees_bps` 1.0 to 3.4, `maker_share` a quarter to all of it), and it **never clears the position** -- a
+sixty-second rest at the near touch is not enough queue on these books, so ten contracts leave 1.1 to 2.2 of them
+outstanding and the shortfall is measured on a partial fill. The arms that do clear read 11 to 13 bps of cost at their
+best, an order of magnitude above the settle number, because settle crosses only the *residual* at the far touch while an
+arm sells the whole position through the book. The fourth arm -- peg plus retreat amend -- cannot be run: `execution_l2`
+has `post_first` and `post_timeout_us` and no amend path.
+
+| symbol | `--advance-debounce-ms` | fills a window | settled median | days positive |
+|---|---|---|---|---|
+| UP | 40 (40 ms of book time) | 15-32 | +4.62 | 4 of 7 |
+| UP | 40000 (40 s, what the old code did) | 4-9 | **+29.64** | 6 of 7 |
+| NES | 40 | 14-40 | +10.14 | 5 of 5 measured |
+| NES | **40000** | 6-26 | **+24.70** | **7 of 7** |
+
+Both seats and both windows -- this one and the two-hour cell (22-54 fills at +5.37 closed against 3-7 at +36.40) -- say
+the same thing: **the capture lives in suppressing the advancing side**, and it is paid for in fill count. The frozen
+configuration therefore carries `--advance-debounce-ms=40000` explicitly, which is now a labelled choice rather than an
+accident of the unit.
+
 **The amend line's three arms, and what the deadband buys (2026-11-26).** The same frozen shape (prorata, base 3 ticks,
 refresh 1, 10 ms, UP, seven days) under three settings of `--amend-instead-of-cancel`:
 
