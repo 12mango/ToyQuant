@@ -1838,6 +1838,12 @@ capture -- and only **11 fills** a window (5 to 39), so it loses the count it wa
 where three ticks gave 40 to 110 and a median of +8.75. Neither distance clears both halves, the notional falls to 0.15 to
 0.74 USD, and the row closes rather than being promoted.
 
+**The midpoint at seven basis points does not rescue it either, and the bar was written before the run**: 30+ fills AND a
+closed median at or above its own +8.75 AND `fees_bps` exactly 2.00, all three, or the symbol stays closed. It reads **46
+fills** -- the count comes back -- with a closed median of **+2.47** and fees of 9.13-20.82, so one of the three holds: seven
+basis points is wide enough to keep the fills and too narrow to keep the capture, and the fee says the taker leg is still in
+it. Three distances, three different failures, and the symbol is closed on the combination rather than on any one of them.
+
 **The registered bar itself, run the same day (2026-11-26).** PROS at ten ticks and BLUR at thirteen, same seven days and
 the same shape as the table above:
 
@@ -1865,13 +1871,15 @@ against the same thirteen ticks and the same seven days:
 |---|---|---|---|---|---|
 | one contract | 33 | +31.74 | 5 of 7 | +26.12 | 0.13-1.07 USD |
 | ten contracts | 35 | **+23.66** | **5 of 7** | **+12.41** | 0.67-10.63 USD |
+| one hundred contracts | 38 | +9.32 | 5 of 7 | -2.87 | 6.66-100.20 USD |
 
-The count holds (33 to 35) and the capture decays by about a quarter, which is what a larger quote should cost at a level
-it now has to clear rather than what an artefact of invisibility should do: a size too small to be picked off would be
-*unchanged* by ten times itself or would improve, and this one gives up 8 bps. So the +31.74 is a per-fill rate and not a
-visibility effect, and the cell is a seat candidate at both sizes. Two things stay open and both are named rather than
-argued: the absolute notional is still 0.67 to 10.63 USD a window, and one day of the seven reads -283 bps net on three
-fills, which is a single adverse print dominating a small position rather than a rate.
+The count holds across all three (33, 35, 38) and the capture falls by a quarter at ten contracts and by another 61 percent at
+a hundred -- and that third step is the one the registration named in advance: **a decay no worse than a quarter**, with
++10 written beside it as the line between size cost and luck. +9.32 is under it. So the honest reading is a **small-size
+phenomenon** rather than a per-fill rate: at one and ten contracts the cell earns, and at a hundred the fee climbs to
+2.13-42.84 bps -- the taker leg returning as the quote grows into the prints -- and the net median turns -2.87 while the
+notional reaches 6.66 to 100.20 USD a window. What the two smaller points measured is real; what they do not support is a
+seat at a size where the money is real.
 
 **The amend line's three arms, and what the deadband buys (2026-11-26).** The same frozen shape (prorata, base 3 ticks,
 refresh 1, 10 ms, UP, seven days) under three settings of `--amend-instead-of-cancel`:
