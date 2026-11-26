@@ -395,6 +395,38 @@ int main()
     assert(caught_up[0].side == Side::Buy);
     assert(caught_up[0].price > asymmetric_orders[0].price);
 
+    // The debounce is a duration in *book* time, so the same 40 has to mean 40 ms on a millisecond clock and 40,000
+    // units on a microsecond one. On the OKX cuts it used to mean forty seconds -- the whole frozen cell's
+    // asymmetric-refresh arm was reading a rule it was not labelled with (measured 2026-11-26).
+    {
+        L2MarketMakerBase on_ms(L2MarketMakerBaseConfig{.order_size = 1,
+                                                       .base_spread = 1.0,
+                                                       .inventory_limit = 100,
+                                                       .tick_size = 0.5,
+                                                       .advance_debounce_ms = 40});
+        const uint64_t start_ms = 1'794'834'900'007ULL;
+        L2MarketView first = view;
+        first.ts = start_ms;
+        const auto placed_ms = on_ms.on_l2_market_view(first);
+        assert(placed_ms.size() == 2);
+        on_ms.on_order_submitted(StrategyOrder{Side::Buy, view.symbol.str(), placed_ms[0].price, 1, 81});
+        on_ms.on_order_submitted(StrategyOrder{Side::Sell, view.symbol.str(), placed_ms[1].price, 1, 82});
+        L2MarketView moved_ms = first;
+        moved_ms.ts += 5;  // the fair price has just moved
+        moved_ms.top.bid_price += 1.0;
+        moved_ms.top.ask_price += 1.0;
+        assert(on_ms.on_l2_market_view(moved_ms).empty());
+        const auto pulled_ms = on_ms.cancel_requests();
+        assert(pulled_ms.size() == 2);
+        for (const uint64_t id : pulled_ms)
+            on_ms.on_order_update(
+                ExecutionReport{.order_id = id, .exec_type = ExecType::Cancelled, .symbol = view.symbol.str()});
+        L2MarketView rested_ms = moved_ms;
+        rested_ms.ts += 50;  // fifty milliseconds later the fair has been still long enough
+        const auto released = on_ms.on_l2_market_view(rested_ms);
+        assert(released.size() == 2);
+    }
+
     // The closing side comes in while there is inventory to close: a long position is reduced by the ask, so the ask
     // is quoted closer to the fair while the bid keeps its own distance.
     // The limit is huge so the existing inventory shift is negligible: this test is about the closing side's distance,

@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "common/clock_units.h"
 #include "exchange/execution_report.h"
 #include "strategy/strategy.h"
 
@@ -648,9 +649,14 @@ class L2MarketMakerBase : public Strategy
         if (config_.advance_debounce_ms > 0 && last_view_ts_ > 0 &&
             (buy_quantity > 0 || sell_quantity > 0))
         {
-            const uint64_t debounce_us = config_.advance_debounce_ms * 1000ULL;
+            // The debounce is milliseconds of *book* time: the view clock is milliseconds on an OKX cut and
+            // microseconds elsewhere, so the setting is turned into the clock's own unit. Measured 2026-11-26: without
+            // this, a `--advance-debounce-ms=40` on the OKX cuts waited forty *seconds* for the fair price to settle,
+            // which is the whole frozen cell's asymmetric-refresh arm reading a rule it was not labelled with.
+            const uint64_t debounce_ts =
+                config_.advance_debounce_ms * clock_units_per_second(last_view_ts_) / 1'000ULL;
             const bool settled =
-                fair_change_ts_ == 0 || last_view_ts_ - fair_change_ts_ >= debounce_us;
+                fair_change_ts_ == 0 || last_view_ts_ - fair_change_ts_ >= debounce_ts;
             const double half_tick = 0.5 * config_.tick_size;
             if (!settled)
             {

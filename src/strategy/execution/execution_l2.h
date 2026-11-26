@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "common/clock_units.h"
 #include "exchange/execution_report.h"
 #include "strategy/strategy.h"
 
@@ -159,16 +160,10 @@ class ExecutionL2Strategy : public Strategy
     StrategyMetrics metrics_{};
 };
 
-// The view clock's unit, inferred from its magnitude: an OKX book window prints `1794834900007`, which is
-// milliseconds, while the Deribit fixtures print sixteen digits, which are microseconds. The horizon arrives in
-// seconds, so without this a 7,200-second parent became an 8.3-day slice interval on the OKX cut and the run sent
-// exactly one child (measured 2026-11-26: `child_orders=1 span_seconds=0` on a two-hour window).
-inline uint64_t clock_units_per_second(uint64_t ts)
-{
-    // Milliseconds are 1.7e12 today (an OKX book cut starts at 1794834900007); microseconds are 1.7e15, and the
-    // unit tests use small microsecond clocks. Anything at or above 1e11 is therefore taken as milliseconds.
-    return ts >= 100'000'000'000ULL ? 1'000ULL : 1'000'000ULL;
-}
+// The view clock's unit comes from `common/clock_units.h`: milliseconds on an OKX book cut (`1794834900007`) and
+// microseconds on the Deribit fixtures. The horizon arrives in seconds, so without that conversion a 7,200-second
+// parent became an 8.3-day slice interval on the OKX cut and the run sent exactly one child (measured 2026-11-26:
+// `child_orders=1 span_seconds=0` on a two-hour window).
 
 inline uint64_t ExecutionL2Strategy::remaining_quantity() const
 {
