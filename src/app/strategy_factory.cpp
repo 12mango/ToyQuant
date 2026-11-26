@@ -126,6 +126,8 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
         base_config.wind_down_end_minute = config.wind_down_end_minute;
         if (config.wind_down_skew_ticks > 0.0)
             base_config.wind_down_skew_ticks = config.wind_down_skew_ticks;
+        // The condition: a tail marked in our favour is left to settle, so the skew only starts when it is against us.
+        base_config.wind_down_adverse_bps = config.wind_down_adverse_bps;
         // The depth cap: a size the book can absorb, and its rungs.
         base_config.max_depth_ratio = config.max_depth_ratio;
         if (config.depth_ladder_max > 0) base_config.depth_ladder_max = config.depth_ladder_max;
@@ -174,6 +176,8 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
         base_config.wind_down_end_minute = config.wind_down_end_minute;
         if (config.wind_down_skew_ticks > 0.0)
             base_config.wind_down_skew_ticks = config.wind_down_skew_ticks;
+        // The condition: a tail marked in our favour is left to settle, so the skew only starts when it is against us.
+        base_config.wind_down_adverse_bps = config.wind_down_adverse_bps;
         // The depth cap: no rung larger than a share of the displayed touch size, and a ladder for a larger quote.
         base_config.max_depth_ratio = config.max_depth_ratio;
         if (config.depth_ladder_max > 0) base_config.depth_ladder_max = config.depth_ladder_max;

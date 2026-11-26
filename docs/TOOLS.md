@@ -91,7 +91,7 @@ does not.
 | `tools/study/viability.py` | the eight closed lines, re-derived | gate |
 | `tools/study/volatility_window.py` | a windowed true range and its median split | both |
 | `tools/study/walk_forward.py` | chosen on the past, scored on the next window | both |
-| `tools/study/sweep_summary.py` | one sweep CSV in, the median **and its spread** out: closed min/max, positive days, fills, fee range and the absolute residual, because a median carried by one day hid the BLUR size ladder's ending | gate |
+| `tools/study/sweep_summary.py` | one sweep CSV in, the median **and its spread** out: closed min/max, positive days, fills, fee range, the absolute residual, the leave-one-out median and the best day's dominance. `--gate` applies the owner's two dispersion conditions (leave-one-out median positive, worst day within `--worst-multiple` of the median), which archived the BLUR size ladder | gate |
 | `tools/live/venue_relay.py` | market data to the engine and the order leg both ways, on the venue's grid; the reference the engine's order session was ported from, kept for review. `SIGTERM` refuses new orders, cancels what the relay placed and leaves only once nothing is live | both |
 | `tools/live/live_config.py` | turns `config/live.yaml` into the engine's arguments -- the positionals first, then one `flag=value` a line -- and refuses a key it does not know, so the ignored live file is a contract rather than a second copy of the flags | gate |
 | `tools/live/websocket_sender.py` | a local venue streaming two recorded files | hand |

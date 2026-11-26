@@ -28,7 +28,7 @@ def number(row, field):
         return None
 
 
-def summarise(rows):
+def summarise(rows, worst_multiple=3.0):
     """One summary per (strategy, model), which is what a cell is: the same run under one queue model."""
     groups = {}
     for row in rows:
@@ -42,26 +42,50 @@ def summarise(rows):
         fills = [v for v in (number(r, "fills") for r in group) if v is not None]
         fees = [v for v in (number(r, "fees_bps") for r in group) if v is not None]
         pos = [abs(v) for v in (number(r, "net_pos") for r in group) if v is not None]
-        out.append(
-            {
-                "strategy": strategy,
-                "model": model,
-                "days": len(group),
-                "measured": len(closed),
-                # The three numbers a cell is judged by, and the spread that says whether the median is a fact about the
-                # run or about one day inside it.
-                "closed_median": statistics.median(closed) if closed else None,
-                "closed_min": min(closed) if closed else None,
-                "closed_max": max(closed) if closed else None,
-                "closed_positive": sum(1 for v in closed if v > 0),
-                "net_median": statistics.median(net) if net else None,
-                "usd_median": statistics.median(usd) if usd else None,
-                "fills_median": statistics.median(fills) if fills else None,
-                "fee_min": min(fees) if fees else None,
-                "fee_max": max(fees) if fees else None,
-                "position_median": statistics.median(pos) if pos else None,
-            }
-        )
+        summary = {
+            "strategy": strategy,
+            "model": model,
+            "days": len(group),
+            "measured": len(closed),
+            # The three numbers a cell is judged by, and the spread that says whether the median is a fact about the
+            # run or about one day inside it.
+            "closed_median": statistics.median(closed) if closed else None,
+            "closed_min": min(closed) if closed else None,
+            "closed_max": max(closed) if closed else None,
+            "closed_positive": sum(1 for v in closed if v > 0),
+            "net_median": statistics.median(net) if net else None,
+            "usd_median": statistics.median(usd) if usd else None,
+            "fills_median": statistics.median(fills) if fills else None,
+            "fee_min": min(fees) if fees else None,
+            "fee_max": max(fees) if fees else None,
+            "position_median": statistics.median(pos) if pos else None,
+        }
+        # The dispersion the median hides. `leave_one_out` is the median with the best day removed -- the owner's first
+        # condition; `best_share` and `best_over_second` say how much of the cell is one day; `worst_multiple_ratio` is the
+        # worst day against the median, the second condition.
+        if len(closed) >= 2:
+            best = max(closed)
+            rest = list(closed)
+            rest.remove(best)
+            ordered = sorted(closed, reverse=True)
+            summary["leave_one_out_median"] = statistics.median(rest)
+            summary["best_share"] = best / sum(closed) if sum(closed) != 0 else None
+            summary["best_over_second"] = best / ordered[1] if ordered[1] > 0 else None
+            median = summary["closed_median"]
+            summary["worst_multiple_ratio"] = (abs(min(closed)) / median) if median and median > 0 else None
+            problems = []
+            if summary["leave_one_out_median"] <= 0:
+                problems.append("leave_one_out_median<=0")
+            if summary["worst_multiple_ratio"] is not None and summary["worst_multiple_ratio"] > worst_multiple:
+                problems.append(f"worst_day>{worst_multiple:g}x_median")
+            summary["dispersion_problems"] = problems
+        else:
+            summary["leave_one_out_median"] = None
+            summary["best_share"] = None
+            summary["best_over_second"] = None
+            summary["worst_multiple_ratio"] = None
+            summary["dispersion_problems"] = ["fewer_than_two_measured_days"]
+        out.append(summary)
     return out
 
 
@@ -75,7 +99,17 @@ def format_summary(summary):
             f"positive={summary['closed_positive']}of{summary['measured']} "
             f"net={fmt(summary['net_median'])} usd={fmt(summary['usd_median'], 4)} "
             f"fee={fmt(summary['fee_min'])}-{fmt(summary['fee_max'])} "
-            f"pos={fmt(summary['position_median'], 0)}")
+            f"pos={fmt(summary['position_median'], 0)} "
+            # The dispersion, on the same line: a reader who quotes the median without these has quoted half the row.
+            f"loo={fmt(summary.get('leave_one_out_median'))} "
+            f"best_share={fmt(summary.get('best_share'), 3)} "
+            f"best_over_second={fmt(summary.get('best_over_second'))} "
+            f"worst_x={fmt(summary.get('worst_multiple_ratio'))}")
+
+
+def gate_verdict(summary):
+    problems = summary.get("dispersion_problems") or []
+    return "pass" if not problems else "fail(" + ",".join(problems) + ")"
 
 
 def self_test():
@@ -108,6 +142,31 @@ def self_test():
     flat = summarise([{"strategy": "x", "model": "y", "closed_bps": "n/a", "net_bps": "n/a", "net_usd": "n/a",
                        "fills": "0", "fees_bps": "n/a", "net_pos": "0"}])[0]
     assert flat["measured"] == 0 and flat["closed_median"] is None, flat
+    assert flat["dispersion_problems"] == ["fewer_than_two_measured_days"], flat
+
+    # The gate's first condition: a cell whose sign lives in its best day. Five days are small, one is a hundred, and the
+    # median is positive -- but remove that day and the median is not.
+    flip = summarise([{"strategy": "s", "model": "m", "closed_bps": str(v), "net_bps": "0", "net_usd": "0",
+                       "fills": "1", "fees_bps": "2", "net_pos": "0"} for v in (-5, -4, -3, 100, 2, 3, 4)])[0]
+    assert flip["closed_median"] == 2, flip
+    assert flip["leave_one_out_median"] < 0, flip
+    assert "leave_one_out_median<=0" in flip["dispersion_problems"], flip
+    assert gate_verdict(flip).startswith("fail"), flip
+
+    # The gate's second condition: a worst day more than three times the median is a tail, whatever the median says.
+    tail = summarise([{"strategy": "s", "model": "m", "closed_bps": str(v), "net_bps": "0", "net_usd": "0",
+                       "fills": "1", "fees_bps": "2", "net_pos": "0"} for v in (10, 1, 1, 1, 1, 1, -40)])[0]
+    assert tail["worst_multiple_ratio"] == 40, tail
+    assert any(p.startswith("worst_day>") for p in tail["dispersion_problems"]), tail
+
+    # And the cell the gate was written for: BLUR at three hundred contracts passes both conditions while **one day is 88
+    # per cent of the cell and nine times its second best** -- which is why the dominance is printed rather than gated.
+    blur = summarise([{"strategy": "s", "model": "m", "closed_bps": str(v), "net_bps": "0", "net_usd": "0",
+                       "fills": "1", "fees_bps": "2", "net_pos": "0"}
+                      for v in (32.75, 941.21, 102.00, 89.07, -21.87, -69.57)])[0]
+    assert gate_verdict(blur) == "pass", blur
+    assert 0.85 < blur["best_share"] < 0.90, blur
+    assert 9.0 < blur["best_over_second"] < 9.3, blur
     print("self-test OK")
     return 0
 
@@ -116,6 +175,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--read", nargs="+", metavar="CSV", help="sweep CSV files, as okx_maker_baseline.py writes them")
+    parser.add_argument("--gate", action="store_true",
+                        help="print the dispersion verdict per cell: the median with its best day removed must stay "
+                             "positive, and the worst day may not exceed --worst-multiple times the median")
+    parser.add_argument("--worst-multiple", type=float, default=3.0,
+                        help="how many times the median the worst day may be before the gate refuses the cell (default 3)")
     arguments = parser.parse_args()
     if arguments.self_test:
         return self_test()
@@ -136,8 +200,10 @@ def main():
             status = 1
             continue
         print(path)
-        for summary in summarise(rows):
+        for summary in summarise(rows, worst_multiple=arguments.worst_multiple):
             print("  " + format_summary(summary))
+            if arguments.gate:
+                print(f"    dispersion gate: {gate_verdict(summary)}")
     return status
 
 

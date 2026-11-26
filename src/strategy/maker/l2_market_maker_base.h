@@ -164,6 +164,11 @@ struct L2MarketMakerBaseConfig
     double wind_down_skew_ticks{1.0};
     // Views the wind-down was active on, so an arm can be told from a window that never reached its last minutes.
     uint64_t wind_down_views{0};
+    // The wind-down's condition: start the skew only when the carried position is marked **against** us by at least this
+    // many bps of the reference price. Zero, the default, is the unconditional skew every arm before 2026-11-26 ran -- and
+    // on UP at ten contracts that arm cost +11.33 to -5.43 bps of settled median by clearing a tail the week had marked in
+    // our favour. A run that names this keeps the favourable tail and works only the adverse one.
+    double wind_down_adverse_bps{0.0};
     // --max-depth-ratio: no rung may be larger than this share of the same side's displayed touch size, and a size above
     // the cap is split into `depth_ladder_max` rungs one tick behind each other. A fixed size on a thin book is adverse
     // selection by construction -- measured 2026-11-26, BLUR at thirteen ticks reads +31.74 bps closed at one contract and
@@ -187,6 +192,7 @@ class L2MarketMakerBase : public Strategy
                                               const TopOfBook& top) override
     {
         const double mid = (top.bid_price + top.ask_price) / 2.0;
+        last_view_mid_ = mid;
         return quote(symbol, top, mid);
     }
 
@@ -195,6 +201,7 @@ class L2MarketMakerBase : public Strategy
         // The view's clock is the one the debounce measures with: a strategy only acts on a market event, so the
         // event's own timestamp is when this decision was taken.
         last_view_ts_ = view.ts;
+        last_view_mid_ = (view.top.bid_price + view.top.ask_price) / 2.0;
         if (view.top.bid_price <= 0.0 || view.top.ask_price <= 0.0)
             return quote(view.symbol.str(), view.top, 0.0);
         return quote(view.symbol.str(), view.top, fair_price(view));
@@ -328,9 +335,22 @@ class L2MarketMakerBase : public Strategy
         // either way -- so the position moves and only the working-quantity bookkeeping is skipped. A fill for an id
         // this process never submitted is still ignored, which is what a resumed session sees.
         if (order == open_orders_.end() && !submitted_orders_.knows(report.order_id)) return;
-        position_ += report.side == exchange::Side::Buy
-                 ? static_cast<int64_t>(report.executed_quantity())
-                 : -static_cast<int64_t>(report.executed_quantity());
+        // The volume-weighted entry of the carried position, kept beside the position itself: the wind-down's condition
+        // asks whether this tail is marked against us, and a position without its entry cannot answer. The arithmetic is
+        // trend_l2's -- a crossing fill resets it, a reducing fill leaves the entry of what remains alone.
+        const int64_t execution = static_cast<int64_t>(report.executed_quantity());
+        const int64_t signed_quantity = report.side == exchange::Side::Buy ? execution : -execution;
+        const int64_t previous = position_;
+        position_ += signed_quantity;
+        if (previous == 0 || (previous > 0) != (position_ > 0))
+            average_entry_ = report.price;
+        else if ((previous > 0 && signed_quantity > 0) || (previous < 0 && signed_quantity < 0))
+        {
+            const double before = static_cast<double>(previous < 0 ? -previous : previous);
+            const double added = static_cast<double>(execution);
+            average_entry_ = (average_entry_ * before + report.price * added) / (before + added);
+        }
+        if (position_ == 0) average_entry_ = 0.0;
         metrics_.filled_quantity += report.executed_quantity();
         ++metrics_.fill_count;
         metrics_.fees_paid += report.fee;
@@ -373,6 +393,12 @@ class L2MarketMakerBase : public Strategy
         if (config_.wind_down_skew_minutes == 0 || config_.wind_down_end_minute <= 0.0 ||
             last_view_ts_ == 0)
             return 0.0;
+        // The condition, before the clock: a tail the market has marked in our favour is left to settle, because closing
+        // it gives up that mark -- the difference the ten-contract arm measured (settled +11.33 with no skew, -5.43 with
+        // it). Only an adverse tail is worked, and "adverse" is the position's own mark in bps of the mid.
+        if (config_.wind_down_adverse_bps > 0.0 &&
+            open_pnl_bps() > -config_.wind_down_adverse_bps)
+            return 0.0;
         const uint64_t units = clock_units_per_second(last_view_ts_);
         if (units == 0) return 0.0;
         const double second_of_day =
@@ -382,6 +408,16 @@ class L2MarketMakerBase : public Strategy
         if (second_of_day <= start) return 0.0;
         if (second_of_day >= end) return 1.0;
         return (second_of_day - start) / (end - start);
+    }
+
+    // How the carried position is marked, in bps of the last mid: positive is in our favour. Zero when flat, which makes
+    // the condition above false for a run with nothing to work.
+    double open_pnl_bps() const
+    {
+        const double mid = last_view_mid_ > 0.0 ? last_view_mid_ : last_fair_price_;
+        if (position_ == 0 || average_entry_ <= 0.0 || mid <= 0.0) return 0.0;
+        const double move = position_ > 0 ? mid - average_entry_ : average_entry_ - mid;
+        return move / mid * 1e4;
     }
 
    private:
@@ -909,6 +945,10 @@ class L2MarketMakerBase : public Strategy
     uint64_t buy_volume_{0};
     uint64_t sell_volume_{0};
     int64_t position_{0};
+    // The carried position's volume-weighted entry and the mid of the last view: together they answer "is this tail marked
+    // against us", which is the condition the conditional wind-down reads (`open_pnl_bps`).
+    double average_entry_{0.0};
+    double last_view_mid_{0.0};
     bool cancel_pending_{false};
     uint64_t quote_age_{0};
     double last_fair_price_{0.0};

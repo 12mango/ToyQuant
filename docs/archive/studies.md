@@ -2081,6 +2081,24 @@ is refused; the finding is the non-monotonicity: at these sizes the closed media
 ladder read off three of them is not a curve and no seat at a thousand contracts can be argued from it. What would settle it
 is a *dispersion* column beside the median -- the spread of the seven days -- rather than a fourth size.
 
+**And that column is a ruler now: BLUR's ladder archived with it (2026-11-26).** `sweep_summary.py --gate` applies the two
+conditions -- the closed median with its best day removed stays positive, and the worst day is no more than three times the
+median -- and prints the dominance beside them (the best day's share of the cell, and its multiple of the second best):
+
+| arm | `closed_bps` | measured | leave-one-out | best day's share | best / second | worst / median | gate |
+|---|---:|---:|---:|---:|---:|---:|---|
+| 100 contracts, 0.15 cap, one rung | +43.76 | 7 | +27.47 | 0.72 | 3.3x | 2.96x | **pass** |
+| 300 contracts, the same cap | +60.91 | 6 | +32.75 | **0.88** | **9.2x** | 1.14x | pass |
+| 1000 contracts, the same cap | +17.36 | 6 | +1.36 | **1.00** | **30.6x** | **6.82x** | **fail** |
+| 100 contracts, uncapped | +9.32 | 7 | +7.24 | -- (the sum is negative) | 4.1x | **13.91x** | **fail** |
+
+So the ladder closes here. The **hundred-contract capped cell is the only one that passes both conditions with moderate
+dominance** -- 72 per cent of it is its best day and that day is 3.3 times the next -- the three-hundred point passes the
+gate while nine tenths of it is one day, and the thousand-contract and uncapped cells fail the tail condition outright. What
+the ruler adds beside the medians is the second finding: the cap does not only raise the capture, it **narrows the tail
+relative to the median** (2.96 against 13.91), which is why the capped cell passes where the uncapped one cannot. That is the
+archival verdict for the BLUR volume question, and no fourth size is registered.
+
 **4. The half-cap retreat at ten contracts: it moves the tail from one column to the other.** `--onesided-inventory-frac=0.5`
 on the ten-contract cell reads **67 fills** (control 50), a closed median of **+3.24 on 5 of 7**, a worst closed day of
 **-95.84** against the control's -34.12, a worst net day of **-127.46** against -202.88, and a median absolute residual of
@@ -2183,6 +2201,105 @@ week's mark did not repay" rather than as a direction that is dead: a week whose
 exactly the case the wind-down is for, and the arm's cost there is bounded by the settle number it replaces -- 0.27 to 0.96
 bps a day on these two seats.
 
+**The conditional wind-down at ten contracts: the condition selects correctly and the arm is worse anyway (2026-11-26).**
+The entry above names its own open case -- "a week whose carried position is marked against us is exactly the case the
+wind-down is for" -- so the lever was wired as that condition (`--wind-down-adverse-bps=15`: the skew starts only when the
+carried position is marked against us by at least fifteen bps, and a favourably marked tail is left to settle) and asked on
+the **ten-contract cell**, where the money is real. Bar, registered before the run and the owner's: `settled_bps` at least
+**+10**, five of seven positive closed days, and a worst day better than the control's **-34.12**.
+
+| day | control `closed` / `settled` | `--wind-down-adverse-bps=15` |
+|---|---|---|
+| 11-16 | +36.94 / +54.25 | +37.46 / +35.87 |
+| 11-17 | +10.32 / +11.33 | **-2.13 / -5.43** |
+| 11-18 | +20.30 / +15.32 | +20.12 / +15.27 |
+| 11-19 | +6.43 / -1.09 | **-7.91 / -12.67** |
+| 11-20 | -8.86 / -14.97 | -13.69 / -15.62 |
+| 11-21 | +49.55 / +42.22 | +42.32 / +39.51 |
+| 11-22 | -34.12 / -207.44 | **-123.02 / -197.82** |
+| median | +10.32 / **+11.33** | **-2.13 / -5.43** |
+| positive closed days | **5 of 7** | **3 of 7** |
+
+**The wiring does what it says and the bar is refused on all three clauses.** The three losing days are bit-identical to the
+unconditional arm's (11-17, 11-19, 11-22: -2.13, -7.91, -123.02 closed) because on those days the carried position was marked
+against us and the skew ran; the winning days come back to the control (11-16 +37.46 against +36.94, 11-18 +20.12 against
++20.30). So the condition is not the defect -- **the premise is**. Three measurements say so:
+
+- **The adverse tail is where the wind-down sells into the run.** On 11-22 it takes -34.12 closed and -207.44 settled to
+  **-123.02 closed and -197.82 settled**: a third of the week's worst loss moved from the mark column into the capture column
+  with the total unchanged. Working a falling book by hand does not avoid the loss, it pays it on the way down.
+- **The favourable tail is not where the skew would have earned.** On 11-16 -- the week's best settled day -- the
+  *unconditional* skew read +49.74 closed against the control's +36.94, and the condition **skips** it: the one day the
+  mechanism would have gained is the day it is designed to leave alone.
+- **The carried mark does not predict the tail's direction.** 11-16 and 11-21 were both marked in our favour at 15:15 (settled
+  +54.25 and +42.22); the unconditional skew helped the first and cost -27 bps on the second. The mark is a lagging reading of
+  the position and the tail's sign is the sign of the next fifteen minutes, which nothing at 15:15 knows.
+
+So the **exit-price family closes**: unconditional, conditional, a half-cap retreat and three close-out mechanisms, each
+refused on this cell with a measured reason, and none of them moves the tail's sign. What the tail is, is a position carried
+into a directional run -- and the only lever in the record that has moved it is the one that acts **before** the run: the
+toxicity switch took UP's worst closed day from -66.80 to **-48.67** at one contract without losing more than a fifth of the
+fills. It has never been run above one contract, which is the arm registered next.
+
+**Registered before its run: the toxicity switch at ten contracts (2026-11-26).** The frozen ten-contract cell with
+`--settle-residual` against the same cell plus `--amend-on-toxicity --jump-window-ms=40 --jump-ticks=2`, the same seven days
+at 13:30-15:30. **Bar**: the worst `net_bps` day improves on the control's **-202.88**, the closed median keeps its sign on
+**five of seven** with **40 fills or more** (a fifth of 50), and the settled median stays at **+10 or above** -- the state must
+buy the tail without spending the cell's economics, which is the bar the one-contract arm's 4-of-7 day count failed.
+
+**The second seat's size: NES is verified at five contracts and refused at ten (2026-11-26).** UP's ten-contract cell was
+the only sized seat in the record; NES carried only its one-contract frozen cell (`--advance-debounce-ms=40000`), so the same
+frozen shape was run at five and at ten contracts over the same seven days at 13:30-15:30 with `--settle-residual` on both.
+**Bar, registered before the runs and the owner's**: `closed_bps` at least **+10**, `settled_bps` **above zero**, **five of
+seven** positive, and no collapse in the worst day.
+
+| contracts | fills | `closed_bps` | positive | `settled_bps` | `net_bps` | `net_usd` | worst `closed` | leave-one-out | worst / median | gate |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| 5 | 99 | **+16.60** | **5 of 7** | **+6.94** | +7.66 | **+0.50** | -48.86 | +15.63 | 2.94x | **pass** |
+| 10 | 116 | +7.08 | 4 of 7 | **-18.17** | -11.45 | -1.20 | -62.01 | +2.77 | **8.76x** | **fail** |
+
+**Five clears the bar and the dispersion gate; ten fails all three clauses and the gate**, and the failure is not a
+single-day explosion of the BLUR kind but a decay in every column at once: the fills grow 99 to 116 and the notional with
+them (448-725 to 600-1374 USD a window), while the closed median falls by more than half (+16.60 to +7.08), the day count
+loses one, and the settled median turns **negative** (-18.17) -- the size stops being paid for by the book it is quoted into.
+The ruler says the same from the other side: at five the worst day is 2.94 times the median and the median survives the loss
+of its best day (+15.63); at ten the leave-one-out halves to +2.77 and the worst day is **8.76** times the median.
+
+So the **two-seat quota is UP at ten contracts and NES at five**, both clearing the registered bar and the dispersion gate
+over the same two hours and seven days: **+0.73 and +0.50 USD a day** of net, closed medians of +10.32 and +16.60 on 5 of 7
+days each, `fees_bps` exactly 2.00 throughout. What is open is not another size for either -- UP's twenty-contract ladder
+already doubled the worst day, and NES's ten is the second row of this table -- but a state that acts before the run, which is
+the arm registered just above.
+
+**The arm ran, and the state buys the tail at the price of the median (2026-11-26).** `--amend-on-toxicity --jump-window-ms=40
+--jump-ticks=2` on the same ten-contract cell, the same seven days:
+
+| column | control | with the switch |
+|---|---:|---:|
+| fills (median) | 50 | 42 |
+| `closed_bps` median | **+10.32** | **+2.05** |
+| positive closed days | **5 of 7** | **4 of 7** |
+| worst `net_bps` day | **-202.88** | **-76.38** |
+| worst `closed` day | -34.12 | -70.00 |
+| `settled_bps` median | **+11.33** | **-9.42** |
+| `net_usd` median | **+0.73** | -0.47 |
+| dispersion gate | pass (worst 3.3x) | fail (leave-one-out -4.07, worst 34x) |
+
+**The tail clause passes by the widest margin anything in this family has managed, and the other two fail.** The worst net day
+improves by **126 bps** and the decomposition says why: the arm carried almost no adverse inventory into the run (its mark on
+the worst day is -6.38 against the control's -168.76) and paid -70 bps of realised closed loss instead -- so the loss it does
+take is a **quote** loss rather than a **carry** loss, and it is 62 per cent smaller. What it pays is the calm days: the closed
+median collapses to +2.05 with one fewer positive day, the settled median turns **negative**, and the dispersion gate fails on
+both conditions -- a leave-one-out median of -4.07 says the cell's sign is now carried by its best day.
+
+**Refused on the registered bar, and the trade is the finding**: at this size the one lever that moves the tail gives up the
+median to do it, which is consistent with everything above it -- the tail is a directional run and its cost is variance rather
+than a mark. That is what makes the next question a *state* question rather than a size or a price one, and it is registered
+here with both halves in the bar, because either half alone has now been met and thrown away: **a stricter toxic definition**
+(`--jump-ticks=3`, one jump less often) on the same cell, whose bar is the worst net day at **-120 bps or better** *and* the
+closed median positive on **5 of 7** at **40 fills or more**. If no setting holds both, the tail and the median are not
+available from the same lever at ten contracts, and that sentence closes the line.
+
 **The amend line's three arms, and what the deadband buys (2026-11-26).** The same frozen shape (prorata, base 3 ticks,
 refresh 1, 10 ms, UP, seven days) under three settings of `--amend-instead-of-cancel`:
 
@@ -2262,6 +2379,24 @@ exactly, day for day, wherever the instrument's tick sits in the same rounding b
 rather than re-derived -- +26.18 is quotable only as "recorded", until a run carrying the flags that produced it is found.
 The one alternative this leaves open is the day set: the seven days here are 11-16 to 11-22, the depth on disk, and a cell
 measured on a different seven cannot be re-derived from it.
+
+**Archived 2026-11-26: `+26.18` is not re-derivable, and `+9.83` is the number that stands.** The one alternative left open
+above -- a unit defect standing between the page's flags and the cell -- was tested and closed: the cell's own flag set with
+`--advance-debounce-ms=40000`, i.e. forty **seconds**, which is the arithmetic the cooldown defect was doing when the cell
+was first measured, reads **the seven days identical to the last digit** to the 40 ms arm (35/+37.04, 26/+44.84, 26/+3.99,
+50/+9.83, 26/-8.63, 19/+57.91, 26/-69.40). So **the advance debounce is inert in this cell at either unit**, and the gap is
+not the unit, the edge cover (+5.37 without it), the layer count (+17.93 at one layer), the refresh column (+27.14 at two,
++9.59 at four) or the day set, which is the one the record was measured on. What is left is a code revision, and no run in
+the record carries it. The recorded number is therefore **deprecated**: it stays in the tables below with that word beside
+it, because deleting it would erase what the cell was believed to be, and the economics of the frozen cell is
+**+9.83 bps closed on 5 of 7 days at 26 fills a window**, which is the value every re-derivation in the record reads.
+
+> **What the archival changes is the verdict, not only the number.** With +9.83 the two-layer cell is **worse on capture
+> than the one-layer cell's re-derived +17.93** (26 fills against 19), where with +26.18 it was the best in its table. So the
+> layer buys **fills** and gives up **capture**: the second rung is filled by the deeper sweep at four ticks, and the fills it
+> adds are cheaper per fill than the ones the primary had alone. That is a different conclusion from the one the recorded
+> table supported, and it is the point of archiving a number rather than quoting it.
+
 
 **The one-sided retreat buys the tail and pays for it in the median.** At twenty contracts, stopping the adding side at
 half the cap takes the worst day from **-215.52 to -138.01 bps** and three days' peak inventory down (1920 to 1320, 1400
@@ -2487,15 +2622,17 @@ number of orders rather than by their size, which the clip sweep showed first.
 | one layer, one contract | 17 (13-27) | 2.00 | +12.40 | 6 of 7 | 3 to 9 |
 | one layer, two contracts | 21 (15-24) | 2.00 | +20.46 | 6 of 7 | 4 to 9 |
 | one layer, four contracts | 24 (16-33) | 2.00 | +11.76 | 4 of 7 | 8 to 13 |
-| **two layers, one contract** | **26 (19-37)** | 2.00 | **+26.18** | **5 of 7** | 4 to 10 |
+| **two layers, one contract** | **26 (19-37)** | 2.00 | **+26.18** *(recorded; **+9.83** re-derived, archived 2026-11-26)* | **5 of 7** | 4 to 10 |
 | two layers, two contracts | 29 (22-54) | 2.00 | +4.53 | 5 of 7 | 4 to 13 |
 
 **The size does not buy fills, and the layers do.** Doubling the clip moves the notional and leaves the count near
 twenty-one; quadrupling it reaches twenty-four and costs the capture (the closed median falls from +20.46 to +11.76 and
 the positive days from six to four) -- more size through the same thin book is the closing-side result again. A second
-layer at the same size lifts the count to 26 with one day at 37 and raises the closed median to **+26.18**, which is the
-best cell in the table, and the two capture figures beside it are recorded rather than re-derived -- the day-by-day
-attribution is above, under the distance rule's closure.
+layer at the same size lifts the count to 26 with one day at 37 and the **recorded** closed median to **+26.18**; the
+**re-derived** value is **+9.83** (archived 2026-11-26, in the distance rule's closure above), so what the layer is measured
+to buy is **fills** -- 26 against the one-layer cell's **19** re-derived -- while the capture falls against that cell's
+**+17.93**. On the recorded numbers this was the best cell in the table and on the numbers that re-derive it is not, which is
+the second thing the archival changed.
 
 **Its bar was three conditions and it meets two and a half.** Fills rose above the one-layer row (26 against 17), the
 closed median stayed positive on five of seven days, and `max_abs_inventory` did **not** stay unchanged: 3 to 9 contracts
@@ -2595,7 +2732,7 @@ flattened against the last midpoint -- and mixing them in one column is how a ta
 |---|---:|---:|---:|---:|---:|---:|
 | 00:00-08:00 | 8 | 51-152 | 2 of 7 | **-16.51** | -10.71 | -0.09 |
 | 08:00-13:30 | 5.5 | 61-97 | 4 of 7 | **+4.59** | +6.59 | +0.07 |
-| 13:30-15:30 | 2 | 26 | 5 of 7 | **+15.13** | **+26.18** | +0.71 |
+| 13:30-15:30 | 2 | 26 | 5 of 7 | **+15.13** | **+26.18** *(recorded; +9.83 re-derived)* | +0.71 |
 | 16:00-24:00 | 8 | 2 | 0 of 7 | not measurable | -- | -- |
 
 **The registered bar is what does the separating.** A block qualifies at 30 or more fills with a positive median on 5 of 7

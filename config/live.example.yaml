@@ -23,6 +23,8 @@ engine:
   settle_residual: true
   # wind_down_skew_minutes: 15    # only meaningful for a session that ends at a named clock
   # wind_down_end: "15:30"
+  # wind_down_skew_ticks: 1       # how far the closing side walks in over the wind-down
+  # wind_down_adverse_bps: 15     # start the skew only when the tail is marked against us by this many bps
 
   # The risk limits, which a live session names rather than inherits: the account's ceiling, the loss that latches the
   # switch, the distance a mispriced order may sit at, and the rate the venue's quota allows. Their defaults are the

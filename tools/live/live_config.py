@@ -49,6 +49,8 @@ FLAGS = {
     ("engine", "markout_cover"): "--markout-cover",
     ("engine", "wind_down_skew_minutes"): "--wind-down-skew-minutes",
     ("engine", "wind_down_end"): "--wind-down-end",
+    ("engine", "wind_down_skew_ticks"): "--wind-down-skew-ticks",
+    ("engine", "wind_down_adverse_bps"): "--wind-down-adverse-bps",
     ("engine", "settle_residual"): "--settle-residual",
     ("engine", "close_out"): "--close-out",
     ("engine", "close_out_cross_bps"): "--close-out-cross-bps",

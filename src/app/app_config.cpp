@@ -103,6 +103,7 @@ constexpr std::string_view kToxicityImbalancePrefix = "--toxicity-imbalance=";
 constexpr std::string_view kWindDownMinutesPrefix = "--wind-down-skew-minutes=";
 constexpr std::string_view kWindDownEndPrefix = "--wind-down-end=";
 constexpr std::string_view kWindDownTicksPrefix = "--wind-down-skew-ticks=";
+constexpr std::string_view kWindDownAdversePrefix = "--wind-down-adverse-bps=";
 constexpr std::string_view kMaxDepthRatioPrefix = "--max-depth-ratio=";
 constexpr std::string_view kDepthLadderMaxPrefix = "--depth-ladder-max=";
 constexpr std::string_view kTrendSignalPrefix = "--trend-signal=";
@@ -284,7 +285,8 @@ void print_usage(const char* executable)
                      "past --toxicity-imbalance=F -- and keeps the cancel path while it is calm; "
                      "--wind-down-skew-minutes=M with --wind-down-end=HH:MM (a UTC clock) walks the closing side in by "
                      "--wind-down-skew-ticks=T (one by default) over the last M minutes and stops the adding side, so "
-                     "the residual is worked by the market rather than crossed; --max-depth-ratio=F caps each quote rung at "
+                     "the residual is worked by the market rather than crossed, and --wind-down-adverse-bps=X starts it "
+                     "only when the tail is marked against us by at least X; --max-depth-ratio=F caps each quote rung at "
                      "F of the same side's displayed touch size and --depth-ladder-max=N splits a larger quote into N rungs "
                      "one tick behind each other; --pause-ticks-per-second=D sets "
                      "the active halt's threshold, which is 9.0 ticks a second and always on, so a large value is what "
@@ -1375,6 +1377,21 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                 }
                 cfg.wind_down_skew_ticks = ticks;
             }
+            else if (flag.compare(0, kWindDownAdversePrefix.size(), kWindDownAdversePrefix) == 0)
+            {
+                // The condition, in bps of the reference price: a tail marked in our favour is left to settle, because
+                // closing it gives up that mark (measured 2026-11-26 at ten contracts: settled +11.33 with no skew, -5.43
+                // with the unconditional one).
+                double bps = 0.0;
+                std::istringstream stream(flag.substr(kWindDownAdversePrefix.size()));
+                if (!(stream >> bps) || !(bps > 0.0))
+                {
+                    error = "--wind-down-adverse-bps is how far the tail has to be marked against us before the wind-down "
+                            "starts, so it is above zero";
+                    return false;
+                }
+                cfg.wind_down_adverse_bps = bps;
+            }
             else if (flag.compare(0, kMaxDepthRatioPrefix.size(), kMaxDepthRatioPrefix) == 0)
             {
                 double ratio = 0.0;
@@ -1970,6 +1987,12 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
         {
             error = "--wind-down-skew-minutes is the maker's own inventory skew: it needs active_l2, adaptive_l2 or "
                     "inventory_aware_l2";
+            return false;
+        }
+        if (cfg.wind_down_adverse_bps > 0.0 && cfg.wind_down_skew_minutes == 0)
+        {
+            error = "--wind-down-adverse-bps is the condition on a wind-down and needs --wind-down-skew-minutes with "
+                    "--wind-down-end; on its own it configures nothing";
             return false;
         }
         if (cfg.max_depth_ratio > 0.0 && !maker_with_state)

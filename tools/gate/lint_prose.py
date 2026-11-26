@@ -324,7 +324,12 @@ def main():
                         "--strategy",
                         # `tools/study/okx_quote_share.py` owns this one: the size of one order in engine units, which is
                         # what turns the book's depth and the window's flow into the two ratios a size ladder is read on.
-                        "--order-units"}:
+                        "--order-units",
+                        # `tools/study/sweep_summary.py` owns these two: the dispersion gate a sweep's median is read
+                        # under -- the leave-one-out median and the worst day's multiple of it -- which archived the BLUR
+                        # size ladder. They are the summary tool's arguments rather than the engine's knobs, and both the
+                        # studies record and `docs/TOOLS.md` name them.
+                        "--gate", "--worst-multiple"}:
             problems.append(f"{flag} is mentioned in a document and is not a flag the binary accepts")
     for model in sorted(models):
         if model not in text.lower():

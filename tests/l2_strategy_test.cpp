@@ -983,6 +983,46 @@ int main()
         const auto after = quote_at(15 * 60 + 35);
         assert(after.first.size() == 1);
         assert(std::abs(after.first[0].price - (unskewed_ask - 0.5)) < 1e-9);
+
+        // The condition: with a threshold, the same view does nothing while the tail is marked in our favour or only
+        // slightly against us, and starts only once the mark is adverse by at least the threshold. The unconditional arm is
+        // what cost +11.33 to -5.43 bps of settled median at ten contracts (measured 2026-11-26).
+        const auto conditional = [&](double mid, double threshold)
+        {
+            L2MarketMakerBase maker(L2MarketMakerBaseConfig{.order_size = 1,
+                                                            .base_spread = 1.5,
+                                                            .inventory_limit = 100,
+                                                            .tick_size = 0.5,
+                                                            .signal_mode = L2SignalMode::Baseline,
+                                                            .wind_down_skew_minutes = 15,
+                                                            .wind_down_end_minute = 930.0,
+                                                            .wind_down_skew_ticks = 1.0,
+                                                            .wind_down_adverse_bps = threshold});
+            L2MarketView at;
+            at.symbol = view.symbol;
+            at.ts = day_ms + (15 * 60 + 10) * 60ULL * 1'000ULL;
+            at.top = TopOfBook{99.5, 1000, 100.5, 1000};
+            // Long at 100, then a view at the tail whose mid is the argument: the mark is (mid - 100) / mid in bps.
+            maker.on_l2_market_view(at);
+            maker.on_order_submitted(StrategyOrder{Side::Buy, at.symbol.str(), 99.5, 1, 95});
+            maker.on_order_update(ExecutionReport{.order_id = 95,
+                                                  .side = exchange::Side::Buy,
+                                                  .exec_type = ExecType::Trade,
+                                                  .symbol = at.symbol.str(),
+                                                  .price = 100.0,
+                                                  .quantity = 1,
+                                                  .owner = "MarketMaker"});
+            at.ts = day_ms + (15 * 60 + 23) * 60ULL * 1'000ULL;
+            at.top = TopOfBook{mid - 0.5, 1000, mid + 0.5, 1000};
+            return maker.on_l2_market_view(at);
+        };
+        // Favourable (+0.5 per cent, ~50 bps): the skew stays off, so both sides are quoted.
+        assert(conditional(100.5, 15.0).size() == 2);
+        // Adverse by 10 bps at a 15 bps threshold: still nothing.
+        assert(conditional(99.9, 15.0).size() == 2);
+        // Adverse by 20 bps: the skew runs, so the adding side is gone and one closing quote is left.
+        const auto adverse = conditional(99.8, 15.0);
+        assert(adverse.size() == 1 && adverse[0].side == Side::Sell);
     }
 
     // The depth cap: no rung larger than a share of the same side's displayed touch size, and a size above it split into

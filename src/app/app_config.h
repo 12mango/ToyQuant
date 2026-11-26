@@ -147,6 +147,9 @@ struct AppConfig
     uint64_t wind_down_skew_minutes = 0;
     double wind_down_end_minute = 0.0;
     double wind_down_skew_ticks = 1.0;
+    // From --wind-down-adverse-bps: start the skew only when the carried position is marked against us by at least this
+    // many bps. 0, the default, is the unconditional skew every arm before 2026-11-26 ran.
+    double wind_down_adverse_bps = 0.0;
     // From --max-depth-ratio / --depth-ladder-max: no rung larger than this share of the same side's displayed touch
     // size, and this many rungs for a size above it. 0 leaves the fixed size every recorded run used.
     double max_depth_ratio = 0.0;

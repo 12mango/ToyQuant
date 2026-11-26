@@ -7,6 +7,48 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+- **The recorded `+26.18` of the frozen cell is archived as not re-derivable, and `+9.83` is the number that stands.** The
+  cell's own flags with `--advance-debounce-ms=40000` -- forty **seconds**, the arithmetic the cooldown defect was doing
+  when the cell was measured -- read the same seven days identical to the last digit to the 40 ms arm, so the debounce is
+  **inert in this cell** and the unit is excluded as the explanation; the edge cover (+5.37), the layer count (+17.93), the
+  refresh column (+27.14, +9.59) and the day set are excluded as well, which leaves a code revision no run in the record
+  carries. The archival changes the **verdict** too: at +9.83 the two-layer cell is worse on capture than the one-layer
+  cell's re-derived +17.93 (26 fills against 19), so the layer buys **fills** and gives up **capture** -- the opposite of
+  what the recorded table said. The tables keep the old value with the word *recorded* beside it.
+
+- **The toxicity switch at ten contracts buys the tail and pays the median.** No code change -- the state was already
+  wired -- and the arm was registered before it ran: the worst net day goes from **-202.88 to -76.38 bps**, because the
+  carried inventory's mark on that day falls from **-168.76** to **-6.38** and the loss becomes a quote loss rather than a
+  carry loss, while the closed median falls to +2.05 on 4 of 7 days, the settled median turns **-9.42** and the dispersion
+  gate fails both of its conditions. Refused on its registered bar; the next registration is a **stricter** toxic
+  definition (`--jump-ticks=3`) whose bar needs the tail **and** the median at once.
+
+## The tail's exit price is not a lever, and the two seats get their sizes (2026-11-26)
+
+- **`--wind-down-adverse-bps=X` makes the wind-down conditional**, and the arm it was built for refuses the mechanism. The
+  skew now starts only when the carried position is marked against us by X bps -- `open_pnl_bps`, read from the
+  volume-weighted entry the maker keeps beside its position -- so a favourably marked tail settles untouched. On the
+  ten-contract UP cell the condition selects exactly as specified (the three losing days reproduce the unconditional arm to
+  the digit, the winning days come back to the control) and the arm is still worse: closed median **-2.13 on 3 of 7**
+  against the control's +10.32 on 5, worst day **-123.02 against -34.12**, settled median -5.43 against +11.33. The skew
+  sells into the run instead of avoiding it, and the carried mark does not predict the tail's direction. `l2_strategy_test`
+  pins the condition at three marks -- favourable, -10 bps and -20 bps against a 15 bps threshold -- and the flag is
+  refused without `--wind-down-skew-minutes` by name.
+- **NES's seat is sized at five contracts, not ten.** The same frozen shape at both sizes over the same seven days: five
+  reads a closed median of **+16.60 on 5 of 7**, `settled_bps` **+6.94**, `fees_bps` exactly 2.00 and **+0.50 USD a day**;
+  ten reads +7.08 on 4 of 7, a settled median of **-18.17** and a worst day **8.76 times its own median**. So the two-seat
+  quota is UP at ten contracts (+0.73 USD a day) and NES at five.
+- **`tools/study/sweep_summary.py --gate`** applies the two dispersion conditions the BLUR ladder needed -- the closed
+  median with its best day removed stays positive, and the worst day stays within `--worst-multiple` (3 by default) of the
+  median -- and prints the best day's share of the cell and its multiple of the second best beside the median. Under it
+  BLUR archives: the **hundred-contract capped cell is the only arm that passes both conditions with moderate dominance**
+  (+43.76, leave-one-out +27.47, best day 72 per cent and 3.3x the next, worst 2.96x the median), the three-hundred point
+  passes while 88 per cent of it is one day (9.2x the next), and the thousand-contract and uncapped arms **fail the tail
+  clause** (6.82x and 13.91x their medians). The self-test covers both failure modes and runs in the `code` tier.
+- **`tools/live/live_config.py` maps two more engine keys** -- `wind_down_skew_ticks` and `wind_down_adverse_bps`, **42 flag
+  keys and five switches** in the table now -- and `config/live.example.yaml` carries both as comments, because a live
+  session that names a wind-down needs to be able to name its condition.
+
 ## The parent's deadline is in the clock's unit (2026-11-26)
 
 - **`span_seconds` and `complete` read 0 on every OKX window, and the cause was the deadline rather than the summary.**
@@ -16,7 +58,8 @@ site now points at `ToyQuant`.
   `common/clock_units.h` at the first event, the L1 path keeps its explicit override, and the two numbers read
   **`span_seconds=7200 complete=1`** on UP 11-16 through the binary. `pipeline_accounting_test` pins a millisecond clock
   (sixty seconds is sixty thousand ticks) beside the microsecond fixtures' sixty million.
-- **The live config's key list grew with the flags a live session names.** `tools/live/live_config.py` now maps 34 keys --
+- **The live config's key list grew with the flags a live session names.** `tools/live/live_config.py` now maps **40 flag
+  keys and five switches** --
   the risk limits (`starting_cash`, `max_exposure_usd`, `kill_switch_loss_usd`, `fat_finger_bps`,
   `max_orders_per_second`), the adapter's own bounds, the quote geometry, the two state switches and the sizing cap --
   plus the two optional positionals `quantity_scale` and `queue_model`, and `config/live.example.yaml` carries the risk

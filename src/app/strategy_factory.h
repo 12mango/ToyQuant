@@ -57,6 +57,8 @@ struct StrategyFactoryConfig
     uint64_t wind_down_skew_minutes = 0;
     double wind_down_end_minute = 0.0;
     double wind_down_skew_ticks = 1.0;
+    // From --wind-down-adverse-bps: the adverse mark the tail has to carry before the skew starts; 0 is unconditional.
+    double wind_down_adverse_bps = 0.0;
     // From --max-depth-ratio / --depth-ladder-max: the per-rung cap on the displayed touch size and the rung count.
     double max_depth_ratio = 0.0;
     uint64_t depth_ladder_max = 0;
