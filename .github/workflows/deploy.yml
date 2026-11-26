@@ -66,6 +66,19 @@ jobs:
           for script in deploy/*.sh; do bash -n "$script"; done
           test -f deploy/logrotate/toyquant
 
+      # The artifact a session runs is built here, once, and started here: a binary that cannot print its own help is a
+      # binary the host will crash-loop on, and the first deploy proved it (SIGILL from a `-march=native` build whose
+      # instructions the host's vCPU did not have). `linux-relwithdebinfo` therefore builds for the x86-64-v2 baseline,
+      # and this step refuses a bundle whose program does not start.
+      - name: The shipped binary starts
+        run: |
+          set -euo pipefail
+          for binary in out/build/${{ env.BUILD_PRESET }}/toy_quant out/build/${{ env.BUILD_PRESET }}/l2_strategy_test; do
+            test -x "$binary" || { echo "missing $binary"; exit 1; }
+            "$binary" --help > /dev/null 2>&1 || { echo "$binary does not start"; exit 1; }
+          done
+          readelf -h out/build/${{ env.BUILD_PRESET }}/toy_quant | grep -q 'X86-64' || { echo "not an x86-64 binary"; exit 1; }
+
       # The config template is a contract (an unknown key is refused, never dropped) and the relay's shutdown machine is
       # what keeps a restart from leaving an orphan order.
       - name: The live config and the relay's shutdown machine
@@ -163,7 +176,6 @@ jobs:
              sudo bash /opt/toyquant/deploy/bootstrap_server.sh --repo-dir /opt/toyquant --etc-dir /etc/toyquant
              sudo systemctl daemon-reload
              sudo systemctl restart toyquant-relay toyquant-live
-             sleep 3
              sudo bash /opt/toyquant/deploy/check_health.sh'
 
       # A failed health check leaves the previous binary on the host and the previous release one command away. This does

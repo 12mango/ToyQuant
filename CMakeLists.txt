@@ -9,7 +9,23 @@ if(MSVC)
     add_compile_options(/W4 /O2)
 else()
     # Threads::Threads below supplies -pthread; do not add it redundantly here.
-    add_compile_options(-Wall -Wextra -O2 -march=native)
+    #
+    # `-march=native` is right for a benchmark on the machine that runs it and wrong for an artifact that is built on one
+    # host and run on another: the compiler is free to emit whatever the *builder's* CPU supports, and a binary built on a
+    # runner with AVX-512 dies with SIGILL (systemd reports `code=dumped, status=4/ILL`) on a cloud vCPU that has only
+    # AVX2 -- measured 2026-11-26, the first deploy to a Tokyo GCP host crash-looped 35 times before anybody read the
+    # journal. It is also a reproducibility defect in the other direction: the same commit built on two machines can
+    # disagree in the last bits, and this repository's numbers are meant to be re-derivable.
+    #
+    # So the shipped artifact names its instruction set instead of inheriting one. `x86-64-v2` (SSE4.2, POPCNT) is the
+    # baseline every x86-64 cloud VM is guaranteed to have; a build that wants the builder's own ISA can still ask for it.
+    option(TOYQUANT_PORTABLE_BINARY
+           "Build for the x86-64-v2 baseline instead of the build host's own instruction set (do this when shipping)" OFF)
+    if(TOYQUANT_PORTABLE_BINARY)
+        add_compile_options(-Wall -Wextra -O2 -march=x86-64-v2 -mtune=generic)
+    else()
+        add_compile_options(-Wall -Wextra -O2 -march=native)
+    endif()
 endif()
 
 # ==================== Project Paths and Definitions ====================

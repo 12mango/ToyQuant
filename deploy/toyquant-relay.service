@@ -1,5 +1,9 @@
 [Unit]
 Description=ToyQuant venue relay (the only process that holds a key)
+# A crash must not become a restart loop: five failures inside five minutes stops the unit and leaves it red, which is
+# something a reader can see, instead of a counter climbing while every restart hammers the venue's login.
+StartLimitIntervalSec=300
+StartLimitBurst=5
 # The relay is the half that talks to the venue, and the engine reads the two sockets it serves. Started before the
 # engine, stopped after it, so a restart of either does not leave the other reading a closed port.
 After=network-online.target

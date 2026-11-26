@@ -23,7 +23,22 @@ PROGRAM=${PROGRAM:-/opt/toyquant/toy_quant}
 RELAY_PROGRAM=${RELAY_PROGRAM:-/opt/toyquant/tools/live/venue_relay.py}
 SNAPSHOT=${SNAPSHOT:-/opt/toyquant/data/runtime/live-snapshot.json}
 MAX_SNAPSHOT_AGE_S=${MAX_SNAPSHOT_AGE_S:-600}
+# How long the check waits for a unit that has just been restarted. A fixed `sleep 3` in front of this script was the
+# first version, and it is the wrong shape: three seconds is either too short (the unit is still `activating`) or wasted
+# (it came up in one). This waits for the state and then judges it, bounded so a unit that never comes up fails the check
+# instead of hanging it.
+WAIT_ACTIVE_S=${WAIT_ACTIVE_S:-15}
 failures=0
+
+wait_active() {  # wait_active <unit>
+  local unit=$1 waited=0
+  while [ "$waited" -lt "$WAIT_ACTIVE_S" ]; do
+    [ "$(systemctl is-active "$unit" 2>/dev/null || true)" = active ] && return 0
+    sleep 1
+    waited=$((waited + 1))
+  done
+  return 1
+}
 
 fail() {
   echo "health: FAIL $*" >&2
@@ -32,9 +47,34 @@ fail() {
 ok() { echo "health: ok $*"; }
 
 if ! systemctl is-active --quiet "$SERVICE_NAME"; then
-  fail "$SERVICE_NAME is not active: $(systemctl is-active "$SERVICE_NAME" 2>&1 || true)"
+  if wait_active "$SERVICE_NAME"; then
+    ok "$SERVICE_NAME is active (after $WAIT_ACTIVE_S s or less)"
+  else
+    fail "$SERVICE_NAME is still $(systemctl is-active "$SERVICE_NAME" 2>&1 || true) after ${WAIT_ACTIVE_S}s"
+  fi
 else
   ok "$SERVICE_NAME is active"
+fi
+
+# Why a unit is not running is a different question from whether it is, and systemd keeps the answer. `NRestarts` above
+# zero means it has been crash-looping; `ExecMainStatus` is the number `journalctl` shows as `status=N` (4 is SIGILL,
+# 139 a segfault); `Result` names the class. Printed on every run, because a session that came up on its second attempt
+# is not the same thing as one that came up first.
+state=$(systemctl show -p ActiveState,SubState,NRestarts,ExecMainStatus,Result --value "$SERVICE_NAME" 2>/dev/null | tr '\n' ' ')
+ok "$SERVICE_NAME state: ${state:-unknown}"
+restarts=$(systemctl show -p NRestarts --value "$SERVICE_NAME" 2>/dev/null || echo 0)
+if [ "${restarts:-0}" -gt 0 ]; then
+  fail "$SERVICE_NAME has restarted $restarts time(s): a unit that is up now may be up between crashes"
+fi
+# A crash is not always an *error-severity* journal line -- systemd writes "Failed with result 'core-dump'" at its own
+# severity, and the first real deploy produced 35 of them while `-p err` showed none.
+if command -v journalctl > /dev/null 2>&1; then
+  crashed=$(journalctl -u "$SERVICE_NAME" -b --no-pager -q 2>/dev/null | grep -c "Failed with result" || true)
+  if [ "${crashed:-0}" -gt 0 ]; then
+    fail "$crashed 'Failed with result' line(s) since boot; last: $(journalctl -u "$SERVICE_NAME" -b --no-pager -q 2>/dev/null | grep "Failed with result" | tail -1)"
+  else
+    ok "no 'Failed with result' line since boot"
+  fi
 fi
 
 # One process, not one per deploy. `pgrep -c -f` counts the program path, which the unit's ExecStart names.
@@ -48,10 +88,14 @@ fi
 
 # The relay is the other half: without it the engine reads a closed port and its summary says so, but the failure reads
 # as an engine failure. Two questions, because the process can be up while its socket is not.
-if systemctl is-active --quiet "$RELAY_SERVICE_NAME"; then
+if systemctl is-active --quiet "$RELAY_SERVICE_NAME" || wait_active "$RELAY_SERVICE_NAME"; then
   ok "$RELAY_SERVICE_NAME is active"
 else
-  fail "$RELAY_SERVICE_NAME is not active: $(systemctl is-active "$RELAY_SERVICE_NAME" 2>&1 || true)"
+  fail "$RELAY_SERVICE_NAME is still $(systemctl is-active "$RELAY_SERVICE_NAME" 2>&1 || true) after ${WAIT_ACTIVE_S}s"
+fi
+relay_restarts=$(systemctl show -p NRestarts --value "$RELAY_SERVICE_NAME" 2>/dev/null || echo 0)
+if [ "${relay_restarts:-0}" -gt 0 ]; then
+  fail "$RELAY_SERVICE_NAME has restarted $relay_restarts time(s): check its journal for the reason"
 fi
 relays=$(pgrep -c -f "$RELAY_PROGRAM" 2>/dev/null || true)
 relays=${relays:-0}
@@ -130,6 +174,10 @@ done
 
 if [ "$failures" -ne 0 ]; then
   echo "health: $failures failure(s)" >&2
+  # Both units carry a start limit, so a crash loop that has been fixed still refuses to start until the counter is
+  # cleared -- and a refusal reads exactly like a fresh fault. Naming the command is cheaper than the reader's hour.
+  echo "health: if this was a crash loop and the cause is fixed, clear the limit first:" >&2
+  echo "health:   sudo systemctl reset-failed $RELAY_SERVICE_NAME $SERVICE_NAME" >&2
   exit 1
 fi
 echo "health: OK"

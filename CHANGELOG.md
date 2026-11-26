@@ -23,6 +23,26 @@ site now points at `ToyQuant`.
   gate fails both of its conditions. Refused on its registered bar; the next registration is a **stricter** toxic
   definition (`--jump-ticks=3`) whose bar needs the tail **and** the median at once.
 
+## The shipped binary names its instruction set, and the first deploy crash-looped (2026-11-26)
+
+- **`-march=native` shipped the builder's CPU to the host.** The artifact is built on `ubuntu-latest` and run on a Tokyo GCP
+  vCPU; the compiler emitted whatever the *runner's* CPU had, the host's did not have it, and `toyquant-live.service` died on
+  an illegal instruction -- `code=dumped, status=4/ILL` -- **35 restarts** before anyone read the journal. The health report
+  meanwhile said "no error-severity journal line since boot", because systemd writes `Failed with result 'core-dump'` at a
+  severity `journalctl -p err` does not select.
+- **`TOYQUANT_PORTABLE_BINARY` names the instruction set instead of inheriting one** (`-march=x86-64-v2 -mtune=generic`), and
+  the `linux-relwithdebinfo` preset -- the one the deploy ships -- sets it. The debug preset keeps `-march=native`, so every
+  recorded number in this repository is unchanged; the deploy's `verify` job now starts the artifact (`--help`) and refuses
+  a bundle whose program does not start.
+- **A crash loop is a red unit, not a climbing counter.** Both units carry `StartLimitIntervalSec=300` and
+  `StartLimitBurst=5`: five failures in five minutes stops the unit and leaves it failed. After the cause is fixed,
+  `systemctl reset-failed <unit>` is what clears the limit, and `deploy/check_health.sh` says so in its failure line.
+- **`check_health.sh` waits for the state instead of sleeping at it, and reads the reason.** It polls `is-active` for up to
+  `WAIT_ACTIVE_S` (15 s) rather than being preceded by a `sleep 3`, prints
+  `ActiveState/SubState/NRestarts/ExecMainStatus/Result`, fails on any restart, and counts `Failed with result` lines. A
+  fixed sleep was the first version and the wrong shape: three seconds is either too short (the unit is still `activating`)
+  or wasted, and it says nothing about *why* a unit is not up.
+
 ## A live host can be brought up, and the two files say what it is (2026-11-26)
 
 - **The relay had no unit, and the engine's put it out of reach.** `toyquant-live.service` described "the relay and the

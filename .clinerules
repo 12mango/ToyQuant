@@ -424,6 +424,11 @@ in tracked files:
   seeded at `0640` and never rewritten by a script.
 - **A green deploy is a health check, not a restart.** `systemctl restart` returning 0 says the process was launched;
   `deploy/check_health.sh` says it is the only one running, wrote nothing at error severity, and can be asked to stop.
+- **A shipped binary names its instruction set.** `-march=native` is a benchmark's flag: an artifact built on one host and
+  run on another is one instruction away from `status=4/ILL` (measured 2026-11-26: the first deploy to a real host
+  crash-looped 35 times and the health check reported "activating"). The deploy preset sets `TOYQUANT_PORTABLE_BINARY=ON`,
+  and the health check reads `NRestarts` and `ExecMainStatus`, because systemd's `Failed with result` lines are not
+  severity `err` and `journalctl -p err` will not show them.
 
 ## Definition of done
 
