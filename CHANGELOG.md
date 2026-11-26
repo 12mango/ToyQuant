@@ -23,6 +23,21 @@ site now points at `ToyQuant`.
   gate fails both of its conditions. Refused on its registered bar; the next registration is a **stricter** toxic
   definition (`--jump-ticks=3`) whose bar needs the tail **and** the median at once.
 
+## The live template named an l2_replay flag, and the gate now asks the engine (2026-11-27)
+
+- **`link.snapshot_out` was in the live template and `ws` refuses it** -- `--snapshot-out and --snapshot-in are l2_replay
+  flags: a session is written and resumed against a replay's own clock` -- so the fourth deploy's unit exited 1 with the
+  engine's usage text under it. The key is commented out of the template with that reason (a live session reconciles
+  against the venue, `[RECON]`), and `live_config.py` **refuses it by name**, because the reader always emits a `ws`
+  command line and a key the engine refuses for that mode can never be part of a valid file. The self-test pins it.
+- **The gate now asks the engine's own parser, instead of trusting a list.** `verify_l2.sh` generates the template's flags,
+  prepends `ws` with a port nothing listens on, and requires the engine's `[Mode: WebSocket]` line: a parser refusal prints
+  `Error:` plus `Usage:` and no `[Mode]`, which is exactly the shape of every coupling of this kind. Proven both ways --
+  the template reaches `[Mode: WebSocket]`, and the same command with `--snapshot-out` added fails the check. This is the
+  check that ends the "template and engine disagree" class rather than the one instance of it.
+- **`check_health.sh` reports the session, not a file a live run cannot write.** The `[Mode]` line is what proves a session
+  started; the snapshot block now only judges a file that exists.
+
 ## The engine ran with no flags, and printed forty lines of help instead of saying why (2026-11-27)
 
 - **`ExecStart` captured the configuration into a command substitution, so a refusal became a usage dump.** When

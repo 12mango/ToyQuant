@@ -94,6 +94,7 @@ TOOL_CHECK_LOG="$(mktemp)"
 VERDICT_CHECK_LOG="$(mktemp)"
 RISK_CHECK_LOG="$(mktemp)"
 LEAK_CHECK_LOG="$(mktemp)"
+LIVE_CFG_LOG="$(mktemp)"
 TRADES=data/v2/crypto/deribit_trades_2020-04-01_BTC-PERPETUAL.csv.gz
 L1_TRADES=data/v2/fixtures/test_aggTrades_5k.csv
 L1_BBO=data/v2/fixtures/test_bookTicker_5k.csv
@@ -200,7 +201,7 @@ tier1() {
   # Declared unconditionally because a mode skips blocks, and `set -u` refuses to read a counter that the skipped
   # block would have declared: the summary asks about every one of them whichever half was run.
   local fields_check=0 prose_check=0 verdict_check=0 risk_check=0 rec_ok=0 thr_ok=0 broker_ok=0 multi_ok=0 \
-        session_ok=0 close_ok=0 halt_ok=0 depth_guard_ok=0 doc_check=0 tool_check=0 leak_check=0
+        session_ok=0 close_ok=0 halt_ok=0 depth_guard_ok=0 doc_check=0 tool_check=0 leak_check=0 live_cfg_ok=0
   # Every metric field a summary prints has to be written somewhere. A field that is read but never
   # written looks exactly like a field whose value is zero, and this project shipped four of those in
   # one line before. Source-level, so it costs nothing and runs on every edit.
@@ -212,6 +213,32 @@ tier1() {
   # published, and this is the last place that can see all of them at once; the deny-list's `[audit]` section prints
   # what is still public without failing the tier, so the count is a progress bar rather than a permanent red.
   python3 tools/gate/check_leaks.py > "$LEAK_CHECK_LOG" 2>&1 || leak_check=1
+  # The live file *is* a command line, so the last word on it is the engine's parser rather than this script's reading of
+  # it: the template's flags are generated, `ws` is prepended with a port nothing listens on, and the run has to get past
+  # argument validation -- an `Error:` or `Usage:` line is the failure. This is the check that would have caught
+  # `--snapshot-out` (l2_replay only, refused in `ws`) before a host did, and it catches every coupling of that shape
+  # without anybody having to enumerate them.
+  local live_cfg_ok=0 live_cfg_flags live_cfg_out
+  mapfile -t live_cfg_flags < <(python3 tools/live/live_config.py --flags config/live.example.yaml 2>&1)
+  if [ "${#live_cfg_flags[@]}" -lt 3 ]; then
+    printf 'the live template produced %s line(s):\n%s\n' "${#live_cfg_flags[@]}" "$(printf '%s\n' "${live_cfg_flags[@]}")" > "$LIVE_CFG_LOG"
+    live_cfg_ok=1
+  else
+    # `127.0.0.1:1` is the endpoint, so the run fails at the connect and not at the parser -- and the marker that the
+    # parser accepted the whole command line is the engine's own first line, `[Mode: WebSocket]`. A refusal prints
+    # `Error: ...` plus the usage text; a *runtime* failure prints `Error:` too (a refused connect), which is why the
+    # marker decides and the error line alone does not.
+    live_cfg_out=$("$BIN" ws 127.0.0.1:1 "${live_cfg_flags[@]:1}" --fast-validation 2>&1 | head -6)
+    if printf '%s\n' "$live_cfg_out" | grep -q '\[Mode'; then
+      :
+    elif printf '%s\n' "$live_cfg_out" | grep -qE '^(Error|Usage):'; then
+      printf 'the engine refused the live template:\n%s\n' "$live_cfg_out" > "$LIVE_CFG_LOG"
+      live_cfg_ok=1
+    else
+      printf 'the engine did not report a [Mode] line for the live template:\n%s\n' "$live_cfg_out" > "$LIVE_CFG_LOG"
+      live_cfg_ok=1
+    fi
+  fi
   # Prose is not covered by check_docs.py, which only reads marked number blocks, and a paragraph that
   # describes a stale model set is exactly what that leaves behind. This compares the claims against the
   # source: flags, queue models and tool paths.
@@ -566,6 +593,7 @@ tier1() {
      [ $doc_check -eq 0 ] &&
      [ $fields_check -eq 0 ] && [ $prose_check -eq 0 ] && [ $tool_check -eq 0 ] &&
      [ $leak_check -eq 0 ] &&
+     [ $live_cfg_ok -eq 0 ] &&
      [ $verdict_check -eq 0 ]; then
     echo "$label OK"
     return 0
@@ -586,6 +614,7 @@ tier1() {
     echo "  depth: an empty depth file or a crossed book was not reported, or the recorded window acquired a crossed one"
   [ $fields_check -eq 0 ] || sed 's/^/  fields: /' "$FIELD_CHECK_LOG"
   [ $leak_check -eq 0 ] || sed 's/^/  leak: /' "$LEAK_CHECK_LOG"
+  [ $live_cfg_ok -eq 0 ] || sed 's/^/  live config: /' "$LIVE_CFG_LOG"
   [ $prose_check -eq 0 ] || sed 's/^/  prose: /' "$PROSE_CHECK_LOG"
   [ $tool_check -eq 0 ] || sed 's/^/  tool: /' "$TOOL_CHECK_LOG"
   [ $verdict_check -eq 0 ] || grep -v '^     also:' "$VERDICT_CHECK_LOG" | sed 's/^/  verdict: /'

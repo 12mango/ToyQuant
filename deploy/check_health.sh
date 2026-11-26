@@ -150,27 +150,23 @@ if command -v journalctl > /dev/null 2>&1; then
   fi
 fi
 
+# The engine's own first line, which is the only thing that proves a *session* started: a `ws` run prints `[Mode: ...]`
+# before it connects. The snapshot file is not this signal -- it is an l2_replay artifact, and a live config cannot name it
+# (measured 2026-11-27: `--snapshot-out` is refused in `ws`, which is what the fourth deploy's report was about).
+if command -v journalctl > /dev/null 2>&1; then
+  if journalctl -u "$SERVICE_NAME" --since "-${HEALTH_WINDOW_S}s" --no-pager -q 2>/dev/null | grep -q '\[Mode'; then
+    ok "the session reported its [Mode] line"
+  else
+    fail "no [Mode] line from $SERVICE_NAME in the last ${HEALTH_WINDOW_S}s: the engine has not started a session (its journal tail is below)"
+  fi
+fi
 if [ -f "$SNAPSHOT" ]; then
+  # Kept because a file that exists and does not parse is worth a red whatever wrote it; a live session writes none.
   if python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$SNAPSHOT" 2>/dev/null; then
-    age=$(( $(date +%s) - $(stat -c %Y "$SNAPSHOT") ))
-    summary=$(python3 - "$SNAPSHOT" <<'PY'
-import json, sys
-state = json.load(open(sys.argv[1]))
-orders = state.get("open_orders") or state.get("orders") or []
-positions = state.get("positions") or {}
-print(f"open_orders={len(orders)} positions={len(positions)} keys={','.join(sorted(state)[:6])}")
-PY
-)
-    if [ "$age" -gt "$MAX_SNAPSHOT_AGE_S" ]; then
-      fail "the snapshot is ${age}s old (limit ${MAX_SNAPSHOT_AGE_S}s): $SNAPSHOT"
-    else
-      ok "snapshot is ${age}s old; $summary"
-    fi
+    ok "the snapshot parses ($SNAPSHOT, $(($(date +%s) - $(stat -c %Y "$SNAPSHOT")))s old)"
   else
     fail "the snapshot does not parse as JSON: $SNAPSHOT"
   fi
-else
-  ok "no snapshot yet at $SNAPSHOT (a session that has not traded writes none)"
 fi
 
 # The two operator files, by existence and mode only: the check never reads a credential.

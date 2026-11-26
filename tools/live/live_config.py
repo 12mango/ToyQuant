@@ -123,6 +123,16 @@ def parse(text, source="<text>"):
 VENUE_KEYS = (("link", "venue_endpoint"), ("link", "venue_max_orders"), ("link", "venue_orders_per_second"),
               ("link", "venue_max_notional"))
 
+# Keys this reader can emit that the engine refuses in `ws` mode, with the engine's own reason. The reader always emits a
+# `ws` command line (`ws` is the only live mode), so a key here can never be part of a valid file -- and finding that out on
+# a host costs a unit that exits 1 and a round trip: measured 2026-11-27, `link.snapshot_out`, whose sentence is
+# `--snapshot-out ... a session is written and resumed against a replay's own clock`. A live session reconciles against the
+# venue (`[RECON]`), not against a snapshot file.
+WS_REFUSED = {
+    ("link", "snapshot_out"): "--snapshot-out is l2_replay only: a session is written and resumed against a replay's own "
+                              "clock, and a live session reconciles against the venue",
+}
+
 
 def validate(values, source="<text>"):
     """The couplings the engine enforces, checked where the file is read rather than on the host.
@@ -133,6 +143,10 @@ def validate(values, source="<text>"):
     journal unread because nothing in the report quoted the program's own words. One refusal here is cheaper than that.
     """
     live = str(values.get(("engine", "live_orders"), "false")).strip().lower() in ("true", "yes", "on", "1")
+    refused = [f"{section}.{key}" for section, key in WS_REFUSED if (section, key) in values]
+    if refused:
+        section, key = next(name for name in WS_REFUSED if f"{name[0]}.{name[1]}" in refused)
+        raise ValueError(f"{source}: {', '.join(refused)} cannot be part of a live file: {WS_REFUSED[(section, key)]}")
     named = [f"{section}.{key}" for section, key in VENUE_KEYS if (section, key) in values]
     if named and not live:
         raise ValueError(f"{source}: {', '.join(named)} is part of --live-orders: add `engine.live_orders: true`, or "
@@ -206,6 +220,14 @@ link:
     values[("link", "venue_max_orders")] = "20"
     assert "--live-orders" in flags(values), flags(values)
     assert "--venue-endpoint=127.0.0.1:8766" in flags(values), flags(values)
+    try:
+        values[("link", "snapshot_out")] = "data/runtime/live-snapshot.json"
+        flags(values)
+    except ValueError as error:
+        assert "snapshot_out" in str(error), str(error)
+    else:
+        raise AssertionError("a snapshot_out was accepted for a live file")
+    del values[("link", "snapshot_out")]
     # An unknown key is refused with its name, and a missing required one names itself.
     for bad, expect in (
         ("engine:\n  symboll: UP\n", "engine.symboll"),

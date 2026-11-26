@@ -57,4 +57,6 @@ link:
   cancel_latency_us: 10000
   venue_max_orders: 20                # the adapter's own bound, under the venue's quota
   venue_orders_per_second: 5
-  snapshot_out: data/runtime/live-snapshot.json   # the file a restart reconciles from
+  # A session snapshot is an l2_replay file: it is written and resumed against a replay's own clock, and `ws` refuses it.
+  # A live session reconciles against the venue instead (`[RECON]`), so there is nothing here to write.
+  # snapshot_out: data/runtime/live-snapshot.json
