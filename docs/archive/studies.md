@@ -1832,6 +1832,12 @@ distance that is too narrow rather than of a rule that is wrong. Its fee runs 9.
 the row and a seat is the taker leg, and the notional of 1 to 2.4 USD says one contract is worth a fraction of a dollar
 there: the next run is `--quote-distance-bps` at ten to fourteen, not another tick count.
 
+**That run is done, and it turns BABY into the same double bind as the amend line.** At fourteen basis points BABY reads a
+closed median of **+17.67** and a net of **+11.42** with `fees_bps` down to 5.12-19.45 -- the distance does fix the
+capture -- and only **11 fills** a window (5 to 39), so it loses the count it was bought for: 11 against the 30-fill floor,
+where three ticks gave 40 to 110 and a median of +8.75. Neither distance clears both halves, the notional falls to 0.15 to
+0.74 USD, and the row closes rather than being promoted.
+
 **The registered bar itself, run the same day (2026-11-26).** PROS at ten ticks and BLUR at thirteen, same seven days and
 the same shape as the table above:
 
