@@ -32,7 +32,7 @@ WAIT_ACTIVE_S=${WAIT_ACTIVE_S:-15}
 # is what a unit *is*; its stdout is what it *said*, and the first three deploys each cost a round trip because the report
 # quoted the first and not the second (the sentence that explained them was one `journalctl` away).
 HEALTH_WINDOW_S=${HEALTH_WINDOW_S:-600}
-HEALTH_JOURNAL_LINES=${HEALTH_JOURNAL_LINES:-25}
+HEALTH_JOURNAL_LINES=${HEALTH_JOURNAL_LINES:-60}
 failures=0
 
 wait_active() {  # wait_active <unit>

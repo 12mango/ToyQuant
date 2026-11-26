@@ -28,12 +28,22 @@ Environment=PYTHONUNBUFFERED=1
 # The configuration is read from a file beside the credentials, which is ignored: the command line carries no symbol and
 # no size. `--flags` turns that file into the engine's arguments, in the order `ws` reads them.
 WorkingDirectory=/opt/toyquant
+# The configuration is checked before anything else runs: `live_config.py --check` refuses a file by name (an unknown key,
+# a venue endpoint without `engine.live_orders`, a switch without its endpoint), and without this line that refusal lands
+# in a command substitution -- the engine is invoked with no arguments, prints its usage and exits 1, which reads like an
+# engine fault and is a configuration one. Measured 2026-11-27: the report showed `ExecMainStatus=1` and `MainPID=0` while
+# the sentence that explained it was in `live_config.py`'s mouth.
+ExecStartPre=/bin/bash -c 'python3 /opt/toyquant/tools/live/live_config.py --check /etc/toyquant/live.yaml'
 # The relay binds its market socket a moment after systemd considers it started, and the engine connects exactly once at
 # startup -- so without this wait the first start of the pair races and the engine exits on a refused connection, which
 # systemd then restarts forever. The wait reads the listening table rather than connecting: a probe connection would be
 # *accepted* by the relay (its accept loop takes one client) and the handshake would fail, killing the relay.
 ExecStartPre=/bin/bash -c 'for i in $(seq 1 30); do ss -ltn 2>/dev/null | grep -q "127.0.0.1:8765" && exit 0; sleep 1; done; echo "waited 30s for the relay to listen on 127.0.0.1:8765" >&2; exit 1'
-ExecStart=/bin/bash -c 'exec /opt/toyquant/toy_quant ws $(python3 /opt/toyquant/tools/live/live_config.py --flags /etc/toyquant/live.yaml)'
+# The flags are captured and checked before the engine starts: an empty substitution would call `toy_quant ws` with no
+# endpoint, symbol or strategy, and the engine answers with its full usage text -- which reads like an engine fault and is a
+# configuration one, buried under forty lines of help. Measured 2026-11-27, twice. The `--check` above catches a refused
+# file; this catches everything else, and either way the reason is the first thing in the journal rather than the last.
+ExecStart=/bin/bash -c 'flags=$(python3 /opt/toyquant/tools/live/live_config.py --flags /etc/toyquant/live.yaml) || { echo "live_config.py refused /etc/toyquant/live.yaml (its own message is above)" >&2; exit 1; }; set -- $flags; if [ $# -lt 3 ]; then echo "live_config.py emitted $# argument(s): ws needs at least the endpoint, the symbol and the strategy" >&2; exit 1; fi; exec /opt/toyquant/toy_quant ws "$@"'
 # SIGTERM is the signal the session answers with "stop new orders, cancel what is live, confirm zero, exit". The engine's
 # own deadline is 10 s (`SessionShutdown`'s `deadline_ms`), and this waits 12: the two numbers move together, and a unit
 # that gave up first would SIGKILL a session mid-cancel.

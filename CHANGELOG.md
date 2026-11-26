@@ -23,6 +23,17 @@ site now points at `ToyQuant`.
   gate fails both of its conditions. Refused on its registered bar; the next registration is a **stricter** toxic
   definition (`--jump-ticks=3`) whose bar needs the tail **and** the median at once.
 
+## The engine ran with no flags, and printed forty lines of help instead of saying why (2026-11-27)
+
+- **`ExecStart` captured the configuration into a command substitution, so a refusal became a usage dump.** When
+  `live_config.py --flags` produced nothing -- a key it does not know, a coupling it refuses -- the engine was invoked as
+  `toy_quant ws` with no endpoint, symbol or strategy, answered with its full help text and exited 1: `ExecMainStatus=1`,
+  `MainPID=0`, and the sentence that explained it scrolled out of the report's window under the help. The unit now
+  **captures the flags, refuses an empty or short list by name, and only then execs**, so the reason is the first line in
+  the journal; and `--check` runs as its own `ExecStartPre`, before anything else.
+- **The failure report carries 60 journal lines** rather than 25, and both units' -- forty lines of engine help is exactly
+  the case that ate the explaining line, which is how the same class cost two dispatches.
+
 ## The live file could not name `--live-orders`, and the engine said so into an unread journal (2026-11-27)
 
 - **The engine makes the four `venue_*` flags *part of* `--live-orders` and refuses them without it**, and neither the
