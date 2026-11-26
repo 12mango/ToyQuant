@@ -1793,7 +1793,63 @@ ones: **PROS** (1.43 bps a tick, 14 bps is ten ticks, 16.6 M USD a day) and **BL
 extended.
 
 
-**Two mechanisms, registered before their runs, and both fail the bar (2026-11-25).** The frontier's method rows had two
+**The second group, measured at three ticks (2026-11-26).** The screen's second pool -- **PROS, BLUR, DGAI, GRVT, ONE,
+BABY, ALLO** -- was measured on the shape every cell in this record uses: seven days 11-16 to 11-22, 13:30-15:30 UTC,
+`--models prorata --base-spread-grid 3 --refresh-grid 1 --latency-us 10000`, one symbol at a time, each with its own tick
+from `src/common/instrument_spec.h` (PROS 1e-4, BLUR 1e-6, DGAI 1e-4, GRVT 1e-5, ONE 1e-7, BABY 1e-6, ALLO 1e-5).
+**Recorded rather than gated**: a symbol costs about fourteen minutes and 1.5 GB of `/tmp` cut, so the gate cannot carry
+seven of them, and the command is above so the table is re-derivable by hand.
+
+| symbol | fills a window | `closed_bps` median | days positive | `net_bps` median | `fees_bps` | maker notional a window |
+|---|---|---|---|---|---|---|
+| BABY | 40-110 | **+8.75** | **6 of 7** | -8.31 | 9.48-29.00 | 1.08-2.36 USD |
+| BLUR | 80-267 | +12.79 | 4 of 7 | -1.99 | 14.34-32.92 | 1.86-2.56 USD |
+| GRVT | 104-197 | +4.99 | 4 of 7 | -18.91 | 13.27-54.53 | 21-56 USD |
+| ALLO | 181-352 | -1.77 | 3 of 7 | -42.19 | 34.36-62.07 | 23-48 USD |
+| PROS | 37-267 | -6.69 | 2 of 7 | -18.19 | 4.85-23.35 | 41-237 USD |
+| ONE | 177-250 | -12.09 | 1 of 7 | -76.22 | 43.48-64.19 | 1.55-2.59 USD |
+| DGAI | 60-391 | -12.24 | 2 of 7 | -32.04 | 10.06-51.35 | 119-336 USD |
+
+**The fee column is the finding, and it is arithmetic rather than an opinion.** `fees_bps` is
+`fees_paid / maker_notional_usd` (`tools/sweep/okx_maker_baseline.py:242` with the notional defined at `:250`), so a window
+whose fills are all passive reads **2.00** -- which is what every UP cell reads -- and a window carrying a taker leg `r`
+times its maker notional reads `2.00 + 5.00 r`. All seven here read **4.85 to 64.19**, so the 3-tick quote is not passive on
+any of them: the quote is run over and pays 5 bps on the way out. That is why `closed_bps` can be positive (BLUR +12.79,
+GRVT +4.99, BABY +8.75) while `net_bps` is not.
+
+**BABY is the one that clears the wide-spread bar's shape and does not yet pay.** 40 to 110 fills a window, `closed_bps`
+positive on six of seven days with a median of +8.75, `capture_ticks` -0.09 to -0.27 against `markout_ticks` +0.24 to
++0.46 -- the fill loses at the moment it happens and the direction is right afterwards, which is the signature of a
+distance that is too narrow rather than of a rule that is wrong. Its fee runs 9.48 to 29.00 bps, so what stands between
+the row and a seat is the taker leg, and the notional of 1 to 2.4 USD says one contract is worth a fraction of a dollar
+there: the next run is `--quote-distance-bps` at ten to fourteen, not another tick count.
+
+**The registered bar itself, run the same day (2026-11-26).** PROS at ten ticks and BLUR at thirteen, same seven days and
+the same shape as the table above:
+
+| symbol | distance | fills median | `closed_bps` median | days positive | `net_bps` median | `fees_bps` | maker notional a window |
+|---|---|---|---|---|---|---|---|
+| PROS | 10 ticks | 59 | +5.82 | 4 of 7 | -12.50 | 4.67-35.59 | 1.75-158.55 USD |
+| BLUR | 13 ticks | **33** | **+31.74** | **5 of 7** | **+26.12** | 3.25-100.79 | 0.13-1.07 USD |
+
+**BLUR clears the bar and the branch survives.** Thirty-three fills a window against the thirty it asks for, a closed median
+of +31.74 positive on five of seven days, and a net median of +26.12 that is positive on the same five -- the only cell in
+the second pool to clear both the fill floor and the sign, and the reason the branch is not written off. PROS reaches the
+fill bar (median 59) and fails the sign (net -12.50 on 4 of 7), which is the fee again: 4.67 to 35.59 bps of a two-basis-point
+maker rate.
+
+**What keeps BLUR from being a seat is size, not sign.** Its maker notional is 0.13 to 1.07 USD a window, because one
+contract is ten tokens of a coin worth a hundredth of a dollar, and one day inside the seven is -283 bps net on three fills
+-- a single adverse print dominating a position the market can barely see. The row is therefore registered as **ten times
+the size at the same thirteen ticks, keeping a positive closed median on 5 of 7**: that run asks whether +31.74 bps is a
+per-fill rate or an artefact of quoting a size too small to be picked off.
+
+**What this table does not close is the fine-tick branch's own bar.** That bar is registered above --
+PROS at ten ticks and BLUR at thirteen, against thirty fills -- and a three-tick quote on a 1.1 to 1.4 bps tick is three
+to four bps of distance, which is under the round trip's fee by construction. The three-tick rows answer "is the distance
+wide enough", and the answer is no on every symbol here.
+
+
 experiments that no data could block: the quote distance in basis points rather than ticks, and the one-sided retreat at
 high inventory. Both are in the tree now behind flags that default to off, so every earlier number stands, and both ran
 on the frozen cell (two layers x one contract, `--post-only`, a 40 ms asymmetric refresh, 10 ms on both legs,
