@@ -1,0 +1,15 @@
+[Unit]
+Description=ToyQuant daily report timer
+
+[Timer]
+# After the trading window the operator named, in the host's own time zone. One line to change if the window moves:
+# `OnCalendar=` takes a systemd calendar expression and `systemctl list-timers` shows the next fire.
+OnCalendar=*-*-* 00:15:00
+# A host that was down at 00:15 sends the report when it comes back rather than skipping the day, and a five-minute
+# jitter keeps a fleet of hosts from mailing at the same second.
+Persistent=true
+RandomizedDelaySec=300
+Unit=toyquant-report.service
+
+[Install]
+WantedBy=timers.target

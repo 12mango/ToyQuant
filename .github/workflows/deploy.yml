@@ -130,13 +130,15 @@ jobs:
           set -euo pipefail
           staging=out/deploy
           rm -rf "$staging"
-          mkdir -p "$staging/tools/live" "$staging/deploy/logrotate" "$staging/config"
+          mkdir -p "$staging/tools/live" "$staging/deploy/logrotate" "$staging/deploy/journald" "$staging/config"
           install -m 0755 "${{ env.BUILD_DIR }}/toy_quant" "$staging/toy_quant"
           install -m 0644 tools/live/venue_relay.py tools/live/live_config.py tools/live/okx_probe.py "$staging/tools/live/"
-          install -m 0644 deploy/toyquant-live.service deploy/toyquant-relay.service deploy/toyquant-notify@.service "$staging/deploy/"
+          install -m 0644 deploy/toyquant-live.service deploy/toyquant-relay.service deploy/toyquant-notify@.service \
+            deploy/toyquant-report.service deploy/toyquant-report.timer "$staging/deploy/"
           install -m 0755 deploy/bootstrap_server.sh deploy/check_health.sh deploy/rollback.sh deploy/preflight.sh "$staging/deploy/"
-          install -m 0755 deploy/notify.py "$staging/deploy/"
+          install -m 0755 deploy/notify.py deploy/daily_report.py "$staging/deploy/"
           install -m 0644 deploy/notify.env.example "$staging/deploy/"
+          install -m 0644 deploy/journald/toyquant.conf "$staging/deploy/journald/"
           install -m 0644 deploy/logrotate/toyquant "$staging/deploy/logrotate/"
           install -m 0644 config/live.example.yaml "$staging/config/"
           install -m 0644 .env.example "$staging/"

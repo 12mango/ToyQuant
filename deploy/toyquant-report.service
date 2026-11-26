@@ -1,0 +1,23 @@
+[Unit]
+Description=ToyQuant daily report (one mail: the last day's session, the account and the host)
+# The mail is the operator's daily read, so it is a timer rather than a crontab: `systemctl list-timers` shows when the
+# next one runs and `journalctl -u toyquant-report` shows the last one, with no second file to keep in step.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=toyquant
+Group=toyquant
+# The journal is read as the session's own account, which is what systemd-journal membership allows.
+SupplementaryGroups=systemd-journal
+EnvironmentFile=-/etc/toyquant/live.env
+EnvironmentFile=-/etc/toyquant/notify.env
+Environment=PYTHONUNBUFFERED=1
+WorkingDirectory=/opt/toyquant
+ExecStart=/usr/bin/python3 /opt/toyquant/deploy/daily_report.py
+TimeoutStartSec=120
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true

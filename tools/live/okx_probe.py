@@ -186,6 +186,28 @@ def market(side, contracts="1"):
     return request("POST", "/api/v5/trade/order", body)
 
 
+def flatten():
+    """Close the account's net position at the market, `reduceOnly`, one order per open side.
+
+    The ops workflow's emergency action. `reduceOnly` caps the size at the position, so a stale or rounded reading cannot
+    open the opposite one -- which is the failure a hand-typed `market S 3` has. An empty answer means the account was
+    already flat, and that is a success with nothing to send.
+    """
+    answers = []
+    for row in positions() or []:
+        try:
+            contracts = float(row.get("pos", "0") or 0)
+        except (TypeError, ValueError):
+            continue
+        if contracts == 0:
+            continue
+        body = json.dumps({"instId": INST, "tdMode": "cross",
+                           "side": "sell" if contracts > 0 else "buy",
+                           "ordType": "market", "sz": f"{abs(contracts):g}", "reduceOnly": True})
+        answers.append(request("POST", "/api/v5/trade/order", body))
+    return answers
+
+
 def public_json(path):
     """An unsigned public read, with no demo header: the market data and the instrument table are the same for every
     environment, and `x-simulated-trading` on the instrument list returns only the demo's own subset -- which is how
@@ -607,6 +629,14 @@ def main():
         emit({"cmd": command, "side": side.upper(), "sz": contracts, "code": answer_json.get("code"),
               "sCode": data.get("sCode"), "sMsg": data.get("sMsg"), "ordId": data.get("ordId")})
         return 0 if answer_json.get("code") == "0" and data.get("sCode") == "0" else 1
+    if command == "flatten":
+        # The ops workflow's emergency exit: what the venue holds, closed at the market with `reduceOnly`, one answer
+        # per order. `orders=0` means the account was already flat and nothing was sent.
+        answers = flatten()
+        emit({"cmd": "flatten", "instId": INST, "orders": len(answers),
+              "codes": [answer.get("code") for answer in answers],
+              "messages": [((answer.get("data") or [{}])[0].get("sMsg") or answer.get("msg", "")) for answer in answers]})
+        return 0 if all(answer.get("code") == "0" for answer in answers) else 1
     if command == "spec":
         instrument = sys.argv[2] if len(sys.argv) > 2 else INST
         spec = inst_spec(instrument)

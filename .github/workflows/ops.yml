@@ -1,0 +1,102 @@
+name: ops
+
+# The host's own controls, from a browser: a dispatch menu rather than an SSH session. Nothing here trades by itself --
+# `stop` asks the engine to cancel what it holds on the way out, and `flatten` closes what is left at the market with
+# `reduceOnly` -- but two of the five actions change a live session, so the workflow is dispatch-only and serialised.
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: what to do on the host
+        type: choice
+        options:
+          - status      # is it up, what does it hold, what does the account hold
+          - tail-logs   # the last N journal lines, no state change
+          - restart     # preflight, then a graceful restart, then the health check
+          - stop        # graceful stop (the engine cancels what it holds), then show what is left
+          - flatten     # close the venue's position at the market, reduceOnly, then show what is left
+        default: status
+      lines:
+        description: journal lines for tail-logs
+        default: "100"
+
+concurrency:
+  group: ops-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ops:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      # The same three secrets the deploy uses: the host, the account and the key. Nothing about the server is a
+      # repository fact.
+      - name: Install the key
+        run: |
+          set -euo pipefail
+          install -m 0700 -d "$HOME/.ssh"
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > "$HOME/.ssh/deploy_key"
+          chmod 0600 "$HOME/.ssh/deploy_key"
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> "$HOME/.ssh/known_hosts"
+
+      # One step, one SSH session, and the script is the heredoc's: an action that needs `sudo` gets it from the same
+      # account the deploy uses, and every branch prints what it did rather than exiting silently.
+      - name: Run the action
+        env:
+          ACTION: ${{ inputs.action }}
+          LINES: ${{ inputs.lines }}
+        run: |
+          set -euo pipefail
+          ssh -i "$HOME/.ssh/deploy_key" -o BatchMode=yes \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "ACTION=$ACTION LINES=$LINES bash -s" <<'REMOTE'
+          set -uo pipefail
+          echo "action=$ACTION host=$(hostname) $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          probe() { sudo python3 /opt/toyquant/tools/live/okx_probe.py "$1" 2>&1 | tail -20 || true; }
+          case "$ACTION" in
+            status)
+              for unit in toyquant-relay toyquant-live; do
+                printf '%s: %s\n' "$unit" "$(systemctl is-active "$unit" 2>&1)"
+                for prop in SubState Result NRestarts ExecMainStatus; do
+                  printf '  %s=%s\n' "$prop" "$(systemctl show -p "$prop" --value "$unit" 2>/dev/null)"
+                done
+              done
+              echo '-- account'; probe position; probe pending; probe equity
+              echo '-- last five lines each'
+              sudo journalctl -u toyquant-live -n 5 --no-pager -q
+              sudo journalctl -u toyquant-relay -n 5 --no-pager -q
+              ;;
+            tail-logs)
+              echo "-- toyquant-live, last $LINES"
+              sudo journalctl -u toyquant-live -n "$LINES" --no-pager -q
+              echo "-- toyquant-relay, last 20"
+              sudo journalctl -u toyquant-relay -n 20 --no-pager -q
+              ;;
+            restart)
+              # The preflight first: it starts the binary, gets the config's arguments, runs the engine to its [Mode] line
+              # as the service user and checks both sockets, so a broken artifact is a red action rather than a crash loop.
+              sudo bash /opt/toyquant/deploy/preflight.sh
+              sudo systemctl reset-failed toyquant-relay toyquant-live || true
+              sudo systemctl restart toyquant-relay toyquant-live
+              sudo bash /opt/toyquant/deploy/check_health.sh
+              ;;
+            stop)
+              # A graceful stop, not a kill: the engine answers SIGTERM by cancelling what it holds and confirming zero
+              # (10 s), and the unit waits 12. Whatever is left afterwards is printed, because the decision to flatten is
+              # the operator's -- an action that closed a position a human was holding on purpose is worse than one that
+              # says what is still open.
+              sudo systemctl stop toyquant-live toyquant-relay
+              echo "-- after the stop"; probe pending; probe position
+              ;;
+            flatten)
+              # `reduceOnly`, so the size is capped at the position: a stale reading cannot open the opposite one.
+              probe flatten
+              echo "-- after the flatten"; probe pending; probe position
+              ;;
+            *)
+              echo "unknown action '$ACTION'" >&2; exit 2
+              ;;
+          esac
+          REMOTE

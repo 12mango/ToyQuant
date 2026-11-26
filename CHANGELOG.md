@@ -7,6 +7,33 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The host gained a journal ceiling, a daily report and a browser menu (2026-11-27)
+
+- **The journal had no ceiling.** `logrotate` bounded the engine's files under `/opt/toyquant/logs` and nothing bounded
+  systemd's journal, which is the first thing a 20 GB disk loses. `deploy/journald/toyquant.conf` is installed as
+  `/etc/systemd/journald.conf.d/toyquant.conf` with `SystemMaxUse=500M`, `SystemMaxFileSize=100M` and
+  `MaxRetentionSec=30day`, and `journalctl --disk-usage` prints what is in force.
+- **The daily report is a timer, not a crontab.** `deploy/daily_report.py` + `toyquant-report.service` + `.timer`
+  (00:15 host time, `Persistent=true`): the session's last 24 hours (fill lines, last `[PNL]`, last `[RECON]`, any
+  `[BREAKER]`, the restart count), the account from the venue (USDT equity, position, working orders), the host (both
+  disks, memory, uptime, the journal's own usage). An unreadable source prints the reason instead of a zero, and
+  `--dry-run` prints the mail. `systemctl list-timers` answers "when is the next one".
+- **`notify.py` reads the host's live file too, and takes `ALERT_EMAIL_TO`.** The SMTP block the operator appends to
+  `/etc/toyquant/live.env` is the one that gets used, with `NOTIFY_TO` as the second name for the same recipient -- the
+  first version read only `/etc/toyquant/notify.env`, which would have been silent on the host it was written for. A
+  session that starts now mails one line (`ExecStartPost`, five journal lines, `|| true` so a mail failure cannot fail the
+  unit), a unit that fails mails the tail, and `--event started` is the switch.
+- **Five host actions in the browser instead of SSH** (`.github/workflows/ops.yml`, `workflow_dispatch` with a menu):
+  `status`, `tail-logs`, `restart` (preflight then health check), `stop` (graceful: the engine cancels what it holds;
+  then prints what is left) and `flatten` (`okx_probe.py flatten`, one market order with `reduceOnly`). `stop` and
+  `flatten` are two actions on purpose: a stop that also flattened would close a position held on purpose, and a flatten
+  that did not stop the session would be undone by the next quote.
+- **The two risk lines the 100 USDT scale needs already existed and are now documented in one place**: `kill_switch_loss_usd`
+  is a latch that closes the position it holds at the touch and then only lets exits through, and `max_exposure_usd` is a
+  pre-trade cap. At 100 USDT the arithmetic is 5-8 USDT for the switch and about 20 for the cap, and the two remaining
+  hard breakers -- a consecutive-refusal trip and a day lock that survives a restart -- are the next commit rather than a
+  half-wired one, because both live in the risk path and each needs its own pinned run.
+
 ## The deploy was audited end to end, and five of its checks could not see what they claimed (2026-11-27)
 
 The audit walked the path as the `toyquant` account on the host -- identity, configuration, ordering, the venue handshake,

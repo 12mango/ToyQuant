@@ -145,9 +145,12 @@ def rule_bundled(texts):
             name = path.rsplit("/", 1)[-1]
             if name not in workflow:
                 problems.append(f"{name} is named by {unit} and never packaged by deploy.yml")
-    for script in ("preflight.sh", "check_health.sh", "bootstrap_server.sh", "rollback.sh"):
-        if script not in workflow:
-            problems.append(f"deploy/{script} is not in the deploy's package step")
+    for script in ("preflight.sh", "check_health.sh", "bootstrap_server.sh", "rollback.sh", "notify.py",
+                   "daily_report.py", "toyquant-report.service", "toyquant-report.timer", "toyquant-notify@.service",
+                   "journald/toyquant.conf", "logrotate/toyquant"):
+        name = script.rsplit("/", 1)[-1]
+        if script not in workflow and name not in workflow:
+            problems.append(f"{script} is not in the deploy's package step")
     return problems
 
 
@@ -228,8 +231,9 @@ CLEAN = {
                   "ExecStart=/usr/bin/python3 /opt/toyquant/tools/live/venue_relay.py\n",
     "notify_unit": "[Service]\nExecStart=/usr/bin/python3 /opt/toyquant/deploy/notify.py --unit %i\n",
     "workflow": "install -m 0755 toy_quant; install tools/live/live_config.py tools/live/venue_relay.py; "
-                "install deploy/toyquant-notify@.service deploy/notify.py deploy/preflight.sh deploy/check_health.sh "
-                "deploy/bootstrap_server.sh deploy/rollback.sh\n",
+                "install deploy/toyquant-notify@.service deploy/toyquant-report.service deploy/toyquant-report.timer "
+                "deploy/notify.py deploy/daily_report.py deploy/preflight.sh deploy/check_health.sh "
+                "deploy/bootstrap_server.sh deploy/rollback.sh deploy/journald/toyquant.conf deploy/logrotate/toyquant\n",
     "shutdown_h": "std::uint64_t deadline_ms{10'000};\n",
 }
 

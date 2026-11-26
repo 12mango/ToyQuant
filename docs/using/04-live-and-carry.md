@@ -951,6 +951,35 @@ With no `notify.env`, or with it still holding placeholders, the notifier says s
 unconfigured alerting path must not become a second failure on top of the one it reports. The mail is deliberately short:
 the unit, the host, `ActiveState`/`SubState`/`Result`/`NRestarts`/`ExecMainStatus`, and the last thirty journal lines.
 
+**The journal has a ceiling of its own.** `deploy/journald/toyquant.conf` is installed as
+`/etc/systemd/journald.conf.d/toyquant.conf` -- `SystemMaxUse=500M`, `SystemMaxFileSize=100M`,
+`MaxRetentionSec=30day` -- because `logrotate` bounds the engine's files under `/opt/toyquant/logs` and nothing bounded
+systemd's journal, which is the log a 20 GB disk loses first. `journalctl --disk-usage` prints what is in force.
+
+**One mail a day, and no SSH to get it.** `toyquant-report.timer` runs `deploy/daily_report.py` at 00:15 host time
+(`systemctl list-timers` shows the next fire, `journalctl -u toyquant-report` the last one) and mails the day's four
+groups: the session (fill lines, the last `[PNL]`, the last `[RECON]`, the restart count and, once the day-lock breaker
+lands, any `[BREAKER]` line), the account
+(USDT equity, position, working orders, from the venue), the host (both disks, memory, uptime) and the journal's own
+disk usage. A source it cannot read is a sentence with the reason, never a zero: a report that prints `net_pnl=0.00`
+because the journal rotated is worse than one that says it could not read it. `python3 deploy/daily_report.py --dry-run`
+prints the mail.
+
+**Five host actions from a browser, instead of an SSH session.** `.github/workflows/ops.yml` is a dispatch workflow with a
+menu; every action runs one SSH session and prints its result into the run's log.
+
+| action | what it does | what it changes |
+|---|---|---|
+| `status` | per-unit `SubState`/`Result`/`NRestarts`/`ExecMainStatus`, the account's position/orders/equity, five lines of each journal | nothing |
+| `tail-logs` | the last N journal lines of both units | nothing |
+| `restart` | `preflight.sh`, `reset-failed`, restart both units, `check_health.sh` | a session restart |
+| `stop` | graceful stop: the engine cancels what it holds and confirms zero; then prints what is left open | stops trading, does not flatten |
+| `flatten` | `okx_probe.py flatten`: one market order with `reduceOnly`, then prints position and pending | closes the position |
+
+> `stop` and `flatten` are deliberately two actions. A stop that also flattened would close a position an operator was
+> holding on purpose; a flatten that did not stop the session would be undone by the next quote. A stale or rounded size
+> is why `flatten` sends `reduceOnly`, which caps the order at the position instead of opening the opposite one.
+
 **The unit's stop window outlasts the engine's own cancel sweep, and the check is a rule rather than a habit.** The engine
 gives up cancelling at `deadline_ms` (10 s, `src/lines/session_shutdown.h`) and the unit waits 12; a unit that gave up
 first would `SIGKILL` a session between two cancels and leave what it held at the venue. `tools/gate/check_deploy.py`

@@ -52,6 +52,11 @@ ExecStartPre=/bin/bash -c 'wait_port() { for i in $(seq 1 30); do ss -ltn 2>/dev
 # configuration one, buried under forty lines of help. Measured 2026-11-27, twice. The `--check` above catches a refused
 # file; this catches everything else, and either way the reason is the first thing in the journal rather than the last.
 ExecStart=/bin/bash -c 'flags=$(python3 /opt/toyquant/tools/live/live_config.py --flags /etc/toyquant/live.yaml) || { echo "live_config.py refused /etc/toyquant/live.yaml (its own message is above)" >&2; exit 1; }; set -- $flags; if [ $# -lt 3 ]; then echo "live_config.py emitted $# argument(s): ws needs at least the endpoint, the symbol and the strategy" >&2; exit 1; fi; exec /opt/toyquant/toy_quant ws "$@"'
+# "No news is good news" needs a baseline: one line when the session comes up, so a silent week is a known silence rather
+# than an unknown one. `|| true` means a mail failure never fails the unit -- the session is what matters, and the notifier
+# says in the journal why it could not send. The five attached lines may be empty on a fast start (`Type=simple` reports
+# the unit up before the engine prints), which is why the subject says what happened rather than the body.
+ExecStartPost=/bin/bash -c 'python3 /opt/toyquant/deploy/notify.py --unit toyquant-live --event started --lines 5 || true'
 # SIGTERM is the signal the session answers with "stop new orders, cancel what is live, confirm zero, exit". The engine's
 # own deadline is 10 s (`SessionShutdown`'s `deadline_ms`), and this waits 12: the two numbers move together, and a unit
 # that gave up first would SIGKILL a session mid-cancel.

@@ -74,6 +74,16 @@ if [ -f "$REPO_DIR/deploy/logrotate/toyquant" ]; then
 else
   echo "bootstrap: $REPO_DIR/deploy/logrotate/toyquant is missing from the bundle" >&2
 fi
+# The journal's own ceiling. logrotate bounds the engine's files and nothing bounded systemd's journal, which is the log a
+# 20 GB disk loses to first -- and the drop-in is what makes it 500 MB rather than the distribution's 10% of the volume.
+if [ -f "$REPO_DIR/deploy/journald/toyquant.conf" ]; then
+  run "create the journald drop-in directory" install -d -m 0755 /etc/systemd/journald.conf.d
+  run "install the journald ceiling" install -m 0644 "$REPO_DIR/deploy/journald/toyquant.conf" \
+    /etc/systemd/journald.conf.d/toyquant.conf
+  run "reload journald" systemctl restart systemd-journald
+else
+  echo "bootstrap: $REPO_DIR/deploy/journald/toyquant.conf is missing from the bundle" >&2
+fi
 
 # The units are installed here rather than by the workflow so that a host brought up by hand and a host brought up by CI
 # end up identical. Two of them: the relay talks to the venue and holds the only key, the engine reads its sockets.
@@ -82,7 +92,7 @@ RELAY_SERVICE_NAME=${RELAY_SERVICE_NAME:-toyquant-relay}
 units=""
 # The notifier is a template unit (`name@.service`), so it is installed under the name it is instantiated from and never
 # enabled: `OnFailure=` in the two units above is its only caller.
-for unit in "$RELAY_SERVICE_NAME" "$SERVICE_NAME" toyquant-notify@; do
+for unit in "$RELAY_SERVICE_NAME" "$SERVICE_NAME" toyquant-notify@ toyquant-report; do
   if [ -f "$REPO_DIR/deploy/$unit.service" ]; then
     run "install $unit" install -m 0644 "$REPO_DIR/deploy/$unit.service" "/etc/systemd/system/$unit.service"
     units="$units $unit"
@@ -98,6 +108,15 @@ if [ -n "$units" ]; then
       *) run "enable $unit at boot" systemctl enable "$unit" ;;
     esac
   done
+fi
+# The daily report is a timer, not a unit: enabled and started, so `systemctl list-timers` can answer "when is the next
+# one" and `journalctl -u toyquant-report` answers "what did the last one say".
+if [ -f "$REPO_DIR/deploy/toyquant-report.timer" ]; then
+  run "install the daily report timer" install -m 0644 "$REPO_DIR/deploy/toyquant-report.timer" \
+    /etc/systemd/system/toyquant-report.timer
+  run "start the daily report timer" systemctl enable --now toyquant-report.timer
+else
+  echo "bootstrap: $REPO_DIR/deploy/toyquant-report.timer is missing from the bundle" >&2
 fi
 
 # The two operator files. This script creates them *from the templates* when they are absent, so that the first deploy
