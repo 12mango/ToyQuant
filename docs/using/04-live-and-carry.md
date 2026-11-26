@@ -936,6 +936,16 @@ credentials are printed, values never.
 `okx_probe.py` needs no sourced file on a host: it reads `/etc/toyquant/live.env` itself when the environment carries no
 credentials, and a name it cannot find is an error that says which one and where to put it.
 
+**The relay the units ship answers the engine's three queries, and a close is an order.** That relay translated only
+`ORDER` and `CANCEL` until 2026-11-27, so a deployed session's `PENDING`, `EQUITY` and `POSITION` were answered
+`REJECT … venue` and both `[RECON]` lines read `n/a` with `status=unknown` -- a venue that would not say, as far as the log
+could tell. It now answers the three with signed REST reads (`EQUITY` is the USDT balance, not the account's `totalEq`;
+`unavailable` when the venue will not answer, never a zero), translates `CLOSE` into a `reduceOnly` market order whose
+size rounds **up** to the contract grid, and prints two lines the market leg could not previously produce: `venue
+connected: …` on each upstream session and `no rows from the venue for N s` when the leg is up while the engine waits.
+Those two lines are how "the venue's stream has no such instrument" is told apart from "the relay never connected" -- the
+difference between a symbol that exists only on the demo host and a link that never opened.
+
 **Demo and live are three lines apart, and the two keys are not interchangeable.** The demo private socket is
 `wss://wspap.okx.com:443/ws/v5/private?brokerId=9999` with `RELAY_ORDER_LIVE=0` -- a placement then carries
 `x-simulated-trading: 1`, which is what the demo host requires and what the live host refuses. A funded key belongs on

@@ -7,6 +7,25 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The deployed relay refused the engine's own queries, and a close was one of them (2026-11-27)
+
+- **The Python relay spoke `ORDER` and `CANCEL` and nothing else.** The engine asks `PENDING`, `EQUITY` and `POSITION` on
+  the same order socket (`live_venue.h`'s protocol, which the C++ relay implements), and the shipped relay answered all
+  three `REJECT <id> venue` -- so the first real host's two `[RECON]` lines read `venue_equity_usd=n/a
+  ledger_equity_usd=1000 status=unknown` and `venue_units=n/a`, which reads like a venue that would not say. The three are
+  now answered from signed REST reads on the placement surface: `PENDING <n> <id>…`, `EQUITY <usdt-eq>` (the USDT
+  balance, not `totalEq`), `POSITION <units> <units_per_coin> <coin>`, and `unavailable` -- never a zero -- when the venue
+  will not answer. Pinned by `venue_relay.py --self-test`, which the gate already runs, and measured end to end against a
+  local REST stand-in: `PENDING 2 111 222 | EQUITY 4981.77 | POSITION -10000 1000000 BTC`.
+- **`CLOSE` was missing from the same translator**, so a live session's end-of-window exit was refused and the position it
+  was carrying stayed at the venue. It is now a market order with `reduceOnly`, its size rounded **up** to the contract
+  grid (9,500 units is 0.95 of a contract, and rounding that down closes nothing), with the lot grid applied after the
+  round-up.
+- **A silent market leg now names itself.** The relay prints `venue connected: <url> channel=… instId=…` when the upstream
+  session opens and `no rows from the venue for N s (sent=…)` when the engine is waiting on a stream that has produced
+  nothing -- up is not the same as flowing, and the two failures it separates (an instrument the venue's stream does not
+  carry, a link that never opened) were previously the same silent log. Never fatal: a quiet market is not a failure.
+
 ## The one-second preflight had two lies, and the probe had a traceback (2026-11-27)
 
 - **The preflight's first check never ran the binary.** `start=$(("$PROGRAM" --help ...))` is *arithmetic* expansion, not a

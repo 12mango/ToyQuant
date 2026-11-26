@@ -68,6 +68,7 @@ import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections import namedtuple
 from datetime import datetime, timezone
@@ -448,6 +449,10 @@ class VenueClient(threading.Thread):
         the venue re-sends a full snapshot on subscribe, which resets the decoder's sequence."""
         sock = websocket_client(self.url)
         self.connected = True
+        # Printed rather than assumed, because the next thing that can go wrong is invisible: a session whose
+        # subscription the venue refuses is a live connection that streams nothing, and until 2026-11-27 the only way to
+        # tell it from a quiet market was to guess. One line per session, which is a few a day.
+        print(f"venue connected: {self.url} channel={self.books_channel} instId={self.instrument}", flush=True)
         session_start = time.monotonic()
         last_ping = session_start
         try:
@@ -563,17 +568,30 @@ def accept_client(listen):
     return listener, conn
 
 
-def stream(conn, rows, stop):
-    """Forwards rows to the engine until the source ends or the engine goes away."""
+def stream(conn, rows, stop, quiet_after_seconds=0.0):
+    """Forwards rows to the engine until the source ends or the engine goes away.
+
+    `quiet_after_seconds` names a symptom this relay could not previously report: a session whose venue connection is
+    up and whose engine is waiting prints *nothing at all*, so "the venue's stream has no rows for this instrument" and
+    "the relay never connected" read the same from outside the host. Printed once per interval and never fatal -- a
+    quiet market is not a failure -- and the count goes with it so a leg that delivered ten thousand rows before going
+    quiet is not confused with one that never delivered any.
+    """
     conn.sendall(encode_frame(TRADE_HEADER.encode()))
     conn.sendall(encode_frame(DEPTH_HEADER.encode()))
     sent = 0
+    last_row = time.monotonic()
     while True:
         try:
             row = rows.get(timeout=0.2)
         except queue.Empty:
             if stop.is_set():
                 break
+            quiet = time.monotonic() - last_row
+            if quiet_after_seconds > 0 and quiet >= quiet_after_seconds:
+                print(f"no rows from the venue for {quiet:.0f}s (sent={sent}): the engine has nothing to quote on",
+                      flush=True)
+                last_row = time.monotonic()
             continue
         if row is None:
             break
@@ -582,6 +600,7 @@ def stream(conn, rows, stop):
         except OSError:
             break
         sent += 1
+        last_row = time.monotonic()
     try:
         conn.sendall(encode_frame(b"", opcode=0x8))
     except OSError:
@@ -662,6 +681,23 @@ class OrderTranslator:
                 f"contract of {self.mapping.contract_size:g} ({per_contract:g} units), so there is nothing to place")
         return contracts
 
+    def contracts_to_close(self, units):
+        """The whole contracts a close needs: rounded *up*, because a partial position has no whole contract below it.
+
+        `contracts_for` rounds down, which is right for a quote -- a size above what the strategy asked for is the
+        direction that turns a demonstration into a position. A close is the one place the rounding goes the other way:
+        9,500 units is 0.95 of a contract, and rounding that down is nothing at all, so the position stays. One contract
+        with the venue's `reduceOnly` is capped at the position instead of flipping it, which is why the round-up is
+        safe here and only here.
+        """
+        per_contract = self.mapping.contract_size * self.mapping.quantity_scale
+        contracts = int(math.ceil(units / per_contract))
+        if self.mapping.lot_size > 1:
+            contracts += (-contracts) % self.mapping.lot_size
+        if contracts <= 0:
+            raise OrderError(f"a close of {units} engine units is below one contract and has nothing to place")
+        return contracts
+
     def price_on_tick(self, text):
         """The engine's price on the venue's grid, as a decimal the venue accepts.
 
@@ -717,6 +753,29 @@ class OrderTranslator:
             if self.inst_code is not None:
                 order["instIdCode"] = self.inst_code
             return {"id": cl_ord_id, "op": "order", "args": [order]}
+        if fields[0] == "CLOSE":
+            if len(fields) != 5:
+                raise OrderError(f"a close line has five fields and this one has {len(fields)}")
+            _, cl_ord_id, symbol, side, quantity = fields
+            if not cl_ord_id.isdigit():
+                raise OrderError(f"the order id '{cl_ord_id}' is not a number")
+            if side not in ("B", "S"):
+                raise OrderError(f"side '{side}' is not B or S")
+            if not quantity.isdigit() or int(quantity) == 0:
+                raise OrderError(f"quantity '{quantity}' is not a positive integer")
+            # The end-of-session exit on a live run: a market order with `reduceOnly` and no price, because the venue's
+            # book decides the fill and the whole-contract round-up must not flip a fractional position
+            # (`live_venue.h`, `CLOSE`). This branch was missing until 2026-11-27, so a deployed session's wind-down was
+            # answered `REJECT ... venue` and the position it was carrying stayed at the venue.
+            contracts = self.contracts_to_close(int(quantity))
+            self.orders[cl_ord_id] = {"symbol": symbol, "units": int(quantity), "contracts": contracts,
+                                      "filled": 0, "terminal": False, "post_only": False, "close": True}
+            order = {"instId": self.instrument, "tdMode": "cross",
+                     "side": "buy" if side == "B" else "sell", "ordType": "market",
+                     "sz": str(contracts), "reduceOnly": True, "clOrdId": cl_ord_id}
+            if self.inst_code is not None:
+                order["instIdCode"] = self.inst_code
+            return {"id": cl_ord_id, "op": "order", "args": [order]}
         if fields[0] == "CANCEL":
             if len(fields) != 2:
                 raise OrderError(f"a cancel line has two fields and this one has {len(fields)}")
@@ -726,7 +785,7 @@ class OrderTranslator:
             return {"id": cl_ord_id, "op": "cancel-order", "args": [dict(
                 {"instId": self.instrument, "clOrdId": cl_ord_id},
                 **({"instIdCode": self.inst_code} if self.inst_code is not None else {}))]}
-        raise OrderError(f"'{fields[0]}' is not an order or a cancel")
+        raise OrderError(f"'{fields[0]}' is not an order, a close or a cancel")
 
     def decode(self, message):
         """The venue's message as the adapter's lines: ACK, FILL, CANCELED or REJECT."""
@@ -1026,6 +1085,13 @@ def serve_orders(listen, instrument, max_quantity=100, capture=None, mapping=Non
                 text = line.decode(errors="replace").strip()
                 if not text:
                     continue
+                # The simulated venue has no pending list and no balance, and saying so is the answer the protocol
+                # expects (`live_venue.h`): a refusal would reach the engine as a REJECT on an id it never sent.
+                if text in ("PENDING", "EQUITY", "POSITION"):
+                    for answer in query_answers(text, None, translator):
+                        conn.sendall(answer.encode() + b"\n")
+                        replies += 1
+                    continue
                 try:
                     request = translator.encode(text)
                 except OrderError as error:
@@ -1099,6 +1165,39 @@ def venue_order_route(rest_url, subscribe_orders):
     return place_over_rest, need_client, subscribe_orders
 
 
+def query_answers(query, placer, translator):
+    """The three questions `live_venue.h` lets the engine ask, answered from the placement surface.
+
+    A query is not a silence: `unavailable` is an answer, and the C++ relay says the same thing for the same reason --
+    an empty list would tell a recovery that no order is working and leave every inherited one alive, and a zero equity
+    would agree with a ledger that is wrong. Measured 2026-11-27 on the first deploy: this relay answered all three with
+    `REJECT <id> venue` and the session's two `[RECON]` lines read `n/a` / `status=unknown`, which looks like the venue
+    refusing to say rather than the relay never asking.
+    """
+    if placer is None:
+        return [f"{query} unavailable"]
+    if query == "PENDING":
+        order_ids = placer.pending_orders()
+        if order_ids is None:
+            return ["PENDING unavailable"]
+        return [" ".join(["PENDING", str(len(order_ids))] + [str(order_id) for order_id in order_ids])]
+    if query == "EQUITY":
+        equity = placer.balance_usd()
+        if equity is None:
+            return ["EQUITY unavailable"]
+        # Ten decimals then trimmed, the same shape the C++ relay's `precision(10)` prints: the engine reads it with
+        # `std::stod`, and trailing zeros are noise in a log line a human compares.
+        return [f"EQUITY {equity:.10f}".rstrip("0").rstrip(".")]
+    contracts = placer.position_contracts(translator.instrument)
+    if contracts is None:
+        return ["POSITION unavailable"]
+    # Engine units, signed, and stated with the convention that produced them: `reconcile_position` refuses the
+    # comparison when the relay's units per coin disagree with the engine's rather than printing a break whose
+    # magnitude would mean nothing.
+    coin = translator.instrument.split("-")[0]
+    return [f"POSITION {translator.units_of(contracts)} {translator.mapping.quantity_scale} {coin}"]
+
+
 def serve_venue_orders(listen, url, credentials, instrument, capture=None, dump=None, inst_type="ANY",
                        subscribe_orders=True, inst_code=None, rest_url=None, mapping=None,
                        simulated_placement=True):
@@ -1137,7 +1236,7 @@ def serve_venue_orders(listen, url, credentials, instrument, capture=None, dump=
     # file, and the order they crossed in is the thing being read.
     dump_sink = FrameDump(open(dump, "a", encoding="utf-8") if dump else None)
     stop = threading.Event()
-    orders = cancels = replies = refused = 0
+    orders = cancels = replies = refused = queries = query_failures = 0
 
     def deliver(lines):
         nonlocal replies
@@ -1178,6 +1277,16 @@ def serve_venue_orders(listen, url, credentials, instrument, capture=None, dump=
                 text = line.decode(errors="replace").strip()
                 if not text:
                     continue
+                # The three queries first, because they are not orders and carry no id: `live_venue.h`'s protocol lets
+                # the engine ask which orders the venue still holds and what the account is worth, and a relay that
+                # refuses them leaves every reconciliation reading `n/a` -- measured 2026-11-27, the first deploy.
+                if text in ("PENDING", "EQUITY", "POSITION"):
+                    answers = query_answers(text, placer, translator)
+                    deliver(answers)
+                    queries += 1
+                    if answers[0].endswith("unavailable"):
+                        query_failures += 1
+                    continue
                 try:
                     request = translator.encode(text)
                 except OrderError as error:
@@ -1212,7 +1321,8 @@ def serve_venue_orders(listen, url, credentials, instrument, capture=None, dump=
         listener.close()
     if placer is not None:
         print(f"order channel done (REST placement): orders={orders} cancels={cancels} replies={replies} "
-              f"refused={refused} deduplicated={translator.fills_deduplicated} placed={placer.placed} "
+              f"refused={refused} queries={queries} query_failures={query_failures} "
+              f"deduplicated={translator.fills_deduplicated} placed={placer.placed} "
               f"venue_refusals={placer.refused} "
               f"transport_failures={placer.failures} dumped={dump_sink.frames}", flush=True)
         # The state half on its own line, because it is its own connection: a run whose placements were answered and
@@ -1409,6 +1519,82 @@ class RestPlacer:
         reason = data.get("sMsg") or answer.get("msg", "")
         print(f"the venue refused request {order_id}: code={code} sCode={sub} {reason}".strip(), flush=True)
         return [f"REJECT {order_id} venue"]
+
+    def get(self, path):
+        """A signed read on the same surface, which is what the three queries need and the only read this class makes.
+
+        Signed with the path it asks, query string included, because that is what the venue's signature covers. A
+        failure is `None`, the same answer a failed placement gives, so a caller cannot mistake silence for a zero.
+        """
+        headers = self._headers("GET", path, "")
+        request = urllib.request.Request(self.base_url + path, method="GET", headers=headers)
+        try:
+            with urllib.request.urlopen(request, timeout=10) as response:
+                text = response.read().decode()
+        except urllib.error.HTTPError as error:
+            text = error.read().decode(errors="replace")
+        except OSError as error:
+            print(f"the query could not reach the venue ({error})", flush=True)
+            return None
+        self.dump.record("venue", text)
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            print(f"the venue answered the query {path} with something that is not JSON: {text[:160]!r}",
+                  flush=True)
+            return None
+
+    def pending_orders(self):
+        """The venue's working order ids, or `None` when it would not say.
+
+        `None` and an empty list are different answers: an empty list tells a recovery that nothing is live, which is
+        how an inherited order becomes an orphan nobody cancels.
+        """
+        answer = self.get("/api/v5/trade/orders-pending?instType=SWAP")
+        if answer is None or str(answer.get("code", "")) != "0":
+            return None
+        order_ids = []
+        for row in answer.get("data") or []:
+            try:
+                order_ids.append(int(row.get("ordId", "")))
+            except (TypeError, ValueError):
+                return None
+        return order_ids
+
+    def balance_usd(self):
+        """The account's USDT equity, or `None` when it would not say.
+
+        USDT and not the account's `totalEq`: the ledger the engine holds is USDT, and `totalEq` counts spot holdings the
+        strategy never touched (measured 2026-11-17: the demo's 1 BTC and 100 OKB were ~73,000 of its 80,000 `totalEq`
+        against a 4,981.77 strategy balance).
+        """
+        answer = self.get("/api/v5/account/balance")
+        if answer is None or str(answer.get("code", "")) != "0":
+            return None
+        for row in answer.get("data") or []:
+            for detail in row.get("details") or []:
+                if detail.get("ccy") == "USDT":
+                    try:
+                        return float(detail.get("eq", ""))
+                    except (TypeError, ValueError):
+                        return None
+        return None
+
+    def position_contracts(self, instrument):
+        """The venue's net position on one instrument, in contracts and signed, or `None` when it would not say."""
+        query = urllib.parse.urlencode({"instType": "SWAP", "instId": instrument})
+        answer = self.get("/api/v5/account/positions?" + query)
+        if answer is None or str(answer.get("code", "")) != "0":
+            return None
+        contracts = 0.0
+        for row in answer.get("data") or []:
+            if row.get("instId") not in (None, instrument):
+                continue
+            try:
+                contracts += float(row.get("pos", "0") or 0)
+            except (TypeError, ValueError):
+                return None
+        return contracts
 
     def _headers(self, method, path, body):
         """The placement's headers, simulated or not: one function, because the difference between the two
@@ -2052,10 +2238,53 @@ def self_test():
     replies = [line for message in venue.messages(cancel) for line in translator.decode(message)]
     assert replies == ["CANCELED 7 user"], replies
 
+    # A close is the one order whose size rounds *up*: 9,500 units is 0.95 of a contract, and a market order for one
+    # contract with `reduceOnly` closes it where a rounded-down zero would leave the position at the venue.
+    close = translator.encode("CLOSE 21 BTC-USDT-SWAP S 9500")
+    assert close["op"] == "order" and close["id"] == "21", close
+    assert close["args"][0] == {"instId": "BTC-USDT-SWAP", "tdMode": "cross", "side": "sell",
+                                "ordType": "market", "sz": "1", "reduceOnly": True, "clOrdId": "21"}, close
+    # And the grid applies to the round-up: a lot of 5 contracts turns a close of 0.95 into 5, not 1.
+    lots_close = OrderTranslator("BTC-USDT-SWAP", mapping=OrderMapping(0.01, 1000000, 0.1, 5))
+    assert lots_close.encode("CLOSE 22 BTC-USDT-SWAP B 9500")["args"][0]["sz"] == "5"
+
+    # The three queries `live_venue.h` lets the engine ask. Until 2026-11-27 this relay refused them as "not an order
+    # or a cancel", so the first deploy's two `[RECON]` lines read `n/a` / `status=unknown` -- a venue that would not
+    # say, as far as the log could tell, rather than a relay that never asked.
+    class Surface:
+        """A placement surface without a venue: exactly the three reads `query_answers` makes."""
+
+        instrument = "BTC-USDT-SWAP"
+
+        def __init__(self, pending=(11, 12), equity=4981.77, contracts=-1.0):
+            self.pending, self.equity, self.contracts = pending, equity, contracts
+
+        def pending_orders(self):
+            return self.pending
+
+        def balance_usd(self):
+            return self.equity
+
+        def position_contracts(self, instrument):
+            return self.contracts
+
+    surface = Surface()
+    assert query_answers("PENDING", surface, translator) == ["PENDING 2 11 12"]
+    assert query_answers("EQUITY", surface, translator) == ["EQUITY 4981.77"]
+    # Engine units, signed and with the convention that produced them: the engine compares both fields with its own.
+    assert query_answers("POSITION", surface, translator) == ["POSITION -10000 1000000 BTC"]
+    # An unavailable answer is an answer. A query is never refused, and never answered with a zero -- an empty pending
+    # list would leave every inherited order alive and a zero equity would agree with a ledger that is wrong.
+    for query in ("PENDING", "EQUITY", "POSITION"):
+        assert query_answers(query, None, translator) == [f"{query} unavailable"], query
+        silent = Surface(pending=None, equity=None, contracts=None)
+        assert query_answers(query, silent, translator) == [f"{query} unavailable"], query
+
     # A line the channel does not understand is refused with a reason rather than guessed at.
     for bad in ("FILL 7 1 1", "ORDER 7 BTC-USDT-SWAP X 1 1 Gtc", "CANCEL", "ORDER 7 BTC-USDT-SWAP B 0 100000 Gtc",
                 "ORDER 7 BTC-USDT-SWAP B 1 0 Gtc", "ORDER 7 BTC-USDT-SWAP B 1 1.5 Gtc",
-                "ORDER 7 BTC-USDT-SWAP B 1 100000 Gtc Now"):
+                "ORDER 7 BTC-USDT-SWAP B 1 100000 Gtc Now", "CLOSE 7 BTC-USDT-SWAP X 1",
+                "CLOSE 7 BTC-USDT-SWAP S 0", "CLOSE 7 BTC-USDT-SWAP S 10000 Now"):
         try:
             translator.encode(bad)
         except OrderError:
@@ -2412,7 +2641,7 @@ def main():
         if conn is None:
             client.join()  # capture only: run until the deadline or the venue closes
         else:
-            stream(conn, rows, stop)
+            stream(conn, rows, stop, quiet_after_seconds=20.0)
     except KeyboardInterrupt:
         pass
     finally:
