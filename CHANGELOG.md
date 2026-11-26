@@ -7,6 +7,25 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The lead-lag blocker is the venue's portal, and the pipeline now waits for the file (2026-11-27)
+
+- **The 400-level book history cannot be fetched by a script, and that is the venue's distribution rather than a missing
+  downloader.** Measured from this host: the public REST API answers (`GET /api/v5/public/instruments`, `code 0`) while the
+  archive URL space answers `404` for a book module; `tools/fetch/fetch_okx_trades.py` records the same fact from the other
+  side ("There is no order book module; that dataset is only offered by the web portal") and `docs/DATA.md` says the
+  historical page is portal-only. So the row stays blocked until **one day is downloaded by hand**, and the deliverable
+  this pass could build is the half that runs unattended afterwards.
+- **`tools/fetch/okx_depth_align.py`** validates a downloaded archive and aligns it with another instrument's. It reads
+  the archive's real shape -- flat `{"instId","action","asks","bids","ts"}` objects, **not** the websocket frame; a reader
+  that assumed `{"arg","data"}` finds nothing, measured on the 2026-01-07 BTC file -- refuses a file with no opening
+  snapshot, a thin book (under 100 levels a side) or a first timestamp outside the named UTC day, and prints both
+  instruments' ranges so the gate's 13:30-15:30 window is a pair of clocks rather than one. `--watch N` waits for an
+  overnight drop; `--self-test` builds four archives and pins the pass plus the three refusals.
+- **Demonstrated on the tree as it stands**: `--days 2026-11-16` names the missing leader
+  (`BTC-USDT-SWAP-L2orderbook-400lv-2026-11-16.tar.gz`) and validates the follower; `--days 2026-01-07` names the missing
+  follower and validates the leader. One hand download of the leader for any of 11-16..22 is the only thing between this
+  tool and the gate replay.
+
 ## The size throttle is the first lever in this family to clear its bar (2026-11-27)
 
 Frontier 3 of the batch. The ten-contract UP cell, seven days at 13:30-15:30, with the adding side cut when the carried

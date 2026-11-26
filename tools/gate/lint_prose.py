@@ -338,7 +338,11 @@ def main():
                         # the mail instead of sending it. Both are in the live page's command block, because the way an
                         # operator checks that alerting works without waiting for a crash is `--dry-run`, and it is the
                         # notifier's flag rather than the engine's.
-                        "--dry-run", "--unit"}:
+                        "--dry-run", "--unit",
+                        # `tools/fetch/okx_depth_align.py` owns this one: the seconds it waits for an archive the operator
+                        # is dropping in by hand overnight. It is in `docs/TOOLS.md` and the changelog because the wait is
+                        # the tool's whole reason to exist, and it is a fetch tool's flag rather than the engine's.
+                        "--watch"}:
             problems.append(f"{flag} is mentioned in a document and is not a flag the binary accepts")
     for model in sorted(models):
         if model not in text.lower():
