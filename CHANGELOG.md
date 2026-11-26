@@ -7,6 +7,41 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## Two state switches on the maker: a toxicity-selected amend and a wind-down (2026-11-26)
+
+- **`--amend-on-toxicity`** chooses between the two separately measured repricing arms by state instead of by run: the
+  cancel path while the book is calm, the two-tick retreat amend while it is toxic, where toxic is the mid's range over
+  `--jump-window-ms` past `--jump-ticks` (`active_l2`'s detector, no cooldown needed) or the recent flow past
+  `--toxicity-imbalance` (0.9 by default). Both branches are counted in `[STRATEGY_METRICS]` as `toxicity_amends` and
+  `toxicity_refreshes`, because a state that never fires reads exactly like a switch that does nothing -- on UP 11-16 the
+  arm amended **9,571** refreshes and kept the cancel path on **13,707**.
+- **`--wind-down-skew-minutes=M --wind-down-end=HH:MM --wind-down-skew-ticks=T`** is the maker's own tail work: inside the
+  last M minutes of a named UTC session end the adding side stops opening and the closing side walks in towards the touch
+  in whole ticks as the clock advances. The end is named because a strategy inside a replay cannot see where the replay
+  stops. The wind-down's closing side is **exempt from `--advance-debounce-ms`** -- a deadline outranks a debounce, and
+  without the exemption the 40-second debounce of the frozen cell held the skew's own move back.
+- **The jump detector's window was forty seconds, not forty milliseconds.** `ActiveL2MarketMaker` turned
+  `jump_window_ms` into microseconds (`* 1000`) and compared it against a clock that is milliseconds on an OKX cut, so
+  every "40 ms" jump window was forty seconds and the recorded cooldown row ("the cooldown kills the flow, 0-1 fills") was
+  measured through that defect. `clock_units_per_second` derives the unit now, and `l2_strategy_test` pins a two-tick
+  range inside forty milliseconds against the same range spread over a hundred.
+- **An amend built from the working record's quantity is declined once the order has partly filled.** The record holds
+  what is left and a venue recomputes the remainder from the *total*, so a half-filled order's amend asked the venue for
+  `remaining - filled` and was refused -- and a refusal is a terminal report, so the strategy would forget an order that is
+  still resting. Unreachable at one contract a layer (the working record empties and the order is dropped), reachable at
+  any size; the amend now carries the total and the test pins it after a three-of-four fill.
+- **Measured, and both bars refuse their arm.** The switch lifts the per-fill capture on all three seats (UP closed
+  +5.37 -> +5.74, NES net +1.25 -> +6.41, PROS closed +5.82 -> **+7.21**) without losing a fifth of the fills and narrows
+  UP's worst day (-66.80 -> -48.67), but it converts no day: UP's positive closed days fall 5 -> 4, NES's median and worst
+  day get worse, and **PROS stays at 4 of 7** against the five a seat needs. The wind-down takes the residual to zero on
+  both seats (median absolute position 50M and 20M units -> 0) at a settled median of +6.00 against +12.75 on UP and
+  -10.24 against +0.51 on NES, so the tail can be worked but this week's mark did not repay it. Neither mechanism changes
+  the frozen configuration, and the closed/tail behaviour of both is in `docs/archive/studies.md`; the RETROSPECTIVE's
+  jump-cooldown row is **withdrawn and replaced** by the re-measurement through the fixed clock (30 fills against 30, a
+  closed median of +6.02 against +5.37, a worst day of -53.37 against -66.80).
+
+
+
 ## The execution line's resting child follows the book (2026-11-26)
 
 - **`--amend-instead-of-cancel` now reaches `execution_l2`**, as one flag and one rule: a posted child whose near touch

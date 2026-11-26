@@ -134,13 +134,35 @@ struct L2MarketMakerBaseConfig
     // the tick grid and floored at one tick, so a layer is never closer than the run asked for. Zero, the default,
     // leaves one tick a layer and every recorded number where it was.
     double layer_step_bps{0.0};
-    // Move a primary quote in place instead of pulling it and placing again, when the venue can amend. Off by default:
-    // this replay's engine does not amend, so a request becomes the cancel it replaced and the run is unchanged.
+    // Move a primary quote in place instead of pulling it and placing again, when the venue can amend. Off by default;
+    // the pipeline sends the cancel an engine without an amend would have taken, so a run that does not ask is unchanged.
     bool amend_instead_of_cancel{false};
     // The deadband an amend must clear, in ticks. The measured symmetric version amended on a single tick and put 239 to
     // 296 quotes at the back of a level that had just been swept, against 21 to 53 for the cancel path; two ticks is the
     // smallest move that is a decision rather than the book breathing.
     double amend_deadband_ticks{2.0};
+    // The state switch: instead of amending every refresh, amend only while the book is toxic -- the mid ranging over a
+    // short window, or the flow one-sided -- and keep the cancel path while it is calm. The two arms were measured
+    // separately (26 fills / +9.83 closed with the cancel path, 19 / +14.87 with the two-tick retreat), and what this
+    // switch buys is the fills of the first during calm intervals plus the capture of the second during sweeps. Off by
+    // default, so every recorded number stands.
+    bool amend_on_toxicity{false};
+    // How one-sided the recent flow has to be for that state. The imbalance is `2 * buy / (buy + sell) - 1` over the
+    // trade window, so 0.9 is a book whose last thirty-two prints were 95 per cent one side.
+    double toxicity_imbalance{0.9};
+    // Refreshes taken on each branch, so a run can say how much of its window was toxic rather than only what it did.
+    uint64_t toxicity_amends{0};
+    uint64_t toxicity_refreshes{0};
+    // The wind-down: over the last `wind_down_skew_minutes` before `wind_down_end_minute` (minutes of the UTC day, e.g.
+    // 930 for 15:30), the side that closes the position walks up to `wind_down_skew_ticks` towards the inside and the
+    // adding side stops opening, so the market's own noise works the residual instead of a taker cross at the end. The
+    // end has to be named because the strategy cannot see the session's end: a replay's last event is only known at the
+    // end of the replay. Zero minutes, the default, leaves both sides quoting as they did.
+    uint64_t wind_down_skew_minutes{0};
+    double wind_down_end_minute{0.0};
+    double wind_down_skew_ticks{1.0};
+    // Views the wind-down was active on, so an arm can be told from a window that never reached its last minutes.
+    uint64_t wind_down_views{0};
 };
 
 // The L2 market maker. Strategies that add behaviour to it derive from it rather than holding one:
@@ -206,6 +228,11 @@ class L2MarketMakerBase : public Strategy
     void on_order_submitted(const StrategyOrder& order) override
     {
         open_orders_[order.order_id] = order;
+        // What the order was sent for, which the working record no longer knows once it has filled: an amend carries the
+        // *total* quantity, because the venue recomputes the remainder from what it has already filled. Sending the
+        // remainder instead makes `quantity - filled` zero or negative at the venue, which declines the amend -- and the
+        // refusal is a terminal report, so the strategy would forget an order that is still resting.
+        order_totals_[order.order_id] = order.quantity;
         submitted_orders_.note(order.order_id);
         metrics_.submitted_quantity += order.quantity;
         ++metrics_.quote_count;
@@ -259,6 +286,9 @@ class L2MarketMakerBase : public Strategy
     {
         auto result = metrics_;
         result.available = true;
+        // The switch's two branches, so a run can say how much of its window was toxic rather than only what it did.
+        result.toxicity_amends = config_.toxicity_amends;
+        result.toxicity_refreshes = config_.toxicity_refreshes;
         return result;
     }
 
@@ -275,6 +305,7 @@ class L2MarketMakerBase : public Strategy
         if (is_terminal(report.exec_type))
         {
             open_orders_.erase(report.order_id);
+            order_totals_.erase(report.order_id);
             return;
         }
         if (report.exec_type != ExecType::Trade) return;
@@ -310,6 +341,39 @@ class L2MarketMakerBase : public Strategy
         if (total_volume == 0) return 0.0;
         return static_cast<double>(buy_volume_) / static_cast<double>(total_volume) * 2.0 - 1.0;
     }
+
+   protected:
+    // The state the amend's toxicity switch reads. The flow half lives here because the base owns the trade window; a
+    // derived strategy that has a faster signal of its own -- `ActiveL2MarketMaker`'s short-window range -- adds it to
+    // this one rather than replacing it, so a run gets both triggers with one flag.
+    virtual bool toxicity_state() const
+    {
+        return config_.toxicity_imbalance <= 1.0 &&
+               std::abs(trade_imbalance()) >= config_.toxicity_imbalance;
+    }
+
+    // How far into the wind-down the view is: 0 before it starts, 1 at `wind_down_end_minute`, linear between the two.
+    // The clock is the view's own -- milliseconds on an OKX cut, microseconds on the Deribit fixtures -- and the
+    // wall-clock second is what the end is named in, so the conversion goes through `clock_units_per_second` rather than
+    // a constant: the last time a duration was compared against a raw timestamp in this tree, a 40 ms debounce became
+    // forty seconds of book time (measured 2026-11-26).
+    double wind_down_progress() const
+    {
+        if (config_.wind_down_skew_minutes == 0 || config_.wind_down_end_minute <= 0.0 ||
+            last_view_ts_ == 0)
+            return 0.0;
+        const uint64_t units = clock_units_per_second(last_view_ts_);
+        if (units == 0) return 0.0;
+        const double second_of_day =
+            static_cast<double>((last_view_ts_ / units) % 86'400ULL);
+        const double end = config_.wind_down_end_minute * 60.0;
+        const double start = end - 60.0 * static_cast<double>(config_.wind_down_skew_minutes);
+        if (second_of_day <= start) return 0.0;
+        if (second_of_day >= end) return 1.0;
+        return (second_of_day - start) / (end - start);
+    }
+
+   private:
 
     // The mid, displaced by whichever signal this configuration selected. Each signal is a small
     // displacement of the same reference point, so the quoting logic below does not have to know
@@ -441,6 +505,26 @@ class L2MarketMakerBase : public Strategy
                 targets.bid = std::min(passive_bid, std::max(targets.bid, closing_bid));
             }
         }
+        // The wind-down's price half: while it runs, the side that closes the position walks in towards the touch in
+        // whole ticks as the clock advances -- up to `wind_down_skew_ticks` over the last minutes -- so the market meets
+        // the reducing quote first. Whole ticks rather than a continuous distance because a price is on the grid: with a
+        // one-tick budget on a three-tick quote the step lands at the halfway point, and a wider budget ramps in more
+        // steps. The clamp keeps the quote outside the touch, and zero progress leaves the quote where it was.
+        const double wind_down = wind_down_progress();
+        if (wind_down > 0.0 && config_.wind_down_skew_ticks > 0.0 && config_.tick_size > 0.0 &&
+            position_ != 0)
+        {
+            const auto moved = static_cast<uint64_t>(
+                std::lround(wind_down * config_.wind_down_skew_ticks));
+            if (moved > 0)
+            {
+                const double step = static_cast<double>(moved) * config_.tick_size;
+                if (position_ > 0)
+                    targets.ask = std::max(passive_ask, targets.ask - step);
+                else
+                    targets.bid = std::min(passive_bid, targets.bid + step);
+            }
+        }
         targets.valid = std::isfinite(targets.bid) && std::isfinite(targets.ask) && targets.bid < targets.ask;
         return targets;
     }
@@ -470,7 +554,10 @@ class L2MarketMakerBase : public Strategy
             const double primary_price = buy ? last_placed_bid_ : last_placed_ask_;
             if (std::abs(order.price - primary_price) > 0.5 * config_.tick_size) continue;
             if ((buy ? order.price - target : target - order.price) < deadband - 1e-12) continue;
-            amend_requests_.push_back(AmendRequest{entry.first, target, order.quantity});
+            const auto total = order_totals_.find(entry.first);
+            amend_requests_.push_back(AmendRequest{entry.first, target,
+                                                   total != order_totals_.end() ? total->second
+                                                                               : order.quantity});
             order.price = target;
             // The primary price the next refresh compares against is this one. Without this the second refresh in a row
             // cannot recognise the order it just moved -- `order.price` and `last_placed_*` disagree by the amend itself --
@@ -522,7 +609,21 @@ class L2MarketMakerBase : public Strategy
             // view, once the cancels have been acknowledged. With amend on, the primary of each side whose price simply
             // moved is moved in place instead, and the cancel list leaves those orders alone.
             const bool refresh = needs_refresh(top, fair_price);
-            if (refresh && config_.amend_instead_of_cancel) amend_resting_quotes(top, fair_price);
+            if (refresh)
+            {
+                // The state switch, when the run asked for it: amend only while the book is toxic, and keep the cancel
+                // path while it is calm. The two branches are counted so an arm can say which one it actually ran.
+                const bool amend_now = config_.amend_instead_of_cancel ||
+                                       (config_.amend_on_toxicity && toxicity_state());
+                if (config_.amend_on_toxicity)
+                {
+                    if (amend_now)
+                        ++config_.toxicity_amends;
+                    else
+                        ++config_.toxicity_refreshes;
+                }
+                if (amend_now) amend_resting_quotes(top, fair_price);
+            }
             return orders;
         }
         if (fair_price <= 0.0) fair_price = (top.bid_price + top.ask_price) / 2.0;
@@ -542,6 +643,18 @@ class L2MarketMakerBase : public Strategy
             if (static_cast<double>(position_) >= opening_at)
                 buy_quantity = 0;
             else if (static_cast<double>(position_) <= -opening_at)
+                sell_quantity = 0;
+        }
+        // The wind-down, before the other quantity rules so nothing further down can re-open the side it closes: in the
+        // last minutes before the named end the position is worked by the closing side alone. Zero progress -- the
+        // default -- leaves both sides exactly as they were.
+        const double wind_down = wind_down_progress();
+        if (wind_down > 0.0)
+        {
+            ++config_.wind_down_views;
+            if (position_ > 0)
+                buy_quantity = 0;
+            else if (position_ < 0)
                 sell_quantity = 0;
         }
         if (config_.flow_guard)
@@ -658,14 +771,22 @@ class L2MarketMakerBase : public Strategy
             const bool settled =
                 fair_change_ts_ == 0 || last_view_ts_ - fair_change_ts_ >= debounce_ts;
             const double half_tick = 0.5 * config_.tick_size;
+            // The wind-down's closing side is exempt: its move towards the touch is not a chase, it is a deadline, and the
+            // debounce would otherwise hold the skew back for as long as the fair price keeps moving -- which on a
+            // two-hour book is most of the last fifteen minutes. Only a run that asked for the wind-down is affected, so
+            // every arm measured without it reads exactly what it did.
+            const bool closing_buy = wind_down > 0.0 && position_ < 0;
+            const bool closing_sell = wind_down > 0.0 && position_ > 0;
             if (!settled)
             {
-                if (buy_quantity > 0 && last_placed_bid_ > 0.0 && bid_price > last_placed_bid_ + half_tick)
+                if (!closing_buy && buy_quantity > 0 && last_placed_bid_ > 0.0 &&
+                    bid_price > last_placed_bid_ + half_tick)
                 {
                     ++config_.advance_skips;
                     buy_quantity = 0;
                 }
-                if (sell_quantity > 0 && last_placed_ask_ > 0.0 && ask_price < last_placed_ask_ - half_tick)
+                if (!closing_sell && sell_quantity > 0 && last_placed_ask_ > 0.0 &&
+                    ask_price < last_placed_ask_ - half_tick)
                 {
                     ++config_.advance_skips;
                     sell_quantity = 0;
@@ -719,6 +840,9 @@ class L2MarketMakerBase : public Strategy
 
     L2MarketMakerBaseConfig config_;
     std::unordered_map<uint64_t, StrategyOrder> open_orders_;
+    // What each working order was sent for, because `open_orders_` holds what is *left* and a venue recomputes the
+    // remainder from the total: an amend built from the remaining quantity is declined once anything has filled.
+    std::unordered_map<uint64_t, uint64_t> order_totals_;
     // Amends this view asked for, consumed by the pipeline on the same cycle as the cancels.
     std::vector<AmendRequest> amend_requests_;
     SubmittedOrders submitted_orders_;

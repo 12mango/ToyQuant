@@ -811,4 +811,177 @@ int main()
                                               .owner = "MarketMaker"});
         assert(trend.net_position() == 10);
     }
+
+    // The toxicity switch: the same refresh amends only while the book is one-sided and keeps the cancel path while it
+    // is calm. Those are the two separately measured arms -- 26 fills and +9.83 closed with the cancel path, 19 and
+    // +14.87 with the two-tick retreat -- chosen by state instead of by a run, and the counters say which branch a run
+    // actually took, because a switch whose state never fires reads exactly like a switch that does nothing.
+    {
+        struct Refresh
+        {
+            std::vector<uint64_t> cancels;
+            std::vector<Strategy::AmendRequest> amends;
+        };
+        const auto drive_toxicity = [&](bool one_sided) -> Refresh
+        {
+            L2MarketMakerBase strategy(L2MarketMakerBaseConfig{.order_size = 1,
+                                                              .base_spread = 1.0,
+                                                              .inventory_limit = 100,
+                                                              .tick_size = 0.5,
+                                                              .amend_on_toxicity = true});
+            const auto placed = strategy.on_l2_market_view(view);
+            assert(placed.size() == 2);
+            strategy.on_order_submitted(StrategyOrder{placed[0].side, view.symbol.str(), placed[0].price, 1, 71});
+            strategy.on_order_submitted(StrategyOrder{placed[1].side, view.symbol.str(), placed[1].price, 1, 72});
+            if (one_sided)
+            {
+                for (int i = 0; i < 8; ++i)
+                    strategy.on_market_trade(MarketTrade{view.ts + static_cast<uint64_t>(i + 1),
+                                                         view.symbol.str(), view.top.bid_price, 5, Side::Sell, 1,
+                                                         "x"});
+            }
+            L2MarketView moved = view;
+            moved.ts = view.ts + 5'000'000;
+            moved.top.bid_price -= 1.0;
+            moved.top.ask_price -= 1.0;
+            strategy.on_l2_market_view(moved);
+            return Refresh{strategy.cancel_requests(), strategy.amend_requests()};
+        };
+        // Balanced flow (none at all) is calm: the refresh is the cancel path, both sides.
+        const auto calm = drive_toxicity(false);
+        assert(calm.amends.empty());
+        assert(calm.cancels.size() == 2);
+        // Eight sell prints and no buys is imbalance -1: the bid is moved two ticks in place, and the ask -- which would
+        // advance, the half of the asymmetry the retreat rule leaves alone -- keeps the cancel path.
+        const auto toxic = drive_toxicity(true);
+        assert(toxic.amends.size() == 1);
+        assert(toxic.amends[0].order_id == 71);
+        assert(toxic.cancels.size() == 1);
+        assert(toxic.cancels[0] == 72);
+    }
+
+    // An amend carries the quantity the order was *sent* for, because the venue recomputes the remainder from what has
+    // already filled: sending the remaining quantity makes `quantity - filled` smaller by one fill each time, and once
+    // more than half the order has filled the venue declines the amend -- and a refusal is a terminal report, so the
+    // strategy would forget an order that is still resting. Unreachable at one contract a layer, reachable at any size.
+    {
+        L2MarketMakerBase strategy(L2MarketMakerBaseConfig{.order_size = 4,
+                                                          .base_spread = 1.0,
+                                                          .inventory_limit = 100,
+                                                          .tick_size = 0.5,
+                                                          .amend_instead_of_cancel = true});
+        const auto placed = strategy.on_l2_market_view(view);
+        assert(placed.size() == 2);
+        strategy.on_order_submitted(StrategyOrder{placed[0].side, view.symbol.str(), placed[0].price, 4, 75});
+        // Three of the four fill, so the working record holds one while the order was sent for four.
+        strategy.on_order_update(ExecutionReport{.order_id = 75,
+                                                 .side = exchange::Side::Buy,
+                                                 .exec_type = ExecType::Trade,
+                                                 .symbol = view.symbol.str(),
+                                                 .price = placed[0].price,
+                                                 .quantity = 3,
+                                                 .owner = "MarketMaker"});
+        assert(strategy.working_order_count() == 1);
+        L2MarketView lower = view;
+        lower.ts = view.ts + 5'000'000;
+        lower.top.bid_price -= 1.0;
+        lower.top.ask_price -= 1.0;
+        strategy.on_l2_market_view(lower);
+        const auto amends = strategy.amend_requests();
+        assert(amends.size() == 1);
+        assert(amends[0].order_id == 75);
+        assert(amends[0].quantity == 4);  // the total, not the remaining one
+    }
+
+    // The jump window is milliseconds of book time, and the clock is what a millisecond is worth. On an OKX cut
+    // (`1794834900007`, milliseconds since the epoch) two ticks inside forty milliseconds are a jump and two ticks spread
+    // over a hundred milliseconds are a drift. Measured 2026-11-26: the window was `jump_window_ms * 1000` against that
+    // clock, so a 40 ms window was forty seconds -- which is why the recorded cooldown arm read "the cooldown kills the
+    // flow (0-1 fills)" and why that row is re-measured rather than quoted.
+    {
+        const uint64_t day_ms = (1'794'834'900'007ULL / 86'400'000ULL) * 86'400'000ULL;
+        const auto drive_jump = [&](uint64_t gap_ms) -> bool
+        {
+            ActiveL2MarketMakerConfig config{};
+            config.base.order_size = 1;
+            config.base.base_spread = 1.0;
+            config.base.inventory_limit = 100;
+            config.base.tick_size = 0.5;
+            config.jump_window_ms = 40;
+            config.jump_ticks = 2.0;
+            config.jump_cooldown_ms = 0;                // the detector as a state, not as a pull
+            config.pause_after_ticks_per_second = 1e9;  // the halt off, so only the window is under test
+            ActiveL2MarketMaker strategy(config);
+            L2MarketView at;
+            at.symbol = view.symbol;
+            at.ts = day_ms + 14ULL * 3'600ULL * 1'000ULL;
+            at.top = view.top;
+            strategy.on_l2_market_view(at);
+            at.ts += gap_ms;
+            at.top.bid_price += 1.0;
+            at.top.ask_price += 1.0;
+            strategy.on_l2_market_view(at);
+            at.ts += gap_ms;
+            at.top.bid_price += 1.0;
+            at.top.ask_price += 1.0;
+            strategy.on_l2_market_view(at);
+            return strategy.jump_range_active();
+        };
+        assert(drive_jump(20));    // two ticks inside forty milliseconds
+        assert(!drive_jump(100));  // the same two ticks, each outside the window
+    }
+
+    // The wind-down: over the last minutes before a named session end the closing side walks in towards the touch by
+    // whole ticks and the adding side stops opening, so the residual is worked by the market rather than crossed at the
+    // end. The end is named because a strategy inside a replay cannot see where the replay stops.
+    {
+        const uint64_t day_ms = (1'794'834'900'007ULL / 86'400'000ULL) * 86'400'000ULL;
+        const auto quote_at = [&](int minute_of_day)
+        {
+            L2MarketMakerBase maker(L2MarketMakerBaseConfig{.order_size = 1,
+                                                            .base_spread = 1.5,  // three ticks at 0.5
+                                                            .inventory_limit = 100,
+                                                            .tick_size = 0.5,
+                                                            .signal_mode = L2SignalMode::Baseline,
+                                                            .wind_down_skew_minutes = 15,
+                                                            .wind_down_end_minute = 930.0,  // 15:30 UTC
+                                                            .wind_down_skew_ticks = 1.0});
+            L2MarketView at;
+            at.symbol = view.symbol;
+            at.ts = day_ms + static_cast<uint64_t>(minute_of_day) * 60ULL * 1'000ULL;
+            at.top = view.top;
+            const auto open = maker.on_l2_market_view(at);
+            assert(open.size() == 2);
+            // Take the bid and leave the ask unsubmitted, so the position is long and nothing else is working.
+            maker.on_order_submitted(StrategyOrder{open[0].side, at.symbol.str(), open[0].price, 1, 91});
+            maker.on_order_update(ExecutionReport{.order_id = 91,
+                                                  .side = exchange::Side::Buy,
+                                                  .exec_type = ExecType::Trade,
+                                                  .symbol = at.symbol.str(),
+                                                  .price = open[0].price,
+                                                  .quantity = 1,
+                                                  .owner = "MarketMaker"});
+            return std::pair<std::vector<StrategyOrder>, double>{maker.on_l2_market_view(at),
+                                                                 open[1].price};
+        };
+        // 15:00: outside the wind-down, so both sides quote at the un-skewed distance.
+        const auto before = quote_at(15 * 60);
+        assert(before.first.size() == 2);
+        assert(before.first[1].side == Side::Sell);
+        const double unskewed_ask = before.first[1].price;
+        // 15:16: inside it, so the adding side is closed and the ask is still at the un-skewed distance -- a one-tick
+        // budget has not crossed the halfway point of the wind-down yet.
+        const auto early = quote_at(15 * 60 + 16);
+        assert(early.first.size() == 1);
+        assert(early.first[0].side == Side::Sell);
+        assert(std::abs(early.first[0].price - unskewed_ask) < 1e-9);
+        // 15:23, past the halfway point: the closing quote is one tick in.
+        const auto late = quote_at(15 * 60 + 23);
+        assert(late.first.size() == 1);
+        assert(std::abs(late.first[0].price - (unskewed_ask - 0.5)) < 1e-9);
+        // 15:35, past the end: the ramp has nothing left to give.
+        const auto after = quote_at(15 * 60 + 35);
+        assert(after.first.size() == 1);
+        assert(std::abs(after.first[0].price - (unskewed_ask - 0.5)) < 1e-9);
+    }
 }

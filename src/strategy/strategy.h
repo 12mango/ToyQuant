@@ -81,6 +81,11 @@ struct StrategyMetrics
     uint64_t sell_fill_count{0};
     uint64_t buy_quote_count{0};
     uint64_t sell_quote_count{0};
+    // The toxicity switch's two branches, counted by the maker that owns the state: how many refreshes went out as an
+    // amendment and how many as the cancel path. Without them a switch whose state never fires reads exactly like a
+    // switch that does nothing, which is the defect the amend's first arm had already been caught by once.
+    uint64_t toxicity_amends{0};
+    uint64_t toxicity_refreshes{0};
     bool available{false};
 
     std::string to_log_string() const
@@ -104,7 +109,9 @@ struct StrategyMetrics
                << " buy_fill_count=" << buy_fill_count
                << " sell_fill_count=" << sell_fill_count
                << " buy_quote_count=" << buy_quote_count
-               << " sell_quote_count=" << sell_quote_count;
+               << " sell_quote_count=" << sell_quote_count
+               << " toxicity_amends=" << toxicity_amends
+               << " toxicity_refreshes=" << toxicity_refreshes;
         return stream.str();
     }
 };

@@ -118,6 +118,14 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
         base_config.amend_instead_of_cancel = config.amend_instead_of_cancel;
         if (config.amend_deadband_ticks > 0.0)
             base_config.amend_deadband_ticks = config.amend_deadband_ticks;
+        base_config.amend_on_toxicity = config.amend_on_toxicity;
+        if (config.toxicity_imbalance > 0.0) base_config.toxicity_imbalance = config.toxicity_imbalance;
+        // The wind-down reads a named session end, so a run that does not name one keeps both sides quoting: the strategy
+        // has no way to infer the end of a replay it is inside.
+        base_config.wind_down_skew_minutes = config.wind_down_skew_minutes;
+        base_config.wind_down_end_minute = config.wind_down_end_minute;
+        if (config.wind_down_skew_ticks > 0.0)
+            base_config.wind_down_skew_ticks = config.wind_down_skew_ticks;
         return std::make_unique<InventoryAwareL2MarketMaker>(
             InventoryAwareL2MarketMakerConfig{.base = base_config,
                                                .inventory_limit = inventory_limit,
@@ -155,6 +163,14 @@ std::unique_ptr<Strategy> make_strategy(const std::string& strategy_name,
         // before the flag existed.
         if (config.amend_deadband_ticks > 0.0)
             base_config.amend_deadband_ticks = config.amend_deadband_ticks;
+        // The state switch and the wind-down: both off unless the run names them, and both refused on a strategy that
+        // does not carry their decision layer (app_config's own validation).
+        base_config.amend_on_toxicity = config.amend_on_toxicity;
+        if (config.toxicity_imbalance > 0.0) base_config.toxicity_imbalance = config.toxicity_imbalance;
+        base_config.wind_down_skew_minutes = config.wind_down_skew_minutes;
+        base_config.wind_down_end_minute = config.wind_down_end_minute;
+        if (config.wind_down_skew_ticks > 0.0)
+            base_config.wind_down_skew_ticks = config.wind_down_skew_ticks;
         base_config.flatten_band_units = config.flatten_band_units;
         auto active_config = make_active_l2_config(base_config);
         // A zero leaves the strategy's own threshold, so a run that does not ask for the halt to move is unchanged.

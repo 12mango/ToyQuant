@@ -1972,6 +1972,75 @@ the same thing: **the capture lives in suppressing the advancing side**, and it 
 configuration therefore carries `--advance-debounce-ms=40000` explicitly, which is now a labelled choice rather than an
 accident of the unit.
 
+**Two state switches registered before their arms ran (2026-11-26).** Both are flags that default to off, so every recorded
+number stands, and both bars were written down before the runs.
+
+**A. The toxicity switch on the amend** (`--amend-on-toxicity`). The state is the mid's range over `--jump-window-ms`
+past `--jump-ticks`, or the recent flow past `--toxicity-imbalance` (0.9 by default). The two arms it chooses between are
+already measured -- the cancel path at 26 fills and +9.83 closed, the two-tick retreat at 19 and +14.87 -- and the question
+is whether a state that picks between them beats both. **Bars, written first**: on UP and NES the arm must improve the
+closed median and the worst day without losing more than a fifth of the control's fills; and **PROS at its registered
+ten-tick cell must reach 5 of 7 positive closed days at 30 fills or more** (it read 59 fills, +5.82, 4 of 7), which is
+the seat bar the row exists for. **A defect came out of wiring it**: `ActiveL2MarketMaker` turned `jump_window_ms` into
+microseconds (`* 1000`) and compared it against a clock that is milliseconds on these cuts, so the recorded cooldown row
+("the cooldown kills the flow, 0-1 fills") was measured through **forty-second** windows; the detector now goes through
+`clock_units_per_second`, and that row is re-measured rather than quoted.
+
+**B. The wind-down** (`--wind-down-skew-minutes=15 --wind-down-end=15:30`). Over the last fifteen minutes of a named
+session the adding side stops opening and the closing side walks one tick in at the halfway point, with
+`--settle-residual` on both arms so the leftover is priced. **Bar, written first**: the residual position (`net_pos`) must
+fall **and** the settled median must not fall with it -- working the tail by hand is worth nothing if it costs more than
+the settle number it replaces.
+
+**A's arms ran, and the switch moves the per-fill capture without converting a day.** The frozen cell with
+`--settle-residual` against the same cell plus `--amend-on-toxicity --jump-window-ms=40 --jump-ticks=2`, 13:30-15:30 over
+the seven days on both seats, and PROS at its registered ten-tick cell:
+
+| seat | arm | fills (median) | `closed_bps` | positive closed days | worst `closed_bps` | `net_bps` | `settled_bps` |
+|---|---|---:|---:|---:|---:|---:|---:|
+| UP | control | 30 | +5.37 | 5 of 7 | -66.80 | +14.25 | +12.75 |
+| UP | with the switch | 27 | +5.74 | 4 of 7 | **-48.67** | +2.20 | -1.12 |
+| NES | control | 46 | +9.07 | 5 of 7 | -51.04 | +1.25 | +0.51 |
+| NES | with the switch | 39 | +6.65 | 5 of 7 | **-64.44** | +6.41 | +1.30 |
+| PROS | control | 59 | +5.82 | 4 of 7 | -395.50 | -12.50 | -- |
+| PROS | with the switch | 57 | **+7.21** | **4 of 7** | -445.77 | -2.87 | -- |
+
+Three things it does and one it does not. **It buys per-fill capture on all three seats** -- UP's closed median +0.37 bps,
+NES's net +5.16, PROS's closed median **+1.39** -- and it does so without losing more than a fifth of the fills (27 against
+30, 39 against 46, 57 against 59), which is the half of the bar it clears. **It narrows UP's tail**: the worst day goes
+from -66.80 to -48.67 closed. **It does not convert a day anywhere**: UP's positive closed days fall from five to four,
+NES's stay at five with a worse median (-2.42) and a worse worst day (-13.40), and PROS stays at **4 of 7** when the bar
+needed five. So neither half of the seat question is answered, the seat count stays at two, and what the state is worth is
+the capture of a fill rather than a day's sign. UP's `net` column falls for a different reason and should not be read as a
+result: the control carried a larger position into a favourably marked week (+8.88 bps of mark over its closed median), and
+the arm's carried position was marked against it (-3.54); the closed columns are the mechanism's.
+
+**B's arms ran, and the wind-down clears the tail at a price the settle number does not cover (2026-11-26).** The frozen
+cell with `--settle-residual` against the same cell plus `--wind-down-skew-minutes=15 --wind-down-end=15:30`, the same two
+hours and seven days on both seats. (The first pair was taken before the closing side was exempted from the advance
+debounce and is superseded: `--advance-debounce-ms=40000` was holding the skew's own move back, so that pair read a
+wind-down whose price half barely acted -- UP's residual median 17.4M and its worst day -135.53 against the numbers below.)
+
+| seat | arm | fills | `closed_bps` | `net_bps` | settle bps | `settled_bps` | positive closed days | worst `closed_bps` | median abs(`net_pos`) |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| UP | control | 30 | +5.37 | +14.25 | 1.74 | **+12.75** | 5 of 7 | -66.80 | 50,000,000 |
+| UP | wind-down | 32 | **+8.13** | +6.28 | 0.96 | +6.00 | 5 of 7 | -151.12 | **0** |
+| NES | control | 46 | +9.07 | +1.25 | 0.74 | **+0.51** | 5 of 7 | -51.04 | 20,000,000 |
+| NES | wind-down | 45 | +6.14 | +4.14 | 0.27 | -10.24 | 4 of 7 | -62.37 | **0** |
+
+The inventory half is answered decisively, and it is the thing the hypothesis asked: **the engine can work its own tail
+down inside fifteen minutes without a taker cross** -- the median absolute residual goes from 50 and 20 million units to
+**zero on both seats**, and the range from -80..+100M and -30..+90M to -17..+40M and -10..0. The cost half refuses it, on
+the bar registered above: the settled median falls on both seats (+12.75 to +6.00 and +0.51 to **-10.24**) and the worst
+day doubles on UP (-66.80 to -151.12). The decomposition says why, and it matters for what the number means: `net` is
+`closed` plus the mark on what is carried, so an arm that carries nothing gives up the mark -- and in this week the tail was
+marked in our favour by about 8.9 bps on UP. On the mark-free column the arm is **better on UP (+2.76)** and worse on NES
+(-2.93), so what decides the wind-down is the sign of a mark that belongs to the week rather than to the mechanism. That is
+the one thing this run cannot settle, and it is why the line is recorded as "the tail can be worked, at a cost that this
+week's mark did not repay" rather than as a direction that is dead: a week whose carried position is marked against us is
+exactly the case the wind-down is for, and the arm's cost there is bounded by the settle number it replaces -- 0.27 to 0.96
+bps a day on these two seats.
+
 **The amend line's three arms, and what the deadband buys (2026-11-26).** The same frozen shape (prorata, base 3 ticks,
 refresh 1, 10 ms, UP, seven days) under three settings of `--amend-instead-of-cancel`:
 

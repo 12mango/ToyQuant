@@ -91,6 +91,14 @@ class ActiveL2MarketMaker final : public L2MarketMakerBase
         return volatility_ticks_;
     }
 
+    // Whether the mid's range over the last `jump_window_ms` is wide enough to be called a jump. This is the state the
+    // amend's toxicity switch reads; the pause below is the same detector plus a cooldown. Public because it is the only
+    // observable of the window's unit, and a test that cannot see it cannot pin the millisecond arithmetic.
+    bool jump_range_active() const
+    {
+        return config_.jump_ticks > 0.0 && jump_range_ticks_ >= config_.jump_ticks;
+    }
+
    private:
     bool should_pause(uint64_t ts) const
     {
@@ -103,15 +111,22 @@ class ActiveL2MarketMaker final : public L2MarketMakerBase
     // The jump detector: how far the mid has travelled inside the last `jump_window_ms`, compared against
     // `jump_ticks`. A range rather than a rate, because a speed over this feed's gaps measures the gaps (see the note
     // on `pause_after_ticks_per_second`), and a range over a fixed window is the measurement the rule asks for.
+    //
+    // The window is milliseconds of *book* time, so it is turned into the view clock's own unit through
+    // `clock_units_per_second`: the view clock is milliseconds on an OKX cut (`1794834900007`) and microseconds on the
+    // Deribit fixtures, and a raw `* 1000` made a 40 ms window forty seconds on every OKX cut. Found 2026-11-26 while
+    // wiring the toxicity switch, which needs this number to mean what its flag says; the row that read "the cooldown
+    // kills the flow (0-1 fills)" was measured through that defect and is re-measured rather than quoted.
     void update_jump(const TopOfBook& top, uint64_t ts)
     {
-        if (config_.jump_window_ms == 0 || config_.jump_ticks <= 0.0 || ts == 0 ||
-            config_.jump_cooldown_ms == 0)
+        if (config_.jump_window_ms == 0 || config_.jump_ticks <= 0.0 || ts == 0)
             return;
         if (top.bid_price <= 0.0 || top.ask_price <= 0.0 || config_.base.tick_size <= 0.0) return;
+        const uint64_t units = clock_units_per_second(ts);
+        if (units == 0) return;
         jump_samples_.emplace_back(ts, (top.bid_price + top.ask_price) / 2.0);
-        const uint64_t window_us = config_.jump_window_ms * 1000ULL;
-        while (!jump_samples_.empty() && ts - jump_samples_.front().first > window_us)
+        const uint64_t window = config_.jump_window_ms * units / 1'000ULL;
+        while (!jump_samples_.empty() && ts - jump_samples_.front().first > window)
             jump_samples_.pop_front();
         // A bound on memory rather than on the rule: a window of tens of milliseconds holds a few samples, and this
         // only matters for a feed whose timestamps collapse.
@@ -123,14 +138,28 @@ class ActiveL2MarketMaker final : public L2MarketMakerBase
             low = std::min(low, sample.second);
             high = std::max(high, sample.second);
         }
-        if ((high - low) / config_.base.tick_size < config_.jump_ticks) return;
-        const uint64_t until = ts + config_.jump_cooldown_ms * 1000ULL;
+        jump_range_ticks_ = (high - low) / config_.base.tick_size;
+        if (jump_range_ticks_ < config_.jump_ticks) return;
+        // Without a cooldown the detector is a state rather than a pull: the toxicity switch reads the range and keeps
+        // the quotes up, and the pause is what a cooldown asks for.
+        if (config_.jump_cooldown_ms == 0) return;
+        const uint64_t until = ts + config_.jump_cooldown_ms * units / 1'000ULL;
         if (until > jump_cooldown_until_)
         {
             jump_cooldown_until_ = until;
             ++jump_pauses_;
         }
     }
+
+   protected:
+    // The switch's whole state, and the reason it lives on this class: the range is here and the flow is in the base, so
+    // one flag reads both triggers and neither has to know about the other's window.
+    bool toxicity_state() const override
+    {
+        return jump_range_active() || L2MarketMakerBase::toxicity_state();
+    }
+
+   private:
 
     bool warmup_complete() const
     {
@@ -178,6 +207,8 @@ class ActiveL2MarketMaker final : public L2MarketMakerBase
     std::deque<std::pair<uint64_t, double>> jump_samples_;
     uint64_t jump_cooldown_until_{0};
     uint64_t jump_pauses_{0};
+    // The range the last window held, in ticks: the state the toxicity switch reads, kept even when no cooldown is set.
+    double jump_range_ticks_{0.0};
     uint64_t market_trades_{0};
     uint64_t valid_views_{0};
 };

@@ -98,6 +98,11 @@ constexpr std::string_view kOnesidedInventoryPrefix = "--onesided-inventory-frac
 constexpr std::string_view kLayerStepBpsPrefix = "--layer-step-bps=";
 constexpr std::string_view kAmendInsteadOfCancelFlag = "--amend-instead-of-cancel";
 constexpr std::string_view kAmendDeadbandPrefix = "--amend-deadband-ticks=";
+constexpr std::string_view kAmendOnToxicityFlag = "--amend-on-toxicity";
+constexpr std::string_view kToxicityImbalancePrefix = "--toxicity-imbalance=";
+constexpr std::string_view kWindDownMinutesPrefix = "--wind-down-skew-minutes=";
+constexpr std::string_view kWindDownEndPrefix = "--wind-down-end=";
+constexpr std::string_view kWindDownTicksPrefix = "--wind-down-skew-ticks=";
 constexpr std::string_view kPauseTicksPerSecondPrefix = "--pause-ticks-per-second=";
 constexpr std::string_view kJumpWindowPrefix = "--jump-window-ms=";
 constexpr std::string_view kJumpTicksPrefix = "--jump-ticks=";
@@ -270,7 +275,12 @@ void print_usage(const char* executable)
                      "venue takes it in one round trip where the pair takes two (83.2 against 163.1 ms p50) and this "
                      "replay's engine moves the order in place, landing it at the back of the level it moves to, and "
                      "--amend-deadband-ticks=N is how far the target must move before that amend fires (2.0 by "
-                     "default for the maker's retreat, 1.0 for the execution peg); --pause-ticks-per-second=D sets "
+                     "default for the maker's retreat, 1.0 for the execution peg); --amend-on-toxicity amends only "
+                     "while the book is toxic -- the mid ranging --jump-ticks inside --jump-window-ms, or the flow "
+                     "past --toxicity-imbalance=F -- and keeps the cancel path while it is calm; "
+                     "--wind-down-skew-minutes=M with --wind-down-end=HH:MM (a UTC clock) walks the closing side in by "
+                     "--wind-down-skew-ticks=T (one by default) over the last M minutes and stops the adding side, so "
+                     "the residual is worked by the market rather than crossed; --pause-ticks-per-second=D sets "
                      "the active halt's threshold, which is 9.0 ticks a second and always on, so a large value is what "
                      "turns it off\n";
         std::cerr << "   limits: --max-exposure-usd=N is the exposure ceiling the summary measures the run "
@@ -1299,6 +1309,63 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                 else
                     cfg.amend_deadband_ticks = value;
             }
+            else if (flag == kAmendOnToxicityFlag)
+                cfg.amend_on_toxicity = true;
+            else if (flag.compare(0, kToxicityImbalancePrefix.size(), kToxicityImbalancePrefix) == 0)
+            {
+                double share = 0.0;
+                std::istringstream stream(flag.substr(kToxicityImbalancePrefix.size()));
+                if (!(stream >> share) || !(share > 0.0) || share > 1.0)
+                {
+                    error = "--toxicity-imbalance is a share of one side's flow in (0, 1], where 0.9 is a book whose "
+                            "recent prints were 95 per cent one side";
+                    return false;
+                }
+                cfg.toxicity_imbalance = share;
+            }
+            else if (flag.compare(0, kWindDownMinutesPrefix.size(), kWindDownMinutesPrefix) == 0)
+            {
+                uint64_t minutes = 0;
+                std::istringstream stream(flag.substr(kWindDownMinutesPrefix.size()));
+                if (!(stream >> minutes) || minutes == 0 || minutes > 60)
+                {
+                    error = "--wind-down-skew-minutes is how long the wind-down runs, so it is between 1 and 60 "
+                            "minutes";
+                    return false;
+                }
+                cfg.wind_down_skew_minutes = minutes;
+            }
+            else if (flag.compare(0, kWindDownEndPrefix.size(), kWindDownEndPrefix) == 0)
+            {
+                // The clock the wind-down counts back from: `HH:MM` of the UTC day the book is cut on. The strategy
+                // cannot see the session's end -- a replay's last event is only known when the replay ends -- so the end
+                // is named rather than inferred, and a wind-down without one would silently never start.
+                const std::string clock = flag.substr(kWindDownEndPrefix.size());
+                const auto colon = clock.find(':');
+                int hour = -1;
+                int minute = -1;
+                if (colon == std::string::npos ||
+                    !(std::istringstream(clock.substr(0, colon)) >> hour) ||
+                    !(std::istringstream(clock.substr(colon + 1)) >> minute) || hour < 0 || hour > 23 ||
+                    minute < 0 || minute > 59)
+                {
+                    error = "--wind-down-end is the UTC clock the wind-down counts back from, as HH:MM (15:30)";
+                    return false;
+                }
+                cfg.wind_down_end_minute = static_cast<double>(hour * 60 + minute);
+            }
+            else if (flag.compare(0, kWindDownTicksPrefix.size(), kWindDownTicksPrefix) == 0)
+            {
+                double ticks = 0.0;
+                std::istringstream stream(flag.substr(kWindDownTicksPrefix.size()));
+                if (!(stream >> ticks) || ticks < 1.0)
+                {
+                    error = "--wind-down-skew-ticks is how far the closing side walks in over the wind-down, so it is "
+                            "at least one tick";
+                    return false;
+                }
+                cfg.wind_down_skew_ticks = ticks;
+            }
             else if (flag.compare(0, kPauseTicksPerSecondPrefix.size(), kPauseTicksPerSecondPrefix) == 0)
             {
                 std::istringstream stream(flag.substr(kPauseTicksPerSecondPrefix.size()));
@@ -1776,6 +1843,40 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
         {
             error = "--markout-cover needs a strategy whose decision layer carries the gate: active_l2 or "
                     "its adaptive_l2 alias";
+            return false;
+        }
+        // The two state switches added 2026-11-26. Both configure a maker's own decision layer, so naming them on a
+        // strategy that does not read them would leave two runs that differ only in a flag indistinguishable.
+        const bool maker_with_state = cfg.strategy_name == "active_l2" ||
+                                      cfg.strategy_name == "adaptive_l2" ||
+                                      cfg.strategy_name == "inventory_aware_l2";
+        if (cfg.amend_on_toxicity && !maker_with_state)
+        {
+            error = "--amend-on-toxicity needs a maker whose decision layer carries the state: active_l2, its "
+                    "adaptive_l2 alias, or inventory_aware_l2";
+            return false;
+        }
+        if (cfg.toxicity_imbalance > 0.0 && !cfg.amend_on_toxicity)
+        {
+            error = "--toxicity-imbalance is the threshold of --amend-on-toxicity, which this run does not ask for";
+            return false;
+        }
+        if (cfg.wind_down_skew_minutes > 0 && cfg.wind_down_end_minute <= 0.0)
+        {
+            error = "--wind-down-skew-minutes needs --wind-down-end=HH:MM: the strategy cannot see when the session "
+                    "ends, so the clock it counts back from has to be named";
+            return false;
+        }
+        if (cfg.wind_down_end_minute > 0.0 && cfg.wind_down_skew_minutes == 0)
+        {
+            error = "--wind-down-end names when a wind-down ends and --wind-down-skew-minutes says how long it runs; "
+                    "name both";
+            return false;
+        }
+        if (cfg.wind_down_skew_minutes > 0 && !maker_with_state)
+        {
+            error = "--wind-down-skew-minutes is the maker's own inventory skew: it needs active_l2, adaptive_l2 or "
+                    "inventory_aware_l2";
             return false;
         }
     }

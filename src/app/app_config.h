@@ -136,6 +136,17 @@ struct AppConfig
     // leaves the strategy's own 2.0, which is the deadband the first run was taken with; 1 is the arm registered
     // against it, because the symmetric version amended on a single tick and lost the fills it bought.
     double amend_deadband_ticks = 0.0;
+    // From --amend-on-toxicity: amend only while the book is toxic (a short-window mid jump or one-sided flow) and keep
+    // the cancel path while it is calm -- the two measured arms, chosen by state instead of by a run. Off by default.
+    bool amend_on_toxicity = false;
+    // From --toxicity-imbalance: how one-sided the recent flow has to be for that state. 0 leaves the strategy's 0.9.
+    double toxicity_imbalance = 0.0;
+    // From --wind-down-skew-minutes / --wind-down-end / --wind-down-skew-ticks: over the last minutes before a named
+    // session end the closing side walks in by up to N ticks and the adding side stops opening. Zero minutes, the
+    // default, leaves both sides quoting and every recorded number where it was.
+    uint64_t wind_down_skew_minutes = 0;
+    double wind_down_end_minute = 0.0;
+    double wind_down_skew_ticks = 1.0;
     // From --pause-ticks-per-second: the active_l2 volatility halt's threshold. 0 leaves the strategy's own 9.0,
     // because a floor here would change every recorded run that did not ask for one.
     double pause_ticks_per_second = 0.0;
