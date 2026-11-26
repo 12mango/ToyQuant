@@ -2047,6 +2047,12 @@ nothing.
 3. **The frozen cell at ten contracts on UP**, the size `--advance-debounce-ms=40000` has never been asked at. **Bar**: the
    filled notional grows with the size, the closed median stays positive on five of seven and at least half the one-contract
    cell's +5.37, and fills stay at thirty or more -- the same bar structure as the fine-tick branch's size ladder.
+4. **The ten-contract cell's tail, asked the way the twenty-contract ladder asked it** (registered 2026-11-26, after item 3
+   ran and before item 4): `--onesided-inventory-frac=0.5` on the same cell, so the adding side stops at half the cap. **Bar**:
+   the worst day improves on both columns (from -202.88 net bps and -123.02 closed) while the closed median keeps its sign on
+   five of seven and the fills stay within a fifth of the control's 50 -- at twenty contracts the same knob took the worst day
+   from -215.52 to -138.01 and the closed median from +14.87 to +9.62, so the question here is whether it buys the tail
+   without spending the day count at a size where the money is real.
 
 **The three ran, and one clears its bar.** Same days and window as everything else; the fee column is `fees_bps`.
 
@@ -2074,6 +2080,16 @@ one day at **+941 bps on 48 fills** and a 97 bps fee. The bar's median half is m
 is refused; the finding is the non-monotonicity: at these sizes the closed median is **carried by single days**, so a size
 ladder read off three of them is not a curve and no seat at a thousand contracts can be argued from it. What would settle it
 is a *dispersion* column beside the median -- the spread of the seven days -- rather than a fourth size.
+
+**4. The half-cap retreat at ten contracts: it moves the tail from one column to the other.** `--onesided-inventory-frac=0.5`
+on the ten-contract cell reads **67 fills** (control 50), a closed median of **+3.24 on 5 of 7**, a worst closed day of
+**-95.84** against the control's -34.12, a worst net day of **-127.46** against -202.88, and a median absolute residual of
+**370M** against 560M. So half of the bar is met and half is refused: **the net tail improves by 75 bps and the residual
+falls a third, while the closed tail more than doubles and the fills rise by a third** -- outside the fifth the registration
+allowed. The mechanism is the one the twenty-contract ladder showed with the opposite sign: stopping the adding side at half
+the cap leaves fewer round trips to average, so the closed statistic is computed on a smaller set and the day that goes wrong
+goes wrong harder inside it. Refused at this size, and the row's line stays that what the knob buys is the residual rather
+than the tail.
 
 **3. The frozen cell at ten contracts clears its bar, and it is the pass of the pass.** The size the debounce was settled at
 had never been run above one contract; at ten it reads **50 fills a day** (against 30), a closed median of **+10.32 on 5 of
