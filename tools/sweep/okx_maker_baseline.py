@@ -179,7 +179,50 @@ def require_free_space(cuts, threshold_gb=2.0):
                          f"previous symbol's cuts or point --cuts at a larger filesystem")
 
 
+def self_test():
+    """Everything this tool can check without a 1.5 GB archive: the two guards, and the shape arithmetic.
+
+    The gate runs this on every edit, which is what makes the guards structural rather than remembered. The shape check
+    exists because the first version of it raised on `max(1, str)`: argparse hands back strings, one line printed the
+    resolved shape, and every sweep in the tree stopped -- with nothing in the gate able to see it.
+    """
+    import tempfile
+
+    problems = []
+    with tempfile.TemporaryDirectory() as name:
+        cuts = Path(name) / "cuts"
+        take_lock(cuts)
+        try:
+            take_lock(cuts)
+            problems.append("the lock did not refuse a second sweep on the same cuts directory")
+        except SystemExit as refused:
+            if str(os.getpid()) not in str(refused):
+                problems.append(f"the lock refused without naming its holder: {refused}")
+        try:
+            require_free_space(cuts, threshold_gb=1e9)
+            problems.append("the free-space guard did not refuse a filesystem that cannot hold a symbol")
+        except SystemExit as refused:
+            if "GB free" not in str(refused):
+                problems.append(f"the free-space guard refused without naming the number: {refused}")
+
+    for clip_text, cap_text, want in (("10000000", "100000000", 10), ("10000000", "10000000", 1)):
+        try:
+            clip = max(1, int(clip_text))
+            cap = int(cap_text)
+        except (TypeError, ValueError):
+            problems.append(f"the shape arithmetic did not parse {clip_text!r}/{cap_text!r}")
+            continue
+        if abs(cap / clip - want) > 1e-9:
+            problems.append(f"{clip_text}/{cap_text} read {cap / clip:g} clips to the cap, wanted {want}")
+    for problem in problems:
+        print(f"  {problem}")
+    print(f"okx_maker_baseline self-test: {'ok' if not problems else f'{len(problems)} problem(s)'}")
+    return 0 if not problems else 1
+
+
 def main():
+    if "--self-test" in sys.argv[1:]:
+        return self_test()
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--days", required=True, help="comma separated file days, as the archive names them")
     parser.add_argument("--symbol", default="UP-USDT-SWAP")
@@ -224,10 +267,16 @@ def main():
     take_lock(Path(args.cuts))
     require_free_space(Path(args.cuts))
     # The resolved shape, in the log, because a unit slip here is invisible in the table: `--inv-limit` written a
-    # factor of ten too small once turned a ten-contract cap into one, and nothing in the row said so.
-    clips_to_cap = args.inv_limit / max(1, args.order_size)
-    print(f"# shape: strategy={args.strategy} clip={args.order_size} cap={args.inv_limit} "
-          f"({clips_to_cap:g} clips to the cap, {args.latency_us} us a leg)", file=sys.stderr)
+    # factor of ten too small once turned a ten-contract cap into one, and nothing in the row said so. Both flags are
+    # argparse strings (no `type=`), which is what made the first version of this line raise on `max(1, str)`.
+    try:
+        clip = max(1, int(args.order_size))
+        cap = int(args.inv_limit)
+    except (TypeError, ValueError):
+        raise SystemExit(f"--order-size and --inv-limit must be integers in engine units; got "
+                         f"{args.order_size!r} and {args.inv_limit!r}")
+    print(f"# shape: strategy={args.strategy} clip={clip} cap={cap} "
+          f"({cap / clip:g} clips to the cap, {args.latency_us} us a leg)", file=sys.stderr)
 
 
     Path(args.cuts).mkdir(parents=True, exist_ok=True)
