@@ -1881,6 +1881,23 @@ phenomenon** rather than a per-fill rate: at one and ten contracts the cell earn
 notional reaches 6.66 to 100.20 USD a window. What the two smaller points measured is real; what they do not support is a
 seat at a size where the money is real.
 
+**The trend line's passive entry, measured (2026-11-26).** `--strategy trend_l2 --trend-entry=side=own,max_age=A,cooldown=60
+--post-only` on UP over the same seven days, one row a day, 10 ms on both legs, one contract a clip and five a full signal:
+
+| max_age (views) | fills over 7 days | `fees_bps` | `closed_bps` per day | `net_bps` per day | days positive |
+|---|---|---|---|---|---|
+| 20 | 27 | **2.00** on every day | -1.72 to +2.73 | -3.72 to +0.73 | 1 of 7 |
+| 60 | 66 | **2.00** | 0.00 to -8.87 | -2.00 to -10.87 | 0 of 7 |
+| 200 | 65 | **2.00** | 0.00 to -9.24 | -2.00 to -11.24 | 0 of 7 |
+
+Two things are settled by this table and they point in opposite directions. The **fee condition holds**: with `--post-only`
+on a rule that prices both legs inside the touch (`entry_price` is one function for entry and exit) every day reads 2.00
+exactly, `taker_trade_count=0`, and `fees_paid` equals `maker_fees` -- the passive entry is real and the strategy is not
+leaking the taker rate. And **the capture does not cover it**: the best day in any deadband is +2.73 bps of closed capture
+against the 4.00 a maker round trip costs, and the net is negative on six or seven days of the seven. The pilot day also
+prices the flag alone: without `--post-only` the same rule fills 69 times and 54 of them are taker, at 21.26 bps of fee,
+because the quote is computed at the view's book and arrives ten milliseconds later.
+
 **The amend line's three arms, and what the deadband buys (2026-11-26).** The same frozen shape (prorata, base 3 ticks,
 refresh 1, 10 ms, UP, seven days) under three settings of `--amend-instead-of-cancel`:
 
