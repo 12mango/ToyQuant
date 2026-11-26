@@ -113,7 +113,7 @@ jobs:
           mkdir -p "$staging/tools/live" "$staging/deploy/logrotate" "$staging/config"
           install -m 0755 "${{ env.BUILD_DIR }}/toy_quant" "$staging/toy_quant"
           install -m 0644 tools/live/venue_relay.py tools/live/live_config.py tools/live/okx_probe.py "$staging/tools/live/"
-          install -m 0644 deploy/toyquant-live.service "$staging/deploy/"
+          install -m 0644 deploy/toyquant-live.service deploy/toyquant-relay.service "$staging/deploy/"
           install -m 0755 deploy/bootstrap_server.sh deploy/check_health.sh deploy/rollback.sh "$staging/deploy/"
           install -m 0644 deploy/logrotate/toyquant "$staging/deploy/logrotate/"
           install -m 0644 config/live.example.yaml "$staging/config/"
@@ -162,7 +162,7 @@ jobs:
              sudo tar -xzf /tmp/toyquant-deploy.tar.gz -C /opt/toyquant
              sudo bash /opt/toyquant/deploy/bootstrap_server.sh --repo-dir /opt/toyquant --etc-dir /etc/toyquant
              sudo systemctl daemon-reload
-             sudo systemctl restart toyquant-live
+             sudo systemctl restart toyquant-relay toyquant-live
              sleep 3
              sudo bash /opt/toyquant/deploy/check_health.sh'
 

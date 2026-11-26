@@ -4,6 +4,10 @@ Description=ToyQuant live session (relay and engine)
 # on the same signal, and an order left resting at the venue is the failure this file's shutdown path exists to prevent.
 After=network-online.target
 Wants=network-online.target
+# The relay is what the two sockets below are: the engine reads market data from it and sends orders to it, so it starts
+# first and stops last.
+After=toyquant-relay.service
+Wants=toyquant-relay.service
 # systemd gives the session ten seconds to finish its cancels; the engine's own deadline is the same number, so the unit
 # stops waiting at the same moment the session stops trying. Past it, SIGKILL -- a session that cannot cancel is one that
 # must be restarted and reconciled, not one that should live.

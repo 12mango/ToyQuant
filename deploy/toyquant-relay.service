@@ -1,0 +1,32 @@
+[Unit]
+Description=ToyQuant venue relay (the only process that holds a key)
+# The relay is the half that talks to the venue, and the engine reads the two sockets it serves. Started before the
+# engine, stopped after it, so a restart of either does not leave the other reading a closed port.
+After=network-online.target
+Wants=network-online.target
+Before=toyquant-live.service
+
+[Service]
+Type=simple
+User=toyquant
+Group=toyquant
+# Without the `-`: a relay with no credentials file must fail to start rather than serve an order channel that refuses
+# every order for a reason nobody reads. Every flag the relay takes is a default read from this file.
+EnvironmentFile=/etc/toyquant/live.env
+Environment=PYTHONUNBUFFERED=1
+WorkingDirectory=/opt/toyquant
+# No instrument, no endpoint, no size: all three are the operator's, in /etc/toyquant/live.env.
+ExecStart=/usr/bin/python3 /opt/toyquant/tools/live/venue_relay.py
+# The relay answers SIGTERM by closing the venue connection and leaving; the engine's own cancel sweep is the engine's.
+KillSignal=SIGTERM
+TimeoutStopSec=12
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/toyquant/logs /opt/toyquant/data/runtime
+
+[Install]
+WantedBy=multi-user.target

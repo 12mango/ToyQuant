@@ -99,7 +99,7 @@ does not.
 | `tools/live/soak_push.sh` | a session's ping, reconnect and sequence counters | hand |
 | `tools/live/trace_order.sh` | the order that waited longest, stage by stage | hand |
 | `tools/live/resume_live.sh` | a snapshot written, resumed, and either break -- the file's or the venue's | hand |
-| `tools/live/okx_probe.py` | the account's own side: USDT equity, the position in contracts, pending orders, and one contract placed for a run that needs a position the ledger does not know about; `rtt`/`warm`/`touch` measure the link's round trip and the post-only decline rate, and `amend` times an amend against cancel+place on the same tunnel | hand |
+| `tools/live/okx_probe.py` | the account's own side: USDT equity, the position in contracts, pending orders, and one contract placed for a run that needs a position the ledger does not know about; `rtt`/`warm`/`touch` measure the link's round trip and the post-only decline rate, `amend` times an amend against cancel+place on the same tunnel, and `spec <inst>` prints the venue's own `tickSz`, `lotSz`, `minSz`, `ctVal` and `instIdCode` plus what one contract is in engine units | hand |
 | `tools/live/soak.sh` | one live `ws` session of a fixed shape, `post-only` or `baseline`, with both legs recorded so the window can be replayed; started as `bash .run.sh soak <mode>`, because a session typed into the tool's terminal once wedged it | hand |
 | `tools/export/bundle.py` | two bundles, a manifest and a diff, each checked | hand |
 | `tools/export/push_windows.sh` | the copied names with remote size and sha256 | hand |

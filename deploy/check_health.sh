@@ -18,7 +18,9 @@ set -euo pipefail
 
 ETC_DIR=${ETC_DIR:-/etc/toyquant}
 SERVICE_NAME=${SERVICE_NAME:-toyquant-live}
+RELAY_SERVICE_NAME=${RELAY_SERVICE_NAME:-toyquant-relay}
 PROGRAM=${PROGRAM:-/opt/toyquant/toy_quant}
+RELAY_PROGRAM=${RELAY_PROGRAM:-/opt/toyquant/tools/live/venue_relay.py}
 SNAPSHOT=${SNAPSHOT:-/opt/toyquant/data/runtime/live-snapshot.json}
 MAX_SNAPSHOT_AGE_S=${MAX_SNAPSHOT_AGE_S:-600}
 failures=0
@@ -42,6 +44,33 @@ if [ "$sessions" -ne 1 ]; then
   fail "$sessions session process(es) run $PROGRAM; one host may run one"
 else
   ok "one session process"
+fi
+
+# The relay is the other half: without it the engine reads a closed port and its summary says so, but the failure reads
+# as an engine failure. Two questions, because the process can be up while its socket is not.
+if systemctl is-active --quiet "$RELAY_SERVICE_NAME"; then
+  ok "$RELAY_SERVICE_NAME is active"
+else
+  fail "$RELAY_SERVICE_NAME is not active: $(systemctl is-active "$RELAY_SERVICE_NAME" 2>&1 || true)"
+fi
+relays=$(pgrep -c -f "$RELAY_PROGRAM" 2>/dev/null || true)
+relays=${relays:-0}
+if [ "$relays" -ne 1 ]; then
+  fail "$relays relay process(es) run $RELAY_PROGRAM; one host may run one"
+else
+  ok "one relay process"
+fi
+if command -v ss > /dev/null 2>&1; then
+  if ss -ltn 2>/dev/null | grep -q '127.0.0.1:8765'; then
+    ok "the market-data socket is listening on 127.0.0.1:8765"
+  else
+    fail "nothing listens on 127.0.0.1:8765 -- the engine will read a closed port"
+  fi
+  if ss -ltn 2>/dev/null | grep -q '127.0.0.1:8766'; then
+    ok "the order socket is listening on 127.0.0.1:8766"
+  else
+    fail "nothing listens on 127.0.0.1:8766 -- an order would have nowhere to go"
+  fi
 fi
 
 if [ ! -x "$PROGRAM" ]; then

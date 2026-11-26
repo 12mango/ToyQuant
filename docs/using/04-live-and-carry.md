@@ -871,36 +871,62 @@ case (an inherited set from a snapshot is cancelled before the session can call 
 pinned in `venue_relay.py --self-test`, which also raises a real `SIGTERM` through the installed handler. `docs/TOOLS.md`
 lists both tools.
 
-### The host: first boot, health and rollback
+### The host: two units, two files, one health check
 
-A host has three directories and one account, and `deploy/bootstrap_server.sh` creates all four idempotently -- it is run
-by the deploy on every release and by hand on a fresh machine, and the second run is a no-op with a report:
+A host has three directories, one account and **two** services. The **relay** is the only process that holds a key: it
+serves the venue's book on one socket and the order channel on another. The **engine** reads those two sockets. Both are
+installed by `deploy/bootstrap_server.sh`, which is idempotent -- it runs on every deploy and by hand on a fresh machine,
+and the second run is a no-op with a report:
 
 | path | what lives there | who writes it |
 |---|---|---|
 | `/opt/toyquant` | the program, the relay, the config reader, the deploy scripts | the bundle, on every deploy |
 | `/opt/toyquant/data/runtime`, `/opt/toyquant/logs` | the snapshot a restart reconciles from, the session's log files | the session, as `toyquant` |
-| `/etc/toyquant` | `live.yaml` and `live.env` -- the instrument, the size and the three credentials | the operator, once |
-| `/etc/systemd/system/toyquant-live.service` | the unit, installed from `deploy/toyquant-live.service` | the bootstrap |
+| `/etc/toyquant/live.yaml` | the instrument's quoting shape, the size and the risk block | the operator, once |
+| `/etc/toyquant/live.env` | the three credentials, the seat's venue facts and the route | the operator, once |
+| `/etc/systemd/system/toyquant-{relay,live}.service` | the two units, installed from `deploy/` | the bootstrap |
 
-The two operator files are seeded from the tracked templates with mode `0640`, owned by `root:toyquant`, and the bootstrap
-never rewrites one that exists -- a live configuration is an action a person takes. On a fresh host:
+**`live.env` is read by both units**, and every line in it is a value a command line must not carry. It has three groups:
 
-```bash
-sudo bash /opt/toyquant/deploy/bootstrap_server.sh            # packages, account, directories, unit, logrotate
-sudoedit /etc/toyquant/live.yaml                              # the instrument, the size, the quoting shape
-sudoedit /etc/toyquant/live.env                               # OKX_API_KEY, OKX_API_SECRET, OKX_PASSPHRASE
-sudo systemctl restart toyquant-live
-sudo bash /opt/toyquant/deploy/check_health.sh                # exits 0 only when all five answers are yes
+| group | keys | what a wrong value does |
+|---|---|---|
+| credentials | `TOYQUANT_API_KEY`, `TOYQUANT_API_SECRET`, `TOYQUANT_PASSPHRASE` | the relay refuses to start and names the missing variable |
+| the seat | `RELAY_INSTRUMENT`, `RELAY_CONTRACT_SIZE`, `RELAY_TICK_SIZE`, `RELAY_LOT_SIZE`, `RELAY_QUANTITY_SCALE`, `RELAY_ORDER_INST_CODE` | the order leg rounds to the wrong grid, or the venue refuses `50014` for a missing `instIdCode` |
+| the route | `RELAY_VENUE`, `RELAY_ORDER_VENUE`, `RELAY_ORDER_REST`, `RELAY_ORDER_LIVE`, `RELAY_MARKET_LISTEN`, `RELAY_ORDER_LISTEN` | a simulated header on the live host, a live header on the demo host, or an engine reading a closed port |
+
+`RELAY_*` are the relay's **flag defaults**, not a second config format: the unit names no instrument and no endpoint, so
+the seat never enters a tracked file. `tools/live/okx_probe.py spec <instrument>` prints the venue's own `tickSz`, `lotSz`,
+`minSz`, `ctVal` and `instIdCode`, and the one derived number a file needs:
+
+```text
+BTC-USDT-SWAP: tick 0.1 lot 0.01 min 0.01 ctVal 0.01 BTC instIdCode 10459
+one contract = 10,000 engine units (ctVal x quantity_scale 1,000,000)
 ```
 
-`check_health.sh` asks five questions, each of which is a failure a deploy can cause: the unit is active; **exactly one**
-session process is running (two sessions on one account is a position neither of them sees); no error-severity journal line
-since boot; the binary the unit names exists; and the snapshot parses, is younger than `MAX_SNAPSHOT_AGE_S`, and holds no
-more than the session itself claims. It also refuses a credential file that is readable by others. The snapshot's *content*
-is reported rather than judged -- whether a position is the right one is the accounting question `[RECONCILE]` answers.
+So `order_size` in `live.yaml` is **contracts × ctVal × 1,000,000**: 10,000 units is one BTC contract, and a file that
+wants ten of them writes `100000000`. The risk block is the other half of that arithmetic: `max_exposure_usd` refuses an
+order whose notional is above it, so an instrument whose one contract is worth more than the account may hold is a session
+that places nothing -- `one contract ≈ price × ctVal` is the number to compare against `max_exposure_usd` before choosing.
 
-The two numbers the unit and the engine share: the engine's shutdown deadline is **10 s** (`SessionShutdown`'s
+```bash
+sudo bash /opt/toyquant/deploy/bootstrap_server.sh            # packages, account, directories, both units, logrotate
+python3 /opt/toyquant/tools/live/okx_probe.py spec <inst>      # the venue's four numbers, the instIdCode and the units
+sudoedit /etc/toyquant/live.env                               # credentials, the seat, the route
+sudoedit /etc/toyquant/live.yaml                              # the size, the quoting shape, the risk block
+python3 /opt/toyquant/tools/live/live_config.py --flags /etc/toyquant/live.yaml   # refuses a key it does not know
+sudo systemctl restart toyquant-relay toyquant-live
+sudo bash /opt/toyquant/deploy/check_health.sh                # exits 0 only when every answer is yes
+```
+
+**Demo and live are three lines apart, and the two keys are not interchangeable.** The demo private socket is
+`wss://wspap.okx.com:443/ws/v5/private?brokerId=9999` with `RELAY_ORDER_LIVE=0` -- a placement then carries
+`x-simulated-trading: 1`, which is what the demo host requires and what the live host refuses. A funded key belongs on
+`wss://ws.okx.com:8443/ws/v5/private` with `RELAY_ORDER_LIVE=1`, and a demo key there answers `401`.
+`deploy/check_health.sh` reports which route is in force by reading nothing from the file: it asks whether the two sockets
+listen, whether each unit is the only process of its kind, whether the journal has an error line, and whether the snapshot
+parses -- and reports the snapshot's content rather than judging it.
+
+The two numbers the units and the engine share: the engine's shutdown deadline is **10 s** (`SessionShutdown`'s
 `deadline_ms`) and `TimeoutStopSec` is **12**. A unit that gave up first would `SIGKILL` a session mid-cancel, which leaves
 the orders a restart then has to reconcile.
 

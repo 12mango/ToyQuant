@@ -23,6 +23,32 @@ site now points at `ToyQuant`.
   gate fails both of its conditions. Refused on its registered bar; the next registration is a **stricter** toxic
   definition (`--jump-ticks=3`) whose bar needs the tail **and** the median at once.
 
+## A live host can be brought up, and the two files say what it is (2026-11-26)
+
+- **The relay had no unit, and the engine's put it out of reach.** `toyquant-live.service` described "the relay and the
+  engine" and started only the engine, so a host that followed the record ran an engine reading a closed port. There are now
+  **two** units, `deploy/toyquant-relay.service` and `deploy/toyquant-live.service`, ordered so the relay starts first and
+  stops last, and `deploy/check_health.sh` asks both halves' questions: each unit active, one process of each kind, the
+  market socket and the order socket listening, the binary present, the snapshot parseable and fresh, and neither operator
+  file readable by others.
+- **`.env.example` named five variables nothing reads.** `VenueCredentials.from_environment` reads
+  `TOYQUANT_API_KEY`/`TOYQUANT_API_SECRET`/`TOYQUANT_PASSPHRASE` (ADR 0005 decision 3), while the template said
+  `OKX_API_*` and `OKX_ORDER_URL`; a host that filled it in would have been refused with "the private channel needs
+  TOYQUANT_API_KEY". The template now carries the real names plus the seat's five venue facts and the route's six keys, and
+  `docs/using/04-live-and-carry.md` documents what each group does when it is wrong.
+- **`RELAY_*` are flag defaults, so a unit carries no seat.** `venue_relay.py` reads eleven `RELAY_*` variables as the
+  defaults of its own flags: the instrument, the contract's value, the tick, the lot, the engine's scale, the venue's
+  `instIdCode`, both endpoints, both sockets and the route. A host that names none behaves exactly as before, and the
+  instrument a session trades stops being a fact about a tracked file.
+- **`--order-live` exists, because the demo and live hosts disagree about one header.** The live path always sent
+  `x-simulated-trading: 1`, which the demo host requires and the live host refuses; the flag drops it
+  (`RELAY_ORDER_LIVE=1` does the same), and the relay's self-test pins the header map both ways -- the demo arm has the
+  header and the live arm does not -- without a network call.
+- **`okx_probe.py spec <inst>` prints the venue's own numbers**: `tickSz`, `lotSz`, `minSz`, `ctVal`, `ctValCcy` and
+  `instIdCode`, and what one contract is in engine units. Measured against the live instrument table:
+  `BTC-USDT-SWAP: tick 0.1 lot 0.01 min 0.01 ctVal 0.01 BTC instIdCode 10459` and **one contract = 10,000 engine units**,
+  which is the arithmetic `order_size` in `/etc/toyquant/live.yaml` is counted in.
+
 ## The publication boundary is a check, and the deploy is a closed loop (2026-11-26)
 
 - **`tools/gate/check_leaks.py` is the boundary, and its first run found the tree on the wrong side of it.** Structural

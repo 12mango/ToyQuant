@@ -75,14 +75,22 @@ else
   echo "bootstrap: $REPO_DIR/deploy/logrotate/toyquant is missing from the bundle" >&2
 fi
 
-# The unit is installed here rather than by the workflow so that a host brought up by hand and a host brought up by CI
-# end up identical.
-if [ -f "$REPO_DIR/deploy/toyquant-live.service" ]; then
-  run "install the unit" install -m 0644 "$REPO_DIR/deploy/toyquant-live.service" "/etc/systemd/system/$SERVICE_NAME.service"
+# The units are installed here rather than by the workflow so that a host brought up by hand and a host brought up by CI
+# end up identical. Two of them: the relay talks to the venue and holds the only key, the engine reads its sockets.
+SERVICE_NAME=${SERVICE_NAME:-toyquant-live}
+RELAY_SERVICE_NAME=${RELAY_SERVICE_NAME:-toyquant-relay}
+units=""
+for unit in "$RELAY_SERVICE_NAME" "$SERVICE_NAME"; do
+  if [ -f "$REPO_DIR/deploy/$unit.service" ]; then
+    run "install $unit" install -m 0644 "$REPO_DIR/deploy/$unit.service" "/etc/systemd/system/$unit.service"
+    units="$units $unit"
+  else
+    echo "bootstrap: $REPO_DIR/deploy/$unit.service is missing from the bundle" >&2
+  fi
+done
+if [ -n "$units" ]; then
   run "reload systemd" systemctl daemon-reload
-  run "enable the unit at boot" systemctl enable "$SERVICE_NAME"
-else
-  echo "bootstrap: $REPO_DIR/deploy/toyquant-live.service is missing from the bundle" >&2
+  for unit in $units; do run "enable $unit at boot" systemctl enable "$unit"; done
 fi
 
 # The two operator files. This script creates them *from the templates* when they are absent, so that the first deploy

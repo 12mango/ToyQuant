@@ -79,6 +79,23 @@ DEFAULT_LOT_SIZE = 1
 # The four numbers that turn an engine order into a venue order: one contract is `contract_size` of the coin,
 # `quantity_scale` engine units are one of the coin, a price sits on `tick_size` and a size on `lot_size`.
 OrderMapping = namedtuple("OrderMapping", "contract_size quantity_scale tick_size lot_size")
+
+
+def env_default(name, fallback, cast=str):
+    """A flag's default, from `RELAY_<NAME>` when the environment names one.
+
+    The reason is the publication boundary rather than convenience: the instrument, the contract's value and the two
+    endpoints are the *seat*, and a seat belongs in the operator's ignored file, not in a unit that a public repository
+    carries. Every one of them is still a flag -- the environment only changes where the default comes from -- so a
+    command line that names one keeps working, and a host that names none behaves exactly as before.
+    """
+    text = os.environ.get(name)
+    if text is None or text == "":
+        return fallback
+    try:
+        return cast(text)
+    except (TypeError, ValueError):
+        raise SystemExit(f"{name}={text!r} is not a {cast.__name__}")
 # OKX closes an idle public connection, and asks for a text ping when nothing has been sent for 30 s.
 PING_AFTER_SECONDS = 25
 # Rows in flight between the venue thread and the thread serving the engine. Bounded, because an engine
@@ -1078,7 +1095,8 @@ def venue_order_route(rest_url, subscribe_orders):
 
 
 def serve_venue_orders(listen, url, credentials, instrument, capture=None, dump=None, inst_type="ANY",
-                       subscribe_orders=True, inst_code=None, rest_url=None, mapping=None):
+                       subscribe_orders=True, inst_code=None, rest_url=None, mapping=None,
+                       simulated_placement=True):
     """Answers the engine's order leg from the venue: placement over REST, state changes over the private channel.
 
     The engine's side is exactly what the simulation serves -- a line socket, one frame a line -- so the adapter
@@ -1133,7 +1151,8 @@ def serve_venue_orders(listen, url, credentials, instrument, capture=None, dump=
     # the venue made placement REST and state a subscription -- so the client is opened whenever its subscription
     # is wanted, and `client.submit` is the only thing a placer takes away from it.
     place_over_rest, need_client, client_subscribes = venue_order_route(rest_url, subscribe_orders)
-    placer = RestPlacer(rest_url, credentials, translator, dump=dump_sink) if place_over_rest else None
+    placer = RestPlacer(rest_url, credentials, translator, dump=dump_sink,
+                        simulated=simulated_placement) if place_over_rest else None
     client = None
     if need_client:
         client = OrderVenueClient(url, credentials, translator, deliver, stop=stop, dump=dump_sink,
@@ -1386,7 +1405,9 @@ class RestPlacer:
         print(f"the venue refused request {order_id}: code={code} sCode={sub} {reason}".strip(), flush=True)
         return [f"REJECT {order_id} venue"]
 
-    def _post(self, method, path, body):
+    def _headers(self, method, path, body):
+        """The placement's headers, simulated or not: one function, because the difference between the two
+        environments this relay can reach is exactly one line of it and a test can read it without a network."""
         timestamp = rest_timestamp_now()
         headers = {"Content-Type": "application/json",
                    # The proxy in front of the venue answers urllib's own user agent with a 403 and `error code: 1010`,
@@ -1398,6 +1419,10 @@ class RestPlacer:
                    "OK-ACCESS-PASSPHRASE": self.credentials.passphrase}
         if self.simulated:
             headers["x-simulated-trading"] = "1"
+        return headers
+
+    def _post(self, method, path, body):
+        headers = self._headers(method, path, body)
         request = urllib.request.Request(self.base_url + path, data=body.encode(), method=method,
                                          headers=headers)
         try:
@@ -2126,6 +2151,19 @@ def self_test():
                                                      "sMsg": "You can't complete this request under your current "
                                                              "account mode."}]}) == ["REJECT 7 venue"]
     assert (placer.placed, placer.refused) == (1, 1), (placer.placed, placer.refused)
+    # The one line that differs between the demo host and the live one, pinned on the header map rather than on the
+    # network: the demo refuses a placement without `x-simulated-trading` and the live host refuses one that carries it.
+    assert placer._headers("POST", "/api/v5/trade/order", "{}").get("x-simulated-trading") == "1"
+    live = RestPlacer("https://www.okx.com", credentials, private_translator, simulated=False)
+    assert "x-simulated-trading" not in live._headers("POST", "/api/v5/trade/order", "{}")
+    # A flag's default can come from the environment, which is how a unit file carries no instrument and no endpoint.
+    assert env_default("TOYQUANT_SURELY_ABSENT", "fallback") == "fallback"
+    os.environ["TOYQUANT_SURELY_ABSENT"] = "7"
+    try:
+        assert env_default("TOYQUANT_SURELY_ABSENT", 1, int) == 7
+        assert env_default("TOYQUANT_SURELY_ABSENT", 1.5, float) == 7.0
+    finally:
+        del os.environ["TOYQUANT_SURELY_ABSENT"]
     assert rest_timestamp_now().endswith("Z") and len(rest_timestamp_now()) == 24, rest_timestamp_now()
     assert timestamp_now().isdigit() and len(timestamp_now()) == 10, timestamp_now()
 
@@ -2190,24 +2228,33 @@ def self_test():
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--venue", default=DEFAULT_VENUE, help="the venue's public websocket url")
-    parser.add_argument("--instrument", default=DEFAULT_INSTRUMENT)
+    parser.add_argument("--venue", default=env_default("RELAY_VENUE", DEFAULT_VENUE),
+                        help="the venue's public websocket url (default: RELAY_VENUE, then the live public host)")
+    parser.add_argument("--instrument", default=env_default("RELAY_INSTRUMENT", DEFAULT_INSTRUMENT))
     parser.add_argument("--books-channel", default="books", choices=["books", "books5", "bbo-tbt"])
     parser.add_argument("--levels", type=int, default=25,
                         help="levels kept from a snapshot; 0 keeps every level")
-    parser.add_argument("--contract-size", type=float, default=DEFAULT_CONTRACT_SIZE)
-    parser.add_argument("--quantity-scale", type=int, default=DEFAULT_QUANTITY_SCALE)
-    parser.add_argument("--tick-size", type=float, default=DEFAULT_TICK_SIZE,
+    parser.add_argument("--contract-size", type=float,
+                        default=env_default("RELAY_CONTRACT_SIZE", DEFAULT_CONTRACT_SIZE, float),
+                        help="one contract in coin units, the venue's ctVal (default: RELAY_CONTRACT_SIZE)")
+    parser.add_argument("--quantity-scale", type=int,
+                        default=env_default("RELAY_QUANTITY_SCALE", DEFAULT_QUANTITY_SCALE, int),
+                        help="engine units per one unit of the coin (default: RELAY_QUANTITY_SCALE)")
+    parser.add_argument("--tick-size", type=float,
+                        default=env_default("RELAY_TICK_SIZE", DEFAULT_TICK_SIZE, float),
                         help="the price step the venue accepts on this instrument, which the order leg rounds to; "
-                             "the market-data side reads the venue's prices as they arrive")
-    parser.add_argument("--lot-size", type=int, default=DEFAULT_LOT_SIZE,
-                        help="the size step, in contracts, that the venue accepts; the order leg rounds down to it")
-    parser.add_argument("--listen", default="127.0.0.1:8765",
-                        help="where to serve the engine; empty to only capture")
+                             "the market-data side reads the venue's prices as they arrive (default: RELAY_TICK_SIZE)")
+    parser.add_argument("--lot-size", type=int,
+                        default=env_default("RELAY_LOT_SIZE", DEFAULT_LOT_SIZE, int),
+                        help="the size step, in contracts, that the venue accepts; the order leg rounds down to it "
+                             "(default: RELAY_LOT_SIZE)")
+    parser.add_argument("--listen", default=env_default("RELAY_MARKET_LISTEN", "127.0.0.1:8765"),
+                        help="where to serve the engine; empty to only capture (default: RELAY_MARKET_LISTEN)")
     parser.add_argument("--capture", help="write the venue's raw messages here, for a later --replay")
     # The order channel: the other half of the relay, and the one an engine sends to rather than reads from.
-    parser.add_argument("--order-listen",
-                        help="serve the engine's order leg on this host:port; empty disables it")
+    parser.add_argument("--order-listen", default=os.environ.get("RELAY_ORDER_LISTEN") or None,
+                        help="serve the engine's order leg on this host:port; empty disables it "
+                             "(default: RELAY_ORDER_LISTEN)")
     parser.add_argument("--simulate-orders", action="store_true",
                         help="answer the order channel as a sandbox venue would: no key, no endpoint, no money")
     parser.add_argument("--order-cap", type=int, default=100,
@@ -2215,13 +2262,13 @@ def main():
                              "sends after the conversion)")
     parser.add_argument("--order-capture",
                         help="write the translated venue requests here, one JSON object a line")
-    parser.add_argument("--order-venue", default=DEFAULT_PRIVATE_VENUE,
+    parser.add_argument("--order-venue", default=env_default("RELAY_ORDER_VENUE", DEFAULT_PRIVATE_VENUE),
                         help="the venue's private websocket url for the order leg; the default is its demo "
-                             "endpoint, which nothing in this repository has reached yet")
+                             "endpoint (default: RELAY_ORDER_VENUE)")
     parser.add_argument("--order-dump",
                         help="write every frame the private channel receives and sends here, one JSON object a "
                              "line, so a run that heard nothing can say what the venue did")
-    parser.add_argument("--order-inst-type", default="ANY",
+    parser.add_argument("--order-inst-type", default=env_default("RELAY_ORDER_INST_TYPE", "ANY"),
                         choices=["ANY", "SPOT", "MARGIN", "SWAP", "FUTURES", "OPTION"],
                         help="the instrument type the orders subscription asks for: ANY on the private route, a "
                              "concrete type on the business route, which refuses ANY with 60018")
@@ -2230,13 +2277,21 @@ def main():
                              "the only report. On --order-rest this is the placement-only route -- REST places and "
                              "answers, and a fill is not seen, because nothing is subscribed to report one")
     parser.add_argument("--order-inst-code", type=int,
+                        default=env_default("RELAY_ORDER_INST_CODE", None, int),
                         help="the venue's internal code for the instrument (instIdCode), which its newer order "
-                             "operation requires; read it from the venue's public instruments endpoint")
+                             "operation requires; `okx_probe.py spec <inst>` prints it (default: RELAY_ORDER_INST_CODE)")
     parser.add_argument("--order-rest",
+                        default=os.environ.get("RELAY_ORDER_REST") or None,
                         help="place the order leg over REST at this base url (https://www.okx.com) instead of the "
                              "websocket trade operation, which the demo venue answers with 50026; the private "
                              "socket is still opened for the orders channel, so a fill is seen unless "
-                             "--order-no-subscribe is also given")
+                             "--order-no-subscribe is also given (default: RELAY_ORDER_REST)")
+    # The one difference between the two environments this relay can reach: the demo host refuses a placement that
+    # carries no simulated header and the live host refuses one that does. Off by default, so every recorded run stands.
+    parser.add_argument("--order-live", action="store_true",
+                        default=os.environ.get("RELAY_ORDER_LIVE", "").lower() in ("1", "true", "yes"),
+                        help="place real orders: no `x-simulated-trading` header, and the live endpoints are the "
+                             "operator's to name (RELAY_ORDER_LIVE=1 does the same)")
     parser.add_argument("--record", help="write the decoded rows straight to PREFIX_trades.csv and "
                                          "PREFIX_depth.csv: the direct route, with no engine")
     parser.add_argument("--replay", help="serve this capture instead of connecting; no network")
@@ -2282,7 +2337,8 @@ def main():
                          f"{error}")
         return serve_venue_orders(args.order_listen, args.order_venue, credentials, args.instrument,
                                   args.order_capture, args.order_dump, args.order_inst_type,
-                                  not args.order_no_subscribe, args.order_inst_code, args.order_rest, mapping)
+                                  not args.order_no_subscribe, args.order_inst_code, args.order_rest, mapping,
+                                  simulated_placement=not args.order_live)
 
     decoder = Decoder(args.instrument, args.contract_size, args.quantity_scale, args.levels)
     stop = threading.Event()

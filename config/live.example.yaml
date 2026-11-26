@@ -12,7 +12,8 @@
 engine:
   symbol: BTC-USDT-SWAP          # an example instrument; the seat a session trades belongs in config/live.yaml
   strategy: active_l2
-  # quantity_scale: 1             # optional positionals, when the file has to name them
+  # quantity_scale: 1000000       # optional positionals, when the file has to name them: 1e6 engine units per unit of
+  #                               # the coin, which must equal RELAY_QUANTITY_SCALE in /etc/toyquant/live.env
   # queue_model: prorata
   base_spread_ticks: 3            # the frozen cell's shape: three ticks out, refreshed every tick
   refresh_price_ticks: 1

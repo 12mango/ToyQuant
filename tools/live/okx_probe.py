@@ -149,7 +149,12 @@ def public_json(path):
 
 
 def inst_spec(inst):
-    """The tick, the lot and the minimum the venue states for this instrument, which a price has to be on."""
+    """The tick, the lot and the minimum the venue states for this instrument, which a price has to be on.
+
+    `instIdCode` is here because the venue's newer order operation refuses a placement without it (`50014`), and it is a
+    number the venue assigns rather than one anybody remembers: the operator reads it from this call and puts it in
+    `RELAY_ORDER_INST_CODE`, which is why `spec` prints it rather than only using it internally.
+    """
     query = urllib.parse.urlencode({"instType": "SWAP", "instId": inst})
     data = public_json("/api/v5/public/instruments?" + query).get("data") or []
     if not data:
@@ -157,8 +162,10 @@ def inst_spec(inst):
     row = data[0]
     # The text as the venue writes it, not only the number: a 0.5 tick is a one-decimal grid and a 0.0001 tick is a
     # four-decimal one, and `log10` cannot tell the two apart.
-    return {"tickSz": float(row["tickSz"]), "tickText": row["tickSz"], "lotSz": float(row.get("lotSz") or 1),
-            "minSz": float(row.get("minSz") or 0), "ctVal": row.get("ctVal")}
+    return {"instId": row.get("instId"), "tickSz": float(row["tickSz"]), "tickText": row["tickSz"],
+            "lotSz": float(row.get("lotSz") or 1), "minSz": float(row.get("minSz") or 0),
+            "ctVal": row.get("ctVal"), "ctValCcy": row.get("ctValCcy"),
+            "instIdCode": row.get("instIdCode")}
 
 
 def best_quote(inst):
@@ -552,6 +559,19 @@ def main():
         emit({"cmd": command, "side": side.upper(), "sz": contracts, "code": answer_json.get("code"),
               "sCode": data.get("sCode"), "sMsg": data.get("sMsg"), "ordId": data.get("ordId")})
         return 0 if answer_json.get("code") == "0" and data.get("sCode") == "0" else 1
+    if command == "spec":
+        instrument = sys.argv[2] if len(sys.argv) > 2 else INST
+        spec = inst_spec(instrument)
+        emit({"cmd": "spec", **spec})
+        # The one derived number an operator needs: what one contract is in engine units, which is what `order_size`
+        # and `inventory_limit` in `/etc/toyquant/live.yaml` are counted in. The scale is the engine's own (1e6), and it
+        # has to match `RELAY_QUANTITY_SCALE` in `/etc/toyquant/live.env`.
+        scale = 1000000
+        print(f"{spec['instId']}: tick {spec['tickText']} lot {spec['lotSz']:g} min {spec['minSz']:g} "
+              f"ctVal {spec['ctVal']} {spec['ctValCcy'] or ''} instIdCode {spec['instIdCode']}", flush=True)
+        print(f"one contract = {float(spec['ctVal']) * scale:,.0f} engine units "
+              f"(ctVal x quantity_scale {scale:,})", flush=True)
+        return 0
     if command == "rtt":
         instrument = sys.argv[2] if len(sys.argv) > 2 else INST
         rounds = int(sys.argv[3]) if len(sys.argv) > 3 else 12
