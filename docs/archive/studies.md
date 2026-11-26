@@ -2054,7 +2054,7 @@ nothing.
 |---|---|---:|---:|---:|---:|---:|
 | 1 | PROS ten ticks **+ `--post-only`** | 29 | **2.00** | -6.06 | **2 of 7** | -0.006 |
 | 2 | BLUR 13 ticks, 0.15 cap, one rung, **10x notional** | 37 | 2.12-167.35 | +17.36 | 4 of 7 (one day no round trip) | +0.31 |
-| 3 | UP frozen cell **at ten contracts** | **50** | **2.00** | **+20.30** | **5 of 7** | **+0.73** |
+| 3 | UP frozen cell **at ten contracts** | **50** | **2.00** | **+10.32** | **5 of 7** | **+0.73** |
 
 **1. PROS with `--post-only`: the fee is bought and the fills are given up.** The flag does exactly what the trend line's
 entry showed -- `fees_bps` reads **2.00 on every day**, against 4.67 to 35.59 for the same cell without it -- and the capture
@@ -2068,14 +2068,26 @@ best day and one day with two fills and no round trip. The bar asked half of +43
 the direction of the decay says the same thing the uncapped arm did -- **the capture falls faster than the notional grows**.
 What is left unsaid is a size between them: a three-times or five-times arm is a new registration, not a re-read.
 
+**2b. And the point between them says the decay is not a curve.** Three hundred contracts with the same 0.15 single rung
+reads a closed median of **+60.91 on 4 of 7** -- **above both endpoints** (+43.76 at a hundred, +17.36 at a thousand), with
+one day at **+941 bps on 48 fills** and a 97 bps fee. The bar's median half is met and its five-day half is missed, so the arm
+is refused; the finding is the non-monotonicity: at these sizes the closed median is **carried by single days**, so a size
+ladder read off three of them is not a curve and no seat at a thousand contracts can be argued from it. What would settle it
+is a *dispersion* column beside the median -- the spread of the seven days -- rather than a fourth size.
+
 **3. The frozen cell at ten contracts clears its bar, and it is the pass of the pass.** The size the debounce was settled at
-had never been run above one contract; at ten it reads **50 fills a day** (against 30), a closed median of **+20.30 on 5 of
+had never been run above one contract; at ten it reads **50 fills a day** (against 30), a closed median of **+10.32 on 5 of
 7** (the bar asked half of the one-contract cell's +5.37), `fees_bps` **2.00 on every day** -- post-only still holds at the
-larger clip -- and a net median of **+0.73 USD a day** against the one-contract cell's single-digit cents. The tail is there
-too (one day -202.88 net bps and -11.14 USD), and the inventory reaches the cap of ten contracts; but on this window the
-suppression the frozen configuration encodes is **not paid for in fills** at ten contracts, which is what the open item
-asked. What it does not say is that ten contracts is the right size: the ladder to twenty already showed the worst day
-doubling.
+larger clip -- and a net median of **+0.73 USD a day** against the one-contract cell's single-digit cents, with a settled
+median of **+11.33**. The tail is there too (one day -202.88 net bps and -11.14 USD), and the inventory reaches the cap of
+ten contracts; but on this window the suppression the frozen configuration encodes is **not paid for in fills** at ten
+contracts, which is what the open item asked. What it does not say is that ten contracts is the right size: the ladder to
+twenty already showed the worst day doubling.
+
+> **One number in this entry was first written as +20.30 and is corrected to +10.32.** The first pass read the fourth value
+> of the sorted column instead of the median; the CSV re-derives it, and every place that quoted +20.30 for this cell now
+> carries +10.32. The bar and the verdict are unchanged -- +10.32 still clears half of +5.37 -- and the correction is here
+> because a number that is wrong in the record is worse than a number that is missing.
 
 **Two state switches registered before their arms ran (2026-11-26).** Both are flags that default to off, so every recorded
 number stands, and both bars were written down before the runs.
