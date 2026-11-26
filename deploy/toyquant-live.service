@@ -28,6 +28,11 @@ Environment=PYTHONUNBUFFERED=1
 # The configuration is read from a file beside the credentials, which is ignored: the command line carries no symbol and
 # no size. `--flags` turns that file into the engine's arguments, in the order `ws` reads them.
 WorkingDirectory=/opt/toyquant
+# The relay binds its market socket a moment after systemd considers it started, and the engine connects exactly once at
+# startup -- so without this wait the first start of the pair races and the engine exits on a refused connection, which
+# systemd then restarts forever. The wait reads the listening table rather than connecting: a probe connection would be
+# *accepted* by the relay (its accept loop takes one client) and the handshake would fail, killing the relay.
+ExecStartPre=/bin/bash -c 'for i in $(seq 1 30); do ss -ltn 2>/dev/null | grep -q "127.0.0.1:8765" && exit 0; sleep 1; done; echo "waited 30s for the relay to listen on 127.0.0.1:8765" >&2; exit 1'
 ExecStart=/bin/bash -c 'exec /opt/toyquant/toy_quant ws $(python3 /opt/toyquant/tools/live/live_config.py --flags /etc/toyquant/live.yaml)'
 # SIGTERM is the signal the session answers with "stop new orders, cancel what is live, confirm zero, exit". The engine's
 # own deadline is 10 s (`SessionShutdown`'s `deadline_ms`), and this waits 12: the two numbers move together, and a unit

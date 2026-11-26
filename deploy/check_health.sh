@@ -57,33 +57,44 @@ else
 fi
 
 # Why a unit is not running is a different question from whether it is, and systemd keeps the answer. `NRestarts` above
-# zero means it has been crash-looping; `ExecMainStatus` is the number `journalctl` shows as `status=N` (4 is SIGILL,
-# 139 a segfault); `Result` names the class. Printed on every run, because a session that came up on its second attempt
-# is not the same thing as one that came up first.
-state=$(systemctl show -p ActiveState,SubState,NRestarts,ExecMainStatus,Result --value "$SERVICE_NAME" 2>/dev/null | tr '\n' ' ')
-ok "$SERVICE_NAME state: ${state:-unknown}"
+# zero means it has restarted since the unit was last started by hand; `ExecMainStatus` is the number `journalctl` shows
+# as `status=N` (4 is SIGILL, 139 a segfault); `Result` names the class. One property a line, because `systemctl show`
+# prints several `--value`s in its *own* order and a single line of them cannot be labelled honestly.
+for property in ActiveState SubState Result NRestarts ExecMainStatus; do
+  printf 'health: ok %s %s=%s\n' "$SERVICE_NAME" "$property" \
+    "$(systemctl show -p "$property" --value "$SERVICE_NAME" 2>/dev/null)"
+done
 restarts=$(systemctl show -p NRestarts --value "$SERVICE_NAME" 2>/dev/null || echo 0)
 if [ "${restarts:-0}" -gt 0 ]; then
-  fail "$SERVICE_NAME has restarted $restarts time(s): a unit that is up now may be up between crashes"
+  fail "$SERVICE_NAME has restarted $restarts time(s) since it was last started by hand: a unit that is up now may be up between crashes"
 fi
 # A crash is not always an *error-severity* journal line -- systemd writes "Failed with result 'core-dump'" at its own
-# severity, and the first real deploy produced 35 of them while `-p err` showed none.
+# severity, and the first real deploy produced 35 of them while `-p err` showed none. The window is the last
+# `HEALTH_WINDOW_S` seconds rather than "since boot": a counter that only a reboot clears would keep a repaired unit red
+# forever, which is the same failure as a check that cannot go green.
 if command -v journalctl > /dev/null 2>&1; then
-  crashed=$(journalctl -u "$SERVICE_NAME" -b --no-pager -q 2>/dev/null | grep -c "Failed with result" || true)
+  window=${HEALTH_WINDOW_S:-600}
+  crashed=$(journalctl -u "$SERVICE_NAME" --since "-${window}s" --no-pager -q 2>/dev/null | grep -c "Failed with result" || true)
   if [ "${crashed:-0}" -gt 0 ]; then
-    fail "$crashed 'Failed with result' line(s) since boot; last: $(journalctl -u "$SERVICE_NAME" -b --no-pager -q 2>/dev/null | grep "Failed with result" | tail -1)"
+    fail "$crashed 'Failed with result' line(s) in the last ${window}s; last: $(journalctl -u "$SERVICE_NAME" --since "-${window}s" --no-pager -q 2>/dev/null | grep "Failed with result" | tail -1)"
   else
-    ok "no 'Failed with result' line since boot"
+    ok "no 'Failed with result' line in the last ${window}s"
   fi
 fi
 
-# One process, not one per deploy. `pgrep -c -f` counts the program path, which the unit's ExecStart names.
-sessions=$(pgrep -c -f "$PROGRAM" 2>/dev/null || true)
-sessions=${sessions:-0}
-if [ "$sessions" -ne 1 ]; then
-  fail "$sessions session process(es) run $PROGRAM; one host may run one"
+# One process, not one per deploy -- and the unit's own MainPID rather than a `/proc` scan: `pgrep` samples between two
+# restarts and reads zero, which is what the first real deploy's report said ("0 session process(es)") while the unit was
+# cycling on a refused connection. MainPID is systemd's answer to the same question.
+mainpid=$(systemctl show -p MainPID --value "$SERVICE_NAME" 2>/dev/null || echo 0)
+if [ "${mainpid:-0}" -gt 0 ] && ps -o args= -p "$mainpid" 2>/dev/null | grep -q 'toy_quant'; then
+  ok "one session process (pid $mainpid)"
 else
-  ok "one session process"
+  fail "the unit reports MainPID ${mainpid:-0}, which is not a running $PROGRAM"
+fi
+# Two of them on one account is a position neither sees, so the scan stays as the duplicate guard it is good at.
+duplicates=$(pgrep -c -f "$PROGRAM" 2>/dev/null || true)
+if [ "${duplicates:-0}" -gt 1 ]; then
+  fail "$duplicates processes run $PROGRAM; one host may run one"
 fi
 
 # The relay is the other half: without it the engine reads a closed port and its summary says so, but the failure reads

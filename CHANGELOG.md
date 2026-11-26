@@ -23,6 +23,28 @@ site now points at `ToyQuant`.
   gate fails both of its conditions. Refused on its registered bar; the next registration is a **stricter** toxic
   definition (`--jump-ticks=3`) whose bar needs the tail **and** the median at once.
 
+## The relay served one socket, not two (2026-11-27)
+
+- **A relay given both `--listen` and `--order-listen` served the order channel and returned.** The order channel was a
+  `return` in `main()`, so the market leg was unreachable in the only configuration a host uses: the engine connected to
+  `8766`, found nothing on `8765`, exited on a refused connection and was restarted -- the second deploy measured **59
+  restarts and 259 "Failed with result" lines**, with a health report that read the unit `active` between two of them and
+  `0` session processes because `pgrep` had sampled the gap. Both halves now run in one process: the order channel on its
+  own thread (it is a blocking accept loop) and the market leg on the main one; naming a single socket keeps the old
+  behaviour, so every recorded run stands. Verified locally: with both flags, `18765` and `18766` are both in `LISTEN`.
+- **The engine waits for the socket instead of racing it.** `ExecStartPre` polls the listening table for
+  `127.0.0.1:8765` for up to 30 s, because `Type=simple` counts the relay started before it has bound anything. It reads
+  `ss -ltn` and never connects: the relay's accept loop takes exactly one client, so a probe connection would be
+  *accepted* and its failed handshake would kill the relay.
+- **The health check asks systemd instead of sampling `/proc`.** The session's process is the unit's `MainPID` (a
+  `pgrep` scan reads zero between two restarts, which is what the report said while the unit was cycling), duplicates stay
+  a `pgrep` question because that is what it is good at, and the five systemd properties print one per line because
+  `systemctl show` prints several `--value`s in its own order and a single line of them cannot be labelled honestly.
+- **A counter that only a reboot clears is not a health check.** `Failed with result` is counted in the last
+  `HEALTH_WINDOW_S` (600) rather than since boot, and `NRestarts` is read as "since the unit was last started by hand" --
+  which the deploy now makes true by running `systemctl reset-failed` before it restarts, so a repaired unit can go green
+  without a reboot and a fresh crash is still red.
+
 ## The shipped binary names its instruction set, and the first deploy crash-looped (2026-11-26)
 
 - **`-march=native` shipped the builder's CPU to the host.** The artifact is built on `ubuntu-latest` and run on a Tokyo GCP

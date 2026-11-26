@@ -116,5 +116,7 @@ if [ "$DRY_RUN" = 0 ]; then
   echo "bootstrap: done. The two files a session reads are the operator's:"
   echo "  $ETC_DIR/live.yaml   the instrument, the size and the quoting shape (0640 root:$SERVICE_USER)"
   echo "  $ETC_DIR/live.env    the three venue credentials (0640 root:$SERVICE_USER)"
-  echo "Start it with:  systemctl restart $SERVICE_NAME && bash $REPO_DIR/deploy/check_health.sh"
+  echo "Start it with:  systemctl reset-failed $RELAY_SERVICE_NAME $SERVICE_NAME || true"
+  echo "                systemctl restart $RELAY_SERVICE_NAME $SERVICE_NAME"
+  echo "                bash $REPO_DIR/deploy/check_health.sh"
 fi

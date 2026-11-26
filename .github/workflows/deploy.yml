@@ -175,6 +175,7 @@ jobs:
              sudo tar -xzf /tmp/toyquant-deploy.tar.gz -C /opt/toyquant
              sudo bash /opt/toyquant/deploy/bootstrap_server.sh --repo-dir /opt/toyquant --etc-dir /etc/toyquant
              sudo systemctl daemon-reload
+             sudo systemctl reset-failed toyquant-relay toyquant-live || true
              sudo systemctl restart toyquant-relay toyquant-live
              sudo bash /opt/toyquant/deploy/check_health.sh'
 

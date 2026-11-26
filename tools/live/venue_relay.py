@@ -43,6 +43,11 @@ Usage:
     # command line reaches a run's `[Mode]` line and every recording it writes.
     python3 tools/live/venue_relay.py --order-listen 127.0.0.1:8766
 
+    # both halves in one process, which is what a host runs: the order channel takes its own thread because it is a
+    # blocking accept loop, and the market leg keeps the main one. Naming only one of the two keeps the old behaviour.
+    python3 tools/live/venue_relay.py --instrument BTC-USDT-SWAP \
+        --listen 127.0.0.1:8765 --order-listen 127.0.0.1:8766
+
     python3 tools/live/venue_relay.py --self-test
 """
 
@@ -2327,18 +2332,43 @@ def main():
         parser.error("--order-rest is the venue's own order endpoint; the simulated venue is what runs without it")
     if args.order_rest and not args.order_listen:
         parser.error("--order-rest needs --order-listen: there is no engine to serve")
+    # One process, two sockets -- and until this was fixed the two were *alternatives*. `--listen` serves the book and
+    # `--order-listen` serves the order leg, but a relay given both served the order channel and returned, so the engine
+    # connected to 8766, found nothing on 8765, and crash-looped: measured 2026-11-26 on the first deploy (59 restarts,
+    # 259 "Failed with result" lines, and a health check that read the unit "active" between two of them). The order
+    # channel is a blocking accept loop, so it goes on a thread and the market leg keeps the main one. With only one of
+    # the two named, nothing changes -- that is the shape every recorded run used.
+    # Both halves are served only when the market leg was *named* -- by the flag or by `RELAY_MARKET_LISTEN`. `--listen`
+    # carries a default address, so "not given" and "given the default" are otherwise the same string, and a relay invoked
+    # for the order channel alone (which is what `tests/relay_order_channel_test` drives, and what every recorded run did)
+    # would start a second socket nobody asked for and block on a client that is never coming.
+    market_named = bool(os.environ.get("RELAY_MARKET_LISTEN")) or any(
+        argument == "--listen" or argument.startswith("--listen=") for argument in sys.argv[1:])
+    order_channel = None
     if args.order_listen:
         if args.simulate_orders:
-            return serve_orders(args.order_listen, args.instrument, args.order_cap, args.order_capture, mapping)
-        try:
-            credentials = VenueCredentials.from_environment()
-        except OrderError as error:
-            parser.error("--order-listen without --simulate-orders serves the venue's private channel, and "
-                         f"{error}")
-        return serve_venue_orders(args.order_listen, args.order_venue, credentials, args.instrument,
-                                  args.order_capture, args.order_dump, args.order_inst_type,
-                                  not args.order_no_subscribe, args.order_inst_code, args.order_rest, mapping,
-                                  simulated_placement=not args.order_live)
+            def serve_order_channel():
+                return serve_orders(args.order_listen, args.instrument, args.order_cap, args.order_capture, mapping)
+        else:
+            # The credentials are read here rather than inside the thread: a refused start must stop the process, and
+            # `parser.error` inside a thread would end the thread and leave a relay that looks healthy and cannot place.
+            try:
+                credentials = VenueCredentials.from_environment()
+            except OrderError as error:
+                parser.error("--order-listen without --simulate-orders serves the venue's private channel, and "
+                             f"{error}")
+
+            def serve_order_channel():
+                return serve_venue_orders(args.order_listen, args.order_venue, credentials, args.instrument,
+                                          args.order_capture, args.order_dump, args.order_inst_type,
+                                          not args.order_no_subscribe, args.order_inst_code, args.order_rest, mapping,
+                                          simulated_placement=not args.order_live)
+        if not (args.listen and market_named):
+            return serve_order_channel()
+        order_channel = threading.Thread(target=serve_order_channel, name="order-channel", daemon=True)
+        order_channel.start()
+        print(f"order channel serving {args.order_listen} on its own thread; the market leg owns the main one",
+              flush=True)
 
     decoder = Decoder(args.instrument, args.contract_size, args.quantity_scale, args.levels)
     stop = threading.Event()
