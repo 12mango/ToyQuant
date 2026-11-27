@@ -90,9 +90,12 @@ site now points at `ToyQuant`.
 - **The bootstrap's answer was not enough, and the next deploy proved it**: its own `LoadState` reads came back
   `loaded` at 09:11:04.14 and the very next `systemctl reset-failed` said `Unit toyquant-relay.service not loaded` at
   09:11:05.88, with nothing between them but `enable` calls and the workflow's own redundant `daemon-reload`. So the
-  deploy asks the same question itself, prints the answer on every attempt (`deploy: systemd reports '<states>' ...`),
-  re-reloads up to twenty times and stops with the states named if the manager never agrees -- and its own
-  `daemon-reload` line is gone, because two reloads a second apart is the sequence that produced the disagreement.
+  deploy asks the same question itself, prints the answer on every attempt, re-reloads up to twenty times and stops with
+  the states named if the manager never agrees -- and its own `daemon-reload` line is gone, because two reloads a second
+  apart is the sequence that produced the disagreement. **The first version of that question was itself defective**: it
+  asked `systemctl show --value` for both units in one call, parsed with `tr`, and without `sudo` -- measured
+  2026-11-27, it printed `[]` twenty times while the bootstrap had read `loaded` a second earlier, which is a question
+  that cannot be answered rather than an answer. It asks one unit at a time, as root, and prints `unit=state`.
 - **The new `diagnose` ops action is what answered it.** `status` said `failed / Result=timeout` and the journal said the
   08:04 stop; neither could say whether the file was on disk, in the search path, or known to the manager. `diagnose`
   prints those four facts per unit plus the manager's version and the account -- the two halves of the disagreement, in
