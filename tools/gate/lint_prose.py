@@ -363,6 +363,9 @@ def main():
                         # cumulative-fills line that says how far the live sample is from 300 to 500 fills. Both are in
                         # `docs/TOOLS.md` because the count is the reason the tool exists.
                         "--table", "--progress",
+                        # `tools/fetch/prefetch_windows.sh` owns this one: which of its three blocks to run, because a
+                        # prefetch of three questions is re-run one question at a time.
+                        "--block",
                         # `tools/fetch/fetch_okx_trades.py` owns these six: the window shape of its one fetch (first
                         # day, last day, the gap between days because the endpoint rate-limits, the folder a window
                         # lands in, resuming a window, and keeping the venue-wide zip). They are in `docs/DATA.md`
