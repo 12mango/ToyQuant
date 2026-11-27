@@ -350,7 +350,12 @@ def main():
                         # `tools/ops/dispatch_deploy.sh` owns this one: the workflow choice (`--ops stop` dispatches the
                         # ops menu instead of the deploy). It is in `docs/TOOLS.md` because the two workflows are one
                         # loop, and it is the tool's flag rather than the engine's.
-                        "--ops"}:
+                        "--ops",
+                        # `deploy/daily_report.py` owns these two: the window a mail reports on, named once in UTC so
+                        # the host's zone cannot reinterpret it. They are in the live page and the changelog because the
+                        # report's whole subject is that interval, and they are the report's flags rather than the
+                        # engine's -- the engine's own clock is `--wind-down-end`, minutes of the UTC day.
+                        "--window-start", "--window-end"}:
             problems.append(f"{flag} is mentioned in a document and is not a flag the binary accepts")
     for model in sorted(models):
         if model not in text.lower():

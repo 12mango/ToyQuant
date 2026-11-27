@@ -2,7 +2,8 @@ name: ops
 
 # The host's own controls, from a browser: a dispatch menu rather than an SSH session. Nothing here trades by itself --
 # `stop` asks the engine to cancel what it holds on the way out, and `flatten` closes what is left at the market with
-# `reduceOnly` -- but two of the five actions change a live session, so the workflow is dispatch-only and serialised.
+# `reduceOnly` -- but `restart`, `stop` and `flatten` change a live session, so the workflow is dispatch-only and
+# serialised. `ledger` reads and changes nothing.
 on:
   workflow_dispatch:
     inputs:
@@ -18,6 +19,7 @@ on:
           - diagnose    # why systemd and this repository disagree: the units it knows, and what is on disk
           - preflight   # would tonight's session start? the config, the binary and the sockets, without starting it
           - set-key     # change one instrument-owned setting in live.yaml, with a backup and the flags re-read
+          - ledger      # the window series: one row per closed window, as daily_report.py appended it
         default: status
       lines:
         description: journal lines for tail-logs
@@ -160,6 +162,19 @@ jobs:
               probe pending
               probe equity
               exit "$FLATTEN_STATUS"
+              ;;
+            ledger)
+              # The window series, read from the host rather than remembered. `daily_report.py` appends one row per closed
+              # window after it mails, so this is the only place the series exists between deploys; an empty cell is a
+              # line the journal did not carry, never a zero, which is why the header travels with the rows.
+              if ! sudo test -f /opt/toyquant/data/runtime/window_ledger.csv; then
+                echo "ledger: no file yet -- the report appends the first row after a closed window"
+                exit 0
+              fi
+              sudo head -1 /opt/toyquant/data/runtime/window_ledger.csv
+              echo '-- the last twenty windows'
+              sudo tail -n 20 /opt/toyquant/data/runtime/window_ledger.csv
+              echo "ledger: $(sudo wc -l < /opt/toyquant/data/runtime/window_ledger.csv) line(s) with the header"
               ;;
             set-key)
               # The instrument's own parameters, changed from here rather than by hand in an editor. Three authorities do

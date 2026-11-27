@@ -990,7 +990,11 @@ money, `[EXECUTION]`'s submissions and the venue's reports, and the last `[RECON
 was read), the host (both disks, memory, uptime, the zone the host keeps) and the journal's own disk usage. A source it
 cannot read is a sentence with the reason, never a zero: a report that prints `net_pnl=0.00` because the journal rotated is
 worse than one that says it could not read it. **The engine prints one summary per run and no line per fill**, so a "fill
-line" count would be a zero that can never be anything else -- the counters above are the evidence for what traded.
+line" count would be a zero that can never be anything else -- the counters above are the evidence for what traded. **The
+read runs 180 s past the window's edge**, because the summary is printed there: the first live window's `[WIND-DOWN]` to
+`[WS]` lines are stamped `15:30:02`, and a scan bounded at `--window-end=15:30` reported "no `[PORTFOLIO]` line in the
+window" about a session that had traded twelve times. The grace is `SCAN_GRACE_S`; the window is still named by its own
+two ends and the stamps are what the mail prints.
 `python3 deploy/daily_report.py --dry-run --at 2026-11-27T16:20:00Z` prints the mail without waiting for the timer.
 
 **The window is named in UTC, and the three clocks are one table.** The engine's session clock is the market's
@@ -1032,6 +1036,7 @@ menu; every action runs one SSH session and prints its result into the run's log
 | `preflight` | the deploy's six checks on their own (binary, config, `[Mode]` as the service user, credentials, file modes, both sockets), starting the relay for the socket check and **not** the engine | starts the relay |
 | `diagnose` | what systemd knows about both units (load state, file path, unit-file state, stop timeout), what is on disk, the unit search path, the three timers' next fires, the host's clock, the flags the session will run with, and whether the manager can be written to | nothing |
 | `set-key` | one instrument-owned setting of `live.yaml` (`engine.ws_seconds=7200`): the tool's allowlist refuses a size, a loss limit, the seat or an endpoint by name, the file's line is replaced with its comment kept, the previous file is kept beside it, and the flags are printed again | the next session's arguments |
+| `ledger` | the window series `daily_report.py` appends to `/opt/toyquant/data/runtime/window_ledger.csv`: the header, the last twenty rows and the line count, or a sentence when the file does not exist yet | nothing |
 
 > `stop` and `flatten` are deliberately two actions. A stop that also flattened would close a position an operator was
 > holding on purpose; a flatten that did not stop the session would be undone by the next quote. A stale or rounded size

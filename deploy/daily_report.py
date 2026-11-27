@@ -12,7 +12,8 @@ rotated is worse than one that says it could not read the journal:
     involved read) -- because this host is in Tokyo, the operator is in Hong Kong and the session is named in UTC
   * the account, from the venue's own REST surface (`okx_probe`'s reads: USDT equity, the position, pending orders)
   * the session, from `journalctl -u toyquant-live` over **the window's own interval**, in UTC: fills, the last `[PNL]`,
-    the last `[RECON]`, any `[BREAKER]`, and the restarts systemd counted
+    the last `[RECON]`, any `[BREAKER]`, and the restarts systemd counted -- scanned to a grace past the window's edge,
+    because the session's own summary is printed there (see `SCAN_GRACE_S`)
   * the host: disk on `/` and `/opt/toyquant`, memory, uptime, and which clock the host keeps
 
 **The interval is the most recently completed window, not a rolling 24 h.** A rolling day was wrong on this host in the
@@ -58,6 +59,12 @@ okx_probe.INST = instrument_of_the_seat()
 # the archive's timestamps are UTC, and this report reads the journal between two UTC instants.
 WINDOW_START = os.environ.get("TOYQUANT_WINDOW_START_UTC", "13:30")
 WINDOW_END = os.environ.get("TOYQUANT_WINDOW_END_UTC", "15:30")
+# How far past the window's last second the journal is read. The session's own summary is printed where its wind-down
+# runs, which is *after* the window edge: measured 2026-11-27, `[WIND-DOWN]` through `[WS]` at 15:30:02, two seconds past
+# `--window-end=15:30`. A scan bounded at the edge therefore reported "no [PORTFOLIO] line in the window" about a session
+# whose accounting was in the journal, and the ledger row for that day was empty. Three minutes covers the wind-down, the
+# stop timer's backstop (15:32) and systemd's own stop lines, and nothing else runs in a closed window.
+SCAN_GRACE_S = 180
 # The two clocks a reader uses. Neither zone has daylight saving, so a fixed offset is exact and needs no tzdata.
 ZONES = (("UTC", timezone.utc), ("HKT", timezone(timedelta(hours=8))), ("JST", timezone(timedelta(hours=9))))
 
@@ -142,9 +149,16 @@ def journal_text(start_utc, end_utc):
 
     Epoch bounds (`@<seconds>`) and `--utc`, so neither the host's zone nor its locale can move the interval or the
     stamps: the host's clock is `Etc/UTC`, the operator is in Hong Kong, and the window is named in UTC.
+
+    The scan runs `SCAN_GRACE_S` past the end, and that is not slack: the session's own summary is printed *after* its
+    last second. Measured 2026-11-27 (the first live window), the engine's wind-down wrote `[WIND-DOWN]`, `[L2 DATA]`,
+    `[EXECUTION]`, `[PORTFOLIO]`, `[PNL]`, `[RISK]`, `[VENUE]`, `[RECON] at=end` and `[WS]` at `15:30:02`, and a scan
+    bounded at `--window-end=15:30` reported "no [PORTFOLIO] line in the window" while six of those lines sat in the
+    journal two seconds outside it -- so the mail said nothing traded and the ledger row for the day was empty. The
+    stamps are what the mail prints, so the window is still named by its own two ends; only the *read* is wider.
     """
     return run(["journalctl", "-u", UNIT, "--since", f"@{int(start_utc.timestamp())}",
-                "--until", f"@{int(end_utc.timestamp())}", "--utc", "--no-pager", "-q"])
+                "--until", f"@{int(end_utc.timestamp()) + SCAN_GRACE_S}", "--utc", "--no-pager", "-q"])
 
 
 def field_of(line, name):

@@ -7,6 +7,18 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The report read to the window's edge and missed the summary that closes it (2026-11-27)
+
+- **`daily_report.py` scans 180 s past the window's end (`SCAN_GRACE_S`).** A session prints its own accounting where its
+  wind-down runs, which is *after* the window's last second: measured on the first live window, `[WIND-DOWN]` through
+  `[WS]` at `15:30:02`, two seconds past `--window-end=15:30`. The scan was bounded at the edge, so the mail reported "no
+  `[PORTFOLIO]` line in the window" and "no `[PNL]` line in the window" about a session whose whole decomposition --
+  `gross -0.149`, `fees 0.0050681`, `net -0.154068`, 11 maker and 1 taker fill -- sat in the journal, and the day's ledger
+  row came out empty. The window is still named by its own two ends; only the read is wider.
+- **`--ops ledger` reads the window series from the host.** `daily_report.py` appends one row per closed window to
+  `/opt/toyquant/data/runtime/window_ledger.csv`; this action prints the header, the last twenty rows and the line count,
+  and says so when the file does not exist. It reads and changes nothing.
+
 ## The instrument's settings are changed by the instrument (2026-11-27)
 
 - **`live_config.py --set KEY=VALUE` changes one line of the operator's file, and three authorities do the refusing.**
