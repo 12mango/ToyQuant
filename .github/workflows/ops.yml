@@ -17,10 +17,17 @@ on:
           - flatten     # close the venue's position at the market, reduceOnly, then show what is left
           - diagnose    # why systemd and this repository disagree: the units it knows, and what is on disk
           - preflight   # would tonight's session start? the config, the binary and the sockets, without starting it
+          - set-key     # change one instrument-owned setting in live.yaml, with a backup and the flags re-read
         default: status
       lines:
         description: journal lines for tail-logs
         default: "100"
+      key:
+        description: set-key only -- an instrument-owned setting, e.g. engine.ws_seconds
+        default: ""
+      value:
+        description: set-key only -- its new value
+        default: ""
 
 concurrency:
   group: ops-${{ github.ref }}
@@ -54,6 +61,11 @@ jobs:
           scp -i "$HOME/.ssh/deploy_key" -o BatchMode=yes \
             tools/live/okx_probe.py \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/tmp/toyquant-okx-probe.py"
+          # The config reader travels with the workflow for the same reason: `set-key` must run the allowlist the commit
+          # carries, not the one the last deploy left in /opt/toyquant.
+          scp -i "$HOME/.ssh/deploy_key" -o BatchMode=yes \
+            tools/live/live_config.py \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/tmp/toyquant-live-config.py"
 
       # One step, one SSH session, and the script is the heredoc's: an action that needs `sudo` gets it from the same
       # account the deploy uses, and every branch prints what it did rather than exiting silently.
@@ -61,11 +73,13 @@ jobs:
         env:
           ACTION: ${{ inputs.action }}
           LINES: ${{ inputs.lines }}
+          KEY: ${{ inputs.key }}
+          VALUE: ${{ inputs.value }}
         run: |
           set -euo pipefail
           ssh -i "$HOME/.ssh/deploy_key" -o BatchMode=yes \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            "ACTION=$ACTION LINES=$LINES bash -s" <<'REMOTE'
+            "ACTION=$ACTION LINES=$LINES KEY=$KEY VALUE=$VALUE bash -s" <<'REMOTE'
           set -uo pipefail
           echo "action=$ACTION host=$(hostname) $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
           # The tool is the workflow's own copy (the step above), not the host's: an action must be able to run the fix it
@@ -146,6 +160,24 @@ jobs:
               probe pending
               probe equity
               exit "$FLATTEN_STATUS"
+              ;;
+            set-key)
+              # The instrument's own parameters, changed from here rather than by hand in an editor. Three authorities do
+              # the refusing: the tool's allowlist (`AGENT_KEYS` -- a size, a loss limit, the seat or an endpoint is the
+              # operator's and is refused by name), its parser (a key the engine does not take), and its couplings (the
+              # file the engine would start from). The previous file is kept beside the new one, and the flags are re-read
+              # so the job log carries what the next session will actually run. A running session is untouched: the file
+              # is read at `ExecStartPre`, so the change lands on the next start.
+              if [ -z "${KEY:-}" ] || [ -z "${VALUE:-}" ]; then
+                echo "set-key needs both key and value" >&2; exit 2
+              fi
+              sudo python3 /tmp/toyquant-live-config.py --set "$KEY=$VALUE" --file /etc/toyquant/live.yaml
+              SET_STATUS=$?
+              echo "-- the file now says"
+              sudo python3 /tmp/toyquant-live-config.py --check /etc/toyquant/live.yaml
+              echo "-- and the next session would run with"
+              sudo python3 /tmp/toyquant-live-config.py --flags /etc/toyquant/live.yaml 2>&1 | head -30
+              exit "$SET_STATUS"
               ;;
             preflight)
               # The six checks the deploy runs before it restarts anything, on their own: the binary starts, the

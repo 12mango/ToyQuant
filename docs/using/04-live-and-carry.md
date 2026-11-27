@@ -1031,6 +1031,7 @@ menu; every action runs one SSH session and prints its result into the run's log
 | `flatten` | `okx_probe.py flatten`: one market order with `reduceOnly`, then prints position and pending | closes the position |
 | `preflight` | the deploy's six checks on their own (binary, config, `[Mode]` as the service user, credentials, file modes, both sockets), starting the relay for the socket check and **not** the engine | starts the relay |
 | `diagnose` | what systemd knows about both units (load state, file path, unit-file state, stop timeout), what is on disk, the unit search path, the three timers' next fires, the host's clock, the flags the session will run with, and whether the manager can be written to | nothing |
+| `set-key` | one instrument-owned setting of `live.yaml` (`engine.ws_seconds=7200`): the tool's allowlist refuses a size, a loss limit, the seat or an endpoint by name, the file's line is replaced with its comment kept, the previous file is kept beside it, and the flags are printed again | the next session's arguments |
 
 > `stop` and `flatten` are deliberately two actions. A stop that also flattened would close a position an operator was
 > holding on purpose; a flatten that did not stop the session would be undone by the next quote. A stale or rounded size

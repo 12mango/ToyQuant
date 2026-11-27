@@ -7,6 +7,23 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The instrument's settings are changed by the instrument (2026-11-27)
+
+- **`live_config.py --set KEY=VALUE` changes one line of the operator's file, and three authorities do the refusing.**
+  `AGENT_KEYS` is an explicit allowlist of the parameters that change how a measurement is taken (`advance_debounce_ms`,
+  `quote_distance_bps`, `max_depth_ratio`, `ws_seconds`, the two latencies, ...); everything else in the map is the
+  operator's and is refused **by name** -- the seat, the size, the inventory, the two loss limits, the exit, the opening
+  balance and the endpoints. The parser refuses a key the engine does not take, the couplings refuse a file the engine
+  would not start from, the line is replaced in place so its comment survives, and the previous file is kept as
+  `live.yaml.<UTC stamp>`.
+- **`--ops set-key` is the same thing from a workflow**, with the tool travelling from the commit (the allowlist must be the
+  one the change was reviewed with, not the one the last deploy left in `/opt/toyquant`). It prints the file's verdict and
+  the engine's argument list again, so the job log carries what the next session will run. A running session is untouched:
+  the file is read at `ExecStartPre`.
+- **`check_deploy.py` is unaffected and `live_config.py --self-test` grew the case**: an allowed key changes the emitted
+  flags, an operator's key and a typo are both refused by name, and a backup is left behind -- the three things that would
+  otherwise be found on the host.
+
 ## A redeploy is a file copy, and the mail arrives at the close (2026-11-27)
 
 - **The deploy restarted the relay and the engine, and a restart is a SIGTERM to a session that may hold quotes.** A

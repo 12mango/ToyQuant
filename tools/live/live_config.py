@@ -16,7 +16,9 @@ Usage:
 """
 
 import argparse
+import shutil
 import sys
+from datetime import datetime, timezone
 
 # Every key the engine's live path reads, and the flag it becomes. The mapping is deliberately explicit: a key that is not
 # here is refused, which is what makes the template a contract rather than a suggestion.
@@ -75,6 +77,34 @@ FLAGS = {
     ("link", "venue_max_notional"): "--venue-max-notional",
     ("link", "venue_orders_per_second"): "--venue-orders-per-second",
     ("link", "snapshot_out"): "--snapshot-out",
+}
+
+# Keys the *instrument* owns. An agent may set these with `--set`: they change how a measurement is taken -- a debounce,
+# a ladder cap, a latency, the session's own length -- and not how much money is at risk.
+#
+# Everything else in `FLAGS` is the operator's, and `--set` refuses it by name: the seat (`symbol`, `strategy`), the size
+# (`order_size`, `inventory_limit`), the two loss limits, the exit (`close_out`, `close_out_cross_bps`), the opening
+# balance, the order kind (`post_only`), and the two endpoints. The list is deliberately explicit rather than derived from
+# "not in AGENT_KEYS": a key added later is denied until someone decides it is the instrument's.
+AGENT_KEYS = {
+    "engine.advance_debounce_ms",
+    "engine.amend_deadband_ticks",
+    "engine.depth_ladder_max",
+    "engine.edge_cover_ticks",
+    "engine.extra_layers",
+    "engine.layer_step_bps",
+    "engine.markout_cover",
+    "engine.max_depth_ratio",
+    "engine.min_spread_ticks",
+    "engine.pause_ticks_per_second",
+    "engine.quote_distance_bps",
+    "engine.refresh_price_ticks",
+    "engine.settle_residual",
+    "engine.ws_seconds",
+    "link.cancel_latency_us",
+    "link.order_latency_us",
+    "link.venue_max_notional",
+    "link.venue_orders_per_second",
 }
 
 # Keys whose value is a switch rather than an argument: written as a bare flag when true and left out when false.
@@ -288,18 +318,101 @@ link:
             assert expect in str(error), (expect, str(error))
         else:
             raise AssertionError(f"{bad!r} was accepted")
+    # `--set` edits one line of a file it does not own, so its own tests are the allowlist, the refusal by name, and the
+    # backup. A temp copy of the sample stands in for the operator's file.
+    import tempfile
+    with tempfile.TemporaryDirectory() as directory:
+        target = f"{directory}/live.yaml"
+        with open(target, "w", encoding="utf-8") as handle:
+            handle.write(sample)
+        assert "--order-latency-us=20000" not in flags(parse(open(target, encoding="utf-8").read())), "sample"
+        message = set_key(target, "link.order_latency_us=20000")
+        assert "was 10000" in message, message
+        assert "--order-latency-us=20000" in flags(parse(open(target, encoding="utf-8").read())), "the edit did not land"
+        assert any(name.startswith("live.yaml.") for name in __import__("os").listdir(directory)), "no backup"
+        for refused, expect in (("engine.order_size=100000000", "is the operator's"),
+                                ("engine.not_a_key=1", "not a live setting")):
+            try:
+                set_key(target, refused)
+            except ValueError as error:
+                assert expect in str(error), (refused, str(error))
+            else:
+                raise AssertionError(f"{refused} was accepted")
     print("self-test OK")
     return 0
+
+
+def set_key(path, assignment):
+    """Set one key the instrument owns, in place, with a backup -- and refuse everything else.
+
+    The file is the operator's, so this does not rewrite it as YAML: it replaces the one line that carries the key and
+    keeps that line's comment and indentation. A key that is not in `AGENT_KEYS` is refused by name (a size, a loss limit or
+    the seat is a trading decision), an unknown key is refused by `parse`, and the result is put through the same couplings
+    the engine would enforce before anything is written. The old file is kept as `<path>.<UTC stamp>`.
+    """
+    name, equal, value = assignment.partition("=")
+    name, value = name.strip(), value.strip()
+    if not equal or not name or not value:
+        raise ValueError(f"`{assignment}` is not KEY=VALUE")
+    section, _, key = name.partition(".")
+    if (section, key) not in FLAGS and (section, key) not in POSITIONAL and (section, key) not in POSITIONAL_OPTIONAL:
+        raise ValueError(f"{name} is not a live setting this engine takes")
+    if name not in AGENT_KEYS:
+        raise ValueError(f"{name} is the operator's, not the instrument's: this tool sets only "
+                         f"{', '.join(sorted(AGENT_KEYS))}")
+    with open(path, encoding="utf-8") as handle:
+        text = handle.read()
+    values = parse(text, path)
+    previous = values.get((section, key), "(absent)")
+    values[(section, key)] = value
+    validate(values, path)
+
+    lines = text.splitlines()
+    current = ""
+    replaced = False
+    for index, raw in enumerate(lines):
+        code, has_comment, comment = raw.partition("#")
+        stripped = code.strip()
+        if not stripped:
+            continue
+        if not raw.startswith((" ", "\t")):
+            current = stripped.split(":", 1)[0].strip()
+            continue
+        if current == section and stripped.startswith(key + ":"):
+            indent = raw[: len(raw) - len(raw.lstrip())]
+            lines[index] = f"{indent}{key}: {value}" + (f"    #{comment}" if has_comment else "")
+            replaced = True
+            break
+    if not replaced:
+        raise ValueError(f"{path} has no `{key}` under `{section}:` to replace; add it by hand, so a new key is a decision")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    backup = f"{path}.{stamp}"
+    shutil.copy2(path, backup)
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write("\n".join(lines) + "\n")
+    return f"{path}: {name} = {value} (was {previous}); the previous file is {backup}"
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--set", metavar="KEY=VALUE",
+                        help="set one key the instrument owns (engine.ws_seconds=7200); refuses the operator's keys")
+    parser.add_argument("--file", metavar="FILE", help="the file --set edits (a copy is kept beside it)")
     parser.add_argument("--flags", metavar="FILE", help="print the engine's arguments for this file, one a line")
     parser.add_argument("--check", metavar="FILE", help="parse the file and say whether it is a live configuration")
     arguments = parser.parse_args()
     if arguments.self_test:
         return self_test()
+    if arguments.set:
+        if not arguments.file:
+            parser.error("--set needs --file: the file it edits")
+        try:
+            print(set_key(arguments.file, arguments.set))
+        except (OSError, ValueError) as error:
+            print(f"Error: {error}", file=sys.stderr)
+            return 1
+        return 0
     if not arguments.flags and not arguments.check:
         parser.error("name --flags FILE or --check FILE")
     target = arguments.flags or arguments.check
