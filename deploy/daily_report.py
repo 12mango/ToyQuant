@@ -124,23 +124,30 @@ def host_facts():
 
 
 def session_facts(start_utc, end_utc):
-    """The window's own journal, as the four lines an operator reads.
+    """The window's own journal, as the lines an operator reads.
 
     Epoch bounds (`@<seconds>`) and `--utc`, so neither this host's zone nor its locale can move the interval or the
-    stamps: the host is in Tokyo, the operator is in Hong Kong, and the window is named in UTC.
+    stamps: the host's clock is `Etc/UTC`, the operator is in Hong Kong, and the window is named in UTC.
+
+    **There is no `[FILL]` line to count.** The engine prints one summary per run, not a line per fill, so the previous
+    version's `sum(1 for line if '[FILL]' in line)` was a zero that could never be anything else -- a report saying "0
+    fill line(s)" on a session that traded, which is exactly the silent zero this file exists to refuse. The evidence for
+    what traded is the last run's own counters: `[PORTFOLIO]` carries `maker_trade_count`/`taker_trade_count` and the
+    fees, `[EXECUTION]` the submissions and the venue's reports, and `[PNL]` the money.
     """
     text = run(["journalctl", "-u", UNIT, "--since", f"@{int(start_utc.timestamp())}",
                 "--until", f"@{int(end_utc.timestamp())}", "--utc", "--no-pager", "-q"])
     if text is None:
-        return {"fills": "unavailable", "pnl": "unavailable", "recon": "unavailable", "breaker": "none"}
+        return {"trades": "unavailable", "pnl": "unavailable", "execution": "unavailable",
+                "recon": "unavailable", "breaker": "none"}
     lines = text.splitlines()
 
     def last(tag):
         found = [line for line in lines if tag in line]
         return found[-1].strip() if found else f"no {tag} line in the window"
 
-    facts = {"fills": f"{sum(1 for line in lines if '[FILL]' in line)} fill line(s) in the window",
-             "pnl": last("[PNL]"), "recon": last("[RECON]"), "breaker": last("[BREAKER]")}
+    facts = {"trades": last("[PORTFOLIO]"), "pnl": last("[PNL]"), "execution": last("[EXECUTION]"),
+             "recon": last("[RECON]"), "breaker": last("[BREAKER]")}
     state = run(["systemctl", "show", "-p", "NRestarts", "--value", UNIT])
     active = run(["systemctl", "show", "-p", "ActiveState", "--value", UNIT])
     facts["unit"] = f"{UNIT} {(active or 'unknown').strip()}, restarts={(state or 'unavailable').strip()}"
@@ -219,12 +226,14 @@ def main():
 def self_test():
     """A report that names its four groups, and one that says `unavailable` instead of inventing a zero."""
     groups = {"window": {"clocks": zone_range(*window_at(datetime(2026, 11, 28, 1, 0, tzinfo=timezone.utc)))},
-              "session": {"fills": "3 fill line(s) in the window", "pnl": "[PNL] net_pnl_usd=-1.20"},
+              "session": {"trades": "[PORTFOLIO] maker_trade_count=44 taker_trade_count=1",
+                          "pnl": "[PNL] net_pnl_usd=-1.20"},
               "account": {"equity": "498.10 USDT", "pending": "2 working order(s)"},
               "host": {"disk_root": "42% used", "memory": "1.1 GiB used of 3.9 GiB"}}
     subject, body = compose(groups, host="toyquant-test")
     assert "498.10 USDT" in subject and "toyquant-test" in subject, subject
-    for needle in ("-- window", "-- session", "-- account", "-- host", "2 working order(s)", "1.1 GiB"):
+    for needle in ("-- window", "-- session", "-- account", "-- host", "2 working order(s)", "1.1 GiB",
+                   "maker_trade_count=44"):
         assert needle in body, (needle, body)
     # The three readings of one interval: the window is 13:30-15:30 UTC, which is 21:30-23:30 in Hong Kong and
     # 22:30-00:30 in Tokyo -- the crossing of local midnight is the point, and the reason the mail names the clock.

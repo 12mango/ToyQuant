@@ -7,6 +7,20 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The daily mail counts what the engine prints, and the stop waits for the close (2026-11-27)
+
+- **The report counted a line the engine never writes.** `session_facts` counted `[FILL]` occurrences, and there is no
+  `[FILL]` line in the engine's output -- one summary per run, no line per fill -- so the "0 fill line(s) in the window" in
+  tonight's mail would have been a zero that could never be anything else: the silent zero the report exists to refuse. It
+  prints **the last run's own counters** now: `[PORTFOLIO]` (maker/taker trade counts and fees), `[PNL]` (the money) and
+  `[EXECUTION]` (submissions and the venue's reports), each verbatim or as a sentence saying it was not in the window.
+- **`--close-out` runs after the cancel sweep, on the same signal, and `TimeoutStopSec` did not know it.** The sweep is
+  bounded by `deadline_ms` (10 s) and the unit waited 12; the close then cancels what is left, drains those cancels and
+  waits up to a second for its own fill report. A SIGKILL at twelve seconds could therefore land between the cancels and
+  the close -- the "run believed it was flat, the venue did not" state that `send_close_order` was built to end. The unit
+  waits **25 s** now, and `check_deploy.py`'s fifth rule refuses a `TimeoutStopSec` that leaves less than ten seconds past
+  the engine's own deadline (its clean copy moved to 25 with it).
+
 ## The window is named in UTC, and the daily mail is that window (2026-11-27)
 
 - **Three clocks met in the same stack and only one of them was written down.** The engine's session clock is the market's

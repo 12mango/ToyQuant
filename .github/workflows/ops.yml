@@ -153,7 +153,7 @@ jobs:
               # question, and these lines answer it without another round trip.
               echo '-- what systemd knows'
               for unit in toyquant-relay toyquant-live; do
-                for prop in LoadState UnitFileState FragmentPath ActiveState Result; do
+                for prop in LoadState UnitFileState FragmentPath ActiveState Result NRestarts TimeoutStopUSec; do
                   printf '%-16s %-14s %s\n' "$unit" "$prop" "$(systemctl show -p "$prop" --value "$unit" 2>&1)"
                 done
               done

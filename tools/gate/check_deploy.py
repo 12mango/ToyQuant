@@ -130,15 +130,22 @@ def rule_ordering(texts):
 
 
 def rule_stop_window(texts):
-    """`TimeoutStopSec` has to outlast the engine's own cancel sweep, or systemd SIGKILLs a session mid-cancel."""
+    """`TimeoutStopSec` has to outlast the engine's cancel sweep **and** the close-out that runs after it.
+
+    On SIGTERM the session cancels its working orders (bounded by `deadline_ms`) and then `--close-out` runs on the same
+    signal: `send_close_order` cancels what is left, drains the cancels and waits up to a second for the exit's own fill
+    report. A unit that stops waiting at the engine's own deadline therefore SIGKILLs a session between the cancels and
+    the close -- measured class, and the reason the shipped value moved from 12 to 25.
+    """
     stop = re.search(r"^TimeoutStopSec=(\d+)", texts["live_unit"], re.MULTILINE)
     deadline = re.search(r"deadline_ms\{(\d+)", texts["shutdown_h"].replace("'", ""))
     if not stop or not deadline:
         return ["neither TimeoutStopSec nor deadline_ms was found to compare"]
     seconds, engine = int(stop.group(1)), int(deadline.group(1)) // 1000
-    if seconds <= engine:
-        return [f"TimeoutStopSec={seconds}s does not outlast the engine's {engine}s cancel sweep "
-                f"(src/lines/session_shutdown.h deadline_ms)"]
+    allowance = 10  # the close-out: its cancel drain and its fill wait are each bounded by a second, plus the venue's
+    if seconds < engine + allowance:
+        return [f"TimeoutStopSec={seconds}s does not outlast the engine's {engine}s cancel sweep plus a {allowance}s "
+                f"close-out (`--close-out` runs after the sweep, on the same signal)"]
     return []
 
 
@@ -380,7 +387,7 @@ CLEAN = {
         "TOYQUANT_API_KEY", "TOYQUANT_API_SECRET", "TOYQUANT_PASSPHRASE", "RELAY_INSTRUMENT",
         "RELAY_MARKET_LISTEN", "RELAY_ORDER_LISTEN", "RELAY_ORDER_VENUE", "RELAY_ORDER_LIVE")) + "\n",
     "live_unit": "[Unit]\nAfter=toyquant-relay.service\nRequires=toyquant-relay.service\n"
-                 "OnFailure=toyquant-notify@%n.service\n[Service]\nTimeoutStopSec=12\n"
+                 "OnFailure=toyquant-notify@%n.service\n[Service]\nTimeoutStopSec=25\n"
                  "ExecStartPre=/bin/bash -c 'python3 /opt/toyquant/tools/live/live_config.py --check x'\n"
                  "ExecStart=/bin/bash -c 'exec /opt/toyquant/toy_quant ws'\n",
     "relay_unit": "[Unit]\nBefore=toyquant-live.service\nOnFailure=toyquant-notify@%n.service\n[Service]\n"
@@ -442,8 +449,8 @@ def self_test():
           "not_a_setting")
     check("endpoints", lambda t: t.update(live_yaml=t["live_yaml"].replace("8766", "9000")), "link.venue_endpoint")
     check("ordering", lambda t: t.update(live_unit=t["live_unit"].replace("Requires=", "X=")), "Requires=")
-    check("stop_window", lambda t: t.update(live_unit=t["live_unit"].replace("TimeoutStopSec=12",
-                                                                              "TimeoutStopSec=5")), "outlast")
+    check("stop_window", lambda t: t.update(live_unit=t["live_unit"].replace("TimeoutStopSec=25",
+                                                                              "TimeoutStopSec=5")), "close-out")
     check("bundled", lambda t: t.update(workflow=t["workflow"].replace("preflight.sh", "gone.sh")), "preflight.sh")
     check("coupling", lambda t: t.update(env=t["env"].replace("RELAY_ORDER_LIVE=0", "RELAY_ORDER_LIVE=1")), "demo host")
     check("notify_refs", lambda t: t.update(live_unit=t["live_unit"].replace(

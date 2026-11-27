@@ -61,11 +61,13 @@ ExecStart=/bin/bash -c 'flags=$(python3 /opt/toyquant/tools/live/live_config.py 
 # says in the journal why it could not send. The five attached lines may be empty on a fast start (`Type=simple` reports
 # the unit up before the engine prints), which is why the subject says what happened rather than the body.
 ExecStartPost=/bin/bash -c 'python3 /opt/toyquant/deploy/notify.py --unit toyquant-live --event started --lines 5 || true'
-# SIGTERM is the signal the session answers with "stop new orders, cancel what is live, confirm zero, exit". The engine's
-# own deadline is 10 s (`SessionShutdown`'s `deadline_ms`), and this waits 12: the two numbers move together, and a unit
-# that gave up first would SIGKILL a session mid-cancel.
+# The engine gets 10 s to finish its cancels, and `--close-out` then runs on the same signal: the exit cancels the
+# remaining quotes, drains them and waits up to a second for its own fill report, so a unit that gave up at the engine's
+# own deadline would SIGKILL a session between the cancels and the close -- the position left open after a run that
+# believed it had flattened. 25 s is the 10 s sweep plus that close-out and a margin. `.clinerules` and
+# `check_deploy.py`'s fifth rule hold the relation: a unit that stops waiting before the engine does is the defect.
 KillSignal=SIGTERM
-TimeoutStopSec=12
+TimeoutStopSec=25
 Restart=on-failure
 RestartSec=5
 # One session a host: two processes quoting the same instrument against one account is a position neither of them sees.

@@ -984,11 +984,13 @@ systemd's journal, which is the log a 20 GB disk loses first. `journalctl --disk
 minutes after the window closes, which is 01:15 JST on the host and 00:15 HKT where the operator sits (`systemctl
 list-timers` shows the next fire in the host's own clock, `journalctl -u toyquant-report` the last one). It mails the
 **most recently completed window**, not a rolling 24 hours: the window's interval in UTC, its arithmetic in UTC, HKT and
-JST, then the session (fill lines, the last `[PNL]`, the last `[RECON]`, the restart count and, once the day-lock breaker
-lands, any `[BREAKER]` line, read with `journalctl --since @<epoch> --until @<epoch> --utc`), the account (USDT equity,
-position, working orders, from the venue, with the instant it was read), the host (both disks, memory, uptime, the zone
-the host keeps) and the journal's own disk usage. A source it cannot read is a sentence with the reason, never a zero: a
-report that prints `net_pnl=0.00` because the journal rotated is worse than one that says it could not read it.
+JST, then the session (**the last run's own counters** -- `[PORTFOLIO]`'s maker/taker trade counts and fees, `[PNL]`'s
+money, `[EXECUTION]`'s submissions and the venue's reports, and the last `[RECON]`, read with `journalctl --since
+@<epoch> --until @<epoch> --utc`), the account (USDT equity, position, working orders, from the venue, with the instant it
+was read), the host (both disks, memory, uptime, the zone the host keeps) and the journal's own disk usage. A source it
+cannot read is a sentence with the reason, never a zero: a report that prints `net_pnl=0.00` because the journal rotated is
+worse than one that says it could not read it. **The engine prints one summary per run and no line per fill**, so a "fill
+line" count would be a zero that can never be anything else -- the counters above are the evidence for what traded.
 `python3 deploy/daily_report.py --dry-run --at 2026-11-27T16:20:00Z` prints the mail without waiting for the timer.
 
 **The window is named in UTC, and the three clocks are one table.** The engine's session clock is the market's
@@ -1062,8 +1064,12 @@ snapshot file a live session cannot write -- is what proves a session started. O
 journal lines, since systemd's state says what a unit *is* and its stdout says what it *said*.
 
 The two numbers the units and the engine share: the engine's shutdown deadline is **10 s** (`SessionShutdown`'s
-`deadline_ms`) and `TimeoutStopSec` is **12**. A unit that gave up first would `SIGKILL` a session mid-cancel, which leaves
-the orders a restart then has to reconcile.
+`deadline_ms`) and `TimeoutStopSec` is **25**. Twelve was the first value, and it was one second of margin over the sweep;
+`--close-out` changed the arithmetic, because the close runs *after* the sweep on the same signal -- `send_close_order`
+cancels what is left, drains those cancels and waits up to a second for its own fill report. A unit that gave up at the
+engine's deadline would `SIGKILL` the session between the cancels and the close: orders reconciled by a restart, and a
+position left open by a run that believed it had flattened. `check_deploy.py`'s fifth rule refuses a `TimeoutStopSec`
+that does not leave ten seconds past the engine's own deadline.
 
 `sudo bash /opt/toyquant/deploy/rollback.sh` puts the previous binary back -- the deploy copies the running one to
 `toy_quant.prev` before it unpacks -- restarts, and runs the same health check. It is one command and it is deliberately
