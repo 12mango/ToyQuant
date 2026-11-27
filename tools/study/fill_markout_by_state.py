@@ -30,7 +30,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-sys.path.insert(0, "/home/mango12/work/ToyQuant/tools/study")
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 import book_lead_lag as bl  # noqa: E402  (the mid reader and the window bounds, one implementation)
 
 ROOT = bl.ROOT
