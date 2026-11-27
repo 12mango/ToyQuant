@@ -72,9 +72,10 @@ site now points at `ToyQuant`.
   deploy installed. So nothing was missing; systemd had simply not ingested four unit files written a millisecond before
   its `daemon-reload`, and every command after that read "not found" until something asked again.
 - **The bootstrap now asks, with a bound, instead of trusting the reload**: after `daemon-reload` it reads
-  `LoadState` for each unit it installed, retries the reload up to twenty times at half a second, and exits non-zero
-  naming the unit it could not load. `check_deploy.py`'s tenth rule holds the question in place, and its self-test fires
-  it by removing the `LoadState` read.
+  `LoadState` for each startable unit it installed (a template, `name@.service`, has none of its own and is skipped),
+  retries the reload up to twenty times at half a second, and exits non-zero naming the unit it could not load.
+  `check_deploy.py`'s tenth rule holds the question in place, the template skip with it (the first version of the check
+  failed on `toyquant-notify@` for exactly that reason), and its self-test fires both.
 - **The new `diagnose` ops action is what answered it.** `status` said `failed / Result=timeout` and the journal said the
   08:04 stop; neither could say whether the file was on disk, in the search path, or known to the manager. `diagnose`
   prints those four facts per unit plus the manager's version and the account -- the two halves of the disagreement, in

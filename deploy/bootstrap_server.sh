@@ -112,13 +112,20 @@ if [ -n "$units" ]; then
   for _ in $(seq 1 20); do
     unknown=""
     for unit in $units; do
+      # A template unit (`name@.service`) has no `LoadState` of its own -- systemd resolves the name to an instance, and
+      # nothing starts this one but `OnFailure=` -- so the question is asked of the units that are startable.
+      case "$unit" in
+        *@) continue ;;
+      esac
       state=$(systemctl show -p LoadState --value "$unit" 2>/dev/null || true)
       case "$state" in
         loaded|masked) : ;;  # masked is an operator's decision and is still a unit the manager knows
         *) unknown="$unknown $unit" ;;
       esac
     done
-    [ -z "$unknown" ] && break
+    if [ -z "$unknown" ]; then
+      break
+    fi
     sleep 0.5
     systemctl daemon-reload
   done

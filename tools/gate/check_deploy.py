@@ -232,6 +232,9 @@ def rule_unit_reload(texts):
         problems.append("deploy/bootstrap_server.sh reloads systemd and never asks whether the manager loaded the units")
     if "did not load" not in bootstrap[reload_at:]:
         problems.append("deploy/bootstrap_server.sh's reload check does not name the unit it could not load")
+    if "*@)" not in bootstrap[reload_at:]:
+        problems.append("deploy/bootstrap_server.sh asks `LoadState` of a template unit, which has none of its own: "
+                        "skip the `*@` names, or the bootstrap fails on `toyquant-notify@` for ever")
     return problems
 
 
@@ -302,6 +305,7 @@ CLEAN = {
                     "sudo systemctl restart toyquant-live\n",
     "bootstrap": "systemctl daemon-reload\n"
                  "state=$(systemctl show -p LoadState --value toyquant-relay)\n"
+                 "case \"$unit\" in *@) continue ;; esac\n"
                  "echo \"bootstrap: systemd did not load toyquant-relay\"\n",
     "shutdown_h": "std::uint64_t deadline_ms{10'000};\n",
 }
