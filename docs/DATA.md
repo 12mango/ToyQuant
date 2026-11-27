@@ -362,9 +362,12 @@ request.
 
 `--skip-existing` leaves a day whose output already has rows alone, `--output-dir` puts a window into the
 per-instrument folder, `--keep-zip` keeps the venue-wide archive, and `--pause` is the gap between days because a
-rapid loop answered HTTP 429. The depth archive is a different route: UP's seven days (`L2orderbook-400lv`,
-2026-11-16 to 11-22) are 11-28 MB each, so a 28-day window is about 0.4 GB and twenty-one browser downloads -- the
-trades half of that window is what the run above fetched.
+rapid loop answered HTTP 429. The depth archive is a different route with a fetcher of its own:
+`tools/fetch/fetch_okx_depth.py` asks the URL the portal itself asks --
+`/cdn/okx/match/orderbook/pro/L2/400lv/daily/<stamp>/<sym>-L2orderbook-400lv-<day>.tar.gz` -- which answers without a
+key (measured 2026-11-27: four days, 4.3-28.7 MB, after eight paths guessed from the trade URL had answered 404). It
+fetched 20 days of **2026-10-30..2026-11-26** (210 MB, 0 failed, each file checked for its single `.data` member, an
+opening snapshot and a first stamp inside the named UTC day), so UP now holds the same 28 days as book and tape.
 
 Two properties of the trades file matter before it is joined to anything else. The day is cut on midnight UTC+8, so
 the file named `2023-03-01` begins at `2023-02-28 16:00` UTC, and `size` is in contracts, so a linear swap whose

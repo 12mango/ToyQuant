@@ -67,7 +67,8 @@ does not.
 | `tools/fetch/fetch_deribit_options.py` | one straddle a month and its implied volatility | hand |
 | `tools/fetch/fetch_funding_rates.py` | one instrument's funding series as a CSV `carry` reads | hand |
 | `tools/fetch/fetch_iex_hist.py` | the container walk over a pcap, and its refusal | both |
-| `tools/fetch/fetch_okx_trades.py` | one UTC+8 day of OKX trades, cut to one symbol | hand |
+| `tools/fetch/fetch_okx_trades.py` | one UTC+8 day of OKX trades cut to one symbol, or a window: `--from/--to` with `--pause` (a rapid loop answers HTTP 429), `--skip-existing` to resume, `--output-dir` for the per-instrument folder; each venue-wide zip (166-615 MB) is deleted after slicing | hand |
+| `tools/fetch/fetch_okx_depth.py` | OKX's 400-level book archive for one instrument, one day or a window, at the portal's own URL shape (`/cdn/okx/match/orderbook/pro/L2/400lv/daily/<stamp>/<sym>-L2orderbook-400lv-<day>.tar.gz`, measured 2026-11-27 after eight guessed paths answered 404); each file is refused unless its single `.data` member opens with a snapshot for that symbol stamped inside the named UTC day, and a 404 (a day before the listing) is named instead of stored | hand |
 | `tools/fetch/slice.py` | a bounded window, streamed, from a file too large to replay | both |
 | `tools/fetch/inspect_source.py` | delimiter, types, timestamp columns, implied top of book | hand |
 | `tools/study/analyze_l2_windows.py` | one row per time window per strategy | hand |

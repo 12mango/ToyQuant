@@ -210,6 +210,14 @@ compatibility path. Everything below assumes that page.
   verbs. Read the exit file to learn *whether*, the log to learn *what*. Nothing waits in the foreground: a `sleep`
   over ~30 s belongs in a detached script, and `fast`, `all` and any run over the 1.5 GB depth file always go
   through the runner.
+- **A download is launched detached before it is started, because its minutes are not the session's minutes.** Measured
+  2026-11-28, on the owner's instruction: 28 file days of OKX trades moved 7.44 GB in about 70 minutes and 21 depth days
+  moved 210 MB in about 12, and both ran through `bash tools/gate/detach.sh <name> <seconds> -- …` with **one flushed line
+  per day** (`flush=True`), so progress was a file read rather than a guess. A fetch in the foreground spends the budget
+  the tree needs for other work, and one whose output is block-buffered for an hour reads exactly like one that died. The
+  shape is therefore four things together: detached, a flushed line per unit of work, `--skip-existing` so a resume is
+  free, and the `.exit` file read at the end. Two of those lessons were paid for in this session -- the first 28-day fetch
+  printed nothing until it finished, and a 21-day depth fetch was started while the owner was waiting for an answer.
 - **Polling is a file read, and never the same file twice in a row.** A reader that asks the same unchanged path five
   times is taken for a loop and the session stops -- that happened on a gate log. Check `/tmp/<name>.exit` first
   (absent = still running), then do a real piece of work -- the next page to edit, the diff to read -- before looking
