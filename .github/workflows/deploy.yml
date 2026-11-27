@@ -243,6 +243,26 @@ jobs:
              sudo tar -xzf /tmp/toyquant-deploy.tar.gz -C /opt/toyquant
              sudo bash /opt/toyquant/deploy/bootstrap_server.sh --repo-dir /opt/toyquant --etc-dir /etc/toyquant
              sudo systemctl daemon-reload
+             # The manager's own view is asked and, if needed, repaired -- not assumed from the reload's exit status:
+             # measured 2026-11-27, a unit file written a moment before `daemon-reload` was reported `LoadState=loaded`
+             # by the bootstrap and then `Unit toyquant-relay.service not found` by the next systemctl call a second
+             # later, and `loaded` again a minute after that. So the deploy prints what the manager says on every
+             # attempt, re-reloads, and only then touches the units.
+             for attempt in $(seq 1 20); do
+               states=$(systemctl show -p LoadState --value toyquant-relay toyquant-live 2>/dev/null | tr '\n' ' ' || true)
+               if [ "$states" = "loaded loaded " ]; then
+                 break
+               fi
+               echo "deploy: systemd reports '$states' for the two units; reloading (attempt $attempt/20)"
+               sudo systemctl daemon-reload
+               sleep 1
+             done
+             if [ "$states" != "loaded loaded " ]; then
+               echo "deploy: systemd still reports '$states' for toyquant-relay and toyquant-live after 20 reloads;" \
+                 "the unit files are installed but the manager cannot see them" >&2
+               exit 1
+             fi
+             echo "deploy: systemd loaded both units ($states)"
              # The relay first, because the preflight asks whether its two sockets are open -- and on a host that the
              # operator has stopped they are not, which made every deploy of a stopped host red at the preflight
              # (measured 2026-11-27: two `FAIL nothing listens on 127.0.0.1:8765`). The relay is restarted with the code

@@ -235,6 +235,9 @@ def rule_unit_reload(texts):
     if "*@)" not in bootstrap[reload_at:]:
         problems.append("deploy/bootstrap_server.sh asks `LoadState` of a template unit, which has none of its own: "
                         "skip the `*@` names, or the bootstrap fails on `toyquant-notify@` for ever")
+    if "LoadState" not in texts["workflow"]:
+        problems.append("deploy.yml restarts the units without asking whether the manager loaded them: the bootstrap's "
+                        "`loaded` and the next systemctl call's `not found` were one second apart on 2026-11-27")
     return problems
 
 
@@ -295,6 +298,7 @@ CLEAN = {
                 "deploy/notify.py deploy/daily_report.py deploy/preflight.sh deploy/check_health.sh "
                 "deploy/wait_for_ports.sh deploy/bootstrap_server.sh deploy/rollback.sh deploy/journald/toyquant.conf "
                 "deploy/logrotate/toyquant\n"
+                "states=$(systemctl show -p LoadState --value toyquant-relay toyquant-live)\n"
                 "sudo systemctl restart toyquant-relay\n"
                 "sudo bash /opt/toyquant/deploy/wait_for_ports.sh 127.0.0.1:8765 127.0.0.1:8766\n"
                 "sudo bash /opt/toyquant/deploy/preflight.sh\n"

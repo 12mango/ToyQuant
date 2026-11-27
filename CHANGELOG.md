@@ -76,6 +76,12 @@ site now points at `ToyQuant`.
   retries the reload up to twenty times at half a second, and exits non-zero naming the unit it could not load.
   `check_deploy.py`'s tenth rule holds the question in place, the template skip with it (the first version of the check
   failed on `toyquant-notify@` for exactly that reason), and its self-test fires both.
+- **The bootstrap's answer was not enough, and the next deploy proved it**: its own `LoadState` reads came back
+  `loaded` at 09:11:04.14 and the very next `systemctl reset-failed` said `Unit toyquant-relay.service not loaded` at
+  09:11:05.88, with nothing between them but `enable` calls and the workflow's own redundant `daemon-reload`. So the
+  deploy asks the same question itself, prints the answer on every attempt (`deploy: systemd reports '<states>' ...`),
+  re-reloads up to twenty times and stops with the states named if the manager never agrees -- and its own
+  `daemon-reload` line is gone, because two reloads a second apart is the sequence that produced the disagreement.
 - **The new `diagnose` ops action is what answered it.** `status` said `failed / Result=timeout` and the journal said the
   08:04 stop; neither could say whether the file was on disk, in the search path, or known to the manager. `diagnose`
   prints those four facts per unit plus the manager's version and the account -- the two halves of the disagreement, in
