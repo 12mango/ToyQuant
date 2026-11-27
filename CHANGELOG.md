@@ -64,6 +64,22 @@ site now points at `ToyQuant`.
   it dials `127.0.0.1:1`, never the relay, because the relay's order channel serves exactly one client -- a probe would
   take it and end it.
 
+## A reload is not a load: the bootstrap asks the manager what it has (2026-11-27)
+
+- **The second deploy after the flatten failed with `Unit toyquant-relay.service not found`**, one line after the
+  bootstrap printed `install toyquant-relay` and `systemctl enable` accepted the name -- and `--ops status` six minutes
+  later read the units as `LoadState=loaded`, with `FragmentPath` and an 08:50 timestamp that are the very files that
+  deploy installed. So nothing was missing; systemd had simply not ingested four unit files written a millisecond before
+  its `daemon-reload`, and every command after that read "not found" until something asked again.
+- **The bootstrap now asks, with a bound, instead of trusting the reload**: after `daemon-reload` it reads
+  `LoadState` for each unit it installed, retries the reload up to twenty times at half a second, and exits non-zero
+  naming the unit it could not load. `check_deploy.py`'s tenth rule holds the question in place, and its self-test fires
+  it by removing the `LoadState` read.
+- **The new `diagnose` ops action is what answered it.** `status` said `failed / Result=timeout` and the journal said the
+  08:04 stop; neither could say whether the file was on disk, in the search path, or known to the manager. `diagnose`
+  prints those four facts per unit plus the manager's version and the account -- the two halves of the disagreement, in
+  one run.
+
 ## The opening balance is read off the account, not copied into a file (2026-11-27)
 
 - **`--starting-cash=venue`** makes the engine ask the account for its USDT equity before anything is quoted, instead of

@@ -17,6 +17,8 @@ between two files in this repository, and a reader with both files in front of t
   8. `notify_refs`    `OnFailure=` names the notifier template, and the bundle ships it
   9. `deploy_order`   the relay is restarted (and waited for) before the preflight, and the engine after it, because the
                       preflight's socket check has nothing to read on a host the operator has stopped
+ 10. `unit_reload`    the bootstrap asks the manager whether it loaded the units it just installed, and names the one it
+                      could not, because a file written immediately before `daemon-reload` can be missed by its scan
 
     python3 tools/gate/check_deploy.py             # this repository
     python3 tools/gate/check_deploy.py --self-test  # every rule on a defect and on a clean copy
@@ -211,9 +213,32 @@ def rule_deploy_order(texts):
     return problems
 
 
+def rule_unit_reload(texts):
+    """The bootstrap asks the manager whether it loaded what it was handed, instead of trusting one `daemon-reload`.
+
+    Measured 2026-11-27: four unit files written, one `daemon-reload`, `enable` accepted the names, and the next
+    `systemctl restart` answered `Unit toyquant-relay.service not found` -- while the same query minutes later reported
+    `LoadState=loaded`. A reload that missed a file it was just given has to be retried by name, not read as a missing
+    unit by the deploy's third command.
+    """
+    bootstrap = texts["bootstrap"]
+    # `find`, not `rfind`: the failure message quotes `systemctl daemon-reload` as the operator's next step, and the
+    # question is what happens after the *reload*, not after the sentence that names it.
+    reload_at = bootstrap.find("systemctl daemon-reload")
+    if reload_at < 0:
+        return ["deploy/bootstrap_server.sh never runs systemctl daemon-reload"]
+    problems = []
+    if "LoadState" not in bootstrap[reload_at:]:
+        problems.append("deploy/bootstrap_server.sh reloads systemd and never asks whether the manager loaded the units")
+    if "did not load" not in bootstrap[reload_at:]:
+        problems.append("deploy/bootstrap_server.sh's reload check does not name the unit it could not load")
+    return problems
+
+
 RULES = (("env_names", rule_env_names), ("template_keys", rule_template_keys), ("endpoints", rule_endpoints),
          ("ordering", rule_ordering), ("stop_window", rule_stop_window), ("bundled", rule_bundled),
-         ("coupling", rule_coupling), ("notify_refs", rule_notify_refs), ("deploy_order", rule_deploy_order))
+         ("coupling", rule_coupling), ("notify_refs", rule_notify_refs), ("deploy_order", rule_deploy_order),
+         ("unit_reload", rule_unit_reload))
 
 FILES = {"env": ".env.example",
          "live_yaml": "config/live.example.yaml",
@@ -223,6 +248,7 @@ FILES = {"env": ".env.example",
          "notify_unit": "deploy/toyquant-notify@.service",
          "workflow": ".github/workflows/deploy.yml",
          "ops_workflow": ".github/workflows/ops.yml",
+         "bootstrap": "deploy/bootstrap_server.sh",
          "shutdown_h": "src/lines/session_shutdown.h"}
 
 
@@ -274,6 +300,9 @@ CLEAN = {
                     "sudo bash /opt/toyquant/deploy/wait_for_ports.sh 127.0.0.1:8765 127.0.0.1:8766\n"
                     "sudo bash /opt/toyquant/deploy/preflight.sh\n"
                     "sudo systemctl restart toyquant-live\n",
+    "bootstrap": "systemctl daemon-reload\n"
+                 "state=$(systemctl show -p LoadState --value toyquant-relay)\n"
+                 "echo \"bootstrap: systemd did not load toyquant-relay\"\n",
     "shutdown_h": "std::uint64_t deadline_ms{10'000};\n",
 }
 
@@ -315,6 +344,9 @@ def self_test():
     # The ops action had the same defect, and it is the way an operator starts a stopped host: the rule reads both.
     check("deploy_order", lambda t: t.update(ops_workflow=t["ops_workflow"].replace(
         "sudo systemctl restart toyquant-relay\n", "", 1)), "ops.yml runs the preflight")
+    # A reload that is trusted rather than asked: the bootstrap drops its `LoadState` question.
+    check("unit_reload", lambda t: t.update(bootstrap=t["bootstrap"].replace(
+        "LoadState", "SomethingElse")), "never asks whether the manager loaded")
     del defects
     print(f"check_deploy self-test OK ({len(RULES)} rule(s), each on a defect and on the clean copy)")
     return 0

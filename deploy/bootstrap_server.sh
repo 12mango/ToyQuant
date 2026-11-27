@@ -102,6 +102,32 @@ for unit in "$RELAY_SERVICE_NAME" "$SERVICE_NAME" toyquant-notify@ toyquant-repo
 done
 if [ -n "$units" ]; then
   run "reload systemd" systemctl daemon-reload
+  # A unit file written a moment before `daemon-reload` can be missed by the reload's scan, and the failure is confusing
+  # rather than silent: measured 2026-11-27, `systemctl enable toyquant-relay` accepted the name while the next
+  # `systemctl restart toyquant-relay` answered `Unit toyquant-relay.service not found`, and the same query six minutes
+  # later reported `LoadState=loaded` with the file this script had installed. So the reload is asked, with a bound, to
+  # account for every unit it was just handed; a host that never does fails here, naming the unit, instead of in the
+  # deploy's third systemctl call.
+  unknown=""
+  for _ in $(seq 1 20); do
+    unknown=""
+    for unit in $units; do
+      state=$(systemctl show -p LoadState --value "$unit" 2>/dev/null || true)
+      case "$state" in
+        loaded|masked) : ;;  # masked is an operator's decision and is still a unit the manager knows
+        *) unknown="$unknown $unit" ;;
+      esac
+    done
+    [ -z "$unknown" ] && break
+    sleep 0.5
+    systemctl daemon-reload
+  done
+  if [ -n "$unknown" ]; then
+    echo "bootstrap: systemd did not load$unknown after daemon-reload: the unit files are installed but the manager" \
+      "cannot see them (run systemctl daemon-reload, then systemctl status <unit>)" >&2
+    exit 1
+  fi
+  echo "bootstrap: systemd loaded$units"
   for unit in $units; do
     case "$unit" in
       *@) : ;;  # a template is not enabled: nothing starts it but `OnFailure=`

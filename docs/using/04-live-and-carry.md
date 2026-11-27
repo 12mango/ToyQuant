@@ -1008,7 +1008,7 @@ menu; every action runs one SSH session and prints its result into the run's log
 **The unit's stop window outlasts the engine's own cancel sweep, and the check is a rule rather than a habit.** The engine
 gives up cancelling at `deadline_ms` (10 s, `src/lines/session_shutdown.h`) and the unit waits 12; a unit that gave up
 first would `SIGKILL` a session between two cancels and leave what it held at the venue. `tools/gate/check_deploy.py`
-reads both numbers and refuses the pair when the margin is gone, along with eight other couplings the host would otherwise
+reads both numbers and refuses the pair when the margin is gone, along with nine other couplings the host would otherwise
 find: the env template against the names the relay reads, the template's keys against the reader's map, the engine's
 endpoints against the relay's listeners, the units' ordering, the package step against the units' paths,
 `RELAY_ORDER_LIVE` against the venue it names, and `OnFailure=` against a notifier the bundle ships.

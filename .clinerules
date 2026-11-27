@@ -494,7 +494,10 @@ the file, the variable or the port? A change that cannot answer all three is not
   up -- measured 2026-11-27, `preflight: FAIL nothing listens on 127.0.0.1:8765`, twice. The order is now: restart the
   relay with the unpacked code, wait for its ports (`deploy/wait_for_ports.sh`, because `Type=simple` reports the unit
   started before it binds), run the preflight against that relay, restart the engine, then the health check.
-  `check_deploy.py`'s ninth rule holds the order and fires on the old one.
+  `check_deploy.py`'s ninth rule holds the order and fires on the old one. **And a reload is not proof of a load**:
+  `daemon-reload` can miss a unit file written a moment before it (measured 2026-11-27, `enable` accepted the name while
+  `restart` answered `Unit toyquant-relay.service not found`), so `deploy/bootstrap_server.sh` asks `LoadState` for every
+  unit it installed, retries the reload, and names the one that did not load -- that is the tenth rule.
 
 **The part of that a machine can answer is `tools/gate/check_deploy.py`, and a new coupling means a new rule there.** Its eight rules are the audit's: the env template against the names the relay reads, the template's keys against the reader's
 map, the engine's endpoints against the relay's listeners, the units' ordering, `TimeoutStopSec` against the engine's own
