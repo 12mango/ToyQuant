@@ -41,6 +41,18 @@ jobs:
           chmod 0600 "$HOME/.ssh/deploy_key"
           ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> "$HOME/.ssh/known_hosts"
 
+      # The tool an action runs travels with the workflow, not with the host. `/opt/toyquant/tools/` is whatever the last
+      # deploy left there, so an action that depended on a fix in `okx_probe.py` could not run until the next deploy --
+      # measured 2026-11-27, when two flattens failed for exactly that reason. This is the checked-out copy of the tracked
+      # tool, in the deploy account's own name at a fixed path: a sticky `/tmp` is what keeps another account from
+      # replacing it before `sudo` runs it.
+      - name: Send the account tool
+        run: |
+          set -euo pipefail
+          scp -i "$HOME/.ssh/deploy_key" -o BatchMode=yes \
+            tools/live/okx_probe.py \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/tmp/toyquant-okx-probe.py"
+
       # One step, one SSH session, and the script is the heredoc's: an action that needs `sudo` gets it from the same
       # account the deploy uses, and every branch prints what it did rather than exiting silently.
       - name: Run the action
@@ -54,7 +66,21 @@ jobs:
             "ACTION=$ACTION LINES=$LINES bash -s" <<'REMOTE'
           set -uo pipefail
           echo "action=$ACTION host=$(hostname) $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-          probe() { sudo python3 /opt/toyquant/tools/live/okx_probe.py "$1" 2>&1 | tail -20 || true; }
+          # The tool is the workflow's own copy (the step above), not the host's: an action must be able to run the fix it
+          # was written with. `okx_probe.py` reads the credentials out of `/etc/toyquant/live.env` itself when the
+          # environment carries none, which is why `sudo` with no sourced file is the whole invocation.
+          TOOL=/tmp/toyquant-okx-probe.py
+          # The instrument is the relay's, read from the operator's file: the tool's own default is BTC, and a status
+          # that reports another instrument's position is a report about nothing. An empty answer is said out loud
+          # rather than silently defaulted.
+          INST=$(sudo sed -n 's/^[[:space:]]*\(export[[:space:]]\{1,\}\)\{0,1\}RELAY_INSTRUMENT=//p' \
+                   /etc/toyquant/live.env 2>/dev/null | head -1 | tr -d '"\r')
+          if [ -z "$INST" ]; then
+            echo "no RELAY_INSTRUMENT in /etc/toyquant/live.env: the tool's default instrument is used"
+          else
+            echo "instrument=$INST (RELAY_INSTRUMENT)"
+          fi
+          probe() { sudo env INST_ID="${INST:-BTC-USDT-SWAP}" python3 "$TOOL" "$1" 2>&1 | tail -10 || true; }
           case "$ACTION" in
             status)
               for unit in toyquant-relay toyquant-live; do
@@ -91,77 +117,25 @@ jobs:
               echo "-- after the stop"; probe pending; probe position
               ;;
             flatten)
-              # Self-contained on purpose. The host's tools/ are whatever the last deploy left there, so an action that
-              # depends on a fix in `okx_probe.py` cannot run until the next deploy -- measured 2026-11-27: the probe's
-              # hardcoded `x-simulated-trading` answered 401 and the flatten could not be dispatched at all. This signs one
-              # `reduceOnly` market order per open side itself, reading the credentials and the simulated switch from the
-              # operator's file, so the action is versioned with the workflow and not with the host.
-              sudo RELAY_ENV=/etc/toyquant/live.env python3 - <<'PYFLAT'
-              import base64, hashlib, hmac, json, os, urllib.parse, urllib.request
-              from datetime import datetime, timezone
-
-              def setting(name):
-                  try:
-                      with open(os.environ["RELAY_ENV"], encoding="utf-8", errors="replace") as handle:
-                          for line in handle:
-                line = line.strip().lstrip("\ufeff")
-                if line.startswith(name + "="):
-                    return line.split("=", 1)[1].strip().strip('"').strip("'")
-                  except OSError as error:
-                      print(f"cannot read {os.environ['RELAY_ENV']}: {error}")
-                  return os.environ.get(name, "")
-
-              key = setting("TOYQUANT_API_KEY")
-              secret = setting("TOYQUANT_API_SECRET")
-              phrase = setting("TOYQUANT_PASSPHRASE")
-              live = setting("RELAY_ORDER_LIVE").lower() in ("1", "true", "yes")
-              inst = setting("RELAY_INSTRUMENT") or "UP-USDT-SWAP"
-              print(f"instrument={inst} live_account={live} key_set={bool(key)} secret_set={bool(secret)} passphrase_set={bool(phrase)}")
-              if not (key and secret and phrase):
-                  raise SystemExit("the three credentials are not in the file; nothing was sent")
-
-              def call(method, path, body=""):
-                  now = datetime.now(timezone.utc)
-                  stamp = now.strftime("%Y-%m-%dT%H:%M:%S.") + f"{now.microsecond // 1000:03d}Z"
-                  sign = base64.b64encode(hmac.new(secret.encode(), (stamp + method + path + body).encode(),
-                                     hashlib.sha256).digest()).decode()
-                  headers = {"Content-Type": "application/json", "User-Agent": "curl/8.5.0",
-               "OK-ACCESS-KEY": key, "OK-ACCESS-SIGN": sign, "OK-ACCESS-TIMESTAMP": stamp,
-               "OK-ACCESS-PASSPHRASE": phrase}
-                  if not live:
-                      # The demo host needs the header and the live host refuses it, exactly as for a placement.
-                      headers["x-simulated-trading"] = "1"
-                  request = urllib.request.Request("https://www.okx.com" + path,
-                                     data=body.encode() if body else None, method=method, headers=headers)
-                  try:
-                      with urllib.request.urlopen(request, timeout=15) as response:
-                          return json.loads(response.read().decode())
-                  except urllib.error.HTTPError as error:
-                      print(f"{method} {path} -> HTTP {error.code}: {error.read().decode(errors='replace')[:300]}")
-                      return {}
-
-              query = urllib.parse.urlencode({"instType": "SWAP", "instId": inst})
-              answer = call("GET", "/api/v5/account/positions?" + query)
-              rows = answer.get("data") or []
-              print(f"positions: {[(r.get('instId'), r.get('pos')) for r in rows]}")
-              sent = 0
-              for row in rows:
-                  try:
-                      size = float(row.get("pos", "0") or 0)
-                  except (TypeError, ValueError):
-                      continue
-                  if size == 0:
-                      continue
-                  body = json.dumps({"instId": inst, "tdMode": "cross", "side": "sell" if size > 0 else "buy",
-                       "ordType": "market", "sz": f"{abs(size):g}", "reduceOnly": True}, separators=(",", ":"))
-                  reply = call("POST", "/api/v5/trade/order", body)
-                  print(f"flatten {body} -> code={reply.get('code')} data={reply.get('data')}")
-                  sent += 1
-              print(f"orders sent: {sent}")
-              pending = call("GET", "/api/v5/trade/orders-pending?instType=SWAP")
-              print(f"pending after: {[r.get('ordId') for r in pending.get('data') or []]}")
-              PYFLAT
-              echo "-- after the flatten, the account's own words are above"
+              # The tool is the workflow's own copy (the `Send the account tool` step), so this action is versioned with
+              # the repository rather than with whatever the last deploy left in `/opt/toyquant/tools`. `flatten` signs one
+              # `reduceOnly` market order per open side and prints one answer per order; the two reads after it are the
+              # verification, and a non-zero exit is the job's failure rather than a line in a green log.
+              #
+              # Why this is not an inline python any more: measured 2026-11-27, two flattens failed with the job's last
+              # line `action=flatten` and no error at all. A `python3 - <<'PYFLAT'` heredoc sat inside the `<<'REMOTE'`
+              # script that is ssh's stdin, indented past where its own delimiter had to start, so its body never reached
+              # the interpreter -- a script inside a script is a command nobody can read back.
+              if sudo env INST_ID="${INST:-BTC-USDT-SWAP}" python3 "$TOOL" flatten; then
+                FLATTEN_STATUS=0
+              else
+                FLATTEN_STATUS=$?
+              fi
+              echo "-- after the flatten (flatten exit=$FLATTEN_STATUS)"
+              probe position
+              probe pending
+              probe equity
+              exit "$FLATTEN_STATUS"
               ;;
             *)
               echo "unknown action '$ACTION'" >&2; exit 2
