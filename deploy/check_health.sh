@@ -106,9 +106,15 @@ fi
 # `HEALTH_WINDOW_S` seconds rather than "since boot": a counter that only a reboot clears would keep a repaired unit red
 # forever, which is the same failure as a check that cannot go green.
 if command -v journalctl > /dev/null 2>&1; then
-  crashed=$(journalctl -u "$SERVICE_NAME" --since "-${HEALTH_WINDOW_S}s" --no-pager -q 2>/dev/null | grep -c "Failed with result" || true)
+  # Only from the unit's **last start**. A failure earlier in the window is history, and on a deploy it is this deploy's
+  # own stop: systemd reports `Failed with result 'timeout'` when a session needed longer than TimeoutStopSec to cancel,
+  # which counted as a crash and made a good deploy red (measured 2026-11-27, 07:16). What this check is for is a unit that
+  # is up now and failed *since it came up*.
+  since_start=$(journalctl -u "$SERVICE_NAME" --since "-${HEALTH_WINDOW_S}s" --no-pager -q 2>/dev/null |
+    awk -v unit="$SERVICE_NAME" '$0 ~ ("Started " unit) { buf = "" } { buf = buf $0 "\n" } END { printf "%s", buf }')
+  crashed=$(printf '%s\n' "$since_start" | grep -c "Failed with result" || true)
   if [ "${crashed:-0}" -gt 0 ]; then
-    fail "$crashed 'Failed with result' line(s) in the last ${HEALTH_WINDOW_S}s; last: $(journalctl -u "$SERVICE_NAME" --since "-${HEALTH_WINDOW_S}s" --no-pager -q 2>/dev/null | grep "Failed with result" | tail -1)"
+    fail "$crashed 'Failed with result' line(s) since $SERVICE_NAME last started; last: $(printf '%s\n' "$since_start" | grep "Failed with result" | tail -1)"
   else
     ok "no 'Failed with result' line in the last ${HEALTH_WINDOW_S}s"
   fi

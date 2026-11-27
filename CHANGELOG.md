@@ -7,6 +7,26 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## A deploy kills the session instead of cancelling it: the stop is event-driven (2026-11-27, open)
+
+- **The graceful stop only advances when a market event arrives.** `application.cpp:983` runs the `SessionShutdown` step
+  inside `consume(event)`, so a quiet instrument -- or a stream that has stalled -- means SIGTERM is recorded by
+  `termination::handle` and then never acted on. systemd's `TimeoutStopSec=12` expires first and the unit is `SIGKILL`ed:
+  measured three times on 2026-11-27 (`06:09:30`, `06:10:01`, `07:16:18`, each `State 'stop-sigterm' timed out. Killing`,
+  `Failed with result 'timeout'`), every one of them a deploy's own restart.
+- **What it costs is the thing `SessionShutdown` exists to prevent.** The 06:09 stop left the working orders at the venue:
+  the next start read `[RECON] at=start position venue_units=-100000000 ledger_units=0 position_break=-100000000
+  status=break`, i.e. **ten contracts short that the ledger did not know about**, and the session then quoted on top of it.
+  A deploy that kills a session is a deploy that leaves it holding.
+- **The fix shape, not yet written**: the consumer's wait must be bounded, so a timeout is a tick that runs the same
+  shutdown step. `WebSocketFeed::read_frame` already takes a `deadline_ms` and its header says the deadline has to live
+  inside the read for exactly this reason; the `EventReader` between it and `consume` is what needs to return "no event
+  yet" instead of blocking, and the loop needs to treat that as a shutdown tick. Until that lands, **a deploy is not a safe
+  operation on a session that holds anything** -- the operator's `stop` has the same defect.
+- **The health check stopped calling this deploy's own stop a crash.** It counted `Failed with result` over a 600 s window,
+  so the `timeout` produced by the restart this very deploy performed made a good deploy red. It now counts only from the
+  unit's **last start**: a failure before that is history, a failure after it is a fault.
+
 ## The deploy loop no longer needs a browser, and the token it needs cannot push (2026-11-27)
 
 - **`tools/ops/dispatch_deploy.sh` closes the loop I could not close:** `run` dispatches `deploy.yml` (or `ops.yml` with
