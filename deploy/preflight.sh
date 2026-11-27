@@ -12,6 +12,11 @@
 #   sudo bash /opt/toyquant/deploy/preflight.sh
 set -euo pipefail
 
+# `set -e` exits with no message, and a preflight that dies silently after its third ok line is a check whose failure
+# cannot be acted on (measured 2026-11-27, twice: the deploy job showed three ok lines and `exit code 1`). The trap
+# names the line and the command; the step lines below say which check was running when it happened.
+trap 'status=$?; echo "preflight: FAIL at line $LINENO: $BASH_COMMAND (exit $status)" >&2; exit $status' ERR
+
 REPO_DIR=${REPO_DIR:-/opt/toyquant}
 ETC_DIR=${ETC_DIR:-/etc/toyquant}
 SERVICE_USER=${SERVICE_USER:-toyquant}
@@ -22,6 +27,7 @@ failures=0
 fail() { echo "preflight: FAIL $*" >&2; failures=$((failures + 1)); }
 ok() { echo "preflight: ok $*"; }
 
+echo "preflight: .. check 1/6"
 # 1. The binary starts at all. An artifact built for another CPU dies here, before anything that could explain it.
 #    The first version of this check was `start=$(($PROGRAM --help ...))`: `$(( ))` is arithmetic, not a command
 #    substitution, so bash printed `syntax error: operand expected` and the pipeline swallowed it into an `ok`.
@@ -35,6 +41,7 @@ else
   printf '%s\n' "$help_out" | head -3 | sed 's/^/preflight:   /' >&2
 fi
 
+echo "preflight: .. check 2/6"
 # 2. The configuration translates into the engine's arguments, and a live file must yield at least the three positionals.
 flags=$(python3 "$REPO_DIR/tools/live/live_config.py" --flags "$CONFIG" 2>&1) || {
   fail "live_config.py refused $CONFIG:"
@@ -60,6 +67,7 @@ if [ -n "$flags" ]; then
   engine_order=$(printf '%s\n' "$flags" | sed -n 's/^--venue-endpoint=//p' | head -1)
 fi
 
+echo "preflight: .. check 3/6"
 # 3. The engine accepts them and gets past its own startup -- the log directory, the mode line, everything that happens
 #    before the first connect. `127.0.0.1:1` is a port nothing listens on, so the run is expected to end there; the `[Mode]`
 #    line is what proves it got that far. Runs as the service user, because a path the operator can write and the service
@@ -81,6 +89,7 @@ if [ -n "$flags" ]; then
   fi
 fi
 
+echo "preflight: .. check 4/6"
 # 4. The credentials the relay logs in with, and whether they are still a template's. A placeholder passes every check
 #    above -- the binary starts, the engine reaches `[Mode]`, the sockets listen -- and then the venue refuses the login and
 #    every reconciliation reads `n/a` / `status=unknown`, which looks like a venue answer rather than a missing key. Names
@@ -107,6 +116,7 @@ else
   fail "$ETC_DIR/live.env is not readable, and the relay logs in from it"
 fi
 
+echo "preflight: .. check 5/6"
 # 5. The two files as the account that will read them, not as root. `root:root 0600` passes every root-side check and is
 #    a file systemd cannot read as `toyquant`: the relay's `EnvironmentFile=` then fails the unit outright, and the
 #    engine's `-` prefix turns it into silence.
@@ -122,6 +132,7 @@ if id "$SERVICE_USER" > /dev/null 2>&1 && command -v runuser > /dev/null 2>&1; t
   done
 fi
 
+echo "preflight: .. check 6/6"
 # 6. The two addresses agree, and the one the engine dials is open. The relay's side comes from its own environment file,
 #    because that is what systemd will hand it: an engine pointed at a port the relay does not serve waits forever, and the
 #    only symptom is a session that starts and does nothing -- the failure this whole script exists to name.
@@ -134,7 +145,7 @@ fi
 
 check_endpoint() {  # check_endpoint <name> <the engine's address> <the relay's address>
   local name=$1 engine=$2 relay=$3 port
-  [ -z "$engine" ] && return 0
+  if [ -z "$engine" ]; then return 0; fi
   if [ "$engine" = "$relay" ]; then
     ok "the engine's $name endpoint is the relay's listener ($engine)"
   else
@@ -157,3 +168,4 @@ if [ "$failures" -eq 0 ]; then
 fi
 echo "preflight: $failures failure(s); nothing was restarted" >&2
 exit 1
+
