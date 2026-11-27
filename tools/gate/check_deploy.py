@@ -356,12 +356,43 @@ def rule_timer_install(texts):
     return problems
 
 
+# The directory `daily_report.py` writes its one row into, named once: the report's `--ledger` default and the unit's
+# `ReadWritePaths=` are the two ends of one coupling, and the rule below reads both.
+LEDGER_DIR = "/opt/toyquant/data/runtime"
+
+
+def rule_report_sandbox(texts):
+    """A unit that writes a file has to name the path, because `ProtectSystem=strict` makes everything else read-only.
+
+    Measured 2026-11-27, the first live window's mail: `daily_report.py` appended its ledger row, the write failed with
+    `Read-only file system` (the unit sandboxes the whole filesystem and named no `ReadWritePaths=`), `append_ledger`
+    caught it as it was written to, and the mail went out unchanged -- the ledger the series is built on started empty
+    and the only trace was a stderr line in a timer's journal, which nobody reads. The rule holds both ends of the
+    coupling: the directory the report writes, and the line the unit allows.
+    """
+    problems = []
+    unit = texts["report_unit"]
+    if "ProtectSystem=strict" not in unit and "ProtectSystem=full" not in unit:
+        return problems
+    writable = [line for line in unit.splitlines() if line.startswith("ReadWritePaths=")]
+    if not writable:
+        problems.append("deploy/toyquant-report.service protects the filesystem and names no `ReadWritePaths=`: "
+                        f"the ledger row `daily_report.py` appends under {LEDGER_DIR} cannot be written")
+    elif LEDGER_DIR not in writable[0]:
+        problems.append(f"deploy/toyquant-report.service allows `{writable[0].strip()}` and not {LEDGER_DIR}: "
+                        "the report's ledger row is written under that directory")
+    if LEDGER_DIR not in texts["daily_report"]:
+        problems.append(f"deploy/daily_report.py no longer names {LEDGER_DIR}: one of the two moved and the other "
+                        "did not, so the unit's `ReadWritePaths=` and the report's ledger disagree")
+    return problems
+
+
 RULES = (("env_names", rule_env_names), ("template_keys", rule_template_keys), ("endpoints", rule_endpoints),
          ("ordering", rule_ordering), ("stop_window", rule_stop_window), ("bundled", rule_bundled),
          ("coupling", rule_coupling), ("notify_refs", rule_notify_refs), ("deploy_order", rule_deploy_order),
          ("unit_reload", rule_unit_reload), ("ssh_quoting", rule_ssh_quoting),
          ("preflight_isolation", rule_preflight_isolation), ("report_clock", rule_report_clock),
-         ("timer_install", rule_timer_install))
+         ("timer_install", rule_timer_install), ("report_sandbox", rule_report_sandbox))
 
 FILES = {"env": ".env.example",
          "live_yaml": "config/live.example.yaml",
@@ -377,6 +408,7 @@ FILES = {"env": ".env.example",
          "window_start": "deploy/toyquant-window-start.timer",
          "window_stop": "deploy/toyquant-window-stop.timer",
          "daily_report": "deploy/daily_report.py",
+         "report_unit": "deploy/toyquant-report.service",
          "shutdown_h": "src/lines/session_shutdown.h"}
 
 
@@ -442,9 +474,11 @@ CLEAN = {
                  "echo \"bootstrap: systemd did not load toyquant-relay\"\n",
     "preflight": "startup=$(engine ws 127.0.0.1:1 --venue-endpoint=127.0.0.1:1)\n",
     "report_timer": "[Timer]\nOnCalendar=*-*-* 16:15:00 UTC\nPersistent=true\n",
+    "report_unit": "[Service]\nUser=toyquant\nProtectSystem=strict\nReadWritePaths=-/opt/toyquant/data/runtime\n",
     "window_start": "[Timer]\nOnCalendar=*-*-* 13:30:00 UTC\nUnit=toyquant-live.service\n",
     "window_stop": "[Timer]\nOnCalendar=*-*-* 15:32:00 UTC\nUnit=toyquant-window-stop.service\n",
-    "daily_report": "run([\"journalctl\", \"-u\", UNIT, \"--since\", start, \"--until\", end, \"--utc\"])\n",
+    "daily_report": "run([\"journalctl\", \"-u\", UNIT, \"--since\", start, \"--until\", end, \"--utc\"])\n"
+                    "LEDGER = \"/opt/toyquant/data/runtime/window_ledger.csv\"\n",
     "shutdown_h": "std::uint64_t deadline_ms{10'000};\n",
 }
 
@@ -511,6 +545,14 @@ def self_test():
     check("timer_install", lambda t: t.update(bootstrap=t["bootstrap"].replace(
         "install -m 0644 deploy/toyquant-window-start.timer /etc/systemd/system/\n", "")),
         "no `install` line for toyquant-window-start.timer")
+    # The sandbox: a report unit that writes a file behind `ProtectSystem=strict` and does not name it. Measured
+    # 2026-11-27, the first live window's ledger row was never written for exactly this reason.
+    check("report_sandbox", lambda t: t.update(report_unit=t["report_unit"].replace("ReadWritePaths", "X")),
+          "no `ReadWritePaths=`")
+    check("report_sandbox", lambda t: t.update(report_unit=t["report_unit"].replace("data/runtime", "data/elsewhere")),
+          "and not /opt/toyquant/data/runtime")
+    check("report_sandbox", lambda t: t.update(daily_report=t["daily_report"].replace("data/runtime", "data/x")),
+          "one of the two moved")
     del defects
     print(f"check_deploy self-test OK ({len(RULES)} rule(s), each on a defect and on the clean copy)")
     return 0

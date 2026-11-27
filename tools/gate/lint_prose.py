@@ -355,7 +355,11 @@ def main():
                         # the host's zone cannot reinterpret it. They are in the live page and the changelog because the
                         # report's whole subject is that interval, and they are the report's flags rather than the
                         # engine's -- the engine's own clock is `--wind-down-end`, minutes of the UTC day.
-                        "--window-start", "--window-end"}:
+                        "--window-start", "--window-end",
+                        # `deploy/daily_report.py` also owns this one: the report with the row written and the mail
+                        # printed rather than sent, which is how a window the timer missed is backfilled and how the
+                        # write path is checked without mailing the operator a second copy.
+                        "--no-mail"}:
             problems.append(f"{flag} is mentioned in a document and is not a flag the binary accepts")
     for model in sorted(models):
         if model not in text.lower():

@@ -21,3 +21,8 @@ ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
 NoNewPrivileges=true
+# `ProtectSystem=strict` makes everything read-only but `/dev`, `/proc` and `/sys`, and the ledger row `daily_report.py`
+# appends is the report's only write. Measured 2026-11-27, the first live window: without this line the append failed with
+# `Read-only file system`, the mail went out without saying so, and the series started empty. The `-` prefix keeps the unit
+# startable if the directory is not there yet (the bootstrap creates it and hands it to the service user).
+ReadWritePaths=-/opt/toyquant/data/runtime

@@ -15,6 +15,9 @@ rotated is worse than one that says it could not read the journal:
     the last `[RECON]`, any `[BREAKER]`, and the restarts systemd counted -- scanned to a grace past the window's edge,
     because the session's own summary is printed there (see `SCAN_GRACE_S`)
   * the host: disk on `/` and `/opt/toyquant`, memory, uptime, and which clock the host keeps
+  * the ledger: one row per window, the same numbers as numbers, appended to `/opt/toyquant/data/runtime/window_ledger.csv`
+    -- and the mail's last group says whether that row was written, because a row lost to a sandbox (measured
+    2026-11-27) is a series that silently starts empty
 
 **The interval is the most recently completed window, not a rolling 24 h.** A rolling day was wrong on this host in the
 silent way time zones are wrong: the window 13:30-15:30 UTC is 21:30-23:30 in Hong Kong and 22:30-00:30 in Tokyo, the
@@ -314,6 +317,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--dry-run", action="store_true", help="print the report instead of mailing it")
+    parser.add_argument("--no-mail", action="store_true",
+                        help="write the ledger row and print the mail, but send nothing (a backfill or a check)")
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--window-start", default=WINDOW_START, metavar="HH:MM", help="window open, UTC")
     parser.add_argument("--window-end", default=WINDOW_END, metavar="HH:MM", help="window close, UTC")
@@ -343,13 +348,25 @@ def main():
         print(f"To: {settings['NOTIFY_TO'] or '<ALERT_EMAIL_TO is not set>'}\nSubject: {subject}\n\n{body}")
         print(f"ledger: would append to {args.ledger}: {row}")
         return 0
+    # The row is written before the mail, and the mail carries the outcome, because a ledger failure has to be visible
+    # where the operator looks. Measured 2026-11-27, the first live window: the append hit `Read-only file system`
+    # (`ProtectSystem=strict` in the report unit, no `ReadWritePaths=`), `append_ledger` caught it as designed, the mail
+    # went out unchanged, and the only trace was one stderr line in `journalctl -u toyquant-report` -- so the series the
+    # ledger exists for started empty and nobody could tell from the mail. A row is a record even when the mail cannot be
+    # sent, which is why this comes before the SMTP check.
+    ledger_status = append_ledger(args.ledger, row)
+    groups["ledger"] = {"file": args.ledger, "result": ledger_status,
+                        "row": " ".join(f"{name}={value}" for name, value in row.items() if value)}
+    subject, body = compose(groups)
+    if args.no_mail:
+        print(f"Subject: {subject}\n\n{body}")
+        print(f"daily_report: ledger {ledger_status}; no mail sent (--no-mail)")
+        return 0
     if not settings["SMTP_HOST"] or not settings["NOTIFY_TO"]:
         print(f"daily_report: no SMTP_HOST/ALERT_EMAIL_TO in {notify.ENV_FILE} or the environment; no mail sent",
               file=sys.stderr)
         return 0
     print(f"daily_report: {notify.send(subject, body, settings)}", file=sys.stderr)
-    # After the mail, so a ledger that cannot be written costs a line and not the report.
-    print(f"daily_report: ledger {append_ledger(args.ledger, row)}", file=sys.stderr)
     return 0
 
 

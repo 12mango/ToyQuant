@@ -994,7 +994,11 @@ line" count would be a zero that can never be anything else -- the counters abov
 read runs 180 s past the window's edge**, because the summary is printed there: the first live window's `[WIND-DOWN]` to
 `[WS]` lines are stamped `15:30:02`, and a scan bounded at `--window-end=15:30` reported "no `[PORTFOLIO]` line in the
 window" about a session that had traded twelve times. The grace is `SCAN_GRACE_S`; the window is still named by its own
-two ends and the stamps are what the mail prints.
+two ends and the stamps are what the mail prints. The row the report appends is its only write, so the unit's
+`ProtectSystem=strict` names that directory (`ReadWritePaths=-/opt/toyquant/data/runtime`) and the mail ends with a
+`ledger` group saying whether the row was written and what it holds -- measured 2026-11-27, the first window: without the
+line the append failed with `Read-only file system`, the mail said nothing about it, and the series started empty.
+`check_deploy.py`'s fifteenth rule holds the two ends of that coupling together.
 `python3 deploy/daily_report.py --dry-run --at 2026-11-27T16:20:00Z` prints the mail without waiting for the timer.
 
 **The window is named in UTC, and the three clocks are one table.** The engine's session clock is the market's
@@ -1037,6 +1041,7 @@ menu; every action runs one SSH session and prints its result into the run's log
 | `diagnose` | what systemd knows about both units (load state, file path, unit-file state, stop timeout), what is on disk, the unit search path, the three timers' next fires, the host's clock, the flags the session will run with, and whether the manager can be written to | nothing |
 | `set-key` | one instrument-owned setting of `live.yaml` (`engine.ws_seconds=7200`): the tool's allowlist refuses a size, a loss limit, the seat or an endpoint by name, the file's line is replaced with its comment kept, the previous file is kept beside it, and the flags are printed again | the next session's arguments |
 | `ledger` | the window series `daily_report.py` appends to `/opt/toyquant/data/runtime/window_ledger.csv`: the header, the last twenty rows and the line count, or a sentence when the file does not exist yet | nothing |
+| `report` | `daily_report.py --no-mail` for the window the `at` input names (empty = now): the mail printed, the ledger row written, nothing sent | one ledger row |
 
 > `stop` and `flatten` are deliberately two actions. A stop that also flattened would close a position an operator was
 > holding on purpose; a flatten that did not stop the session would be undone by the next quote. A stale or rounded size

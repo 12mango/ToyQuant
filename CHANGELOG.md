@@ -18,6 +18,14 @@ site now points at `ToyQuant`.
 - **`--ops ledger` reads the window series from the host.** `daily_report.py` appends one row per closed window to
   `/opt/toyquant/data/runtime/window_ledger.csv`; this action prints the header, the last twenty rows and the line count,
   and says so when the file does not exist. It reads and changes nothing.
+- **The report's one write is declared by its unit, and the mail says whether it happened (2026-11-27, the same night
+  the row was found missing).** `toyquant-report.service` runs behind `ProtectSystem=strict` and named no
+  `ReadWritePaths=`, so the append failed with `Read-only file system`; `append_ledger` caught it as designed, the mail
+  went out unchanged and the only trace was a stderr line in `journalctl -u toyquant-report`, which nobody reads. Three
+  changes: the unit allows the ledger's directory (`ReadWritePaths=-/opt/toyquant/data/runtime`), the row is written
+  before the mail and the mail carries a `ledger` group (file, result, row), and `--no-mail` writes the row and prints
+  the mail without sending it, so a window the timer missed can be backfilled with `--ops report --at <instant>`.
+  `check_deploy.py`'s fifteenth rule refuses a sandboxed report unit that does not name the directory its report writes.
 
 ## The instrument's settings are changed by the instrument (2026-11-27)
 

@@ -3,7 +3,7 @@ name: ops
 # The host's own controls, from a browser: a dispatch menu rather than an SSH session. Nothing here trades by itself --
 # `stop` asks the engine to cancel what it holds on the way out, and `flatten` closes what is left at the market with
 # `reduceOnly` -- but `restart`, `stop` and `flatten` change a live session, so the workflow is dispatch-only and
-# serialised. `ledger` reads and changes nothing.
+# serialised. `ledger` reads the window series; `report` appends a row for a window named by `at` and mails nothing.
 on:
   workflow_dispatch:
     inputs:
@@ -20,10 +20,14 @@ on:
           - preflight   # would tonight's session start? the config, the binary and the sockets, without starting it
           - set-key     # change one instrument-owned setting in live.yaml, with a backup and the flags re-read
           - ledger      # the window series: one row per closed window, as daily_report.py appended it
+          - report      # run the report now for the window `at` names: writes the ledger row, mails nothing
         default: status
       lines:
         description: journal lines for tail-logs
         default: "100"
+      at:
+        description: report only -- the UTC instant whose window to report (empty = now)
+        default: ""
       key:
         description: set-key only -- an instrument-owned setting, e.g. engine.ws_seconds
         default: ""
@@ -77,11 +81,12 @@ jobs:
           LINES: ${{ inputs.lines }}
           KEY: ${{ inputs.key }}
           VALUE: ${{ inputs.value }}
+          AT: ${{ inputs.at }}
         run: |
           set -euo pipefail
           ssh -i "$HOME/.ssh/deploy_key" -o BatchMode=yes \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            "ACTION=$ACTION LINES=$LINES KEY=$KEY VALUE=$VALUE bash -s" <<'REMOTE'
+            "ACTION=$ACTION LINES=$LINES KEY=$KEY VALUE=$VALUE AT=$AT bash -s" <<'REMOTE'
           set -uo pipefail
           echo "action=$ACTION host=$(hostname) $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
           # The tool is the workflow's own copy (the step above), not the host's: an action must be able to run the fix it
@@ -162,6 +167,17 @@ jobs:
               probe pending
               probe equity
               exit "$FLATTEN_STATUS"
+              ;;
+            report)
+              # The report on demand: the same file the timer runs, for the window `at` names, with the mail printed
+              # instead of sent (`--no-mail`). It writes the ledger row, which is how a window the timer missed is
+              # backfilled, and it is how the row's path, the unit's `ReadWritePaths=` sandbox and the scan's grace are
+              # checked without waiting for 15:35.
+              if [ -n "${AT:-}" ]; then
+                sudo -u toyquant /usr/bin/python3 /opt/toyquant/deploy/daily_report.py --no-mail --at "$AT"
+              else
+                sudo -u toyquant /usr/bin/python3 /opt/toyquant/deploy/daily_report.py --no-mail
+              fi
               ;;
             ledger)
               # The window series, read from the host rather than remembered. `daily_report.py` appends one row per closed
