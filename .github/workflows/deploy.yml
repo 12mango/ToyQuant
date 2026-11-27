@@ -296,19 +296,21 @@ jobs:
              for unit in toyquant-relay toyquant-live; do
                if [ ! -f "/etc/systemd/system/$unit.service" ]; then
                  echo "deploy: /etc/systemd/system/$unit.service is missing after the bootstrap, which installs it" >&2
-                 echo "-- what the bundle carries and what the host has"
-                 sudo ls -l "/opt/toyquant/deploy/$unit.service" 2>&1 | head -3
-                 sudo ls -l /etc/systemd/system/toyquant-* 2>&1 | head -12
+                 echo "-- the bundle's own copy, the units on the host, and what the tar carries"
+                 sudo ls -l "/opt/toyquant/deploy/$unit.service" 2>&1 | head -3 || true
+                 sudo ls -l /etc/systemd/system/toyquant-* 2>&1 | head -12 || true
+                 sudo tar -tzf /tmp/toyquant-deploy.tar.gz | grep -E '\.service$' | head -8 || true
+                 sudo ls -l /opt/toyquant/deploy/ 2>&1 | head -20 || true
                  exit 1
                fi
              done
              sudo systemctl reset-failed toyquant-relay toyquant-live || true
              if ! sudo systemctl start toyquant-relay; then
                echo "deploy: the start answered not-found; here is what the manager sees" >&2
-               sudo ls -l /etc/systemd/system/toyquant-relay.service 2>&1
-               sudo systemctl show -p LoadState -p FragmentPath -p ActiveState toyquant-relay 2>&1
-               sudo systemctl cat toyquant-relay 2>&1 | head -6
-               sudo journalctl -u toyquant-relay -n 5 --no-pager -q 2>&1
+               sudo ls -l /etc/systemd/system/toyquant-relay.service 2>&1 || true
+               sudo systemctl show -p LoadState -p FragmentPath -p ActiveState toyquant-relay 2>&1 || true
+               sudo systemctl cat toyquant-relay 2>&1 | head -6 || true
+               sudo journalctl -u toyquant-relay -n 5 --no-pager -q 2>&1 || true
                sudo systemctl daemon-reload
                sudo systemctl reset-failed toyquant-relay || true
                sudo systemctl start toyquant-relay
