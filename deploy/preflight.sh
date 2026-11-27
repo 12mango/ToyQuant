@@ -90,27 +90,40 @@ if [ -n "$flags" ]; then
 fi
 
 echo "preflight: .. check 4/6"
+
+# Read one KEY=value from the operator's env file WITHOUT sourcing it. Sourcing a file executes it: a line that is not an
+# assignment returns non-zero, `set -e` inherits into the command substitution, and the whole check dies with nothing to
+# read -- measured 2026-11-27 on the host, `preflight: FAIL at line 109: unset_creds=$(...) (exit 1)`. An awk read has no
+# such path: it cannot run the file, it strips a CRLF or a BOM without being told, and its own failure is guarded.
+read_env_value() {  # read_env_value <file> <key>
+  awk -v key="$2" '
+    {
+      line = $0
+      sub(/\r$/, "", line)
+      sub(/^[^A-Za-z_]+/, "", line)
+      equal = index(line, "=")
+      if (equal > 0 && substr(line, 1, equal - 1) == key) value = substr(line, equal + 1)
+    }
+    END { print value }
+  ' "$1" 2>/dev/null || true
+}
+
 # 4. The credentials the relay logs in with, and whether they are still a template's. A placeholder passes every check
 #    above -- the binary starts, the engine reaches `[Mode]`, the sockets listen -- and then the venue refuses the login and
 #    every reconciliation reads `n/a` / `status=unknown`, which looks like a venue answer rather than a missing key. Names
 #    are printed, values never: this output ends up in a deploy log.
 if [ -r "$ETC_DIR/live.env" ]; then
-  unset_creds=$(
-    set -a
-    # shellcheck disable=SC1091  # the operator's file, sourced for its names only
-    . "$ETC_DIR/live.env" >/dev/null 2>&1 || true
-    set +a
-    for name in TOYQUANT_API_KEY TOYQUANT_API_SECRET TOYQUANT_PASSPHRASE; do
-      value=${!name:-}
-      case "$value" in
-        ''|*replace*|*REPLACE*|*changeme*|*CHANGEME*|*your*|*YOUR*|'<'*) printf '%s\n' "$name" ;;
-      esac
-    done
-  )
+  unset_creds=""
+  for name in TOYQUANT_API_KEY TOYQUANT_API_SECRET TOYQUANT_PASSPHRASE; do
+    value=$(read_env_value "$ETC_DIR/live.env" "$name")
+    case "$value" in
+      ''|*replace*|*REPLACE*|*changeme*|*CHANGEME*|*your*|*YOUR*|'<'*) unset_creds="$unset_creds $name" ;;
+    esac
+  done
   if [ -z "$unset_creds" ]; then
     ok "the three credentials are set in $ETC_DIR/live.env"
   else
-    fail "unset or still a template's in $ETC_DIR/live.env: $(printf '%s ' $unset_creds)"
+    fail "unset or still a template's in $ETC_DIR/live.env:$unset_creds"
   fi
 else
   fail "$ETC_DIR/live.env is not readable, and the relay logs in from it"
@@ -139,8 +152,8 @@ echo "preflight: .. check 6/6"
 relay_market=""
 relay_order=""
 if [ -r "$ETC_DIR/live.env" ]; then
-  relay_market=$(set -a; . "$ETC_DIR/live.env" > /dev/null 2>&1 || true; printf '%s' "${RELAY_MARKET_LISTEN:-}")
-  relay_order=$(set -a; . "$ETC_DIR/live.env" > /dev/null 2>&1 || true; printf '%s' "${RELAY_ORDER_LISTEN:-}")
+  relay_market=$(read_env_value "$ETC_DIR/live.env" RELAY_MARKET_LISTEN)
+  relay_order=$(read_env_value "$ETC_DIR/live.env" RELAY_ORDER_LISTEN)
 fi
 
 check_endpoint() {  # check_endpoint <name> <the engine's address> <the relay's address>

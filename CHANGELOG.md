@@ -7,6 +7,21 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The preflight died because it sourced a file it should only have read (2026-11-27)
+
+- **Check 4 did `unset_creds=$(set -a; . "$ETC_DIR/live.env"; ...)`**, and the host's file made that substitution return 1.
+  With `set -e` an assignment whose command substitution fails aborts the shell, so the check printed nothing -- and the
+  deploy showed three `ok` lines and an exit code. The new ERR trap named it on the next run:
+  `preflight: FAIL at line 109: unset_creds=$(...) (exit 1)`.
+- **The method was wrong, not the file.** Sourcing an operator's file *executes* it: a line that is not an assignment, a
+  BOM, a CRLF, or any command that returns non-zero reaches the substitution as a status, and `set -e` turns that status
+  into a silent death. `read_env_value` reads `KEY=value` with `awk` instead -- it cannot run the file, it strips a CRLF and
+  a BOM without being asked, and its own failure is guarded -- and both check 4 and check 6 use it now. Verified on a file
+  carrying a BOM, CRLF endings and a stray word: the check reports the three credentials as set.
+- **The lesson is the one this repository keeps re-learning**: a checker must be able to say what it checked and what it
+  could not. The three `ok` lines were true and the failure was invisible; a check whose failure is invisible is a check
+  that has not run.
+
 ## A shell one-liner in a unit is parsed twice, and both parsers got it wrong (2026-11-27)
 
 - **`ExecStartPre`'s `wait_port` function was mangled by systemd.** The deploy at 04:42 logged
