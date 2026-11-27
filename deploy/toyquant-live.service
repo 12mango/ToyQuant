@@ -43,10 +43,14 @@ ExecStartPre=/bin/bash -c 'python3 /opt/toyquant/tools/live/live_config.py --che
 # The relay binds its two sockets a moment after systemd considers it started, and the engine connects exactly once at
 # startup -- so without this wait the first start of the pair races and the engine exits on a refused connection, which
 # systemd then restarts forever. **Both** addresses are waited for: 8765 is where the book comes from and 8766 is where an
-# order goes, and a wait that names only the first leaves the engine's order leg racing the relay's second bind. The wait
-# reads the listening table rather than connecting: a probe connection would be *accepted* by the relay (its accept loop
-# takes one client) and the handshake would fail, killing the relay.
-ExecStartPre=/bin/bash -c 'wait_port() { for i in $(seq 1 30); do ss -ltn 2>/dev/null | grep -qE "127\.0\.0\.1:$1([[:space:]]|$)" && return 0; sleep 1; done; echo "waited 30s for the relay to listen on 127.0.0.1:$1 (the engine dials it once, at startup)" >&2; return 1; }; wait_port 8765 && wait_port 8766'
+# order goes. The wait reads the listening table rather than connecting: a probe connection would be *accepted* by the
+# relay (its accept loop takes one client) and the handshake would fail, killing the relay.
+#
+# It is a script and not a `/bin/bash -c '...'` one-liner because systemd parses this line for escapes: measured
+# 2026-11-27, the regex's `\.` reached bash as a bare dot and every start logged `Ignoring unknown escape sequences`,
+# while the `$1` and `$)` of a shell function in the same line depend on two parsers agreeing about quoting. A path and
+# two arguments have neither problem, and the script can be run and read on its own.
+ExecStartPre=/bin/bash /opt/toyquant/deploy/wait_for_ports.sh 127.0.0.1:8765 127.0.0.1:8766
 # The flags are captured and checked before the engine starts: an empty substitution would call `toy_quant ws` with no
 # endpoint, symbol or strategy, and the engine answers with its full usage text -- which reads like an engine fault and is a
 # configuration one, buried under forty lines of help. Measured 2026-11-27, twice. The `--check` above catches a refused

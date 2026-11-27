@@ -105,7 +105,15 @@ if [ -n "$units" ]; then
   for unit in $units; do
     case "$unit" in
       *@) : ;;  # a template is not enabled: nothing starts it but `OnFailure=`
-      *) run "enable $unit at boot" systemctl enable "$unit" ;;
+      *)
+        # Only a unit with an `[Install]` section can be enabled, and systemd answers the others with a four-line
+        # explanation that reads like an error in a deploy log ("The unit files have no installation config..."). The
+        # report unit is the timer's, so it is started by `toyquant-report.timer` and never enabled itself.
+        if grep -q '^\[Install\]' "/etc/systemd/system/$unit.service"; then
+          run "enable $unit at boot" systemctl enable "$unit"
+        else
+          echo "bootstrap: $unit has no [Install] section; something else starts it (a timer or a unit), so it is not enabled"
+        fi ;;
     esac
   done
 fi

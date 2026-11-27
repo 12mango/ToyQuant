@@ -482,8 +482,13 @@ which reads it, and does the second one have access? (2) *Ordering*: what must a
 this line, and what names it when it is not? (3) *Failure echo*: when this line is the one that fails, does the report name
 the file, the variable or the port? A change that cannot answer all three is not ready to ship.
 
-**The part of that a machine can answer is `tools/gate/check_deploy.py`, and a new coupling means a new rule there.** Its
-eight rules are the audit's: the env template against the names the relay reads, the template's keys against the reader's
+- **A shell line in a unit file is parsed twice, and only one of the parsers is yours.** systemd reads the Exec line for
+  escapes before bash ever sees it: measured 2026-11-27, a regex's `\.` reached bash as a bare dot and every start logged
+  `Ignoring unknown escape sequences`, while the `$1` and `$)` of a function in the same line depend on two parsers
+  agreeing about quoting. A wait, a probe or any other shell logic belongs in a tracked script beside the unit
+  (`deploy/wait_for_ports.sh`), which `bash -n` and a local run can check; the unit line takes a path and its arguments.
+
+**The part of that a machine can answer is `tools/gate/check_deploy.py`, and a new coupling means a new rule there.** Its eight rules are the audit's: the env template against the names the relay reads, the template's keys against the reader's
 map, the engine's endpoints against the relay's listeners, the units' ordering, `TimeoutStopSec` against the engine's own
 deadline, the package step against the units' paths, `RELAY_ORDER_LIVE` against the venue it names, and `OnFailure=`
 against the notifier that has to exist. It runs in `verify_l2.sh`'s tool check, in CI and in the deploy's `verify` job. A

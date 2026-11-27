@@ -7,6 +7,22 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## A shell one-liner in a unit is parsed twice, and both parsers got it wrong (2026-11-27)
+
+- **`ExecStartPre`'s `wait_port` function was mangled by systemd.** The deploy at 04:42 logged
+  `/etc/systemd/system/toyquant-live.service:49: Ignoring unknown escape sequences: "wait_port() { ... grep -qE
+  "127\.0\.0\.1:$1([[:space:]]|$)" ... }"` on every start attempt: systemd parses the Exec line for escapes, `\.` is not
+  one, and a shell function's `$1`/`$)` inside that line depends on two parsers agreeing about quoting. The live unit
+  therefore never reached its `[Mode]` line and the health check failed on that clause -- one failure, the engine's own
+  proof of a session, absent.
+- **The wait is a script now**: `deploy/wait_for_ports.sh 127.0.0.1:8765 127.0.0.1:8766`, a tracked file with no escapes
+  and no `$`, which `bash -n` and a local run can check (measured both ways: a closed port is named and exits 1, a listening
+  one returns in 0 s). It matches `ss`'s address column exactly rather than by substring, and it is in the deploy's package
+  step and in `check_deploy`'s required list.
+- **Bootstrap no longer enables a unit that cannot be enabled.** `systemctl enable toyquant-report.service` answered with
+  four lines beginning "The unit files have no installation config", which reads like an error in a deploy log; the report
+  unit is the timer's, so the loop now enables only a unit that has an `[Install]` section and says which ones it skipped.
+
 ## The lead-lag data arrived, all seven days validate, and `data/` now has an auditor (2026-11-27)
 
 - **The seven BTC 400-level days are on disk and aligned with the follower.** `okx_depth_align.py` reads both sides of
