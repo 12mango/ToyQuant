@@ -1419,10 +1419,14 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
             {
                 double ticks = 0.0;
                 std::istringstream stream(flag.substr(kWindDownTicksPrefix.size()));
-                if (!(stream >> ticks) || ticks < 1.0)
+                // Zero is a setting, not a typo: the wind-down's two halves are "stop the adding side" and "walk the
+                // closing side in", and the first is what the measured arm wanted without the second (2026-11-28: at ten
+                // minutes the pair removed the handover -- settle 2.30 to 0.78 bps, the residual from 1.2 contracts to
+                // zero -- and cost the median, the worst day and 29 percent of the dollars). A negative value is refused.
+                if (!(stream >> ticks) || ticks < 0.0)
                 {
-                    error = "--wind-down-skew-ticks is how far the closing side walks in over the wind-down, so it is "
-                            "at least one tick";
+                    error = "--wind-down-skew-ticks is how far the closing side walks in over the wind-down; zero means "
+                            "stop the adding side and leave the price alone, and a negative distance is not a distance";
                     return false;
                 }
                 cfg.wind_down_skew_ticks = ticks;

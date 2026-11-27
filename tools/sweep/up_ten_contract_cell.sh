@@ -95,4 +95,10 @@ want f3_throttle1 && run f3_throttle1 "--throttle-adverse-bps=15 --throttle-unit
 # The pure form the note asked for -- stop adding, leave the price alone -- is not expressible: `--wind-down-skew-ticks`
 # is refused below one tick by the engine.
 want f4_winddown10 && run f4_winddown10 "--wind-down-skew-minutes=10 --wind-down-skew-ticks=1 --wind-down-end=15:30"
+# The pure form, which the engine refused until 2026-11-28 (zero ticks now means "stop the adding side and leave the
+# price alone"; `l2_strategy_test` pins it). Measured over the same twenty-eight days it is **byte-identical** to the
+# one-tick arm on every column -- 48 fills, +11.23 closed, 8.18 net, 0.2587 USD, 95M peak, LOO 9.15 -- because a closing
+# quote three ticks out moved one tick in is still two ticks from the touch and never fills differently. So the arm's whole
+# difference from its control is the adding side going quiet, and not the skew.
+want f4_winddown10_pure && run f4_winddown10_pure "--wind-down-skew-minutes=10 --wind-down-skew-ticks=0 --wind-down-end=15:30"
 echo "== done $(date -u +%H:%M:%S) -- rows in $OUT/f*.csv"

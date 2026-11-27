@@ -1016,6 +1016,38 @@ int main()
         assert(after.first.size() == 1);
         assert(std::abs(after.first[0].price - (unskewed_ask - 0.5)) < 1e-9);
 
+        // Zero ticks is a setting: the adding side still stops and the closing side stays exactly where it was, which is
+        // the pure form the frontier note asked for and the engine refused until 2026-11-28. Past the halfway point the
+        // one-tick arm above is a tick in; this one must not move.
+        {
+            L2MarketMakerBase maker(L2MarketMakerBaseConfig{.order_size = 1,
+                                                            .base_spread = 1.5,
+                                                            .inventory_limit = 100,
+                                                            .tick_size = 0.5,
+                                                            .signal_mode = L2SignalMode::Baseline,
+                                                            .wind_down_skew_minutes = 15,
+                                                            .wind_down_end_minute = 930.0,  // 15:30 UTC
+                                                            .wind_down_skew_ticks = 0.0});
+            L2MarketView at;
+            at.symbol = view.symbol;
+            at.ts = day_ms + static_cast<uint64_t>(15 * 60 + 23) * 60ULL * 1'000ULL;
+            at.top = view.top;
+            const auto open = maker.on_l2_market_view(at);
+            assert(open.size() == 2);
+            maker.on_order_submitted(StrategyOrder{open[0].side, at.symbol.str(), open[0].price, 1, 92});
+            maker.on_order_update(ExecutionReport{.order_id = 92,
+                                                  .side = exchange::Side::Buy,
+                                                  .exec_type = ExecType::Trade,
+                                                  .symbol = at.symbol.str(),
+                                                  .price = open[0].price,
+                                                  .quantity = 1,
+                                                  .owner = "MarketMaker"});
+            const auto held = maker.on_l2_market_view(at);
+            assert(held.size() == 1);
+            assert(held[0].side == Side::Sell);
+            assert(std::abs(held[0].price - unskewed_ask) < 1e-9);
+        }
+
         // The condition: with a threshold, the same view does nothing while the tail is marked in our favour or only
         // slightly against us, and starts only once the mark is adverse by at least the threshold. The unconditional arm is
         // what cost +11.33 to -5.43 bps of settled median at ten contracts (measured 2026-11-26).
