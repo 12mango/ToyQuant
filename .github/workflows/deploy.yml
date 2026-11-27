@@ -237,7 +237,8 @@ jobs:
           set -euo pipefail
           ssh -i "$HOME/.ssh/deploy_key" -o BatchMode=yes \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            'set -euo pipefail
+            'bash -s' <<'REMOTE'
+          set -euo pipefail
              sudo mkdir -p /opt/toyquant
              if [ -x /opt/toyquant/toy_quant ]; then
                sudo cp -a /opt/toyquant/toy_quant /opt/toyquant/toy_quant.prev
@@ -344,10 +345,10 @@ jobs:
                # endpoints at 127.0.0.1:1 for its own run, because the relay's order channel serves exactly one client and
                # a check that took it would leave the session without one (measured 2026-11-27).
                sudo bash /opt/toyquant/deploy/preflight.sh
-             else
-               echo "deploy: the preflight is skipped, and says why: its sixth check reads the relay's two sockets, and"
-               echo "deploy: this session could not start it. The files are on the host; \`--ops restart\` proves the start"
-               echo "deploy: and the 13:30 window starts the relay through the session's Requires=."
+              else
+               echo "deploy: the preflight is skipped: its sixth check reads the two relay sockets, and this"
+               echo "deploy: session could not start the relay. The files are on the host; --ops restart proves the"
+               echo "deploy: start, and the 13:30 window starts the relay through the session Requires= relation."
              fi
              # A session that is running is the operator's, not this deploy's: it is reported and not touched. A session
              # that is not running is the normal state between windows, and the window timer will start this binary.
@@ -357,7 +358,8 @@ jobs:
              else
                echo "deploy: toyquant-live is not running, which is the state between windows; the window timer starts it"
                sudo systemctl --no-pager --lines=0 status toyquant-live 2>&1 | head -3 || true
-             fi'
+             fi
+          REMOTE
 
       # A failed health check leaves the previous binary on the host and the previous release one command away. This does
       # not roll back by itself: a rollback that runs unattended can flap a live session, and the operator's decision is
