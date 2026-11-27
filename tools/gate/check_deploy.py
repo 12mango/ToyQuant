@@ -21,6 +21,8 @@ between two files in this repository, and a reader with both files in front of t
                       could not, because a file written immediately before `daemon-reload` can be missed by its scan
  11. `ssh_quoting`    a remote script passed to `ssh` in single quotes contains no single quote of its own, because one
                       ends the argument and the step then exits with a bare code and no output
+ 12. `preflight_isolation`  the preflight's own engine run points both endpoints at a dead port, because the relay's order
+                      channel serves exactly one client and a check that took it leaves the session without a venue
 
     python3 tools/gate/check_deploy.py             # this repository
     python3 tools/gate/check_deploy.py --self-test  # every rule on a defect and on a clean copy
@@ -263,10 +265,29 @@ def rule_ssh_quoting(texts):
     return problems
 
 
+def rule_preflight_isolation(texts):
+    """The preflight's own engine run must not dial the relay's real order endpoint.
+
+    The relay's order channel serves exactly one client: measured 2026-11-27, the preflight ran its engine against the
+    real `--venue-endpoint`, the relay accepted it, the check's engine exited, the order channel ended with it, and thirty
+    seconds later the session failed `waited 30s and nothing listens on 127.0.0.1:8766`. Reachability is the sixth check's
+    question; this one is about the program starting.
+    """
+    preflight = texts["preflight"]
+    problems = []
+    if "ws 127.0.0.1:1" not in preflight:
+        problems.append("deploy/preflight.sh no longer runs the engine against 127.0.0.1:1")
+    if "--venue-endpoint=127.0.0.1:1" not in preflight:
+        problems.append("deploy/preflight.sh runs the engine with the relay's real order endpoint: that takes the order "
+                        "channel's single client and leaves the session without one")
+    return problems
+
+
 RULES = (("env_names", rule_env_names), ("template_keys", rule_template_keys), ("endpoints", rule_endpoints),
          ("ordering", rule_ordering), ("stop_window", rule_stop_window), ("bundled", rule_bundled),
          ("coupling", rule_coupling), ("notify_refs", rule_notify_refs), ("deploy_order", rule_deploy_order),
-         ("unit_reload", rule_unit_reload), ("ssh_quoting", rule_ssh_quoting))
+         ("unit_reload", rule_unit_reload), ("ssh_quoting", rule_ssh_quoting),
+         ("preflight_isolation", rule_preflight_isolation))
 
 FILES = {"env": ".env.example",
          "live_yaml": "config/live.example.yaml",
@@ -277,6 +298,7 @@ FILES = {"env": ".env.example",
          "workflow": ".github/workflows/deploy.yml",
          "ops_workflow": ".github/workflows/ops.yml",
          "bootstrap": "deploy/bootstrap_server.sh",
+         "preflight": "deploy/preflight.sh",
          "shutdown_h": "src/lines/session_shutdown.h"}
 
 
@@ -334,6 +356,7 @@ CLEAN = {
                  "state=$(systemctl show -p LoadState --value toyquant-relay)\n"
                  "case \"$unit\" in *@) continue ;; esac\n"
                  "echo \"bootstrap: systemd did not load toyquant-relay\"\n",
+    "preflight": "startup=$(engine ws 127.0.0.1:1 --venue-endpoint=127.0.0.1:1)\n",
     "shutdown_h": "std::uint64_t deadline_ms{10'000};\n",
 }
 
@@ -381,6 +404,9 @@ def self_test():
     # A quote inside the single-quoted script: the deploy that exited 1 with no output at all.
     check("ssh_quoting", lambda t: t.update(workflow=t["workflow"].replace(
         "echo hello", "echo it's broken")), "single quote")
+    # The preflight's own engine run dialling the real order endpoint: it takes the relay's single client.
+    check("preflight_isolation", lambda t: t.update(preflight=t["preflight"].replace(
+        "--venue-endpoint=127.0.0.1:1", "--venue-endpoint=127.0.0.1:8766")), "single client")
     del defects
     print(f"check_deploy self-test OK ({len(RULES)} rule(s), each on a defect and on the clean copy)")
     return 0

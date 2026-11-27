@@ -285,8 +285,9 @@ jobs:
              sudo systemctl restart toyquant-relay
              sudo bash /opt/toyquant/deploy/wait_for_ports.sh 127.0.0.1:8765 127.0.0.1:8766
              # The preflight answers "would this start" in a second; it runs before the engine's restart so a broken
-             # artifact is a red job instead of a crash loop on a host that trades. Its own engine run dials
-             # 127.0.0.1:1, so it cannot take the relay's single-client order channel.
+             # artifact is a red job instead of a crash loop on a host that trades. It points **both** of the engine's
+             # endpoints at 127.0.0.1:1 for its own run, because the relay's order channel serves exactly one client and a
+             # check that took it would leave the session without one (measured 2026-11-27).
              sudo bash /opt/toyquant/deploy/preflight.sh
              sudo systemctl restart toyquant-live
              sudo bash /opt/toyquant/deploy/check_health.sh'

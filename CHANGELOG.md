@@ -64,6 +64,21 @@ site now points at `ToyQuant`.
   it dials `127.0.0.1:1`, never the relay, because the relay's order channel serves exactly one client -- a probe would
   take it and end it.
 
+## The preflight's own engine run took the relay's only order client (2026-11-27)
+
+- **The host came up on the new binary, and then `toyquant-live` could not start**: `ready: 127.0.0.1:8765 after 0s`,
+  then `waited 30s and nothing listens on 127.0.0.1:8766`, `Failed with result 'exit-code'`. The relay was up, and the
+  order channel had been up a minute before -- because `deploy/preflight.sh`'s third check runs a *real engine* with the
+  file's own flags, including `--venue-endpoint=127.0.0.1:8766`. The relay's order channel serves exactly one client, so
+  that check's engine took it, exited, and the channel ended with it.
+- **The check now points both endpoints at the dead port** (`--venue-endpoint=127.0.0.1:1` replaces the file's, the same
+  way the market endpoint already was). What it proves is unchanged -- the binary starts, the config translates, the
+  `[Mode]` line prints -- and reachability stays check 6's question. `check_deploy.py`'s twelfth rule holds it, and its
+  self-test swaps the dead port back for the real one.
+- **This is the price of the ordering fix above**: the preflight used to run against a relay that the *next* command
+  restarted, so eating the old relay's order client cost nothing. With the relay restarted first, the preflight runs
+  against the relay the session will use -- which is the point, and which is why its own run must be isolated.
+
 ## A quote inside a quoted script is a command nobody ran (2026-11-27)
 
 - **The fourth deploy failed in 0.3 s with no output at all**: exit code 1, not one line from the host, not even

@@ -76,6 +76,12 @@ echo "preflight: .. check 3/6"
 #    before the first connect. `127.0.0.1:1` is a port nothing listens on, so the run is expected to end there; the `[Mode]`
 #    line is what proves it got that far. Runs as the service user, because a path the operator can write and the service
 #    cannot is one of the failures this exists to catch.
+#
+#    **Both endpoints are pointed at that dead port.** The relay's order channel serves exactly one client, so an engine
+#    that dials the real one here takes the slot and the session's own engine then never gets it: measured 2026-11-27, the
+#    relay was up on both sockets, this check ran, and thirty seconds later `toyquant-live` failed its `ExecStartPre` with
+#    `waited 30s and nothing listens on 127.0.0.1:8766`. Reachability is check 6's question, and agreement between the two
+#    files is its other half; this check is about the program starting at all.
 if [ -n "$flags" ]; then
   mapfile -t argv <<<"$flags"
   if [ "$(id -u)" = 0 ] && id "$SERVICE_USER" > /dev/null 2>&1; then
@@ -83,8 +89,15 @@ if [ -n "$flags" ]; then
   else
     runner=()
   fi
+  engine_flags=()
+  for argument in "${argv[@]:1}"; do
+    case "$argument" in
+      --venue-endpoint=*) engine_flags+=("--venue-endpoint=127.0.0.1:1") ;;
+      *) engine_flags+=("$argument") ;;
+    esac
+  done
   startup=$("${runner[@]}" bash -c "cd '$REPO_DIR' && exec '$PROGRAM' ws 127.0.0.1:1 \"\$@\" --fast-validation" \
-            _ "${argv[@]:1}" 2>&1 | head -8) || true
+            _ "${engine_flags[@]}" 2>&1 | head -8) || true
   if printf '%s\n' "$startup" | grep -q '\[Mode'; then
     ok "the engine reported its [Mode] line and reached the connect"
   else
