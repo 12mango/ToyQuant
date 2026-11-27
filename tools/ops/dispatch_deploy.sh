@@ -3,6 +3,7 @@
 #
 #   tools/ops/dispatch_deploy.sh run              # dispatch deploy.yml (data_gate stays false)
 #   tools/ops/dispatch_deploy.sh run --ops stop   # dispatch ops.yml with an action
+#   tools/ops/dispatch_deploy.sh check            # is the token the right shape, and does GitHub accept it
 #   tools/ops/dispatch_deploy.sh status           # the last few runs and their state
 #   tools/ops/dispatch_deploy.sh logs [--failed]  # the newest run's log (failed steps only with --failed)
 #   tools/ops/dispatch_deploy.sh wait             # block until the newest run finishes
@@ -152,17 +153,52 @@ cmd_wait() {
 }
 
 cmd_logs() {
-  local workflow=${1:-deploy.yml} id html
+  # The point of this verb is the *text* a job printed: the ops actions report their result there, and a deploy's failure
+  # is a sentence in it. The API hands a job's log as a redirect to a zip, so it is fetched and unpacked -- a list of steps
+  # says which step failed and never why.
+  local workflow=${1:-deploy.yml} lines=${TAIL_LINES:-40} id jobs job
   read -r id _ _ html <<<"$(newest_run "$workflow")"
   echo "run $id: $html"
-  api GET "/repos/$SLUG/actions/runs/$id/jobs" |
-    python3 -c 'import json,sys
-for job in json.load(sys.stdin).get("jobs") or []:
-    print(f"  job {job.get(\"name\")}: {job.get(\"status\")} {job.get(\"conclusion\") or \"-\"}")
-    for step in job.get("steps") or []:
-        if step.get("conclusion") not in ("success", "skipped", None):
-            print(f"    step {step.get(\"number\")} {step.get(\"name\")}: {step.get(\"conclusion\")}")'
-  echo "(the log itself is a zip behind the API; open the URL above for all of it)"
+  jobs=$(api GET "/repos/$SLUG/actions/runs/$id/jobs")
+  printf '%s' "$jobs" | python3 "$ROOT/tools/ops/jobs.py" list
+  for job in $(printf '%s' "$jobs" | python3 "$ROOT/tools/ops/jobs.py" failed); do
+    echo "--- log tail of job $job"
+    curl -sSL -H "Authorization: token $(read_token)" -H 'Accept: application/vnd.github+json' \
+      "$API/repos/$SLUG/actions/jobs/$job/logs" -o /tmp/tq/joblog.zip 2>/dev/null || true
+    python3 "$ROOT/tools/ops/jobs.py" tail "$lines"
+  done
+}
+
+cmd_check() {
+  # A credential that is wrong must say *how* it is wrong: shape first (a fine-grained token is `github_pat_` + 22 + `_` +
+  # 59 = 93 characters), then whether GitHub accepts it, then whether it can see this repository. Measured 2026-11-27: a
+  # token pasted with one extra character answered 401 with no hint, and the shape is what identified it.
+  local token
+  token=$(read_token) || return 2
+  local shape
+  shape=$(printf '%s' "$token" | awk -F_ '{ out = ""; for (i = 1; i <= NF; i++) out = out length($i) "/"; print out }')
+  echo "token: ${#token} bytes, prefix $(printf '%s' "$token" | cut -c1-11), segments $shape"
+  case "$token" in
+    github_pat_*)
+      if [ "${#token}" -ne 93 ]; then
+        echo "  a fine-grained token is 93 characters (github_pat_ + 22 + _ + 59); this one is ${#token} -- re-copy it" >&2
+      fi ;;
+    *) [ "${#token}" -eq 40 ] || echo "  a classic token is 40 characters; this one is ${#token}" >&2 ;;
+  esac
+  local user repo
+  user=$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: token $token" "$API/user")
+  echo "  GET /user -> $user"
+  repo=$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: token $token" "$API/repos/$SLUG")
+  echo "  GET /repos/$SLUG -> $repo"
+  if [ "$user" != 200 ]; then
+    echo "  the token is not accepted at all: re-copy it (a fine-grained token is shown once, and is 93 characters)" >&2
+    return 1
+  fi
+  if [ "$repo" != 200 ]; then
+    echo "  the token is valid but cannot see $SLUG: give it Repository access for that repository" >&2
+    return 1
+  fi
+  echo "  ok -- Actions: Read and write is the last thing to confirm, and \`status\` proves it"
 }
 
 main() {
@@ -173,8 +209,9 @@ main() {
     status) [ "${1:-}" = "--dry-run" ] && DRY_RUN=1; cmd_status ;;
     wait) cmd_wait "$@" ;;
     logs) cmd_logs "$@" ;;
+    check) cmd_check ;;
     -h|--help|help) usage ;;
-    *) echo "dispatch_deploy: unknown command $command (run|status|wait|logs)" >&2; return 2 ;;
+    *) echo "dispatch_deploy: unknown command $command (check|run|status|wait|logs)" >&2; return 2 ;;
   esac
 }
 
