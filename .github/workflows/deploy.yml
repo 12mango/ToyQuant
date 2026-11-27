@@ -232,7 +232,7 @@ jobs:
       # leaving, and the unit waits twelve seconds for that. The step fails if the service does not come back, and the
       # health check after it fails if the process came back wrong -- two sessions, an error in the journal, a missing
       # credential file. The running binary is copied aside first, so `deploy/rollback.sh` is one command on the host.
-      - name: Unpack, restart and check health
+      - name: Unpack, verify and leave the session alone
         run: |
           set -euo pipefail
           ssh -i "$HOME/.ssh/deploy_key" -o BatchMode=yes \
@@ -278,21 +278,31 @@ jobs:
                exit 1
              fi
              echo "deploy: systemd loaded both units [${states}]"
-             # The relay first, because the preflight asks whether its two sockets are open -- and on a host that the
-             # operator has stopped they are not, which made every deploy of a stopped host red at the preflight
-             # (measured 2026-11-27: two `FAIL nothing listens on 127.0.0.1:8765`). The relay is restarted with the code
-             # just unpacked, so what the preflight checks is the artifact about to run; `Type=simple` reports the unit
-             # started before the sockets are bound, so the wait is the unit's own script and names the closed port.
-             sudo systemctl reset-failed toyquant-relay toyquant-live || true
-             sudo systemctl restart toyquant-relay
+             # **The deploy ships files and verifies them; it restarts nothing that trades.** A restart is a SIGTERM to a
+             # session that may be holding quotes, and a redeploy inside the window would therefore leave them at the
+             # venue with nothing to cancel them (measured 2026-11-27: 13 s, `stop-sigterm` timed out, SIGKILL, and the
+             # quotes stayed). The new binary does not need a restart to reach the next session either: the window timer
+             # starts `toyquant-live` at 13:30 UTC every day, so a deploy between windows ships the code and the next open
+             # runs it. A hotfix that must land *now* is `--ops restart`, which prints the account before it acts.
+             #
+             # The relay is **started** (idempotent: a no-op when it is already up) because the preflight's sixth check
+             # reads its two sockets, and `Type=simple` reports the unit started before it binds -- hence the wait.
+             sudo systemctl start toyquant-relay
              sudo bash /opt/toyquant/deploy/wait_for_ports.sh 127.0.0.1:8765 127.0.0.1:8766
-             # The preflight answers "would this start" in a second; it runs before the engine's restart so a broken
+             # The preflight answers "would this start" in a second; it runs before anything is restarted so a broken
              # artifact is a red job instead of a crash loop on a host that trades. It points **both** of the engine's
              # endpoints at 127.0.0.1:1 for its own run, because the relay's order channel serves exactly one client and a
              # check that took it would leave the session without one (measured 2026-11-27).
              sudo bash /opt/toyquant/deploy/preflight.sh
-             sudo systemctl restart toyquant-live
-             sudo bash /opt/toyquant/deploy/check_health.sh'
+             # A session that is running is the operator's, not this deploy's: it is reported and not touched. A session
+             # that is not running is the normal state between windows, and the window timer will start this binary.
+             if systemctl is-active --quiet toyquant-live; then
+               echo "deploy: toyquant-live is running and was not touched; the health check follows"
+               sudo bash /opt/toyquant/deploy/check_health.sh
+             else
+               echo "deploy: toyquant-live is not running, which is the state between windows; the window timer starts it"
+               sudo systemctl --no-pager --lines=0 status toyquant-live 2>&1 | head -3 || true
+             fi'
 
       # A failed health check leaves the previous binary on the host and the previous release one command away. This does
       # not roll back by itself: a rollback that runs unattended can flap a live session, and the operator's decision is

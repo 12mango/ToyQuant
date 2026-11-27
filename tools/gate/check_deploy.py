@@ -198,42 +198,52 @@ def rule_notify_refs(texts):
 
 
 def rule_deploy_order(texts):
-    """The relay is restarted before the preflight, and the engine after it: a stopped host has no sockets to check.
+    """The deploy ships and verifies without restarting a session; the restart is the ops action's job.
 
-    The finding this rule is: the preflight's sixth check reads `ss`, and on a host the operator has stopped there is
-    nothing listening -- so a deploy of a stopped host failed before it could start anything. Measured 2026-11-27. The
-    same order is required of the ops workflow's own `restart` action, which is how an operator starts a stopped host.
+    Two measurements made this rule. The preflight's socket check has nothing to read on a stopped host, so the deploy
+    **starts** the relay (idempotent) and waits for its ports before the check. And a restart is a SIGTERM to a session
+    that may hold quotes, which a redeploy inside a window cannot afford -- measured 2026-11-27: `stop-sigterm` timed out
+    after 13 s, SIGKILL, and the quotes stayed at the venue with nothing to cancel them. The window timer starts the new
+    binary at 13:30, so a deploy needs no restart at all; a hotfix is `ops.yml`'s `restart)` branch, and that branch keeps
+    the order: relay, wait, preflight, engine.
     """
     problems = []
-    for name in ("workflow", "ops_workflow"):
-        whole = texts[name]
-        where = FILES[name].rsplit("/", 1)[-1]
-        text = whole
-        if name == "ops_workflow":
-            # The ops file also has a standalone `preflight)` action, which starts no unit: the sequence the rule is about
-            # is the `restart)` branch, so that is the text it reads.
-            start = whole.find("            restart)")
-            end = whole.find("            ;;", start) if start >= 0 else -1
-            if start < 0 or end < 0:
-                problems.append(f"{where} has no `restart)` branch to hold to the order")
-                continue
-            text = whole[start:end]
-        preflight = text.find("/opt/toyquant/deploy/preflight.sh")
-        if preflight < 0:
-            if name == "workflow":
-                problems.append(f"{where} never runs /opt/toyquant/deploy/preflight.sh")
-            else:
-                problems.append(f"{where}'s `restart)` branch never runs the preflight")
-            continue
-        relay = text.rfind("systemctl restart toyquant-relay", 0, preflight)
+    deploy = texts["workflow"]
+    preflight = deploy.find("/opt/toyquant/deploy/preflight.sh")
+    if preflight < 0:
+        problems.append("deploy.yml never runs /opt/toyquant/deploy/preflight.sh")
+    else:
+        relay = deploy.rfind("systemctl start toyquant-relay", 0, preflight)
         if relay < 0:
-            problems.append(f"{where} runs the preflight before restarting the relay: its socket check fails on a host "
-                            f"that is stopped, and nothing can start it")
-        elif "wait_for_ports.sh" not in text[relay:preflight]:
-            problems.append(f"{where} restarts the relay and runs the preflight without waiting for the sockets: "
-                            f"`Type=simple` reports the unit started before it binds")
-        if text.find("systemctl restart toyquant-live", preflight) < 0:
-            problems.append(f"{where} never restarts toyquant-live after the preflight")
+            problems.append("deploy.yml runs the preflight without starting the relay: its socket check fails on a host "
+                            "that is stopped, and nothing can bring it up")
+        elif "wait_for_ports.sh" not in deploy[relay:preflight]:
+            problems.append("deploy.yml starts the relay and runs the preflight without waiting for the sockets: "
+                            "`Type=simple` reports the unit started before it binds")
+    for verb in ("restart toyquant-relay", "restart toyquant-live"):
+        if f"systemctl {verb}" in deploy:
+            problems.append(f"deploy.yml runs `systemctl {verb}`: a redeploy must not restart a session that may hold "
+                            f"quotes -- the window timer starts the new binary, and a hotfix is `--ops restart`")
+    whole = texts["ops_workflow"]
+    start = whole.find("            restart)")
+    end = whole.find("            ;;", start) if start >= 0 else -1
+    if start < 0 or end < 0:
+        problems.append("ops.yml has no `restart)` branch to hold to the order")
+        return problems
+    text = whole[start:end]
+    branch = text.find("/opt/toyquant/deploy/preflight.sh")
+    if branch < 0:
+        problems.append("ops.yml's `restart)` branch never runs the preflight")
+        return problems
+    relay = text.rfind("systemctl restart toyquant-relay", 0, branch)
+    if relay < 0:
+        problems.append("ops.yml's `restart)` branch runs the preflight before restarting the relay: its socket check "
+                        "fails on a host that is stopped")
+    elif "wait_for_ports.sh" not in text[relay:branch]:
+        problems.append("ops.yml's `restart)` branch restarts the relay and runs the preflight without waiting for the "
+                        "sockets")
+    if text.find("systemctl restart toyquant-live", branch) < 0:
+        problems.append("ops.yml's `restart)` branch never restarts toyquant-live after the preflight")
     return problems
 
 
@@ -412,10 +422,10 @@ CLEAN = {
                 "deploy/wait_for_ports.sh deploy/bootstrap_server.sh deploy/rollback.sh deploy/journald/toyquant.conf "
                 "deploy/logrotate/toyquant\n"
                 "states=$(systemctl show -p LoadState --value toyquant-relay toyquant-live)\n"
-                "sudo systemctl restart toyquant-relay\n"
+                "sudo systemctl start toyquant-relay\n"
                 "sudo bash /opt/toyquant/deploy/wait_for_ports.sh 127.0.0.1:8765 127.0.0.1:8766\n"
                 "sudo bash /opt/toyquant/deploy/preflight.sh\n"
-                "sudo systemctl restart toyquant-live\n"
+                "if systemctl is-active --quiet toyquant-live; then sudo bash /opt/toyquant/deploy/check_health.sh; fi\n"
                 "ssh host '\nset -euo pipefail\necho hello\n'\n",
     "ops_workflow": "            restart)\n"
                     "sudo systemctl restart toyquant-relay\n"
@@ -472,10 +482,13 @@ def self_test():
     # The ordering defect this rule was written for: the preflight before the relay's restart, which is what a stopped
     # host fails on. Dropping the restart line is the smallest edit that reproduces it.
     check("deploy_order", lambda t: t.update(workflow=t["workflow"].replace(
-        "sudo systemctl restart toyquant-relay\n", "", 1)), "before restarting the relay")
+        "sudo systemctl start toyquant-relay\n", "", 1)), "without starting the relay")
+    # The other half: a redeploy that restarts the engine is the thing the rule refuses.
+    check("deploy_order", lambda t: t.update(workflow=t["workflow"] + "sudo systemctl restart toyquant-live\n"),
+          "must not restart a session that may hold")
     # The ops action had the same defect, and it is the way an operator starts a stopped host: the rule reads both.
     check("deploy_order", lambda t: t.update(ops_workflow=t["ops_workflow"].replace(
-        "sudo systemctl restart toyquant-relay\n", "", 1)), "ops.yml runs the preflight")
+        "sudo systemctl restart toyquant-relay\n", "", 1)), "runs the preflight before restarting the relay")
     # A reload that is trusted rather than asked: the bootstrap drops its `LoadState` question.
     check("unit_reload", lambda t: t.update(bootstrap=t["bootstrap"].replace(
         "LoadState", "SomethingElse")), "never asks whether the manager loaded")

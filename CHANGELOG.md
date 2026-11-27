@@ -7,6 +7,24 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## A redeploy is a file copy, and the mail arrives at the close (2026-11-27)
+
+- **The deploy restarted the relay and the engine, and a restart is a SIGTERM to a session that may hold quotes.** A
+  redeploy inside a window therefore left the quotes at the venue with nothing to cancel them -- measured 2026-11-27:
+  `stop-sigterm` timed out after 13 s, SIGKILL, `Result=timeout`. The unpack itself was never the problem: replacing
+  `/opt/toyquant/toy_quant` and the relay under a running process is harmless (Linux keeps the running inode).
+- **It now restarts nothing that trades**: the step starts the relay (idempotent) because the preflight's socket check
+  reads it, waits for both ports, runs `deploy/preflight.sh`, and then reports the session instead of touching it -- the
+  health check runs only when the engine is active, and between windows the step says that the window timer will start
+  *this* binary at 13:30 UTC. A hotfix is `--ops restart`. `check_deploy.py`'s ninth rule refuses
+  `systemctl restart toyquant-relay|live` in `deploy.yml` and keeps the order it always required of `ops.yml`'s
+  `restart)` branch.
+- **The daily mail moved from 16:15 to 15:35 UTC** (23:35 HKT, 00:35 JST): the session ends itself at 15:30 and writes its
+  `[WIND-DOWN]`, `[PNL]` and `[RECON] at=end` within a second, so the 45 minutes were margin that nothing needed -- and the
+  mail now arrives while the operator is still at the desk instead of after midnight. A mail that fires *inside* a window
+  still reports the last complete one, and now says so in its `window` group rather than leaving the reader to assume the
+  date.
+
 ## The shutdown tick was not 100 ms when the venue was asked (2026-11-27, fix written, not yet in the field)
 
 - **`settle_queries()` waits for the venue's `PENDING` answer, up to `query_timeout_ms` (1.5 s), and the shutdown called it

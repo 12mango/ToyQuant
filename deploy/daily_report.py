@@ -196,6 +196,19 @@ def account_facts():
             "read_at": f"{at:%Y-%m-%dT%H:%MZ}"}
 
 
+def window_note(now, start=WINDOW_START, end=WINDOW_END):
+    """Which window this mail is about, in one sentence the reader cannot misread.
+
+    `window_at` returns the most recently **completed** window. A mail fired inside a window therefore reports the
+    previous one, and a reader who assumed "today's" would be reading the wrong day -- so the mail says which interval it
+    is and, when it fired inside a window, that today's is still running.
+    """
+    today_start, today_end = window_at(now.replace(hour=23, minute=59, second=59), start, end)
+    if today_start <= now < today_end:
+        return "this mail fired inside the window, so it reports the previous one, which is the last complete interval"
+    return "the most recently completed window; the account is read at report time"
+
+
 def compose(groups, host=None):
     """The body: four labelled groups, no column alignment to break in a phone's mail client."""
     host = host or socket.gethostname()
@@ -226,7 +239,7 @@ def main():
     groups = {
         "window": {"utc": f"{start_utc:%Y-%m-%dT%H:%MZ} .. {end_utc:%H:%MZ}",
                    "clocks": zone_range(start_utc, end_utc),
-                   "note": "the most recently completed window; the account is read at report time"},
+                   "note": window_note(now, args.window_start, args.window_end)},
         "session": session_facts(start_utc, end_utc),
         "account": account_facts(),
         "host": host_facts(),
@@ -286,6 +299,9 @@ def self_test():
         assert "unavailable" in account_facts()["equity"]
     finally:
         (okx_probe.load_credentials, okx_probe.balance, okx_probe.positions, okx_probe.pending) = saved
+    # A window that has not closed keeps the *previous* one as the report's subject, and the mail has to say so.
+    assert "previous one" in window_note(datetime(2026, 11, 27, 14, 0, tzinfo=timezone.utc)), "inside the window"
+    assert "previous one" not in window_note(datetime(2026, 11, 27, 15, 35, tzinfo=timezone.utc)), "after the close"
     # The seat's instrument comes from the relay's own name, not from `okx_probe`'s BTC default.
     saved_env = {name: os.environ.pop(name, None) for name in ("INST_ID", "RELAY_INSTRUMENT")}
     try:

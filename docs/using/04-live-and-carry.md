@@ -980,8 +980,8 @@ flags come from the same parent.
 `MaxRetentionSec=30day` -- because `logrotate` bounds the engine's files under `/opt/toyquant/logs` and nothing bounded
 systemd's journal, which is the log a 20 GB disk loses first. `journalctl --disk-usage` prints what is in force.
 
-**One mail a day, and no SSH to get it.** `toyquant-report.timer` runs `deploy/daily_report.py` at **16:15 UTC** -- 45
-minutes after the window closes, which is 01:15 JST on the host and 00:15 HKT where the operator sits (`systemctl
+**One mail a day, and no SSH to get it.** `toyquant-report.timer` runs `deploy/daily_report.py` at **15:35 UTC** -- five
+minutes after the window closes, so 23:35 HKT where the operator sits and 00:35 JST on the host (`systemctl
 list-timers` shows the next fire in the host's own clock, `journalctl -u toyquant-report` the last one). It mails the
 **most recently completed window**, not a rolling 24 hours: the window's interval in UTC, its arithmetic in UTC, HKT and
 JST, then the session (**the last run's own counters** -- `[PORTFOLIO]`'s maker/taker trade counts and fees, `[PNL]`'s
@@ -1071,6 +1071,15 @@ cancels what is left, drains those cancels and waits up to a second for its own 
 engine's deadline would `SIGKILL` the session between the cancels and the close: orders reconciled by a restart, and a
 position left open by a run that believed it had flattened. `check_deploy.py`'s fifth rule refuses a `TimeoutStopSec`
 that does not leave ten seconds past the engine's own deadline.
+
+**A deploy ships files and verifies them; it restarts nothing that trades.** The unpack replaces
+`/opt/toyquant/toy_quant` and the relay while they may be running, which is harmless (Linux keeps the running inode), and
+the step then starts the relay if it is down (the preflight's socket check reads it), waits for both ports, runs
+`deploy/preflight.sh`, and reports the session without touching it: if `toyquant-live` is active the health check runs and
+the session keeps trading; if it is not, that is the state between windows and the window timer will start *this* binary at
+13:30 UTC. The reason is measured: a restart is a SIGTERM to a session that may hold quotes, and on 2026-11-27 a stop
+timed out after 13 s and the quotes stayed at the venue with nothing left to cancel them; a redeploy inside a window would
+do exactly that. A hotfix that must land immediately is `--ops restart`, which prints the account before it acts.
 
 `sudo bash /opt/toyquant/deploy/rollback.sh` puts the previous binary back -- the deploy copies the running one to
 `toy_quant.prev` before it unpacks -- restarts, and runs the same health check. It is one command and it is deliberately
