@@ -136,17 +136,19 @@ def report(args):
         paths = {role: depth_archive(root, symbol, day) for role, symbol in
                  (("leader", args.leader), ("follower", args.follower))}
         for role, path in paths.items():
-            if path is not None:
-                continue
-            expected = root / (args.leader if role == "leader" else args.follower) / \
-                ((args.leader if role == "leader" else args.follower) + f"-L2orderbook-400lv-{day}.tar.gz")
-            if role == "leader":
-                watch_for(expected, args.watch)
-                path = depth_archive(root, args.leader, day)
             if path is None:
-                problems.append(f"{day}: the {role}'s archive is missing -- expected {expected.name}; the 400-level book "
-                                f"is a portal download, so a script cannot fetch it (see this file's docstring)")
-                continue
+                # Only the leader is worth waiting for: it is the file the operator drops in, and the follower's days
+                # are already on disk. The name is spelled out because a missing input must name itself.
+                symbol = args.leader if role == "leader" else args.follower
+                expected = root / symbol / f"{symbol}-L2orderbook-400lv-{day}.tar.gz"
+                if role == "leader":
+                    watch_for(expected, args.watch)
+                    path = depth_archive(root, args.leader, day)
+                if path is None:
+                    problems.append(f"{day}: the {role}'s archive is missing -- expected {expected.name}; the "
+                                    f"400-level book is a portal download, so a script cannot fetch it (see this "
+                                    f"file's docstring)")
+                    continue
             found, facts = validate(path, day, args.check_end)
             problems.extend(found)
             print(f"{day} {role:8} {path.name}: snapshot at {facts.get('first')} "

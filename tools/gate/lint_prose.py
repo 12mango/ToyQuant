@@ -342,7 +342,11 @@ def main():
                         # `tools/fetch/okx_depth_align.py` owns this one: the seconds it waits for an archive the operator
                         # is dropping in by hand overnight. It is in `docs/TOOLS.md` and the changelog because the wait is
                         # the tool's whole reason to exist, and it is a fetch tool's flag rather than the engine's.
-                        "--watch"}:
+                        "--watch",
+                        # `tools/fetch/data_inventory.py` owns these three: the deletion rule (the only mode that
+                        # removes anything), the gzip check that walks a file, and the retention the report measures
+                        # against. They are in `docs/TOOLS.md` because the audit is the tool's whole job.
+                        "--prune", "--check-archives", "--keep-days"}:
             problems.append(f"{flag} is mentioned in a document and is not a flag the binary accepts")
     for model in sorted(models):
         if model not in text.lower():

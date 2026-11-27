@@ -7,6 +7,26 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The lead-lag data arrived, all seven days validate, and `data/` now has an auditor (2026-11-27)
+
+- **The seven BTC 400-level days are on disk and aligned with the follower.** `okx_depth_align.py` reads both sides of
+  2026-11-16..22 and reports **7 day(s) ready**: every archive opens with a snapshot carrying **400 asks and 400 bids** at
+  line 1, and the two instruments' first timestamps are the same UTC midnight (identical to the millisecond on 11-16, six
+  milliseconds apart on 11-21). The row that was blocked on data is blocked on nothing now.
+- **The align tool had a bug its own demo could not see.** `if path is not None: continue` skipped every file that
+  *existed*, so the two-sided demonstration printed only the missing side and reported "0 day(s) ready" against seven real
+  archives. Fixed; the ready count is now the check that the loop ran.
+- **`tools/fetch/data_inventory.py`** classifies the tree -- 18 symbols, **110 depth files (8.61 GiB)**, **101 trade tapes
+  (0.99 GiB)**, 17 other files (6.14 GiB) -- and reports the findings that cost a run when they are met late: a partial
+  download, a day with one of the two files, the same day in two layouts, an unreadable gzip, a day past the retention.
+  `--prune` deletes only under a named rule (`partial`, `corrupt`, `shadow`) and prints every path; an orphan is evidence
+  and an old day is an archival decision, so neither is ever pruned.
+- **The tree had seven files that were not data**: the browser's `Zone.Identifier` sidecars from the download, one beside
+  each BTC archive. Removed, and the inventory now lists anything it cannot classify instead of letting it accumulate.
+- **What the audit says needs a decision**: `DOS` and `SKY` have a trade tape and no depth; `ETH` has two 2024 depth days
+  and no tape; `BTC` carries three old depth days (2024-05-15, 2024-05-20, 2026-01-07) that no other instrument on disk
+  overlaps. None of them blocks a run; they are the list an owner prunes or archives, not a script.
+
 ## The session's own cost was measured, and the next two arms are size and an earlier trigger (2026-11-27)
 
 - **The gate's two predictable failures now cost one edit instead of a two-minute run.** Measured across six tasks in one

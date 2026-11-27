@@ -73,9 +73,15 @@ compatibility path. Everything below assumes that page.
 - **Write inside the repository only**, and inside the part that owns the change: `src/` for the instrument, `tests/`
   for its invariants, `tools/gate|study|sweep|fetch|bench|live|legacy` for tooling, `docs/` for documents. `/tmp` is
   scratch and nothing durable may live there.
-- **`data/` is input, never output.** Do not edit, re-sort or "clean" a file under `data/`; a measurement that needs a
-  different slice gets a new file or a cut naming it. Everything under `data/v2/` is ignored by git, so a change there
-  is invisible to review and must be avoided for that reason alone.
+- **`data/` is input, never output -- and it is audited, not remembered.** Do not edit, re-sort or "clean" a file under
+  `data/`; a measurement that needs a different slice gets a new file or a cut naming it. Everything under `data/v2/` is
+  ignored by git, so a change there is invisible to review and must be avoided for that reason alone. What *is* the
+  agent's job is the audit: `python3 tools/fetch/data_inventory.py` classifies every file (symbol, kind, day, size) and
+  reports what a run would discover the hard way -- a partial download, a day with only one of the two files, the same day
+  in two layouts, an unreadable gzip, days past the retention -- and it never deletes without `--prune <rule>`, which names
+  the rule and prints every path. An orphan is evidence and an old day is an archival decision, so neither is ever pruned
+  by a script. Seven `Zone.Identifier` sidecars from a browser download sat beside the archives until 2026-11-27; anything
+  the audit cannot classify is listed for exactly that reason.
 - **Generated output is not committed**: `out/`, `build/`, `logs/`, `reports/`, `site/`. A rebuilt site that is
   committed is a second, older copy of every number in the documents.
 - **A document outside `docs/` cannot be linked from inside it.** `mkdocs build --strict` refuses a relative link that
