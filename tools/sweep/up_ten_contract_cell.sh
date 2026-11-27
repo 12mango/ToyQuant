@@ -82,4 +82,17 @@ want f1_tox3 && run f1_tox3 "--amend-on-toxicity --jump-window-ms=40 --jump-tick
 # to one contract. The closing side keeps its full size in both arms -- that is the whole point of the lever.
 want f3_throttle0 && run f3_throttle0 "--throttle-adverse-bps=15 --throttle-units=0"
 want f3_throttle1 && run f3_throttle1 "--throttle-adverse-bps=15 --throttle-units=10000000"
+# Frontier 4, the wind-down: over the last ten minutes the adding side stops and the closing side walks one tick in.
+# Measured 2026-11-28 over the same twenty-eight days, beside the control it is compared with:
+#
+#   arm             fills median  closed median [range]       positive   net median  USD/window  peak pos  settle bps
+#   f1_control                45   +12.27 [-75.19, +90.37]       22/28        +15.96      0.3630      305M       2.30
+#   f4_winddown10             48   +11.23 [-162.14, +89.94]      21/28         +8.18      0.2587       95M       0.78
+#
+# It does exactly what it says -- the handover falls from 2.30 to 0.78 bps and the residual from 1.2 contracts to zero,
+# and the peak position from 305M to 95M -- and it costs the median, the worst day (-75 to -162) and 29 percent of the
+# dollars, because the last ten minutes are the ones that move and the adding side is the only thing averaging into it.
+# The pure form the note asked for -- stop adding, leave the price alone -- is not expressible: `--wind-down-skew-ticks`
+# is refused below one tick by the engine.
+want f4_winddown10 && run f4_winddown10 "--wind-down-skew-minutes=10 --wind-down-skew-ticks=1 --wind-down-end=15:30"
 echo "== done $(date -u +%H:%M:%S) -- rows in $OUT/f*.csv"
