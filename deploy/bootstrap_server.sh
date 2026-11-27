@@ -65,6 +65,13 @@ for sub in data/runtime logs config deploy; do
   run "create $REPO_DIR/$sub" install -d -m 0755 "$REPO_DIR/$sub"
 done
 run "create the configuration directory" install -d -m 0750 -g "$SERVICE_USER" "$ETC_DIR"
+# The account that reads the session's journal has to be in the journal's group, and the unit grants it with
+# `SupplementaryGroups=systemd-journal` -- which covers the timer and nothing else. A one-off run of the same report from
+# the ops menu inherits no supplementary group, so the account itself is a member: measured 2026-11-27, a backfill run
+# without it reported "no [PORTFOLIO] line in the window" and wrote a `sessions=0` row about a session whose numbers were
+# in the journal, `sg` asked for the group's password (`Invalid password`), and `sudo -g` was refused by this host's
+# NOPASSWD rules (`sudo: a password is required`). `usermod -aG` is idempotent.
+run "add $SERVICE_USER to the journal's group" usermod -aG systemd-journal "$SERVICE_USER"
 run "hand the writable paths to $SERVICE_USER" chown -R "$SERVICE_USER:$SERVICE_USER" \
   "$REPO_DIR/data/runtime" "$REPO_DIR/logs"
 

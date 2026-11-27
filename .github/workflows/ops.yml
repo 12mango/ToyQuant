@@ -174,15 +174,14 @@ jobs:
               # backfilled, and it is how the row's path, the unit's `ReadWritePaths=` sandbox and the scan's grace are
               # checked without waiting for 15:35.
               #
-              # `-g systemd-journal` is the identity half of the same question the unit answers with
-              # `SupplementaryGroups=`: the report reads the session's journal, and `toyquant` is not a member of that
-              # group. Measured 2026-11-27, twice: run as plain `sudo -u toyquant` the scan saw nothing (a `sessions=0`
-              # row written by an account that could not look), and `sg systemd-journal` asked for the *group password*
-              # and answered `Invalid password`. `sudo` runs as root and sets the primary group without one.
+              # The report reads the session's journal, and the service account is in `systemd-journal` because the
+              # bootstrap adds it (`usermod -aG`), which is what makes this one-off run see what the timer sees. Measured
+              # 2026-11-27: without the membership the scan came back empty and the row said `sessions=0` about a session
+              # that traded twelve times.
               if [ -n "${AT:-}" ]; then
-                sudo -u toyquant -g systemd-journal /usr/bin/python3 /opt/toyquant/deploy/daily_report.py --no-mail --at "$AT"
+                sudo -u toyquant /usr/bin/python3 /opt/toyquant/deploy/daily_report.py --no-mail --at "$AT"
               else
-                sudo -u toyquant -g systemd-journal /usr/bin/python3 /opt/toyquant/deploy/daily_report.py --no-mail
+                sudo -u toyquant /usr/bin/python3 /opt/toyquant/deploy/daily_report.py --no-mail
               fi
               ;;
             ledger)
@@ -260,11 +259,9 @@ jobs:
               echo '-- what the session will run with'
               sudo python3 /opt/toyquant/tools/live/live_config.py --flags /etc/toyquant/live.yaml 2>&1 | head -30
               echo '-- the daily mail it would send now (a dry run, nothing is mailed)'
-              # Same identity as the timer: the report reads the session's journal, and the service account is not a
-              # member of `systemd-journal` -- the unit grants it with `SupplementaryGroups=`, so a one-off run outside
-              # the unit has to say so too or the scan comes back empty (measured 2026-11-27; `sg`, which prompts for the
-              # group's password, answered `Invalid password` and `sudo -g` does not).
-              sudo -u toyquant -g systemd-journal /usr/bin/python3 /opt/toyquant/deploy/daily_report.py --dry-run 2>&1 | head -40
+              # Same identity as the timer: the report reads the session's journal and the service account is in
+              # `systemd-journal` (the bootstrap adds it), so this one-off run sees what the timer sees.
+              sudo -u toyquant /usr/bin/python3 /opt/toyquant/deploy/daily_report.py --dry-run 2>&1 | head -40
               echo '-- who runs, and as whom'
               whoami; sudo whoami; hostname; date -u '+%Y-%m-%dT%H:%M:%SZ'
               echo '-- is there a manager at all, and can it be written to'

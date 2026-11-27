@@ -388,24 +388,22 @@ def rule_report_sandbox(texts):
 
 
 def rule_report_identity(texts):
-    """A one-off report run outside its unit has to ask for the journal group the unit grants.
+    """The report reads the session's journal, so the account that runs it has to be able to see one.
 
-    The report reads `journalctl -u toyquant-live`, and the service account is not a member of `systemd-journal`: the
-    unit supplies that with `SupplementaryGroups=` and a run from the ops workflow supplies nothing. Measured
-    2026-11-27, the first backfill: `sudo -u toyquant python3 daily_report.py --at ...` reported "no [PORTFOLIO] line in
-    the window" and appended a `sessions=0` row about a session whose numbers were in the journal -- an empty row in the
-    series, written by an account that could not look. `sg systemd-journal` is not the answer either: it asks for the
-    group's password and answered `Invalid password`; `sudo -u <user> -g <group>` is, because sudo runs as root. So both
-    ends are checked: the unit names the group, and every line that runs the report outside it names the group too.
+    `journalctl -u toyquant-live` needs `systemd-journal` membership, and the report has two lives: the timer, inside a
+    unit that grants the group with `SupplementaryGroups=`, and a one-off run from the ops menu, which inherits nothing.
+    Measured 2026-11-27, three ways: plain `sudo -u toyquant` wrote a `sessions=0` row about a session whose numbers were
+    in the journal, `sg` asked for the group's password and answered `Invalid password`, and `sudo -g` was refused by the
+    host's NOPASSWD rules (`a password is required`). So the account itself is a member, added by the bootstrap, and the
+    unit names the group as well -- both ends are checked here.
     """
     problems = []
     if "systemd-journal" not in texts["report_unit"]:
         problems.append("deploy/toyquant-report.service does not carry `SupplementaryGroups=systemd-journal`: the report "
-                        "reads the session's journal and the service account is not a member of that group")
-    for line in texts["ops_workflow"].splitlines():
-        if "python3" in line and "daily_report.py" in line and "systemd-journal" not in line:
-            problems.append("an ops action runs daily_report.py outside its unit and without `-g systemd-journal`: the "
-                            "scan then comes back empty and the row it writes is a zero that is not a measurement")
+                        "reads the session's journal and the service account may not be in that group")
+    if "usermod -aG systemd-journal" not in texts["bootstrap"]:
+        problems.append("deploy/bootstrap_server.sh does not `usermod -aG systemd-journal` the service user: a one-off "
+                        "report run then sees an empty journal and writes a row that is a zero, not a measurement")
     return problems
 
 
@@ -489,6 +487,7 @@ CLEAN = {
                     "sudo systemctl restart toyquant-live\n"
                     "            ;;\n",
     "bootstrap": "systemctl daemon-reload\n"
+                 "usermod -aG systemd-journal toyquant\n"
                  "install -m 0644 deploy/toyquant-report.timer /etc/systemd/system/\n"
                  "install -m 0644 deploy/toyquant-window-start.timer /etc/systemd/system/\n"
                  "install -m 0644 deploy/toyquant-window-stop.timer /etc/systemd/system/\n"
@@ -579,9 +578,8 @@ def self_test():
     # The identity half: the report reads a journal the service account cannot see on its own.
     check("report_identity", lambda t: t.update(report_unit=t["report_unit"].replace(
         "SupplementaryGroups=systemd-journal\n", "")), "SupplementaryGroups=systemd-journal")
-    check("report_identity", lambda t: t.update(ops_workflow=t["ops_workflow"] + (
-        "sudo -u toyquant /usr/bin/python3 /opt/toyquant/deploy/daily_report.py --dry-run\n")),
-        "without `-g systemd-journal`")
+    check("report_identity", lambda t: t.update(bootstrap=t["bootstrap"].replace(
+        "usermod -aG systemd-journal", "usermod")), "does not `usermod -aG systemd-journal`")
     del defects
     print(f"check_deploy self-test OK ({len(RULES)} rule(s), each on a defect and on the clean copy)")
     return 0
