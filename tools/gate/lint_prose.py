@@ -346,7 +346,11 @@ def main():
                         # `tools/fetch/data_inventory.py` owns these three: the deletion rule (the only mode that
                         # removes anything), the gzip check that walks a file, and the retention the report measures
                         # against. They are in `docs/TOOLS.md` because the audit is the tool's whole job.
-                        "--prune", "--check-archives", "--keep-days"}:
+                        "--prune", "--check-archives", "--keep-days",
+                        # `tools/ops/dispatch_deploy.sh` owns this one: the workflow choice (`--ops stop` dispatches the
+                        # ops menu instead of the deploy). It is in `docs/TOOLS.md` because the two workflows are one
+                        # loop, and it is the tool's flag rather than the engine's.
+                        "--ops"}:
             problems.append(f"{flag} is mentioned in a document and is not a flag the binary accepts")
     for model in sorted(models):
         if model not in text.lower():

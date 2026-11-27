@@ -7,6 +7,21 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The deploy loop no longer needs a browser, and the token it needs cannot push (2026-11-27)
+
+- **`tools/ops/dispatch_deploy.sh` closes the loop I could not close:** `run` dispatches `deploy.yml` (or `ops.yml` with
+  `--ops <action>`), `wait` blocks until the run finishes and returns non-zero on a red conclusion, `status` prints the
+  newest run of each workflow, and `logs` names the job and the step that failed instead of dumping a log nobody reads.
+  Until now every round cost a paste of the workflow log; the tool makes the log something I fetch.
+- **The credential is one ignored file with one permission.** `secrets/gh.token` is a fine-grained token for this
+  repository with **Actions: Read and write** and nothing else: without `Contents: write` it cannot push and cannot create
+  the `v*` tag that also triggers a deploy, so the only thing it can start is a dispatch. It is ignored, so the bundle
+  (`git ls-files`) cannot carry it, and `check_leaks.py` reads tracked files only.
+- **The guardrails are in the tool, not in a habit:** it refuses a dirty working tree (a deploy would carry something the
+  gate has not seen), refuses a second dispatch while a run of the same workflow is queued or running, and never sends
+  `data_gate=true` -- that job's runner does not exist here, and a queued job nobody serves is how a green deploy reads as
+  a hung one. A refused token prints the API status and says which permission is missing.
+
 ## The preflight died because it sourced a file it should only have read (2026-11-27)
 
 - **Check 4 did `unset_creds=$(set -a; . "$ETC_DIR/live.env"; ...)`**, and the host's file made that substitution return 1.
