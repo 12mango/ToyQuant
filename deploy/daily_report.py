@@ -40,6 +40,19 @@ import notify  # noqa: E402
 import okx_probe  # noqa: E402
 
 UNIT = os.environ.get("SERVICE_NAME", "toyquant-live")
+
+
+def instrument_of_the_seat():
+    """The instrument the account trades: the relay's own name, before `okx_probe`'s default.
+
+    `okx_probe` defaults to `BTC-USDT-SWAP`; this report runs with `/etc/toyquant/live.env` loaded, where the relay names
+    its instrument. Measured 2026-11-27, the first working dry run said `0 contract(s) on BTC-USDT-SWAP` about an account
+    that trades `UP-USDT-SWAP` -- a position line about another contract, which reads as agreement.
+    """
+    return os.environ.get("INST_ID") or os.environ.get("RELAY_INSTRUMENT") or okx_probe.INST
+
+
+okx_probe.INST = instrument_of_the_seat()
 # The window, in UTC, named once. The engine's own session clock is UTC (`--wind-down-end` is "minutes of the UTC day"),
 # the archive's timestamps are UTC, and this report reads the journal between two UTC instants.
 WINDOW_START = os.environ.get("TOYQUANT_WINDOW_START_UTC", "13:30")
@@ -273,6 +286,19 @@ def self_test():
         assert "unavailable" in account_facts()["equity"]
     finally:
         (okx_probe.load_credentials, okx_probe.balance, okx_probe.positions, okx_probe.pending) = saved
+    # The seat's instrument comes from the relay's own name, not from `okx_probe`'s BTC default.
+    saved_env = {name: os.environ.pop(name, None) for name in ("INST_ID", "RELAY_INSTRUMENT")}
+    try:
+        os.environ["RELAY_INSTRUMENT"] = "UP-USDT-SWAP"
+        assert instrument_of_the_seat() == "UP-USDT-SWAP", instrument_of_the_seat()
+        os.environ["INST_ID"] = "NES-USDT-SWAP"
+        assert instrument_of_the_seat() == "NES-USDT-SWAP", instrument_of_the_seat()
+    finally:
+        for name, value in saved_env.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
     print("daily_report self-test OK")
     return 0
 
