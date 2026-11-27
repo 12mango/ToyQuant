@@ -167,9 +167,17 @@ def account_facts():
         return {"equity": f"unavailable ({error})", "position": "unavailable", "pending": "unavailable"}
     contracts = sum(float(row.get("pos", "0") or 0) for row in (position or [])
                     if row.get("instId") in (None, okx_probe.INST))
+    # `okx_probe.balance()` hands back the venue's own text (`details[ccy=USDT].eq`), not a float -- measured 2026-11-27
+    # on the host: `f"{equity:,.2f}"` raised `Unknown format code 'f' for object of type 'str'`, which would have been a
+    # traceback in tonight's mail instead of a report. Parse it, and say so if it does not parse.
+    try:
+        amount = float(equity) if equity not in (None, "") else None
+    except (TypeError, ValueError):
+        return {"equity": f"unavailable (the venue's balance was not a number: {equity!r})", "position": "unavailable",
+                "pending": "unavailable"}
     # The reads happen now, after the window, so the line says when rather than leaving the reader to assume a moment.
     at = datetime.now(timezone.utc)
-    return {"equity": "unavailable (the venue did not answer the balance)" if equity is None else f"{equity:,.2f} USDT",
+    return {"equity": "unavailable (the venue did not answer the balance)" if amount is None else f"{amount:,.2f} USDT",
             "position": f"{contracts:g} contract(s) on {okx_probe.INST}",
             "pending": f"{len(pending or [])} working order(s)",
             "read_at": f"{at:%Y-%m-%dT%H:%MZ}"}
@@ -249,6 +257,22 @@ def self_test():
     # An unreadable source is a sentence, not a zero: the two silent-zero shapes the report exists to avoid.
     quiet = compose({"account": {"equity": "unavailable (TOYQUANT_API_KEY is not set)"}, "host": {}}, host="h")[1]
     assert "unavailable" in quiet and "0.00" not in quiet, quiet
+    # The venue's balance is text, not a float: `okx_probe.balance()` returns `details[ccy=USDT].eq` verbatim. Measured on
+    # the host 2026-11-27, formatting it raised `Unknown format code 'f' for object of type 'str'` -- a traceback where the
+    # mail should be. Stub the four reads and pin both the number and the refusal.
+    saved = (okx_probe.load_credentials, okx_probe.balance, okx_probe.positions, okx_probe.pending)
+    try:
+        okx_probe.load_credentials = lambda: None
+        okx_probe.balance = lambda: "99.43355303805785"
+        okx_probe.positions = lambda: [{"instId": okx_probe.INST, "pos": "-10"}]
+        okx_probe.pending = lambda: []
+        facts = account_facts()
+        assert facts["equity"] == "99.43 USDT", facts
+        assert "10 contract(s)" in facts["position"], facts
+        okx_probe.balance = lambda: "not-a-number"
+        assert "unavailable" in account_facts()["equity"]
+    finally:
+        (okx_probe.load_credentials, okx_probe.balance, okx_probe.positions, okx_probe.pending) = saved
     print("daily_report self-test OK")
     return 0
 
