@@ -180,7 +180,11 @@ jobs:
               which -a systemctl 2>&1
               sudo systemctl reset-failed toyquant-relay 2>&1; echo "reset-failed exit=$?"
               sudo systemctl is-active toyquant-relay 2>&1; echo "is-active exit=$?"
-              sudo systemctl status toyquant-relay --no-pager 2>&1 | head -5
+              # `systemctl status` exits 3 for a stopped unit, and a stopped unit is a state this action is asked about,
+              # not a failure of the asking: measured 2026-11-27, a diagnose run went red with exit 3 because the session
+              # was (deliberately) stopped. The last line makes the branch's status say what actually happened.
+              sudo systemctl status toyquant-relay --no-pager 2>&1 | head -5 || true
+              echo "diagnose: done -- a stopped unit is a state, not a failure"
               ;;
             *)
               echo "unknown action '$ACTION'" >&2; exit 2
