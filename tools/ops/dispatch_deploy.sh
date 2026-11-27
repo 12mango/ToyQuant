@@ -91,11 +91,20 @@ cmd_run() {
       --ops) workflow=ops.yml; action=${2:-}; shift 2 ;;
       --at) at=${2:-}; shift 2 ;;
       --lines) lines=${2:-}; shift 2 ;;
+      --no-predeploy) SKIP_PREDEPLOY=1; shift ;;
       --allow-dirty) ALLOW_DIRTY=1; shift ;;
       *) echo "dispatch_deploy: unknown argument $1" >&2; return 2 ;;
     esac
   done
   if [ "${ALLOW_DIRTY:-0}" != 1 ]; then require_clean_tree || return 1; fi
+  # Fail-fast, locally, in about three seconds: a fault found on the host costs a runner start, a build, an upload and a
+  # journal round trip (measured 2026-11-27, several of four to five minutes each).
+  if [ "${SKIP_PREDEPLOY:-0}" != 1 ] && [ "$DRY_RUN" = 0 ]; then
+    if ! bash tools/ops/predeploy.sh; then
+      echo "dispatch_deploy: predeploy refused; nothing was dispatched" >&2
+      return 1
+    fi
+  fi
   local running=""
   # Without a token there is nothing to ask, so the dry run does not pretend to know whether a run is in flight.
   if [ "$DRY_RUN" = 0 ]; then running=$(in_progress "$workflow"); fi

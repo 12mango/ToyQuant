@@ -194,7 +194,7 @@ jobs:
             deploy/toyquant-window-start.timer deploy/toyquant-window-stop.service \
             deploy/toyquant-window-stop.timer "$staging/deploy/"
           install -m 0755 deploy/bootstrap_server.sh deploy/check_health.sh deploy/rollback.sh deploy/preflight.sh \
-            deploy/wait_for_ports.sh "$staging/deploy/"
+            deploy/wait_for_ports.sh deploy/activate.sh "$staging/deploy/"
           install -m 0755 deploy/notify.py deploy/daily_report.py "$staging/deploy/"
           install -m 0644 deploy/notify.env.example "$staging/deploy/"
           install -m 0644 deploy/journald/toyquant.conf "$staging/deploy/journald/"
@@ -307,58 +307,12 @@ jobs:
                  sudo ls -l /opt/toyquant/deploy/ 2>&1 | head -20 || true
                fi
              done
-             sudo systemctl reset-failed toyquant-relay toyquant-live || true
-             # The manager takes a moment to see a unit file it has just been handed: measured 2026-11-27, `start` answered
-             # `Unit ... not found` 12 ms after a successful reload and the same command succeeded minutes later from the
-             # ops menu -- so the start is retried inside a bound, and the number of attempts is printed.
-             #
-             # **A relay that will not start is a warning here, not a red deploy.** This step's claim is what it can prove
-             # and re-prove: the files landed, the manager loaded the units, the artifact runs, the config translates. The
-             # relay's startability is proven by the ops menu (`--ops restart`, which works on this host) and by the
-             # window, whose session `Requires=` the relay and therefore starts it at 13:30. Making the deploy red for a
-             # start it cannot reproduce would only cost another round trip -- measured 2026-11-27: five deploys red, each
-             # followed by an ops action that did the same thing successfully.
-             started=0
-             for attempt in $(seq 1 15); do
-               if sudo systemctl start toyquant-relay; then
-                 echo "deploy: toyquant-relay started on attempt $attempt"
-                 started=1
-                 break
-               fi
-               echo "deploy: start answered not-found (attempt $attempt/15); reloading and waiting" >&2
-               sudo systemctl daemon-reload
-               sudo systemctl reset-failed toyquant-relay || true
-               sleep 1
-             done
-             if [ "$started" = 0 ]; then
-               echo "::warning::the relay did not start from this session; the files landed and the window starts it"
-               echo "deploy: the manager's view follows, for the next round"
-               sudo ls -l /etc/systemd/system/toyquant-relay.service 2>&1 || true
-               sudo systemctl show -p LoadState -p FragmentPath -p ActiveState toyquant-relay 2>&1 || true
-               sudo systemctl cat toyquant-relay 2>&1 | head -6 || true
-               sudo journalctl -u toyquant-relay -n 8 --no-pager -q 2>&1 || true
-             fi
-             if [ "$started" = 1 ]; then
-               sudo bash /opt/toyquant/deploy/wait_for_ports.sh 127.0.0.1:8765 127.0.0.1:8766
-               # The preflight answers "would this start" in a second; it runs before anything is restarted so a broken
-               # artifact is a red job instead of a crash loop on a host that trades. It points **both** of the engine's
-               # endpoints at 127.0.0.1:1 for its own run, because the relay's order channel serves exactly one client and
-               # a check that took it would leave the session without one (measured 2026-11-27).
-               sudo bash /opt/toyquant/deploy/preflight.sh
-              else
-               echo "deploy: the preflight is skipped: its sixth check reads the two relay sockets, and this"
-               echo "deploy: session could not start the relay. The files are on the host; --ops restart proves the"
-               echo "deploy: start, and the 13:30 window starts the relay through the session Requires= relation."
-             fi
-             # A session that is running is the operator's, not this deploy's: it is reported and not touched. A session
-             # that is not running is the normal state between windows, and the window timer will start this binary.
-             if systemctl is-active --quiet toyquant-live; then
-               echo "deploy: toyquant-live is running and was not touched; the health check follows"
-               sudo bash /opt/toyquant/deploy/check_health.sh
-             else
-               echo "deploy: toyquant-live is not running, which is the state between windows; the window timer starts it"
-               sudo systemctl --no-pager --lines=0 status toyquant-live 2>&1 | head -3 || true
-             fi
+             # The activation is one tracked script, not four lines in this SSH string: a line that travels as a
+             # single-quoted argument is parsed twice, and one apostrophe in an echoed sentence closed the argument and
+             # killed the step after its diagnostics (measured 2026-11-27). `deploy/activate.sh` reloads, clears the
+             # units' state, starts the relay inside a bound, runs the preflight and reports the session without touching
+             # it -- and it is one file a reader can run by hand.
+             sudo bash /opt/toyquant/deploy/activate.sh --repo-dir /opt/toyquant
           REMOTE
 
       # A failed health check leaves the previous binary on the host and the previous release one command away. This does

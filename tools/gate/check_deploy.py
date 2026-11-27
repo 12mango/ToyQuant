@@ -208,18 +208,22 @@ def rule_deploy_order(texts):
     the order: relay, wait, preflight, engine.
     """
     problems = []
-    deploy = texts["workflow"]
-    preflight = deploy.find("/opt/toyquant/deploy/preflight.sh")
+    # The activation moved into `deploy/activate.sh`, so the ordering is read there rather than in the SSH string: a
+    # script is parsed once and can be run by a reader; a single-quoted argument is parsed twice (and an apostrophe in it
+    # once killed the step after its diagnostics -- measured 2026-11-27).
+    activation = texts["activate"]
+    preflight = activation.find("preflight.sh")
     if preflight < 0:
-        problems.append("deploy.yml never runs /opt/toyquant/deploy/preflight.sh")
+        problems.append("deploy/activate.sh never runs preflight.sh")
     else:
-        relay = deploy.rfind("systemctl start toyquant-relay", 0, preflight)
+        relay = activation.rfind("systemctl start", 0, preflight)
         if relay < 0:
-            problems.append("deploy.yml runs the preflight without starting the relay: its socket check fails on a host "
-                            "that is stopped, and nothing can bring it up")
-        elif "wait_for_ports.sh" not in deploy[relay:preflight]:
-            problems.append("deploy.yml starts the relay and runs the preflight without waiting for the sockets: "
-                            "`Type=simple` reports the unit started before it binds")
+            problems.append("deploy/activate.sh runs the preflight without starting the relay: its socket check fails "
+                            "on a host that is stopped, and nothing can bring it up")
+        elif "wait_for_ports.sh" not in activation[relay:preflight]:
+            problems.append("deploy/activate.sh starts the relay and runs the preflight without waiting for the "
+                            "sockets: `Type=simple` reports the unit started before it binds")
+    deploy = texts["workflow"]
     for verb in ("restart toyquant-relay", "restart toyquant-live"):
         if f"systemctl {verb}" in deploy:
             problems.append(f"deploy.yml runs `systemctl {verb}`: a redeploy must not restart a session that may hold "
@@ -412,19 +416,21 @@ def rule_deploy_start(texts):
 
     Measured 2026-11-27, five deploys in a row: `systemctl show -p LoadState` answered `loaded` and the next `systemctl
     start` answered `Unit toyquant-relay.service not found` twelve milliseconds later, while the ops menu's restart
-    branch -- which begins with `reset-failed` -- brought the same host up on the first try. The deploy ships files and
-    starts the relay for the preflight's socket check, so it has to clear the state the rewrite left behind; without
-    that line every deploy ends red and is followed by an ops action that does the same work again.
+    branch -- which begins with `reset-failed` -- brought the same host up on the first try. The sequence now lives in
+    `deploy/activate.sh`, so this rule reads that file: the reload, the state clear and the start are one script.
     """
-    workflow = texts["workflow"]
-    start = workflow.find("systemctl start toyquant-relay")
+    activation = texts["activate"]
+    start = activation.find("systemctl start")
     if start < 0:
-        return []
-    reset = workflow.find("reset-failed")
+        return ["deploy/activate.sh never starts a unit, so a deploy ships files nobody activates"]
+    reset = activation.find("reset-failed")
     if reset < 0 or reset > start:
-        return ["deploy.yml starts toyquant-relay without clearing its state first: a rewritten unit that is failed in "
+        return ["deploy/activate.sh starts a unit without clearing its state first: a rewritten unit that is failed in "
                 "the manager answers `Unit ... not found` to `start` while `show` says loaded (measured 2026-11-27), so "
                 "`systemctl reset-failed` goes immediately before it"]
+    if activation.find("daemon-reload") < 0:
+        return ["deploy/activate.sh starts a unit without a `daemon-reload` before it: the file the bootstrap just "
+                "wrote is not in the manager's view yet"]
     return []
 
 
@@ -451,6 +457,7 @@ FILES = {"env": ".env.example",
          "window_stop": "deploy/toyquant-window-stop.timer",
          "daily_report": "deploy/daily_report.py",
          "report_unit": "deploy/toyquant-report.service",
+         "activate": "deploy/activate.sh",
          "shutdown_h": "src/lines/session_shutdown.h"}
 
 
@@ -519,6 +526,9 @@ CLEAN = {
     "preflight": "startup=$(engine ws 127.0.0.1:1 --venue-endpoint=127.0.0.1:1)\n",
     "report_timer": "[Timer]\nOnCalendar=*-*-* 16:15:00 UTC\nPersistent=true\n",
     "report_unit": "[Service]\nUser=toyquant\nSupplementaryGroups=systemd-journal\nProtectSystem=strict\nReadWritePaths=-/opt/toyquant/data/runtime\n",
+    "activate": "systemctl daemon-reload\nsystemctl reset-failed toyquant-relay toyquant-live || true\n"
+                "systemctl start toyquant-relay\nbash \"$REPO_DIR/deploy/wait_for_ports.sh\" 127.0.0.1:8765 127.0.0.1:8766\n"
+                "bash \"$REPO_DIR/deploy/preflight.sh\"\n",
     "window_start": "[Timer]\nOnCalendar=*-*-* 13:30:00 UTC\nUnit=toyquant-live.service\n",
     "window_stop": "[Timer]\nOnCalendar=*-*-* 15:32:00 UTC\nUnit=toyquant-window-stop.service\n",
     "daily_report": "run([\"journalctl\", \"-u\", UNIT, \"--since\", start, \"--until\", end, \"--utc\"])\n"
@@ -559,8 +569,8 @@ def self_test():
         "toyquant-notify@%n.service", "somebody-else@%n.service")), "not the notifier template")
     # The ordering defect this rule was written for: the preflight before the relay's restart, which is what a stopped
     # host fails on. Dropping the restart line is the smallest edit that reproduces it.
-    check("deploy_order", lambda t: t.update(workflow=t["workflow"].replace(
-        "sudo systemctl start toyquant-relay\n", "", 1)), "without starting the relay")
+    check("deploy_order", lambda t: t.update(activate=t["activate"].replace(
+        "systemctl start toyquant-relay\n", "")), "without starting the relay")
     # The other half: a redeploy that restarts the engine is the thing the rule refuses.
     check("deploy_order", lambda t: t.update(workflow=t["workflow"] + "sudo systemctl restart toyquant-live\n"),
           "must not restart a session that may hold")
@@ -604,8 +614,11 @@ def self_test():
         "usermod -aG systemd-journal", "usermod")), "does not `usermod -aG systemd-journal`")
     # The deploy's start and the state the rewrite leaves behind: dropping the line is the smallest edit that
     # reproduces five red deploys in a row (measured 2026-11-27).
-    check("deploy_start", lambda t: t.update(workflow=t["workflow"].replace(
-        "sudo systemctl reset-failed toyquant-relay\n", "", 1)), "without clearing its state first")
+    # The ordering and the state clear moved into `deploy/activate.sh`; both rules read that file now.
+    check("deploy_order", lambda t: t.update(activate=t["activate"].replace(
+        "wait_for_ports.sh", "nothing.sh")), "without waiting for the sockets")
+    check("deploy_start", lambda t: t.update(activate=t["activate"].replace(
+        "systemctl reset-failed toyquant-relay toyquant-live || true\n", "")), "without clearing its state first")
     del defects
     print(f"check_deploy self-test OK ({len(RULES)} rule(s), each on a defect and on the clean copy)")
     return 0
