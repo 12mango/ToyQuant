@@ -287,7 +287,20 @@ jobs:
              #
              # The relay is **started** (idempotent: a no-op when it is already up) because the preflight's sixth check
              # reads its two sockets, and `Type=simple` reports the unit started before it binds -- hence the wait.
-             sudo systemctl start toyquant-relay
+             #
+             # **`reset-failed` first, because a rewritten unit is failed and unloaded in the manager's eyes.** Measured
+             # 2026-11-27: `show -p LoadState` answered `loaded` and the next `start` answered `Unit
+             # toyquant-relay.service not found` 12 ms later, five deploys in a row -- while `ops.yml`'s restart branch,
+             # which has always begun with `reset-failed`, brought the same host up on the first try. The state is what
+             # `start` refuses; the file and the reload were never the problem. One retry after a reload, because the
+             # manager can also be caught mid-scan, and then the evidence is printed rather than guessed at.
+             sudo systemctl reset-failed toyquant-relay toyquant-live || true
+             if ! sudo systemctl start toyquant-relay; then
+               echo "deploy: the first start answered not-found; reloading and clearing the unit state once" >&2
+               sudo systemctl daemon-reload
+               sudo systemctl reset-failed toyquant-relay || true
+               sudo systemctl start toyquant-relay
+             fi
              sudo bash /opt/toyquant/deploy/wait_for_ports.sh 127.0.0.1:8765 127.0.0.1:8766
              # The preflight answers "would this start" in a second; it runs before anything is restarted so a broken
              # artifact is a red job instead of a crash loop on a host that trades. It points **both** of the engine's

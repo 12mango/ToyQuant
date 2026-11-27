@@ -159,8 +159,8 @@ cmd_wait() {
       echo "dispatch_deploy: run $id finished ${3}" >&2
       return 1
     fi
-    sleep 15
-    waited=$((waited + 15))
+    sleep 5
+    waited=$((waited + 5))
   done
   echo "dispatch_deploy: gave up after ${timeout}s with run $id in $state" >&2
   return 1

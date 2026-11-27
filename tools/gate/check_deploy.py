@@ -407,13 +407,34 @@ def rule_report_identity(texts):
     return problems
 
 
+def rule_deploy_start(texts):
+    """A deploy that starts a unit clears its failed state first; a rewritten unit is unloaded in the manager's eyes.
+
+    Measured 2026-11-27, five deploys in a row: `systemctl show -p LoadState` answered `loaded` and the next `systemctl
+    start` answered `Unit toyquant-relay.service not found` twelve milliseconds later, while the ops menu's restart
+    branch -- which begins with `reset-failed` -- brought the same host up on the first try. The deploy ships files and
+    starts the relay for the preflight's socket check, so it has to clear the state the rewrite left behind; without
+    that line every deploy ends red and is followed by an ops action that does the same work again.
+    """
+    workflow = texts["workflow"]
+    start = workflow.find("systemctl start toyquant-relay")
+    if start < 0:
+        return []
+    reset = workflow.find("reset-failed")
+    if reset < 0 or reset > start:
+        return ["deploy.yml starts toyquant-relay without clearing its state first: a rewritten unit that is failed in "
+                "the manager answers `Unit ... not found` to `start` while `show` says loaded (measured 2026-11-27), so "
+                "`systemctl reset-failed` goes immediately before it"]
+    return []
+
+
 RULES = (("env_names", rule_env_names), ("template_keys", rule_template_keys), ("endpoints", rule_endpoints),
          ("ordering", rule_ordering), ("stop_window", rule_stop_window), ("bundled", rule_bundled),
          ("coupling", rule_coupling), ("notify_refs", rule_notify_refs), ("deploy_order", rule_deploy_order),
          ("unit_reload", rule_unit_reload), ("ssh_quoting", rule_ssh_quoting),
          ("preflight_isolation", rule_preflight_isolation), ("report_clock", rule_report_clock),
          ("timer_install", rule_timer_install), ("report_sandbox", rule_report_sandbox),
-         ("report_identity", rule_report_identity))
+         ("report_identity", rule_report_identity), ("deploy_start", rule_deploy_start))
 
 FILES = {"env": ".env.example",
          "live_yaml": "config/live.example.yaml",
@@ -475,6 +496,7 @@ CLEAN = {
                 "deploy/wait_for_ports.sh deploy/bootstrap_server.sh deploy/rollback.sh deploy/journald/toyquant.conf "
                 "deploy/logrotate/toyquant\n"
                 "states=$(systemctl show -p LoadState --value toyquant-relay toyquant-live)\n"
+                "sudo systemctl reset-failed toyquant-relay\n"
                 "sudo systemctl start toyquant-relay\n"
                 "sudo bash /opt/toyquant/deploy/wait_for_ports.sh 127.0.0.1:8765 127.0.0.1:8766\n"
                 "sudo bash /opt/toyquant/deploy/preflight.sh\n"
@@ -580,6 +602,10 @@ def self_test():
         "SupplementaryGroups=systemd-journal\n", "")), "SupplementaryGroups=systemd-journal")
     check("report_identity", lambda t: t.update(bootstrap=t["bootstrap"].replace(
         "usermod -aG systemd-journal", "usermod")), "does not `usermod -aG systemd-journal`")
+    # The deploy's start and the state the rewrite leaves behind: dropping the line is the smallest edit that
+    # reproduces five red deploys in a row (measured 2026-11-27).
+    check("deploy_start", lambda t: t.update(workflow=t["workflow"].replace(
+        "sudo systemctl reset-failed toyquant-relay\n", "", 1)), "without clearing its state first")
     del defects
     print(f"check_deploy self-test OK ({len(RULES)} rule(s), each on a defect and on the clean copy)")
     return 0
