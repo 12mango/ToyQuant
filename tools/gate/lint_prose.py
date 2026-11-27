@@ -378,6 +378,7 @@ def main():
         problems.append(f"no source files found under {args.source}")
     total_files = sum(entry[0] for entry in counts.values())
     total_lines = sum(entry[1] for entry in counts.values())
+    size_problems_before = len(problems)  # so the hint below prints only when this block found something
 
     size = SIZE_BREAKDOWN.search(text)
     if size is None:
@@ -402,6 +403,12 @@ def main():
         if sum(entries.values()) != total_lines:
             problems.append(f"the size table's entries add up to {sum(entries.values())} and the total "
                             f"states {total_lines}")
+    # The fix for every line above is one row, and the counts are already in hand: print it rather than leaving the
+    # reader to re-type eleven numbers. Measured 2026-11-27: a sixty-four-line change cost a two-minute gate run because
+    # the total moved and the message said only that it had.
+    if len(problems) > size_problems_before:
+        ordered = ", ".join(f"`{name}` {entry[1]:,}" for name, entry in sorted(counts.items()))
+        print(f"prose: the size row should read: | **Size** | {total_files} files, {total_lines:,} lines: {ordered} |")
 
     for stated in SOURCE_LINE_CLAIM.findall(text):
         if int(stated.replace(",", "")) != total_lines:

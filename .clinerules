@@ -164,6 +164,22 @@ compatibility path. Everything below assumes that page.
   wipe from gone. So the driver is a tracked script beside the tool it drives
   (`tools/sweep/up_ten_contract_cell.sh`), with the bar and the measured rows in its header, and `/tmp` holds only its
   output. A registration whose command lives in a shell history cannot be re-run by the reader who checks it.
+- **Two gate failures are your own edit, and both can be prevented in the edit.** Measured 2026-11-27, six tasks in one
+  session: `fast` ran twice on two of them, and both extra runs were predictable -- a change under `src/` moved the size
+  table (32,776 to 32,840) and a new tool-owned flag was missing from the prose lint's allowlist. So **a change under
+  `src/` updates the size table in the same edit** (`lint_prose` now prints the finished row: paste it), and **a new
+  tool-owned flag enters `tools/gate/lint_prose.py`'s list in the same edit as the document naming it**, with the comment
+  saying which tool. A check that catches your own edit is not catching drift.
+- **Read with the file tools, write with a redirection, and never wait in the foreground.** The shell on this host loses
+  a command's completion often enough that a `grep` costs a second call to read its redirected output -- dozens of times
+  in one session -- while `read_files` and `search_codebase` are never lost. So an inspection is a search or a read, a
+  command writes to a named file and its exit status to a second one, and a gate is launched detached with the next edit
+  done while it runs: the exit file is read after that edit, not after a `sleep`. Two `sleep 150` calls cost five minutes
+  of wall clock in a session that a single edit would have covered.
+- **A table row is edited by anchoring on the row *after* it.** Three edits in one session replaced a row's opening text
+  and left two rows merged (the `docs/TOOLS.md` table twice, and a studies section whose first sentence went with the
+  heading). A paragraph takes an interior anchor; a table takes the following row; and the region is read back, with
+  `awk -F'|' 'NF!=5'` on the table as the one-second check that every row still has its columns.
 - **Deleting a tool breaks a document, not the program.** Before removing anything, grep the documents and the gate for
   it; if nothing names it, say so in the commit message.
 - **A live session is a verb, not a command typed into the tool's shell.** `bash .run.sh soak <post-only|baseline>` runs

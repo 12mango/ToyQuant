@@ -7,6 +7,21 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The session's own cost was measured, and the next two arms are size and an earlier trigger (2026-11-27)
+
+- **The gate's two predictable failures now cost one edit instead of a two-minute run.** Measured across six tasks in one
+  session: `fast` ran twice on two of them, and both extra runs were a source change moving the size table (32,776 to
+  32,840) and a new tool flag missing from the prose lint's allowlist. `lint_prose` now prints the finished size row
+  (`prose: the size row should read: | **Size** | ... |`) so the fix is a paste, and `.clinerules` says the row and the
+  allowlist entry belong in the same edit as the change that moved them.
+- **`/tmp` went from 900 MB to 129 MB**, keeping the one cut directory the tracked cell uses and the CSVs the tools name.
+  The scratch scripts from earlier sessions were the class this repository already has a rule about -- a registered arm's
+  driver belongs in the tree -- and the three that still had value are now covered by tracked commands.
+- **Two arms registered, not run**: the size that fits a 100 USDT account (half the clip, peak gross under 210 USD) and the
+  throttle keyed on the jump detector rather than on the carried mark. The reasoning is in the studies record: the maker
+  nets more than 1 per cent a week on this account *if it could carry the position*, it cannot at 3x, and the only lever
+  that has moved the tail without losing the day count is refusing to add into an adverse mark.
+
 ## The lead-lag blocker is the venue's portal, and the pipeline now waits for the file (2026-11-27)
 
 - **The 400-level book history cannot be fetched by a script, and that is the venue's distribution rather than a missing
