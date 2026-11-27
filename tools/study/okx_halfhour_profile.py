@@ -32,11 +32,22 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools" / "lib"))
 from okx_data import depth_archive, trade_tape  # noqa: E402
-BUCKETS_PER_DAY = 48
+MICROSECONDS_PER_DAY = 86_400_000_000
 
 
-def bucket_of(ts_ms, bucket_ms):
-    return (ts_ms // bucket_ms) % BUCKETS_PER_DAY
+def buckets_per_day(bucket_us):
+    """How many buckets one UTC day has at this width -- the width is a flag, so this cannot be a constant.
+
+    The width here is **microseconds**, which is the unit the book's stamps are converted to (see `spread_profile`):
+    measured 2026-11-28, `--bucket-minutes 10` folded a day into 48 buckets -- an eight-hour cycle -- because the count
+    was a constant sized for 30, so every row after 08:00 mixed three different parts of the day. The default 30 was the
+    only width the old constant was right for, which is why no recorded number moved when it became a function.
+    """
+    return MICROSECONDS_PER_DAY // bucket_us
+
+
+def bucket_of(ts_us, bucket_us):
+    return (ts_us // bucket_us) % buckets_per_day(bucket_us)
 
 
 def trade_rates(symbol, day_text, bucket_ms, trades_dir):
@@ -44,7 +55,7 @@ def trade_rates(symbol, day_text, bucket_ms, trades_dir):
     day = datetime.strptime(day_text, "%Y-%m-%d").replace(tzinfo=timezone.utc)
     start_ms = int(day.timestamp() * 1000)
     end_ms = start_ms + 24 * 3600 * 1000
-    counts = [0] * BUCKETS_PER_DAY
+    counts = [0] * buckets_per_day(bucket_ms * 1000)
     # The file named X covers [X-1 16:00 UTC, X 16:00 UTC), so the UTC day D is the head of D's file and the
     # afternoon of D+1's. Reading D-1 and D instead left every bucket after 16:00 with no trades -- measured
     # 2026-11-25, the first version of this table showed 0.000 trades a second for the whole evening.
@@ -67,7 +78,7 @@ def trade_rates(symbol, day_text, bucket_ms, trades_dir):
                 except (IndexError, TypeError, ValueError):
                     continue
                 if start_ms <= ts < end_ms:
-                    counts[bucket_of(ts, bucket_ms)] += 1
+                    counts[bucket_of(ts * 1000, bucket_ms * 1000)] += 1
     return [count / (bucket_ms / 1000.0) for count in counts]
 
 
@@ -87,7 +98,7 @@ def weighted_median(items):
 
 def spread_profile(archive, bucket_ms):
     """(duration, half spread bps) per bucket, from one pass over the archive."""
-    samples = [[] for _ in range(BUCKETS_PER_DAY)]
+    samples = [[] for _ in range(buckets_per_day(bucket_ms * 1000))]
     book = {"bid": {}, "ask": {}}
     best = {"bid": None, "ask": None}
     last_ts = None
@@ -171,7 +182,7 @@ def main():
     print(f"| bucket UTC | median half spread bps | median trades/s | min trades/s | days at or above "
           f"{args.gate_rate:g}/s | days |")
     print("|---|---:|---:|---:|---:|---:|")
-    for index in range(BUCKETS_PER_DAY):
+    for index in range(buckets_per_day(bucket_ms * 1000)):
         column = [row[index] for row in spreads if row[index] is not None]
         rate_column = [row[index] for row in rates]
         hours = index * args.bucket_minutes // 60
