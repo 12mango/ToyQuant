@@ -26,6 +26,7 @@ The mail goes through `notify.py`, whose SMTP settings are the same ones `/etc/t
 alerts (`SMTP_*`, `ALERT_EMAIL_TO` or `NOTIFY_TO`). No credentials means no mail and a sentence saying so.
 """
 import argparse
+import csv
 import os
 import shutil
 import socket
@@ -136,11 +137,79 @@ def host_facts():
     return facts
 
 
-def session_facts(start_utc, end_utc):
-    """The window's own journal, as the lines an operator reads.
+def journal_text(start_utc, end_utc):
+    """The window's journal, once, as the text both the mail and the ledger read.
 
-    Epoch bounds (`@<seconds>`) and `--utc`, so neither this host's zone nor its locale can move the interval or the
+    Epoch bounds (`@<seconds>`) and `--utc`, so neither the host's zone nor its locale can move the interval or the
     stamps: the host's clock is `Etc/UTC`, the operator is in Hong Kong, and the window is named in UTC.
+    """
+    return run(["journalctl", "-u", UNIT, "--since", f"@{int(start_utc.timestamp())}",
+                "--until", f"@{int(end_utc.timestamp())}", "--utc", "--no-pager", "-q"])
+
+
+def field_of(line, name):
+    """One `name=value` out of a summary line, or an empty cell when the line does not carry it.
+
+    An empty cell, never a zero: a `net_pnl_usd` of 0.00 and a line that was not there are different facts.
+    """
+    marker = name + "="
+    start = line.find(marker)
+    if start < 0:
+        return ""
+    rest = line[start + len(marker):]
+    end = rest.find(" ")
+    return rest if end < 0 else rest[:end]
+
+
+def ledger_row(start_utc, end_utc, lines, groups):
+    """One row per window, for the long series the mail cannot show.
+
+    The columns are the numbers the mail already quotes, so the ledger cannot say anything the journal did not: the
+    window, how many runs it held, the last run's trades and money, the residual its close left, and the account at
+    report time. A column the journal did not carry is empty.
+    """
+    portfolios = [line for line in lines if "[PORTFOLIO]" in line]
+    pnls = [line for line in lines if "[PNL]" in line]
+    wind_downs = [line for line in lines if "[WIND-DOWN]" in line]
+    last_portfolio = portfolios[-1] if portfolios else ""
+    last_pnl = pnls[-1] if pnls else ""
+    last_wind_down = wind_downs[-1] if wind_downs else ""
+    account = groups.get("account", {})
+    return {
+        "window_start_utc": f"{start_utc:%Y-%m-%dT%H:%MZ}",
+        "window_end_utc": f"{end_utc:%H:%MZ}",
+        "sessions": str(len(pnls)),
+        "maker_trades": field_of(last_portfolio, "maker_trade_count"),
+        "taker_trades": field_of(last_portfolio, "taker_trade_count"),
+        "fees_paid": field_of(last_portfolio, "fees_paid"),
+        "net_pnl_usd": field_of(last_pnl, "net_pnl_usd"),
+        "gross_pnl_usd": field_of(last_pnl, "gross_pnl_usd"),
+        "residual_units": field_of(last_wind_down, "residual"),
+        "equity_usd": (account.get("equity", "").replace(" USDT", "").replace(",", "")
+                       if account.get("equity", "").endswith(" USDT") else ""),
+        "read_at": account.get("read_at", ""),
+        "source": "journalctl",
+    }
+
+
+def append_ledger(path, row):
+    """Append one row, header first, and never fail the mail for it -- a ledger that breaks the report is a report lost."""
+    try:
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        new_file = not target.exists()
+        with target.open("a", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=list(row))
+            if new_file:
+                writer.writeheader()
+            writer.writerow(row)
+        return f"appended {target}"
+    except OSError as error:
+        return f"unavailable ({error})"
+
+
+def session_facts(start_utc, end_utc, text=None):
+    """The window's own journal, as the lines an operator reads.
 
     **There is no `[FILL]` line to count.** The engine prints one summary per run, not a line per fill, so the previous
     version's `sum(1 for line if '[FILL]' in line)` was a zero that could never be anything else -- a report saying "0
@@ -148,8 +217,8 @@ def session_facts(start_utc, end_utc):
     what traded is the last run's own counters: `[PORTFOLIO]` carries `maker_trade_count`/`taker_trade_count` and the
     fees, `[EXECUTION]` the submissions and the venue's reports, and `[PNL]` the money.
     """
-    text = run(["journalctl", "-u", UNIT, "--since", f"@{int(start_utc.timestamp())}",
-                "--until", f"@{int(end_utc.timestamp())}", "--utc", "--no-pager", "-q"])
+    if text is None:
+        text = journal_text(start_utc, end_utc)
     if text is None:
         return {"trades": "unavailable", "pnl": "unavailable", "execution": "unavailable",
                 "recon": "unavailable", "breaker": "none"}
@@ -235,30 +304,38 @@ def main():
     parser.add_argument("--window-start", default=WINDOW_START, metavar="HH:MM", help="window open, UTC")
     parser.add_argument("--window-end", default=WINDOW_END, metavar="HH:MM", help="window close, UTC")
     parser.add_argument("--at", metavar="ISO8601", help="pretend it is this UTC instant (for a dry run)")
+    parser.add_argument("--ledger", default=os.environ.get("TOYQUANT_LEDGER",
+                                                           "/opt/toyquant/data/runtime/window_ledger.csv"),
+                        metavar="PATH", help="one row per window, appended after the mail")
     args = parser.parse_args()
     if args.self_test:
         return self_test()
 
     now = datetime.fromisoformat(args.at).replace(tzinfo=timezone.utc) if args.at else datetime.now(timezone.utc)
     start_utc, end_utc = window_at(now, args.window_start, args.window_end)
+    text = journal_text(start_utc, end_utc)
     groups = {
         "window": {"utc": f"{start_utc:%Y-%m-%dT%H:%MZ} .. {end_utc:%H:%MZ}",
                    "clocks": zone_range(start_utc, end_utc),
                    "note": window_note(now, args.window_start, args.window_end)},
-        "session": session_facts(start_utc, end_utc),
+        "session": session_facts(start_utc, end_utc, text),
         "account": account_facts(),
         "host": host_facts(),
     }
     subject, body = compose(groups)
+    row = ledger_row(start_utc, end_utc, (text or "").splitlines(), groups)
     settings = notify.load_settings()
     if args.dry_run:
         print(f"To: {settings['NOTIFY_TO'] or '<ALERT_EMAIL_TO is not set>'}\nSubject: {subject}\n\n{body}")
+        print(f"ledger: would append to {args.ledger}: {row}")
         return 0
     if not settings["SMTP_HOST"] or not settings["NOTIFY_TO"]:
         print(f"daily_report: no SMTP_HOST/ALERT_EMAIL_TO in {notify.ENV_FILE} or the environment; no mail sent",
               file=sys.stderr)
         return 0
     print(f"daily_report: {notify.send(subject, body, settings)}", file=sys.stderr)
+    # After the mail, so a ledger that cannot be written costs a line and not the report.
+    print(f"daily_report: ledger {append_ledger(args.ledger, row)}", file=sys.stderr)
     return 0
 
 
@@ -304,6 +381,19 @@ def self_test():
         assert "unavailable" in account_facts()["equity"]
     finally:
         (okx_probe.load_credentials, okx_probe.balance, okx_probe.positions, okx_probe.pending) = saved
+    # The ledger's columns come from lines that exist, and a line that is absent is an empty cell rather than a zero.
+    lines = ["Nov 27 15:30:01 host toy_quant[1]: [PORTFOLIO] fees_paid=0.02 maker_trade_count=44 taker_trade_count=1",
+             "Nov 27 15:30:01 host toy_quant[1]: [PNL] gross_pnl_usd=0.5 net_pnl_usd=-0.25 shares=1000",
+             "Nov 27 15:30:02 host toy_quant[1]: [WIND-DOWN] position=0 closed=10000 residual=0 total_bps=3.2"]
+    start, end = window_at(datetime(2026, 11, 27, 16, 0, tzinfo=timezone.utc))
+    row = ledger_row(start, end, lines, {"account": {"equity": "99.45 USDT", "read_at": "2026-11-27T16:00Z"}})
+    assert row["maker_trades"] == "44" and row["taker_trades"] == "1", row
+    assert row["net_pnl_usd"] == "-0.25" and row["residual_units"] == "0", row
+    assert row["sessions"] == "1" and row["equity_usd"] == "99.45", row
+    empty = ledger_row(start, end, [], {"account": {}})
+    assert empty["net_pnl_usd"] == "" and empty["sessions"] == "0" and empty["equity_usd"] == "", empty
+    # The mail writes `4,797.31 USDT` for a reader; the ledger is parsed by a tool, so the cell is a number.
+    assert ledger_row(start, end, [], {"account": {"equity": "4,797.31 USDT"}})["equity_usd"] == "4797.31"
     # A window that has not closed keeps the *previous* one as the report's subject, and the mail has to say so.
     assert "previous one" in window_note(datetime(2026, 11, 27, 14, 0, tzinfo=timezone.utc)), "inside the window"
     assert "previous one" not in window_note(datetime(2026, 11, 27, 15, 35, tzinfo=timezone.utc)), "after the close"
