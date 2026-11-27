@@ -36,6 +36,15 @@ int64_t monotonic_now_ms()
         .count();
 }
 
+// The same clock in microseconds, because a reader's wait is a reader's knob: a session that polls every 100 ms is
+// 100,000 of these, and rounding it to milliseconds would make a 1 us wait a zero-length one.
+int64_t monotonic_now_us()
+{
+    return std::chrono::duration_cast<std::chrono::microseconds>(
+               std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+}
+
 // SHA-1, RFC 3174, the whole of what the opening handshake needs. It is written out rather than
 // linked because the only thing that consumes it is one hash of a sixty byte string, and pulling a
 // crypto dependency into the build for that would be a larger decision than the hash is worth.
@@ -743,6 +752,24 @@ class WebSocketFeed::EventReader final : public IMarketEventReader
                 return false;
             }
             if (!feed_.running_.load(std::memory_order_acquire)) return false;
+            feed_.wait_for_event();
+        }
+    }
+
+    // The bounded form: a peer that has gone quiet is a *timeout*, not the end of the stream, so the consumer's loop can
+    // keep running its own clock (a live session's shutdown rides that tick). The three answers are the same three the
+    // blocking read distinguishes by its return value alone, which a waiting read cannot.
+    [[nodiscard]] Status next_within(MarketEvent& event, std::int64_t wait_us) override
+    {
+        const int64_t deadline_us =
+            wait_us > 0 ? monotonic_now_us() + wait_us : 0;
+        while (true)
+        {
+            if (feed_.events_.try_pop(event)) return Status::Event;
+            if (feed_.producer_done_.load(std::memory_order_acquire))
+                return feed_.events_.try_pop(event) ? Status::Event : Status::End;
+            if (!feed_.running_.load(std::memory_order_acquire)) return Status::End;
+            if (deadline_us > 0 && monotonic_now_us() >= deadline_us) return Status::Timeout;
             feed_.wait_for_event();
         }
     }

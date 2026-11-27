@@ -13,6 +13,7 @@
 #include <cctype>
 #include <chrono>
 #include <cstdint>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -21,10 +22,50 @@
 #include <variant>
 #include <vector>
 
+#include "market/l2_replay_feed.h"
 #include "market/ws_feed.h"
 
 namespace
 {
+// A reader that answers the way a live one must when the caller gives it a bound: some timeouts, then one event, then
+// the end. Its `next` is the blocking form and says "nothing", which is the bug this pair exists to keep out of the
+// loop: a session that reads with `next` cannot be told a quiet stream from a finished one.
+class ScriptedReader final : public IMarketEventReader
+{
+   public:
+    explicit ScriptedReader(int timeouts) : timeouts_(timeouts) {}
+
+    [[nodiscard]] bool next(MarketEvent&) override { return false; }
+
+    [[nodiscard]] Status next_within(MarketEvent& event, std::int64_t wait_us) override
+    {
+        (void)wait_us;
+        if (timeouts_ > 0)
+        {
+            --timeouts_;
+            return Status::Timeout;
+        }
+        if (!sent_)
+        {
+            sent_ = true;
+            MarketTrade trade;
+            trade.exchange = "ws";
+            trade.symbol = "ETH-PERPETUAL";
+            trade.ts = 1000;
+            trade.sequence = 1;
+            trade.aggressor_side = Side::Buy;
+            trade.price = 100.5;
+            trade.quantity = 3;
+            event = trade;
+            return Status::Event;
+        }
+        return Status::End;
+    }
+
+   private:
+    int timeouts_;
+    bool sent_{false};
+};
 // One unmasked server-to-client WebSocket frame; a server never masks, and Opcode::Close carries the
 // end of the session for the client's readers.
 std::string frame(std::string_view payload, int opcode = 0x1)
@@ -335,6 +376,41 @@ int main()
         assert(nan_feed.summary().trades == 0);
         assert(nan_feed.summary().depth_updates == 0);
         assert(nan_feed.summary().parse_errors == 2);
+    }
+
+    {
+        // A quiet market must not be able to postpone a stop. `next` blocks until an event or a close, which is why a
+        // SIGTERM in a silent session was never acted on: the shutdown runs from the consumer, and on a quiet feed the
+        // consumer was never called -- measured 2026-11-27, three times, each ending in `TimeoutStopSec` and a SIGKILL
+        // with the session's working orders still at the venue. `next_within` gives up after its bound and says so with
+        // `Timeout`, and after the feed is stopped it reports the end instead of timing out forever.
+        LoopbackServer holding({}, LoopbackServer::Behavior::SendRowsThenHold);
+        holding.serve();
+        WebSocketFeed quiet(WebSocketFeed::Endpoint{"127.0.0.1", holding.port(), "/"});
+        quiet.start();
+        auto quiet_reader = quiet.event_reader();
+        MarketEvent none;
+        const auto started = std::chrono::steady_clock::now();
+        assert(quiet_reader->next_within(none, 50'000) == IMarketEventReader::Status::Timeout);
+        const auto waited_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                   std::chrono::steady_clock::now() - started)
+                                   .count();
+        assert(waited_ms >= 40 && waited_ms < 1000);
+        quiet.stop();
+        assert(quiet_reader->next_within(none, 50'000) == IMarketEventReader::Status::End);
+    }
+    {
+        // The loop's own contract: a timeout is an idle tick, not the end of the stream, and the event that arrives after
+        // the timeouts is still delivered. The hook is where a live session runs its shutdown, so a hook that never
+        // fires on a quiet feed is an order nobody cancelled.
+        int ticks = 0;
+        int delivered = 0;
+        L2ReplayFeed feed(std::make_unique<ScriptedReader>(3), [&](const MarketEvent&) { ++delivered; });
+        feed.set_idle_hook([&] { ++ticks; }, 1'000);
+        feed.run();
+        assert(ticks == 3);
+        assert(delivered == 1);
+        assert(feed.validation_summary().events == 1);
     }
 
     return 0;

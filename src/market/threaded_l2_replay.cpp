@@ -156,6 +156,31 @@ void ThreadedReplayFeed::consume_loop()
             if (abort_.load(std::memory_order_acquire)) break;
             if (!producer_done_.load(std::memory_order_acquire))
             {
+                if (idle_wait_us_ > 0 && idle_hook_)
+                {
+                    // An empty ring is this thread's quiet market. The session's own clock runs here, because the
+                    // shutdown needs the thread the venue's answers are applied on -- a stop that waited for the next
+                    // market event is a stop that a quiet market never performs.
+                    const int64_t now_ns = monotonic_now_ns();
+                    if (idle_deadline_ns_ == 0)
+                    {
+                        idle_deadline_ns_ = now_ns + idle_wait_us_ * 1000;
+                    }
+                    else if (now_ns >= idle_deadline_ns_)
+                    {
+                        idle_deadline_ns_ = now_ns + idle_wait_us_ * 1000;
+                        try
+                        {
+                            idle_hook_();
+                        }
+                        catch (...)
+                        {
+                            consumer_error_ = std::current_exception();
+                            abort_.store(true, std::memory_order_release);
+                            break;
+                        }
+                    }
+                }
                 // No sleep and no condition variable: at the rates this path runs at, waking a thread
                 // costs more than the wait it replaces, and a consumer that slept through an arrival
                 // would be the one thing that makes the hand-off slow. The occupancy this path reports
@@ -168,6 +193,7 @@ void ThreadedReplayFeed::consume_loop()
             // store that followed the last push, so one more attempt is guaranteed to see the event.
             if (!ring_->try_pop(stamped)) break;
         }
+        idle_deadline_ns_ = 0;
 
         const int64_t pop_ns = monotonic_now_ns();
         const uint64_t waiting = ring_->consumer_occupancy() + 1;

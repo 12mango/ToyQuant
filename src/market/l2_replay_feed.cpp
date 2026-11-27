@@ -94,15 +94,33 @@ void L2ReplayFeed::pace(int64_t event_ns)
     if (lateness_ns <= pacing_.max_lateness_ns && target_ns > now_ns) sleeper_(target_ns - now_ns);
 }
 
+IMarketEventReader::Status L2ReplayFeed::read_single(MarketEvent& event)
+{
+    if (idle_wait_us_ > 0) return events_->next_within(event, idle_wait_us_);
+    return events_->next(event) ? IMarketEventReader::Status::Event : IMarketEventReader::Status::End;
+}
+
 void L2ReplayFeed::run_single()
 {
     MarketEvent event;
     profiler_begin(Stage::ReadParse);
-    bool has_event = events_->next(event);
+    IMarketEventReader::Status status = read_single(event);
     profiler_end(Stage::ReadParse);
 
-    while (has_event)
+    while (status != IMarketEventReader::Status::End)
     {
+        if (status == IMarketEventReader::Status::Timeout)
+        {
+            // Nothing arrived inside the read's bound. This is the live session's own clock: the shutdown's three steps
+            // run from here, because they need the thread the venue's answers are applied on -- and they must run even
+            // when the market is quiet, which is exactly the case a blocking read made impossible.
+            if (idle_hook_) idle_hook_();
+            profiler_begin(Stage::ReadParse);
+            status = read_single(event);
+            profiler_end(Stage::ReadParse);
+            continue;
+        }
+
         if (pacing_.enabled)
         {
             ++pacing_summary_.events;
@@ -118,7 +136,7 @@ void L2ReplayFeed::run_single()
         callback_(event);
 
         profiler_begin(Stage::ReadParse);
-        has_event = events_->next(event);
+        status = read_single(event);
         profiler_end(Stage::ReadParse);
     }
 

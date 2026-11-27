@@ -83,6 +83,16 @@ class ThreadedReplayFeed
     // timed on this thread, and the read and parse stages on the other one.
     void set_profiler(StageProfiler* profiler);
 
+    // The live path's own clock, on the consumer side. A session told to stop runs its shutdown from the thread that can
+    // see the venue, and that thread would otherwise spin on an empty ring for as long as the market is quiet -- the
+    // failure measured 2026-11-27, where a silent market meant SIGTERM was never acted on and the session was killed
+    // with its orders still resting. The producer's read stays blocking: it is not the thread the shutdown needs.
+    void set_idle_hook(std::function<void()> hook, int64_t wait_us)
+    {
+        idle_hook_ = std::move(hook);
+        idle_wait_us_ = wait_us;
+    }
+
     const LatencySummary& latency_summary() const
     {
         return summary_;
@@ -126,4 +136,8 @@ class ThreadedReplayFeed
     LatencyHistogram queue_latency_;
     LatencyHistogram processing_latency_;
     LatencyHistogram total_latency_;
+    // The consumer's idle clock: how long an empty ring may spin before the session gets a tick.
+    std::function<void()> idle_hook_;
+    int64_t idle_wait_us_{0};
+    int64_t idle_deadline_ns_{0};
 };

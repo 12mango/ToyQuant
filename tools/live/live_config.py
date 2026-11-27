@@ -156,6 +156,24 @@ def validate(values, source="<text>"):
         if missing:
             raise ValueError(f"{source}: engine.live_orders needs {', '.join(missing)}: the relay's order channel is "
                              f"named, not guessed, and the adapter's own cap is the limit ADR 0005 decision 4 asks for")
+    # The opening balance is US dollars, or the one word `venue` -- which makes the engine read it off the account at
+    # start instead of from this file. Refused here rather than on the host, where it is a unit that exits 1 and is
+    # restarted: the engine's own sentence would be the first line of a journal nobody reads.
+    cash = values.get(("engine", "starting_cash"))
+    if cash is not None:
+        word = cash.strip().lower()
+        if word == "venue":
+            if not live:
+                raise ValueError(f"{source}: engine.starting_cash is `venue`, which reads the account's equity -- and "
+                                 f"that needs engine.live_orders: true (a rehearsal has no account to ask)")
+        else:
+            try:
+                positive = float(word) > 0.0
+            except ValueError:
+                positive = False
+            if not positive:
+                raise ValueError(f"{source}: engine.starting_cash is US dollars or `venue` (the account's own equity "
+                                 f"at start); '{cash}' is neither")
     return values
 
 
@@ -220,6 +238,32 @@ link:
     values[("link", "venue_max_orders")] = "20"
     assert "--live-orders" in flags(values), flags(values)
     assert "--venue-endpoint=127.0.0.1:8766" in flags(values), flags(values)
+    # The opening balance is a number or the word `venue`, and `venue` needs the live leg: it reads the account, and a
+    # rehearsal has none. A typo is refused by name here rather than by a unit that exits 1 on the host.
+    values[("engine", "starting_cash")] = "venue"
+    assert "--starting-cash=venue" in flags(values), flags(values)
+    values[("engine", "starting_cash")] = "98.5"
+    assert "--starting-cash=98.5" in flags(values), flags(values)
+    for bad, expect in (("1o00", "starting_cash"), ("0", "starting_cash"), ("-5", "starting_cash")):
+        values[("engine", "starting_cash")] = bad
+        try:
+            flags(values)
+        except ValueError as error:
+            assert expect in str(error), (bad, str(error))
+        else:
+            raise AssertionError(f"starting_cash {bad!r} was accepted")
+    values[("engine", "starting_cash")] = "venue"
+    values[("engine", "live_orders")] = "true"
+    del values[("engine", "starting_cash")]
+    # `venue` in a rehearsal: no live leg and no venue keys, so the refusal is the cash one and not the endpoint one.
+    rehearsal = {("link", "market_endpoint"): "127.0.0.1:8765", ("engine", "symbol"): "UP-USDT-SWAP",
+                 ("engine", "strategy"): "active_l2", ("engine", "starting_cash"): "venue"}
+    try:
+        flags(rehearsal)
+    except ValueError as error:
+        assert "starting_cash" in str(error), str(error)
+    else:
+        raise AssertionError("`venue` without the live leg was accepted")
     try:
         values[("link", "snapshot_out")] = "data/runtime/live-snapshot.json"
         flags(values)

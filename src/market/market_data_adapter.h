@@ -11,11 +11,31 @@
 class IMarketEventReader
 {
    public:
+    // What one read did. `Timeout` exists because a live socket has no end: a caller waiting for one has to be told
+    // "nothing yet" without being told the stream is over -- otherwise a quiet market would end the session, and a
+    // signal received while the market is quiet would never be acted on (measured 2026-11-27: a graceful stop's three
+    // steps ran inside the consumer, the consumer was never called, and systemd SIGKILLed the session with its orders
+    // still resting at the venue).
+    enum class Status : std::uint8_t
+    {
+        Event,
+        Timeout,
+        End
+    };
+
     virtual ~IMarketEventReader() = default;
     // `[[nodiscard]]` because the return value is the only thing that says whether `event` was written:
     // a reader with nothing left returns false and leaves the event untouched, and a caller that ignored
     // that would process the previous event a second time.
     [[nodiscard]] virtual bool next(MarketEvent& event) = 0;
+    // `next` with the right to give up: no event within `wait_us` returns `Timeout` while the stream is still open.
+    // A file reader keeps this default -- its `next` never blocks -- so a replay's delivery is unchanged, and a caller
+    // that passes no wait (`wait_us == 0`) gets the blocking read it asked for.
+    [[nodiscard]] virtual Status next_within(MarketEvent& event, std::int64_t wait_us)
+    {
+        (void)wait_us;
+        return next(event) ? Status::Event : Status::End;
+    }
 };
 
 struct MarketDataReaders

@@ -98,6 +98,16 @@ class L2ReplayFeed
         profiler_ = profiler;
     }
 
+    // A live stream has no natural end, so a session that is told to stop has to get its own clock. With this set the
+    // single-stream loop waits at most `wait_us` for an event and calls `hook` when none arrived, on the thread that runs
+    // the consumer -- which is the thread where the venue's answers are applied and the order path can be closed. Unset,
+    // the loop keeps the blocking read every replay uses, so nothing a recorded run does changes.
+    void set_idle_hook(std::function<void()> hook, int64_t wait_us)
+    {
+        idle_hook_ = std::move(hook);
+        idle_wait_us_ = wait_us;
+    }
+
    private:
     // One sampled clock read per stage boundary; a plain nullptr check when profiling is off.
     void profiler_begin(Stage stage)
@@ -114,6 +124,8 @@ class L2ReplayFeed
     void pace(int64_t event_ns);
     void record_lateness(int64_t lateness_ns);
     void run_single();
+    // One read from the single stream: bounded when the caller set an idle hook, blocking otherwise.
+    IMarketEventReader::Status read_single(MarketEvent& event);
 
     std::unique_ptr<IMarketEventReader> events_;
     bool single_{false};
@@ -129,6 +141,9 @@ class L2ReplayFeed
     int64_t first_event_ns_{0};
     int64_t start_wall_ns_{0};
     PacingSummary pacing_summary_{};
+    // The live path's own clock: called when a bounded read found the stream open and empty.
+    std::function<void()> idle_hook_;
+    int64_t idle_wait_us_{0};
     // Powers of two microseconds, and the upper edge of the bucket a sample fell in, clamped to the
     // observed maximum: the same rule the hand-off report uses, so it has one implementation.
     LatencyHistogram lateness_;

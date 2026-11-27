@@ -30,7 +30,12 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-CODE_PREFIXES = ("src/", "tests/", "tools/", "CMakeLists.txt", "CMakePresets.json")
+# What a reviewer reads. The deploy is part of the instrument -- a unit file, a health check, the workflow that ships
+# them -- and it used to sit outside both halves, so a commit touching one produced an empty `diff.patch`: measured
+# 2026-11-27, three ops/deploy commits in a row read "0 file(s) in diff.patch" while the change was real. `config/` is
+# here for the tracked template only (`config/live.yaml` is ignored), and `.env.example` for the names a host must fill.
+CODE_PREFIXES = ("src/", "tests/", "tools/", "deploy/", ".github/workflows/", "config/", ".env.example",
+                 "CMakeLists.txt", "CMakePresets.json")
 DOC_PREFIXES = ("docs/", "mkdocs.yml", "README.md", "CHANGELOG.md", ".clinerules", "LICENSE")
 # A bundle is text a reader reads: a file over this size is data or a generated table, and belongs to neither half.
 MAX_BYTES = 2_000_000

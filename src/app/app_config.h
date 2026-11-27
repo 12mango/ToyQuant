@@ -83,6 +83,12 @@ struct AppConfig
     // run's venue-equity [RECON] compares the venue against it: 1000 is the documented replay account, and a
     // live account that already holds a balance has to pass that balance here or the line reports the break.
     double starting_cash_usd = 1000.0;
+    // `--starting-cash=venue` makes the opening balance the venue's own equity at start rather than a number in a file.
+    // An account that its own tests trade has a balance that moves, so a copied figure is wrong the next morning -- and
+    // this number is also the exposure ceiling and the kill switch's baseline, which makes a stale value a risk limit
+    // for an account that does not exist. Adopting the venue's answer makes the at-start [RECON] a tautology by
+    // construction (the log says so), and the at-end line stays the accounting check.
+    bool starting_cash_from_venue = false;
     // The pre-trade band and the submission bucket. Both off at 0: a fat-finger band of 0 does not look at
     // the price, and a rate of 0 does not look at the clock, which is what keeps every existing run's order
     // flow and output unchanged.

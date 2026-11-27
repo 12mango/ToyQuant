@@ -370,6 +370,15 @@ same comparison; a position left open makes the venue's mark the other side's pr
 covers. A resumed run takes its cash and positions from the snapshot instead (`--snapshot-in` wins over the flag), and
 marks the restored positions at the snapshot's prices before the first comparison.
 
+**A live file should say `starting_cash: venue`, not a figure.** The flag is the exposure ceiling and the kill switch's
+baseline as well as the opening balance, so an account that its own tests trade -- it pays fees and loses a little every
+session -- makes a copied number into a risk limit for an account that no longer exists, and the operator would have to
+edit `/etc/toyquant/live.yaml` after every session. `venue` asks the account before anything is quoted and opens the
+ledger at the answer; an unanswered equity query refuses the start rather than guessing. The cost of the convenience is
+stated in the journal: `[RECON] at=start` is then a comparison of the venue with itself, so it is `ok` by construction,
+and the line above it says `source=venue-adopted`. **The accounting check is `[RECON] at=end`** -- a healthy session
+prints `at=end equity_break_usd` inside the tolerance, and that is the line to read after a deploy.
+
 **The earlier 80k figures on this page were the account's `totalEq`.** Seeding the ledger with 80k measured the demo's
 spot BTC/OKB as if they were the strategy's cash: a run at `--starting-cash=80076.7` read `-75.65`, another `-22.15`,
 and a probe that happened to sit 4.12 USD away read `ok`; those are totalEq movements, not the ledger's accounting.

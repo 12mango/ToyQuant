@@ -61,7 +61,7 @@ watch a position build names both: `--order-size=10 --inventory-limit=100`.
 | layer geometry | `--layer-step-bps` | the step between extra layers in basis points of the reference price; `0` leaves one tick a layer, which on a 0.76 bps tick puts the second layer almost on the first layer's price |
 | the trend line's signal | `--trend-signal=ewma\|burst`, `--trend-burst=ticks=T,window_ms=W,obi=F,hold=VIEWS` | `ewma` is the recorded fast/slow cross of the midpoint and the default; `burst` replaces it with the event the maker's halt fires on -- a mid range of T ticks inside W milliseconds of **book** time -- taken only when the displayed-depth imbalance is F of one side on the same sign as the move, and held for `hold` views with the framework's stop, time stop and cooldown still above it. Its entry stays `--trend-entry=side=own --post-only`, where the fee reads exactly 2.00. Measured 2026-11-26: NES 5 of 7 positive days at +2.12 closed, UP 1 of 7 at -5.18, both under the +4.00 round trip, and the family is sealed |
 | risk | `--max-position`, `--max-exposure-usd`, `--kill-switch-loss-usd`, `--fat-finger-bps`, `--max-orders-per-second` with `--order-burst` | `--max-exposure-usd` is enforced once named and reported either way |
-| account | `--starting-cash` | the cash the account opens with (default 1000), which is also the exposure ceiling; a live run against a funded account passes the venue's balance or its `[RECON]` reports the break |
+| account | `--starting-cash` | the cash the account opens with (default 1000), which is also the exposure ceiling; a live run against a funded account passes the venue's balance, or `venue` to read it off the account at start (which makes the at-start `[RECON]` a tautology, so the at-end line is the accounting check) |
 | fills | `--participation-limit`, `--time-in-force`, `--post-only`, `--arrival-share`, `--queue-chunks`, `--queue-seed` | the queue model is the seventh positional argument, not a flag; the kind of order is what the venue's `ordType` says, so `--post-only` is `post_only` and an IOC is `ioc` rather than a limit that rests |
 | latency | `--order-latency-us`, `--cancel-latency-us` | holds the order or the cancel for N microseconds of the market's own clock; without a latency `--post-only` changes nothing in a replay, because the quote and the book are the same event and nothing is marketable on arrival. With a latency a quote that lands in a book that moved is declined, which is the whole of the flag's effect -- and why a replay without one cannot measure it. A cancel naming an order the venue has not received yet is held and applied when the order lands, which is the case a market maker's requote meets on any link where the two legs share the delay |
 | fees | `--maker-fee-rate`, `--fee-schedule` | a schedule names `min`, `regulatory`, `clearing`, `audit`, `rebate`, `commission`; every term is zero unless named |
@@ -138,6 +138,15 @@ and again at the end. The default 1000 is the replay account. A funded demo acco
 position the ledger did not open is a break, not a tolerance to widen -- a flat account or a `--snapshot-in` is the
 clean start. A resumed run takes its opening cash from the snapshot instead, so `--snapshot-in` wins over the flag; the
 start line then marks the restored positions at the snapshot's own prices.
+
+**`--starting-cash=venue` reads the number off the account.** An account that its own tests trade has a balance that
+moves, and this flag is not only the opening balance: it is the exposure ceiling (`[EXECUTION] starting_cash_usd`) and
+the baseline `--kill-switch-loss-usd` latches against, so a figure copied into a live file stops describing the account
+within a day. `venue` sends the equity query before anything is quoted and opens the ledger at the answer; a venue that
+does not answer, or answers a non-positive number, refuses the start rather than defaulting. What it costs is stated:
+the at-start `[RECON]` compares the venue with itself, so it is `ok` by construction, and the line above it says so
+(`[RECON] baseline starting_cash_usd=... source=venue-adopted`). The accounting check is therefore the **at-end** line,
+and the deployment's proof is that one, not the start.
 
 **The order leg.** `--record-orders=PREFIX` writes `<prefix>_orders.csv`: one row per submission, per cancel and per
 execution report, in the order they happened, with every field a report carries and a price written as the shortest

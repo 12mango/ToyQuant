@@ -754,7 +754,33 @@ void Application::run_l2_session_mode() const
                                   .retry_on_timeout = cfg_.gateway_retry_on_timeout});
         venue = gateway.get();
     }
-    Portfolio portfolio(instrument.quantity_scale, cfg_.starting_cash_usd, instrument.unit_notional_usd,
+    // The cash the ledger opens with. `--starting-cash=venue` asks the account instead of the operator: an account its
+    // own tests trade has a balance that moves, and this number is the exposure ceiling and the kill switch's baseline,
+    // not only the opening balance -- so a figure copied into a live file is a risk limit for an account that no longer
+    // exists. A venue that does not answer is a run that would open on a guess, so it refuses rather than defaulting.
+    double starting_cash_usd = cfg_.starting_cash_usd;
+    if (cfg_.starting_cash_from_venue)
+    {
+        if (!live_venue)
+            throw std::invalid_argument(
+                "--starting-cash=venue needs a live venue: a replay has no account to ask (pass the figure, or run "
+                "with --live-orders and the relay's order channel)");
+        if (!live_venue->refresh_equity() || !live_venue->venue_equity_usd().has_value())
+            throw std::runtime_error(
+                "--starting-cash=venue: the venue did not answer the equity query; refusing to open the ledger on a "
+                "guess (the operator's file is /etc/toyquant/live.env, and `tools/live/okx_probe.py equity` is the "
+                "same question)");
+        starting_cash_usd = *live_venue->venue_equity_usd();
+        if (!(starting_cash_usd > 0.0))
+            throw std::runtime_error("--starting-cash=venue: the venue reports an equity of " +
+                                     std::to_string(starting_cash_usd) + ", which is not a balance to open on");
+        // Said out loud, because the at-start line below is now a comparison of the venue with itself: the accounting
+        // check is the at-end line, and a reader who did not know that would read `ok` as a measurement it is not.
+        logger.log("[RECON] baseline starting_cash_usd=", starting_cash_usd,
+                   " source=venue-adopted at=start (the at=start comparison below is therefore a tautology; "
+                   "at=end is the accounting check)");
+    }
+    Portfolio portfolio(instrument.quantity_scale, starting_cash_usd, instrument.unit_notional_usd,
                         instrument.multiplier);
     // A resumed session puts the account back where the previous process left it and resolves every order that
     // snapshot listed against the venue, before this process quotes anything. The venue is asked rather than
@@ -822,7 +848,7 @@ void Application::run_l2_session_mode() const
         const PortfolioMetrics opening = portfolio.metrics();
         std::optional<double> ledger_equity;
         if (opening.marks_complete) ledger_equity = opening.equity;
-        const double reference = ledger_equity.value_or(cfg_.starting_cash_usd);
+        const double reference = ledger_equity.value_or(starting_cash_usd);
         // One basis point of the account with a cent floor: a venue mark and the run's midpoint differ by about a
         // basis point of the position, while a missing fee is around a basis point of a small account -- so this is
         // the width at which a real accounting break is not hidden by the mark. Ten basis points was tried first and
@@ -875,8 +901,9 @@ void Application::run_l2_session_mode() const
     }
     // The documented model is cash only and no margin, so the cash the run starts with is the
     // exposure ceiling the summary measures against, and --max-position decides whether it is
-    // enforced. 0, the default, reports the ceiling without blocking anything.
-    pipeline.set_collateral(cfg_.starting_cash_usd, instrument.unit_notional_usd, instrument.quantity_scale,
+    // enforced. 0, the default, reports the ceiling without blocking anything. It is the same
+    // number the ledger opened with, so `--starting-cash=venue` moves the ceiling with the account.
+    pipeline.set_collateral(starting_cash_usd, instrument.unit_notional_usd, instrument.quantity_scale,
                             instrument.multiplier);
     pipeline.set_close_out_cross_bps(cfg_.close_out_cross_bps);
     pipeline.set_profiler(profiler);
@@ -970,6 +997,30 @@ void Application::run_l2_session_mode() const
     std::unique_ptr<MarketEventRecorder> recorder;
     if (!cfg_.record_prefix.empty())
         recorder = std::make_unique<MarketEventRecorder>(to_abs_path(cfg_.record_prefix));
+    // The graceful stop, on the thread that can see the venue: stop new orders, cancel what it still holds, and end the
+    // session once it answers zero. It is a function rather than a block inside the consumer because the consumer only
+    // runs when a market event arrives, and a quiet market is exactly the case where a stop must still be acted on --
+    // measured 2026-11-27, three times: SIGTERM was recorded, no event came, `TimeoutStopSec=12` expired and systemd
+    // SIGKILLed the session with its working orders still at the venue.
+    const auto advance_shutdown = [&]
+    {
+        if (!termination::requested() || shutdown.finished()) return;
+        pipeline.stop_submissions();
+        const uint64_t now_ms = static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now().time_since_epoch())
+                .count());
+        const auto cancel_now = shutdown.advance(now_ms, pipeline.working_order_ids());
+        if (!cancel_now.empty()) pipeline.cancel_orders(cancel_now);
+        // A venue answers a cancel on its own connection, so the next step asks about the set again rather than
+        // reading the one it already had.
+        if (live_venue) live_venue->settle_queries();
+        if (shutdown.finished())
+        {
+            logger.log(shutdown.to_log_string());
+            if (stop_session) stop_session();
+        }
+    };
     // The one consumer both delivery paths use. It runs on the calling thread either way, which is
     // what makes the threaded path comparable with the direct one rather than merely similar.
     const auto consume = [&](const MarketEvent& event)
@@ -978,26 +1029,10 @@ void Application::run_l2_session_mode() const
             // account before the strategy's next decision reads it.
             drain_venue();
             // The graceful stop, on the thread that can see the venue: stop new orders, cancel what it still holds, and
-            // end the session only once it answers zero. A feed that never ends (a live socket) is stopped here rather
-            // than waited out, and a replay that is signalled takes the same path -- nothing live, so `done` at once.
-            if (termination::requested() && !shutdown.finished())
-            {
-                pipeline.stop_submissions();
-                const uint64_t now_ms = static_cast<uint64_t>(
-                    std::chrono::duration_cast<std::chrono::milliseconds>(
-                        std::chrono::steady_clock::now().time_since_epoch())
-                        .count());
-                const auto cancel_now = shutdown.advance(now_ms, pipeline.working_order_ids());
-                if (!cancel_now.empty()) pipeline.cancel_orders(cancel_now);
-                // A venue answers a cancel on its own connection, so the next step asks about the set again rather than
-                // reading the one it already had.
-                if (live_venue) live_venue->settle_queries();
-                if (shutdown.finished())
-                {
-                    logger.log(shutdown.to_log_string());
-                    if (stop_session) stop_session();
-                }
-            }
+            // end the session only once it answers zero. A feed that never ends (a live socket) is stopped from here
+            // rather than waited out, and a replay that is signalled takes the same path -- nothing live, so `done` at
+            // once. A live session also reaches it from the feed's idle tick; a replay never has one.
+            advance_shutdown();
             // The recorded venue answers on the recorded clock: a report is released once the run's own clock is past
             // the time it was recorded at, which is why this is here rather than inside the venue.
             if (recorded_venue) recorded_venue->advance_to(market_event_timestamp(event));
@@ -1075,11 +1110,15 @@ void Application::run_l2_session_mode() const
     if (threaded_feed)
     {
         threaded_feed->set_profiler(feed_profiler);
+        // A live session's own clock, on the consumer thread: a quiet market must not be able to postpone a stop. A
+        // replay never has one, so the blocking read and every recorded number stay exactly as they were.
+        if (live) threaded_feed->set_idle_hook([&] { drain_venue(); advance_shutdown(); }, 100'000);
         threaded_feed->run();
     }
     else
     {
         feed->set_profiler(profiler);
+        if (live) feed->set_idle_hook([&] { drain_venue(); advance_shutdown(); }, 100'000);
         feed->run();
     }
     // The venue's fills do not stop when the feed does. A quote cancelled at the last moment can fill at the venue a

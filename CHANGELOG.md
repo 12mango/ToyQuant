@@ -7,25 +7,66 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
-## A deploy kills the session instead of cancelling it: the stop is event-driven (2026-11-27, open)
+## A deploy kills the session instead of cancelling it: the stop was event-driven (2026-11-27, fix written)
 
-- **The graceful stop only advances when a market event arrives.** `application.cpp:983` runs the `SessionShutdown` step
-  inside `consume(event)`, so a quiet instrument -- or a stream that has stalled -- means SIGTERM is recorded by
-  `termination::handle` and then never acted on. systemd's `TimeoutStopSec=12` expires first and the unit is `SIGKILL`ed:
-  measured three times on 2026-11-27 (`06:09:30`, `06:10:01`, `07:16:18`, each `State 'stop-sigterm' timed out. Killing`,
-  `Failed with result 'timeout'`), every one of them a deploy's own restart.
-- **What it costs is the thing `SessionShutdown` exists to prevent.** The 06:09 stop left the working orders at the venue:
-  the next start read `[RECON] at=start position venue_units=-100000000 ledger_units=0 position_break=-100000000
-  status=break`, i.e. **ten contracts short that the ledger did not know about**, and the session then quoted on top of it.
-  A deploy that kills a session is a deploy that leaves it holding.
-- **The fix shape, not yet written**: the consumer's wait must be bounded, so a timeout is a tick that runs the same
-  shutdown step. `WebSocketFeed::read_frame` already takes a `deadline_ms` and its header says the deadline has to live
-  inside the read for exactly this reason; the `EventReader` between it and `consume` is what needs to return "no event
-  yet" instead of blocking, and the loop needs to treat that as a shutdown tick. Until that lands, **a deploy is not a safe
-  operation on a session that holds anything** -- the operator's `stop` has the same defect.
+- **The graceful stop only advanced when a market event arrived.** `application.cpp` ran the `SessionShutdown` step
+  inside `consume(event)`, so a quiet instrument -- or a stream that had stalled -- meant SIGTERM was recorded by
+  `termination::handle` and then never acted on. systemd's `TimeoutStopSec=12` expired first and the unit was
+  `SIGKILL`ed: measured three times on 2026-11-27 (`06:09:30`, `06:10:01`, `07:16:18`, each `State 'stop-sigterm'
+  timed out. Killing`, `Failed with result 'timeout'`), every one of them a deploy's own restart.
+- **What it cost is the thing `SessionShutdown` exists to prevent.** The 06:09 stop left the working orders at the
+  venue: the next start read `[RECON] at=start position venue_units=-100000000 ledger_units=0
+  position_break=-100000000 status=break`, i.e. **ten contracts short that the ledger did not know about**, and the
+  session then quoted on top of it. A deploy that kills a session is a deploy that leaves it holding.
+- **The read is bounded now.** `IMarketEventReader::next_within(event, wait_us)` answers `Event` / `Timeout` / `End`
+  instead of the one `bool` that cannot tell a quiet stream from a finished one; a file reader keeps the default and is
+  unchanged. `L2ReplayFeed` treats `Timeout` as an idle tick and calls a hook on the thread that runs the consumer, and
+  `ThreadedReplayFeed` does the same on the consumer side of its ring. The
+  application's shutdown block is a function (`advance_shutdown`) called from the consumer **and** from that tick, with
+  `drain_venue()` first in both places, so a cancel's answer is applied before the next step asks about the set.
+- **Pinned by `ws_feed_test`**: a peer that completes the handshake and then says nothing answers `Timeout` inside its
+  bound and `End` after the feed is stopped, and a reader scripted with three timeouts gets three ticks and then its
+  event delivered. **Not yet measured in the field**: the next deploy's journal has to show `[SHUTDOWN] step=done` and
+  a session that ends inside the 12 s window with a quiet market -- until that line is read, the statement is that the
+  mechanism is pinned, not that the host behaves.
 - **The health check stopped calling this deploy's own stop a crash.** It counted `Failed with result` over a 600 s window,
   so the `timeout` produced by the restart this very deploy performed made a good deploy red. It now counts only from the
   unit's **last start**: a failure before that is history, a failure after it is a fault.
+
+## The flatten runs the workflow's own tool (2026-11-27)
+
+- **The flatten action could not run at all, and the defect was a script inside a script.** `ops.yml`'s `flatten` was an
+  inline `python3 - <<'PYFLAT'` heredoc inside the `<<'REMOTE'` script that ssh reads as its stdin: indented past the
+  column where its own delimiter has to start, its body never reached the interpreter. Two dispatches ended with the
+  job's last line `action=flatten` and no error. The action now runs `tools/live/okx_probe.py` from the **checked-out
+  workflow tree**, sent to the host at a fixed path by a step of its own, so an ops action is versioned with the
+  repository instead of with whatever the last deploy left in `/opt/toyquant/tools` -- the rule applies to all five
+  actions, not just this one.
+- **The account reads were asking the wrong instrument.** `okx_probe.py` defaults to `BTC-USDT-SWAP` while the relay
+  names its own in `RELAY_INSTRUMENT`, so `status` and `stop` reported a contract the session does not trade. The
+  instrument is read out of `/etc/toyquant/live.env` and passed as `INST_ID`, and an absent one is said out loud rather
+  than silently defaulted.
+
+## The opening balance is read off the account, not copied into a file (2026-11-27)
+
+- **`--starting-cash=venue`** makes the engine ask the account for its USDT equity before anything is quoted, instead of
+  taking a number from `/etc/toyquant/live.yaml`. The reason is arithmetic rather than convenience: this flag is also
+  the exposure ceiling and the loss `--kill-switch-loss-usd` latches against, so an account that its own tests trade --
+  it pays fees and loses a little every session -- turns a copied figure into a risk limit for an account that no longer
+  exists, and the operator had to edit a host file after every session.
+- **A venue that does not answer refuses the start**, and so does a non-positive equity: the alternative is a ledger
+  opened on a guess. `live_config.py` refuses the word in a rehearsal (`venue` without `engine.live_orders`) and refuses
+  a typo by name, so the failure is one sentence in the workflow instead of a unit that exits 1 on the host.
+- **The cost is stated where it is paid.** `[RECON] at=start` compares the venue with the number it just supplied, so it
+  is `ok` by construction; a `[RECON] baseline starting_cash_usd=... source=venue-adopted` line is printed above it and
+  the live page says the accounting check is `[RECON] at=end`. The shipped template says `starting_cash: venue`.
+
+## The reviewer's bundle carries the deploy (2026-11-27)
+
+- `tools/export/bundle.py` classified `src/`, `tests/`, `tools/` and `docs/` only, so `deploy/`, `.github/workflows/`,
+  `config/live.example.yaml` and `.env.example` were in neither `code.txt` nor `diff.patch`: three commits in a row
+  touched the ops workflow and every manifest read `0 file(s) in diff.patch` while the change was real. A reviewer of a
+  deploy change was reading an empty patch, which is the handoff failing quietly rather than the change failing.
 
 ## The deploy loop no longer needs a browser, and the token it needs cannot push (2026-11-27)
 

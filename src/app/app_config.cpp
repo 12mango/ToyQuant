@@ -312,7 +312,8 @@ void print_usage(const char* executable)
                      "latches when the loss reaches N dollars, closes the position it was holding at the "
                      "touch and refuses every order after that. --starting-cash=USD is the cash the account "
                      "starts with (default 1000), which is also that ceiling and the baseline the live "
-                     "venue-equity [RECON] compares against\n";
+                     "venue-equity [RECON] compares against; --starting-cash=venue reads that cash from the "
+                     "account at start, so a balance the tests have moved needs no edit in a file\n";
         std::cerr << "   risk: --fat-finger-bps=X refuses an order priced more than X basis points from the "
                      "current midpoint, and --max-orders-per-second=X with --order-burst=N caps submissions "
                      "with a token bucket; 0 leaves each of them off\n";
@@ -1004,14 +1005,25 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
             }
             else if (flag.compare(0, kStartingCashPrefix.size(), kStartingCashPrefix) == 0)
             {
-                double cash = 0.0;
-                std::istringstream stream(flag.substr(kStartingCashPrefix.size()));
-                if (!(stream >> cash) || !(cash > 0.0))
+                const std::string value = flag.substr(kStartingCashPrefix.size());
+                // The one non-numeric value this flag takes: the venue's own answer. It is a word rather than a magic
+                // number because a number that means "ask" cannot be told apart from an account that happens to hold it.
+                if (value == "venue")
                 {
-                    error = "--starting-cash must be a positive number of US dollars";
-                    return false;
+                    cfg.starting_cash_from_venue = true;
                 }
-                cfg.starting_cash_usd = cash;
+                else
+                {
+                    double cash = 0.0;
+                    std::istringstream stream(value);
+                    if (!(stream >> cash) || !(cash > 0.0))
+                    {
+                        error = "--starting-cash is a positive number of US dollars, or `venue` for the equity the "
+                                "account holds at start";
+                        return false;
+                    }
+                    cfg.starting_cash_usd = cash;
+                }
             }
             else if (flag.compare(0, kKillSwitchPrefix.size(), kKillSwitchPrefix) == 0)
             {

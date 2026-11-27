@@ -35,7 +35,12 @@ engine:
   # The risk limits, which a live session names rather than inherits: the account's ceiling, the loss that latches the
   # switch, the distance a mispriced order may sit at, and the rate the venue's quota allows. Their defaults are the
   # engine's, and they are written here because a live file that leaves them out is a live file nobody can audit.
-  starting_cash: 1000
+  # `venue` reads the opening balance off the account at start -- the USDT equity the venue reports -- instead of a
+  # figure in this file. A small account that its own tests trade loses a little every session, and this number is also
+  # the exposure ceiling and the loss the switch latches against, so a copied figure is a stale risk limit. The price of
+  # the convenience: `[RECON] at=start` then compares the venue with itself and is `ok` by construction (the line above
+  # it says `source=venue-adopted`), so `[RECON] at=end` is the accounting check.
+  starting_cash: venue
   max_exposure_usd: 200
   kill_switch_loss_usd: 50
   fat_finger_bps: 200
