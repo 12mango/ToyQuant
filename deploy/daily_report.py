@@ -189,9 +189,14 @@ def ledger_row(start_utc, end_utc, lines, groups):
     portfolios = [line for line in lines if "[PORTFOLIO]" in line]
     pnls = [line for line in lines if "[PNL]" in line]
     wind_downs = [line for line in lines if "[WIND-DOWN]" in line]
+    executions = [line for line in lines if "[EXECUTION]" in line]
     last_portfolio = portfolios[-1] if portfolios else ""
     last_pnl = pnls[-1] if pnls else ""
     last_wind_down = wind_downs[-1] if wind_downs else ""
+    # The fill markout, which is the one number the live sample has to compare against the replay's: 300 to 500 fills is
+    # what pins it, and `[EXECUTION]` carries it per unit of quantity (`markout_per_unit_ticks`). Empty when the line is
+    # absent, as every other cell is.
+    last_execution = executions[-1] if executions else ""
     account = groups.get("account", {})
     return {
         "window_start_utc": f"{start_utc:%Y-%m-%dT%H:%MZ}",
@@ -203,6 +208,7 @@ def ledger_row(start_utc, end_utc, lines, groups):
         "net_pnl_usd": field_of(last_pnl, "net_pnl_usd"),
         "gross_pnl_usd": field_of(last_pnl, "gross_pnl_usd"),
         "residual_units": field_of(last_wind_down, "residual"),
+        "markout_ticks": field_of(last_execution, "markout_per_unit_ticks"),
         "equity_usd": (account.get("equity", "").replace(" USDT", "").replace(",", "")
                        if account.get("equity", "").endswith(" USDT") else ""),
         "read_at": account.get("read_at", ""),
@@ -436,12 +442,17 @@ def self_test():
     # The ledger's columns come from lines that exist, and a line that is absent is an empty cell rather than a zero.
     lines = ["Nov 27 15:30:01 host toy_quant[1]: [PORTFOLIO] fees_paid=0.02 maker_trade_count=44 taker_trade_count=1",
              "Nov 27 15:30:01 host toy_quant[1]: [PNL] gross_pnl_usd=0.5 net_pnl_usd=-0.25 shares=1000",
+             "Nov 27 15:30:01 host toy_quant[1]: [EXECUTION] trade_reports=45 markout_per_unit_ticks=-0.590909",
              "Nov 27 15:30:02 host toy_quant[1]: [WIND-DOWN] position=0 closed=10000 residual=0 total_bps=3.2"]
     start, end = window_at(datetime(2026, 11, 27, 16, 0, tzinfo=timezone.utc))
     row = ledger_row(start, end, lines, {"account": {"equity": "99.45 USDT", "read_at": "2026-11-27T16:00Z"}})
     assert row["maker_trades"] == "44" and row["taker_trades"] == "1", row
     assert row["net_pnl_usd"] == "-0.25" and row["residual_units"] == "0", row
     assert row["sessions"] == "1" and row["equity_usd"] == "99.45", row
+    # The markout rides the row from `[EXECUTION]`, because the live sample's markout is the number the replay's has to be
+    # compared with; a window whose line is absent leaves the cell empty rather than zero.
+    assert row["markout_ticks"] == "-0.590909", row
+    assert ledger_row(start, end, lines[:2], {"account": {}})["markout_ticks"] == "", "no [EXECUTION] line"
     empty = ledger_row(start, end, [], {"account": {}})
     assert empty["net_pnl_usd"] == "" and empty["sessions"] == "0" and empty["equity_usd"] == "", empty
     # The mail writes `4,797.31 USDT` for a reader; the ledger is parsed by a tool, so the cell is a number.
