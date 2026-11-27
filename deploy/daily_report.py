@@ -171,6 +171,11 @@ def account_facts():
     """USDT equity, the position and the working orders, from the venue. A missing credential is named, not faked."""
     try:
         okx_probe.load_credentials()
+        # `load_credentials()` also puts every `KEY=value` of the operator's file into the environment (it uses
+        # `setdefault` for all of them, not only the three credentials), so the instrument is known *after* it -- which is
+        # why this is read here and not only at import: a manual `--dry-run` run has no EnvironmentFile, and the first one
+        # reported `0 contract(s) on BTC-USDT-SWAP` for an account that trades `UP-USDT-SWAP`.
+        okx_probe.INST = instrument_of_the_seat()
         equity = okx_probe.balance()
         position = okx_probe.positions()
         pending = okx_probe.pending()
