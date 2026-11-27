@@ -387,12 +387,34 @@ def rule_report_sandbox(texts):
     return problems
 
 
+def rule_report_identity(texts):
+    """A one-off report run outside its unit has to ask for the journal group the unit grants.
+
+    The report reads `journalctl -u toyquant-live`, and the service account is not a member of `systemd-journal`: the
+    unit supplies that with `SupplementaryGroups=` and a run from the ops workflow supplies nothing. Measured
+    2026-11-27, the first backfill: `sudo -u toyquant python3 daily_report.py --at ...` reported "no [PORTFOLIO] line in
+    the window" and appended a `sessions=0` row about a session whose numbers were in the journal -- an empty row in the
+    series, written by an account that could not look. So both ends are checked: the unit names the group, and every
+    line that runs the report outside it names the group too.
+    """
+    problems = []
+    if "systemd-journal" not in texts["report_unit"]:
+        problems.append("deploy/toyquant-report.service does not carry `SupplementaryGroups=systemd-journal`: the report "
+                        "reads the session's journal and the service account is not a member of that group")
+    for line in texts["ops_workflow"].splitlines():
+        if "python3" in line and "daily_report.py" in line and "systemd-journal" not in line:
+            problems.append("an ops action runs daily_report.py outside its unit and without `sg systemd-journal`: the "
+                            "scan then comes back empty and the row it writes is a zero that is not a measurement")
+    return problems
+
+
 RULES = (("env_names", rule_env_names), ("template_keys", rule_template_keys), ("endpoints", rule_endpoints),
          ("ordering", rule_ordering), ("stop_window", rule_stop_window), ("bundled", rule_bundled),
          ("coupling", rule_coupling), ("notify_refs", rule_notify_refs), ("deploy_order", rule_deploy_order),
          ("unit_reload", rule_unit_reload), ("ssh_quoting", rule_ssh_quoting),
          ("preflight_isolation", rule_preflight_isolation), ("report_clock", rule_report_clock),
-         ("timer_install", rule_timer_install), ("report_sandbox", rule_report_sandbox))
+         ("timer_install", rule_timer_install), ("report_sandbox", rule_report_sandbox),
+         ("report_identity", rule_report_identity))
 
 FILES = {"env": ".env.example",
          "live_yaml": "config/live.example.yaml",
@@ -474,7 +496,7 @@ CLEAN = {
                  "echo \"bootstrap: systemd did not load toyquant-relay\"\n",
     "preflight": "startup=$(engine ws 127.0.0.1:1 --venue-endpoint=127.0.0.1:1)\n",
     "report_timer": "[Timer]\nOnCalendar=*-*-* 16:15:00 UTC\nPersistent=true\n",
-    "report_unit": "[Service]\nUser=toyquant\nProtectSystem=strict\nReadWritePaths=-/opt/toyquant/data/runtime\n",
+    "report_unit": "[Service]\nUser=toyquant\nSupplementaryGroups=systemd-journal\nProtectSystem=strict\nReadWritePaths=-/opt/toyquant/data/runtime\n",
     "window_start": "[Timer]\nOnCalendar=*-*-* 13:30:00 UTC\nUnit=toyquant-live.service\n",
     "window_stop": "[Timer]\nOnCalendar=*-*-* 15:32:00 UTC\nUnit=toyquant-window-stop.service\n",
     "daily_report": "run([\"journalctl\", \"-u\", UNIT, \"--since\", start, \"--until\", end, \"--utc\"])\n"
@@ -553,6 +575,12 @@ def self_test():
           "and not /opt/toyquant/data/runtime")
     check("report_sandbox", lambda t: t.update(daily_report=t["daily_report"].replace("data/runtime", "data/x")),
           "one of the two moved")
+    # The identity half: the report reads a journal the service account cannot see on its own.
+    check("report_identity", lambda t: t.update(report_unit=t["report_unit"].replace(
+        "SupplementaryGroups=systemd-journal\n", "")), "SupplementaryGroups=systemd-journal")
+    check("report_identity", lambda t: t.update(ops_workflow=t["ops_workflow"] + (
+        "sudo -u toyquant /usr/bin/python3 /opt/toyquant/deploy/daily_report.py --dry-run\n")),
+        "without `sg systemd-journal`")
     del defects
     print(f"check_deploy self-test OK ({len(RULES)} rule(s), each on a defect and on the clean copy)")
     return 0

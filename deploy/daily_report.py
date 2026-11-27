@@ -36,6 +36,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 
@@ -210,17 +211,37 @@ def ledger_row(start_utc, end_utc, lines, groups):
 
 
 def append_ledger(path, row):
-    """Append one row, header first, and never fail the mail for it -- a ledger that breaks the report is a report lost."""
+    """One row per window: append it, replacing the row that window already has.
+
+    A rewrite rather than a blind append, because a row is keyed by its window and two rows for one window are a series
+    that double-counts: the timer can fire twice (`Persistent=true` after a suspend) and a backfill deliberately re-runs a
+    window (`--ops report --at`), and re-deriving a recorded number is the only way this file is allowed to change one.
+    Older rows keep the current columns, so a row written before a column was added reads as empty in it.
+
+    Never fails the mail for it -- a ledger that breaks the report is a report lost.
+    """
     try:
         target = Path(path)
         target.parent.mkdir(parents=True, exist_ok=True)
-        new_file = not target.exists()
-        with target.open("a", encoding="utf-8", newline="") as handle:
+        rows = []
+        replaced = False
+        if target.exists():
+            with target.open(encoding="utf-8", newline="") as handle:
+                for existing in csv.DictReader(handle):
+                    if existing.get("window_start_utc") == row["window_start_utc"]:
+                        replaced = True
+                        continue
+                    rows.append(existing)
+        rows.append(row)
+        # A series is read in window order, and a backfill of an older window belongs where it belongs rather than at the
+        # end: the key is an ISO date, so the sort is chronological.
+        rows.sort(key=lambda item: item.get("window_start_utc", ""))
+        with target.open("w", encoding="utf-8", newline="") as handle:
             writer = csv.DictWriter(handle, fieldnames=list(row))
-            if new_file:
-                writer.writeheader()
-            writer.writerow(row)
-        return f"appended {target}"
+            writer.writeheader()
+            for existing in rows:
+                writer.writerow({name: existing.get(name, "") for name in row})
+        return f"{'replaced the row in' if replaced else 'appended to'} {target}"
     except OSError as error:
         return f"unavailable ({error})"
 
@@ -425,6 +446,19 @@ def self_test():
     assert empty["net_pnl_usd"] == "" and empty["sessions"] == "0" and empty["equity_usd"] == "", empty
     # The mail writes `4,797.31 USDT` for a reader; the ledger is parsed by a tool, so the cell is a number.
     assert ledger_row(start, end, [], {"account": {"equity": "4,797.31 USDT"}})["equity_usd"] == "4797.31"
+    # One row per window, even when a window is reported twice: a backfill replaces the row rather than adding a second
+    # one, because two rows for one window are a series that double-counts (measured 2026-11-27: the first backfill ran
+    # against a journal the account could not read, and re-deriving it must not leave both rows behind).
+    with tempfile.TemporaryDirectory() as scratch:
+        ledger = os.path.join(scratch, "window_ledger.csv")
+        assert "appended" in append_ledger(ledger, dict(row, maker_trades="1")), "first write"
+        assert "replaced" in append_ledger(ledger, dict(row, maker_trades="44")), "the same window again"
+        append_ledger(ledger, dict(row, window_start_utc="2026-11-26T13:30Z", maker_trades="7"))
+        with open(ledger, encoding="utf-8") as handle:
+            written = list(csv.DictReader(handle))
+        assert len(written) == 2, written
+        assert written[0]["window_start_utc"] == "2026-11-26T13:30Z", written
+        assert written[1]["window_start_utc"] == row["window_start_utc"] and written[1]["maker_trades"] == "44", written
     # A window that has not closed keeps the *previous* one as the report's subject, and the mail has to say so.
     assert "previous one" in window_note(datetime(2026, 11, 27, 14, 0, tzinfo=timezone.utc)), "inside the window"
     assert "previous one" not in window_note(datetime(2026, 11, 27, 15, 35, tzinfo=timezone.utc)), "after the close"

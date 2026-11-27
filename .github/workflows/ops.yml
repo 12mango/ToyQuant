@@ -173,10 +173,16 @@ jobs:
               # instead of sent (`--no-mail`). It writes the ledger row, which is how a window the timer missed is
               # backfilled, and it is how the row's path, the unit's `ReadWritePaths=` sandbox and the scan's grace are
               # checked without waiting for 15:35.
+              #
+              # `sg systemd-journal` is the identity half of the same question the unit answers with
+              # `SupplementaryGroups=`: the report reads the session's journal, and `toyquant` is not a member of that
+              # group. Measured 2026-11-27, the first backfill: run as plain `sudo -u toyquant` the scan saw nothing, so
+              # the row said `sessions=0` and "no [PORTFOLIO] line in the window" about the session whose numbers were in
+              # the journal -- an empty row in the series, written by an account that could not look.
               if [ -n "${AT:-}" ]; then
-                sudo -u toyquant /usr/bin/python3 /opt/toyquant/deploy/daily_report.py --no-mail --at "$AT"
+                sudo -u toyquant sg systemd-journal -c "/usr/bin/python3 /opt/toyquant/deploy/daily_report.py --no-mail --at $AT"
               else
-                sudo -u toyquant /usr/bin/python3 /opt/toyquant/deploy/daily_report.py --no-mail
+                sudo -u toyquant sg systemd-journal -c "/usr/bin/python3 /opt/toyquant/deploy/daily_report.py --no-mail"
               fi
               ;;
             ledger)
@@ -254,7 +260,10 @@ jobs:
               echo '-- what the session will run with'
               sudo python3 /opt/toyquant/tools/live/live_config.py --flags /etc/toyquant/live.yaml 2>&1 | head -30
               echo '-- the daily mail it would send now (a dry run, nothing is mailed)'
-              sudo -u toyquant /usr/bin/python3 /opt/toyquant/deploy/daily_report.py --dry-run 2>&1 | head -24
+              # Same identity as the timer: the report reads the session's journal, and the service account is not a
+              # member of `systemd-journal` -- the unit grants it with `SupplementaryGroups=`, so a one-off run outside
+              # the unit has to say so too or the scan comes back empty (measured 2026-11-27).
+              sudo -u toyquant sg systemd-journal -c "/usr/bin/python3 /opt/toyquant/deploy/daily_report.py --dry-run" 2>&1 | head -40
               echo '-- who runs, and as whom'
               whoami; sudo whoami; hostname; date -u '+%Y-%m-%dT%H:%M:%SZ'
               echo '-- is there a manager at all, and can it be written to'
