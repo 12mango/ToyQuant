@@ -28,6 +28,10 @@ FLAGS = {
     # Optional positionals, after the strategy: the clip scale and the queue model.
     ("engine", "quantity_scale"): "",
     ("engine", "queue_model"): "",
+    # The session's own bound: a live window is two hours, so a session started at the open with `ws_seconds: 7200` ends
+    # itself at the close and exits 0 -- `Restart=on-failure` then leaves it down, which is what "the window closed" has
+    # to mean on a host nobody is watching. The engine's wind-down (`wind_down_*`) is the gentler half of the same end.
+    ("engine", "ws_seconds"): "--ws-seconds",
     ("engine", "base_spread_ticks"): "--base-spread-ticks",
     ("engine", "quote_distance_bps"): "--quote-distance-bps",
     ("engine", "refresh_price_ticks"): "--refresh-price-ticks",

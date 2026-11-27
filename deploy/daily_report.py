@@ -4,15 +4,22 @@
     python3 deploy/daily_report.py --dry-run     # print it
     python3 deploy/daily_report.py               # mail it
 
-Run by `toyquant-report.timer` (once a day, after the window the operator named in the timer). Four groups, and each one
-says `unavailable` with a reason rather than a zero when it cannot read its source -- a report that prints `net_pnl=0.00`
-because the journal was rotated is worse than one that says it could not read the journal:
+Run by `toyquant-report.timer` (once a day, after the trading window). Four groups, and each one says `unavailable` with
+a reason rather than a zero when it cannot read its source -- a report that prints `net_pnl=0.00` because the journal was
+rotated is worse than one that says it could not read the journal:
 
+  * the window, stated three ways: UTC (the clock the engine and the archive use), HKT and JST (the two clocks the people
+    involved read) -- because this host is in Tokyo, the operator is in Hong Kong and the session is named in UTC
   * the account, from the venue's own REST surface (`okx_probe`'s reads: USDT equity, the position, pending orders)
-  * the session, from `journalctl -u toyquant-live --since -24h`: fills, the last `[PNL]`, the last `[RECON]`, any
-    `[BREAKER]`, and the restarts systemd counted
-  * the host: disk on `/` and `/opt/toyquant`, memory, uptime
-  * the two warnings the operator acts on: a break in `[RECON]` and a restart count above zero
+  * the session, from `journalctl -u toyquant-live` over **the window's own interval**, in UTC: fills, the last `[PNL]`,
+    the last `[RECON]`, any `[BREAKER]`, and the restarts systemd counted
+  * the host: disk on `/` and `/opt/toyquant`, memory, uptime, and which clock the host keeps
+
+**The interval is the most recently completed window, not a rolling 24 h.** A rolling day is wrong on this host in a way
+that is easy to miss: the window 13:30-15:30 UTC is 22:30-00:30 JST, so it *crosses* local midnight, and a mail that fires
+at 00:15 JST (15:15 UTC) would report a window that has not closed yet. The window is named once, in UTC, by
+`--window-start/--window-end` (defaults `13:30`/`15:30`), and `journalctl` is given epoch bounds so the host's zone cannot
+reinterpret them.
 
 The mail goes through `notify.py`, whose SMTP settings are the same ones `/etc/toyquant/live.env` already carries for
 alerts (`SMTP_*`, `ALERT_EMAIL_TO` or `NOTIFY_TO`). No credentials means no mail and a sentence saying so.
@@ -23,7 +30,7 @@ import shutil
 import socket
 import subprocess
 import sys
-import time
+from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -32,7 +39,50 @@ import notify  # noqa: E402
 import okx_probe  # noqa: E402
 
 UNIT = os.environ.get("SERVICE_NAME", "toyquant-live")
-WINDOW_HOURS = 24
+# The window, in UTC, named once. The engine's own session clock is UTC (`--wind-down-end` is "minutes of the UTC day"),
+# the archive's timestamps are UTC, and this report reads the journal between two UTC instants.
+WINDOW_START = os.environ.get("TOYQUANT_WINDOW_START_UTC", "13:30")
+WINDOW_END = os.environ.get("TOYQUANT_WINDOW_END_UTC", "15:30")
+# The two clocks a reader uses. Neither zone has daylight saving, so a fixed offset is exact and needs no tzdata.
+ZONES = (("UTC", timezone.utc), ("HKT", timezone(timedelta(hours=8))), ("JST", timezone(timedelta(hours=9))))
+
+
+def clock(text):
+    """`HH:MM` as a `time`, or a sentence naming what was given instead."""
+    try:
+        hour, minute = text.split(":")
+        return time(int(hour), int(minute))
+    except (AttributeError, ValueError):
+        raise SystemExit(f"daily_report: '{text}' is not HH:MM (the window is named in UTC)")
+
+
+def window_at(now, start=WINDOW_START, end=WINDOW_END):
+    """The most recently completed window, as two UTC instants.
+
+    A window that ends before it starts crosses UTC midnight (`23:00` to `01:00`), so the start belongs to the previous
+    day. A window that has not closed yet at `now` means yesterday's is the last complete one.
+    """
+    start_at = clock(start)
+    end_at = clock(end)
+    end_utc = datetime.combine(now.date(), end_at, tzinfo=timezone.utc)
+    start_utc = datetime.combine(now.date(), start_at, tzinfo=timezone.utc)
+    if start_utc >= end_utc:
+        start_utc -= timedelta(days=1)
+    if now < end_utc:
+        start_utc -= timedelta(days=1)
+        end_utc -= timedelta(days=1)
+    return start_utc, end_utc
+
+
+def zone_range(start_utc, end_utc):
+    """The same interval in each clock, as one line: the three readings of one session."""
+    return "  ".join(f"{name} {start_utc.astimezone(offset):%H:%M}-{end_utc.astimezone(offset):%H:%M}"
+                     for name, offset in ZONES)
+
+
+def host_zone():
+    local = datetime.now().astimezone()
+    return f"{local.tzname() or 'unknown'} (UTC{local:%z})"
 
 
 def run(command, timeout=25):
@@ -68,21 +118,27 @@ def host_facts():
         facts["uptime"] = "unavailable"
     journal = run(["journalctl", "--disk-usage"])
     facts["journal"] = journal.strip() if journal else "unavailable"
+    facts["clock"] = host_zone()
     return facts
 
 
-def session_facts():
-    """The last day of the session's own journal, as the four lines an operator reads."""
-    text = run(["journalctl", "-u", UNIT, "--since", f"-{WINDOW_HOURS}h", "--no-pager", "-q"])
+def session_facts(start_utc, end_utc):
+    """The window's own journal, as the four lines an operator reads.
+
+    Epoch bounds (`@<seconds>`) and `--utc`, so neither this host's zone nor its locale can move the interval or the
+    stamps: the host is in Tokyo, the operator is in Hong Kong, and the window is named in UTC.
+    """
+    text = run(["journalctl", "-u", UNIT, "--since", f"@{int(start_utc.timestamp())}",
+                "--until", f"@{int(end_utc.timestamp())}", "--utc", "--no-pager", "-q"])
     if text is None:
         return {"fills": "unavailable", "pnl": "unavailable", "recon": "unavailable", "breaker": "none"}
     lines = text.splitlines()
 
     def last(tag):
         found = [line for line in lines if tag in line]
-        return found[-1].strip() if found else f"no {tag} line in {WINDOW_HOURS} h"
+        return found[-1].strip() if found else f"no {tag} line in the window"
 
-    facts = {"fills": f"{sum(1 for line in lines if '[FILL]' in line)} fill line(s) in {WINDOW_HOURS} h",
+    facts = {"fills": f"{sum(1 for line in lines if '[FILL]' in line)} fill line(s) in the window",
              "pnl": last("[PNL]"), "recon": last("[RECON]"), "breaker": last("[BREAKER]")}
     state = run(["systemctl", "show", "-p", "NRestarts", "--value", UNIT])
     active = run(["systemctl", "show", "-p", "ActiveState", "--value", UNIT])
@@ -103,9 +159,12 @@ def account_facts():
         return {"equity": f"unavailable ({error})", "position": "unavailable", "pending": "unavailable"}
     contracts = sum(float(row.get("pos", "0") or 0) for row in (position or [])
                     if row.get("instId") in (None, okx_probe.INST))
+    # The reads happen now, after the window, so the line says when rather than leaving the reader to assume a moment.
+    at = datetime.now(timezone.utc)
     return {"equity": "unavailable (the venue did not answer the balance)" if equity is None else f"{equity:,.2f} USDT",
             "position": f"{contracts:g} contract(s) on {okx_probe.INST}",
-            "pending": f"{len(pending or [])} working order(s)"}
+            "pending": f"{len(pending or [])} working order(s)",
+            "read_at": f"{at:%Y-%m-%dT%H:%MZ}"}
 
 
 def compose(groups, host=None):
@@ -126,11 +185,23 @@ def main():
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--dry-run", action="store_true", help="print the report instead of mailing it")
     parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--window-start", default=WINDOW_START, metavar="HH:MM", help="window open, UTC")
+    parser.add_argument("--window-end", default=WINDOW_END, metavar="HH:MM", help="window close, UTC")
+    parser.add_argument("--at", metavar="ISO8601", help="pretend it is this UTC instant (for a dry run)")
     args = parser.parse_args()
     if args.self_test:
         return self_test()
 
-    groups = {"session": session_facts(), "account": account_facts(), "host": host_facts()}
+    now = datetime.fromisoformat(args.at).replace(tzinfo=timezone.utc) if args.at else datetime.now(timezone.utc)
+    start_utc, end_utc = window_at(now, args.window_start, args.window_end)
+    groups = {
+        "window": {"utc": f"{start_utc:%Y-%m-%dT%H:%MZ} .. {end_utc:%H:%MZ}",
+                   "clocks": zone_range(start_utc, end_utc),
+                   "note": "the most recently completed window; the account is read at report time"},
+        "session": session_facts(start_utc, end_utc),
+        "account": account_facts(),
+        "host": host_facts(),
+    }
     subject, body = compose(groups)
     settings = notify.load_settings()
     if args.dry_run:
@@ -145,14 +216,26 @@ def main():
 
 
 def self_test():
-    """A report that names its three groups, and one that says `unavailable` instead of inventing a zero."""
-    groups = {"session": {"fills": "3 fill line(s) in 24 h", "pnl": "[PNL] net_pnl_usd=-1.20"},
+    """A report that names its four groups, and one that says `unavailable` instead of inventing a zero."""
+    groups = {"window": {"clocks": zone_range(*window_at(datetime(2026, 11, 28, 1, 0, tzinfo=timezone.utc)))},
+              "session": {"fills": "3 fill line(s) in the window", "pnl": "[PNL] net_pnl_usd=-1.20"},
               "account": {"equity": "498.10 USDT", "pending": "2 working order(s)"},
               "host": {"disk_root": "42% used", "memory": "1.1 GiB used of 3.9 GiB"}}
     subject, body = compose(groups, host="toyquant-test")
     assert "498.10 USDT" in subject and "toyquant-test" in subject, subject
-    for needle in ("-- session", "-- account", "-- host", "2 working order(s)", "1.1 GiB"):
+    for needle in ("-- window", "-- session", "-- account", "-- host", "2 working order(s)", "1.1 GiB"):
         assert needle in body, (needle, body)
+    # The three readings of one interval: the window is 13:30-15:30 UTC, which is 21:30-23:30 in Hong Kong and
+    # 22:30-00:30 in Tokyo -- the crossing of local midnight is the point, and the reason the mail names the clock.
+    start, end = window_at(datetime(2026, 11, 27, 16, 0, tzinfo=timezone.utc))
+    assert (start.hour, start.minute) == (13, 30) and (end.hour, end.minute) == (15, 30), (start, end)
+    assert zone_range(start, end) == "UTC 13:30-15:30  HKT 21:30-23:30  JST 22:30-00:30", zone_range(start, end)
+    # Before the window has closed, the last complete one is yesterday's: 15:29Z is inside the window itself.
+    start, end = window_at(datetime(2026, 11, 27, 15, 29, tzinfo=timezone.utc))
+    assert start.date().isoformat() == "2026-11-26" and end.date().isoformat() == "2026-11-26", (start, end)
+    # A window that crosses UTC midnight keeps its start on the previous day.
+    start, end = window_at(datetime(2026, 11, 27, 2, 0, tzinfo=timezone.utc), "23:00", "01:00")
+    assert start.date().isoformat() == "2026-11-26" and end.date().isoformat() == "2026-11-27", (start, end)
     # An unreadable source is a sentence, not a zero: the two silent-zero shapes the report exists to avoid.
     quiet = compose({"account": {"equity": "unavailable (TOYQUANT_API_KEY is not set)"}, "host": {}}, host="h")[1]
     assert "unavailable" in quiet and "0.00" not in quiet, quiet

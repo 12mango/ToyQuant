@@ -27,8 +27,12 @@ engine:
   live_orders: true
   advance_debounce_ms: 40000      # forty seconds of book time, the frozen configuration's suppression
   settle_residual: true
+  # The window's own end, in **UTC minutes of the day** (`15:30` is 930), because the engine's clock is the market's and
+  # every recorded window is named that way: 13:30-15:30 UTC is 21:30-23:30 in Hong Kong and 22:30-00:30 in Tokyo, so a
+  # host-local or operator-local reading of this number would close the session at the wrong hour.
+  # ws_seconds: 7200              # the session ends itself this long after it starts, cleanly, and stays down
   # wind_down_skew_minutes: 15    # only meaningful for a session that ends at a named clock
-  # wind_down_end: "15:30"
+  # wind_down_end: "15:30"        # UTC: the two-hour window's close
   # wind_down_skew_ticks: 1       # how far the closing side walks in over the wind-down
   # wind_down_adverse_bps: 15     # start the skew only when the tail is marked against us by this many bps
 

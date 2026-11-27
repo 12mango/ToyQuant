@@ -980,14 +980,38 @@ flags come from the same parent.
 `MaxRetentionSec=30day` -- because `logrotate` bounds the engine's files under `/opt/toyquant/logs` and nothing bounded
 systemd's journal, which is the log a 20 GB disk loses first. `journalctl --disk-usage` prints what is in force.
 
-**One mail a day, and no SSH to get it.** `toyquant-report.timer` runs `deploy/daily_report.py` at 00:15 host time
-(`systemctl list-timers` shows the next fire, `journalctl -u toyquant-report` the last one) and mails the day's four
-groups: the session (fill lines, the last `[PNL]`, the last `[RECON]`, the restart count and, once the day-lock breaker
-lands, any `[BREAKER]` line), the account
-(USDT equity, position, working orders, from the venue), the host (both disks, memory, uptime) and the journal's own
-disk usage. A source it cannot read is a sentence with the reason, never a zero: a report that prints `net_pnl=0.00`
-because the journal rotated is worse than one that says it could not read it. `python3 deploy/daily_report.py --dry-run`
-prints the mail.
+**One mail a day, and no SSH to get it.** `toyquant-report.timer` runs `deploy/daily_report.py` at **16:15 UTC** -- 45
+minutes after the window closes, which is 01:15 JST on the host and 00:15 HKT where the operator sits (`systemctl
+list-timers` shows the next fire in the host's own clock, `journalctl -u toyquant-report` the last one). It mails the
+**most recently completed window**, not a rolling 24 hours: the window's interval in UTC, its arithmetic in UTC, HKT and
+JST, then the session (fill lines, the last `[PNL]`, the last `[RECON]`, the restart count and, once the day-lock breaker
+lands, any `[BREAKER]` line, read with `journalctl --since @<epoch> --until @<epoch> --utc`), the account (USDT equity,
+position, working orders, from the venue, with the instant it was read), the host (both disks, memory, uptime, the zone
+the host keeps) and the journal's own disk usage. A source it cannot read is a sentence with the reason, never a zero: a
+report that prints `net_pnl=0.00` because the journal rotated is worse than one that says it could not read it.
+`python3 deploy/daily_report.py --dry-run --at 2026-11-27T16:20:00Z` prints the mail without waiting for the timer.
+
+**The window is named in UTC, and the three clocks are one table.** The engine's session clock is the market's
+(`--wind-down-end` is minutes of the UTC day), the archive's timestamps are UTC, the host is in Tokyo and the operator is
+in Hong Kong -- so every document, timer and report names the zone, and only the clock changes:
+
+| the same two hours | where it is read |
+|---|---|
+| `13:30-15:30 UTC` | the engine's wind-down, the archive, `journalctl --utc`, `daily_report.py` |
+| `21:30-23:30 HKT` | the operator's own day; the window opens at 21:30 and closes at 23:30 |
+| `22:30-00:30 JST` | the host's `date`, the journal's default stamps, `systemctl list-timers` |
+
+> The window crosses local midnight on the host, which is why a host-local timer cannot express "after the window" and why
+> the report's interval is two UTC instants rather than "the last 24 hours".
+
+**How the session ends at the close, with nobody watching.** Two mechanisms, and the file names which one is in force.
+`ws_seconds: 7200` bounds the session from its own start: restart it at the window's open and it exits by itself at the
+close, cleanly, and `Restart=on-failure` leaves it down -- the unit is a session, and a session that ended is not a fault.
+The engine's `wind_down_*` set is the gentler half of the same end: over the last `wind_down_skew_minutes` before
+`wind_down_end` (UTC minutes of the day, so `15:30` is the close) the closing side walks in and the adding side stops
+opening, which is what the registered cell measured. Neither of them *flattens*: the residual is carried and priced by
+`settle_residual` (`[SETTLE]`), and flattening it is `close_out: true` -- a taker cross the measured cell did not take, so
+it is the operator's call rather than a default.
 
 **Six host actions from a browser, instead of an SSH session.** `.github/workflows/ops.yml` is a dispatch workflow with a
 menu; every action runs one SSH session and prints its result into the run's log.

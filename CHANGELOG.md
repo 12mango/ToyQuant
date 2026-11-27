@@ -7,6 +7,32 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The window is named in UTC, and the daily mail is that window (2026-11-27)
+
+- **Three clocks met in the same stack and only one of them was written down.** The engine's session clock is the market's
+  (`--wind-down-end` is minutes of the UTC day), the archive and every recorded window are UTC (13:30-15:30), the host is
+  in Tokyo and the operator is in Hong Kong -- so the same two hours are 21:30-23:30 HKT and 22:30-00:30 JST, and the
+  window **crosses the host's local midnight**. Nothing in the tree said which clock a time belonged to, so each reading
+  was available and only one was meant.
+- **`deploy/toyquant-report.timer` fired at `00:15:00`, host-local**, which on the Tokyo host is 15:15 UTC -- fifteen
+  minutes *before* the window closes. It is now `OnCalendar=*-*-* 16:15:00 UTC` (45 minutes after the close: 01:15 JST,
+  00:15 HKT), with the zone in the line rather than in a comment, so the same file means the same moment on any host.
+- **`deploy/daily_report.py` reported a rolling 24 hours and called it the day.** It now reports **the most recently
+  completed window**: `--window-start/--window-end` in UTC (defaults 13:30/15:30), the interval computed in UTC, and
+  `journalctl --since @<epoch> --until @<epoch> --utc` so neither the host's zone nor its locale can move the bounds or the
+  stamps. The body gained a `window` group that prints the interval three ways
+  (`UTC 13:30-15:30  HKT 21:30-23:30  JST 22:30-00:30`), the account group says the instant it was read, and the host
+  group says which zone the host keeps. `--dry-run --at <ISO8601>` prints a mail for any instant, which is how the
+  arithmetic is checked without waiting for a window.
+- **The self-test pins the crossings**, not only the happy path: 16:00Z is today's window, 15:29Z is yesterday's (the
+  window is still open), and a `23:00`-`01:00` window keeps its start on the previous UTC day.
+- **`ws_seconds` is mapped into `live.yaml`** (`--ws-seconds` existed and the reader did not know it), so a two-hour window
+  can end itself instead of depending on someone remembering to stop it: started at the open it exits cleanly at the
+  close, and `Restart=on-failure` leaves it down. It is a comment in the template, because whether the session carries the
+  residual or flattens it is the operator's call -- `settle_residual` prices the handover and `close_out` pays the spread.
+- **`check_deploy.py`'s thirteenth rule** holds the clock: the timer's `OnCalendar` ends in a zone, the report reads the
+  journal with `--utc` and an `--until`, and the self-test fires on each of the three by removing it.
+
 ## A deploy kills the session instead of cancelling it: the stop was event-driven (2026-11-27, fix written)
 
 - **The graceful stop only advanced when a market event arrived.** `application.cpp` ran the `SessionShutdown` step

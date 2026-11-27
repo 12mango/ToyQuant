@@ -2,11 +2,13 @@
 Description=ToyQuant daily report timer
 
 [Timer]
-# After the trading window the operator named, in the host's own time zone. One line to change if the window moves:
-# `OnCalendar=` takes a systemd calendar expression and `systemctl list-timers` shows the next fire.
-OnCalendar=*-*-* 00:15:00
-# A host that was down at 00:15 sends the report when it comes back rather than skipping the day, and a five-minute
-# jitter keeps a fleet of hosts from mailing at the same second.
+# **After the trading window, named in UTC, because the window is.** The window is 13:30-15:30 UTC -- 21:30-23:30 in Hong
+# Kong and 22:30-00:30 in Tokyo, so it crosses local midnight on the host -- and a host-local time cannot express that
+# without a comment nobody reads. `16:15:00 UTC` is 45 minutes after the close (01:15 JST, 00:15 HKT); systemd 235 and
+# newer read the zone suffix. `systemctl list-timers` shows the next fire in the host's own clock.
+OnCalendar=*-*-* 16:15:00 UTC
+# A host that was down at that moment sends the report when it comes back rather than skipping the window, and a
+# five-minute jitter keeps a fleet of hosts from mailing at the same second.
 Persistent=true
 RandomizedDelaySec=300
 Unit=toyquant-report.service

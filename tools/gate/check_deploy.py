@@ -283,11 +283,33 @@ def rule_preflight_isolation(texts):
     return problems
 
 
+def rule_report_clock(texts):
+    """The daily mail's *when* and *which interval* are both named in UTC, because the host's clock is not the window's.
+
+    The host is in Tokyo and the operator is in Hong Kong, and the window 13:30-15:30 UTC is 22:30-00:30 JST -- it crosses
+    the host's midnight. A host-local `OnCalendar` therefore fires inside the window (00:15 JST is 15:15 UTC), and a
+    `journalctl --since -24h` reports a day that is not the session's. Measured 2026-11-27, before this rule.
+    """
+    problems = []
+    calendar = [line for line in texts["report_timer"].splitlines() if line.startswith("OnCalendar=")]
+    if not calendar:
+        problems.append("deploy/toyquant-report.timer has no OnCalendar line")
+    elif not calendar[0].rstrip().endswith((" UTC", " GMT")):
+        problems.append("deploy/toyquant-report.timer fires on the host's own clock: name the zone "
+                        "(`OnCalendar=*-*-* 16:15:00 UTC`), because the window crosses the host's midnight")
+    report = texts["daily_report"]
+    if '"--utc"' not in report:
+        problems.append("deploy/daily_report.py reads the journal without `--utc`: its lines then carry the host's clock")
+    if '"--until"' not in report:
+        problems.append("deploy/daily_report.py has no `--until`: a rolling `--since -24h` is not the window")
+    return problems
+
+
 RULES = (("env_names", rule_env_names), ("template_keys", rule_template_keys), ("endpoints", rule_endpoints),
          ("ordering", rule_ordering), ("stop_window", rule_stop_window), ("bundled", rule_bundled),
          ("coupling", rule_coupling), ("notify_refs", rule_notify_refs), ("deploy_order", rule_deploy_order),
          ("unit_reload", rule_unit_reload), ("ssh_quoting", rule_ssh_quoting),
-         ("preflight_isolation", rule_preflight_isolation))
+         ("preflight_isolation", rule_preflight_isolation), ("report_clock", rule_report_clock))
 
 FILES = {"env": ".env.example",
          "live_yaml": "config/live.example.yaml",
@@ -299,6 +321,8 @@ FILES = {"env": ".env.example",
          "ops_workflow": ".github/workflows/ops.yml",
          "bootstrap": "deploy/bootstrap_server.sh",
          "preflight": "deploy/preflight.sh",
+         "report_timer": "deploy/toyquant-report.timer",
+         "daily_report": "deploy/daily_report.py",
          "shutdown_h": "src/lines/session_shutdown.h"}
 
 
@@ -357,6 +381,8 @@ CLEAN = {
                  "case \"$unit\" in *@) continue ;; esac\n"
                  "echo \"bootstrap: systemd did not load toyquant-relay\"\n",
     "preflight": "startup=$(engine ws 127.0.0.1:1 --venue-endpoint=127.0.0.1:1)\n",
+    "report_timer": "[Timer]\nOnCalendar=*-*-* 16:15:00 UTC\nPersistent=true\n",
+    "daily_report": "run([\"journalctl\", \"-u\", UNIT, \"--since\", start, \"--until\", end, \"--utc\"])\n",
     "shutdown_h": "std::uint64_t deadline_ms{10'000};\n",
 }
 
@@ -407,6 +433,11 @@ def self_test():
     # The preflight's own engine run dialling the real order endpoint: it takes the relay's single client.
     check("preflight_isolation", lambda t: t.update(preflight=t["preflight"].replace(
         "--venue-endpoint=127.0.0.1:1", "--venue-endpoint=127.0.0.1:8766")), "single client")
+    # The report's clock: a host-local timer fires inside a window that crosses the host's midnight.
+    check("report_clock", lambda t: t.update(report_timer=t["report_timer"].replace("16:15:00 UTC", "00:15:00")),
+          "host's own clock")
+    check("report_clock", lambda t: t.update(daily_report=t["daily_report"].replace('"--until"', '"-n"')),
+          "rolling `--since -24h`")
     del defects
     print(f"check_deploy self-test OK ({len(RULES)} rule(s), each on a defect and on the clean copy)")
     return 0
