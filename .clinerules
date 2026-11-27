@@ -28,6 +28,13 @@ compatibility path. Everything below assumes that page.
   page has no navigation, so it carries that table itself. Duplicating what the medium already provides is the redundancy
   this rule is about. Changing one and calling the documentation front door done is the mistake the rule exists to
   prevent: the review that found it had to visit the published site to see it.
+- **A time is named in its zone, and the host's zone is measured rather than assumed.** The host is *located* in Tokyo and
+  runs `Etc/UTC` (`timedatectl`, measured 2026-11-27), the operator is in Hong Kong, and the window is named in UTC
+  (13:30-15:30 = 21:30-23:30 HKT = 22:30-00:30 JST). A daily report keyed on a host-local `00:15` and a rolling
+  `--since -24h` therefore mailed nine hours after the close with the window split across two reports, and nothing in the
+  tree said which clock it meant. So a timer carries `OnCalendar=... UTC`, a journal read carries
+  `--since @<epoch> --until @<epoch> --utc`, and `check_deploy.py`'s thirteenth and fourteenth rules refuse a timer without
+  a zone and a packaged timer the bootstrap never installs.
 - **The low-latency line keeps a standing retrospective, and it is not an ADR.** `docs/LOW_LATENCY.md` describes the
   engine line as a whole — what it was for, the order the attempts came in, the condition that stopped it, and what it
   never measured — while the records in `docs/adr/` are one decision each. Neither replaces the other: a new candidate

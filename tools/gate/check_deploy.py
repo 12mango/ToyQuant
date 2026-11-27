@@ -287,9 +287,10 @@ def rule_preflight_isolation(texts):
 def rule_report_clock(texts):
     """Every timer names its zone, and the daily mail's interval is the window rather than a rolling day.
 
-    The host is in Tokyo and the operator is in Hong Kong, and the window 13:30-15:30 UTC is 22:30-00:30 JST -- it crosses
-    the host's midnight. A host-local `OnCalendar` therefore fires inside the window (00:15 JST is 15:15 UTC), and a
-    `journalctl --since -24h` reports a day that is not the session's. Measured 2026-11-27, before this rule.
+    The window is 13:30-15:30 UTC; the operator is in Hong Kong (21:30-23:30) and the host is located in Tokyo
+    (22:30-00:30, which crosses midnight) while its clock is `Etc/UTC` (measured 2026-11-27). A host-local `OnCalendar`
+    therefore means whatever the host's clock happens to say -- and a rolling `--since -24h` reports a day that is not the
+    session's. The zone in the line is what makes the file mean one moment wherever it runs.
     """
     problems = []
     timers = (("report_timer", "deploy/toyquant-report.timer"), ("window_start", "deploy/toyquant-window-start.timer"),
@@ -309,11 +310,29 @@ def rule_report_clock(texts):
     return problems
 
 
+def rule_timer_install(texts):
+    """Every timer the package ships is installed by the bootstrap, by name.
+
+    A unit loop that appends `.service` cannot install `x.timer`: measured 2026-11-27, the window timers were in the list,
+    the bootstrap looked for `toyquant-window-start.timer.service`, printed "missing from the bundle", `enable --now`
+    answered `Unit file ... does not exist`, and `list-timers` was empty -- the window would not have opened itself. The
+    rule reads the bootstrap's `install` lines, so a timer that is only *named* somewhere does not count.
+    """
+    installs = "\n".join(line for line in texts["bootstrap"].splitlines() if "install " in line)
+    problems = []
+    for name in ("toyquant-report.timer", "toyquant-window-start.timer", "toyquant-window-stop.timer"):
+        if name not in installs:
+            problems.append(f"deploy/bootstrap_server.sh has no `install` line for {name}: a packaged timer the bootstrap "
+                            f"does not install is a moment the host does not have")
+    return problems
+
+
 RULES = (("env_names", rule_env_names), ("template_keys", rule_template_keys), ("endpoints", rule_endpoints),
          ("ordering", rule_ordering), ("stop_window", rule_stop_window), ("bundled", rule_bundled),
          ("coupling", rule_coupling), ("notify_refs", rule_notify_refs), ("deploy_order", rule_deploy_order),
          ("unit_reload", rule_unit_reload), ("ssh_quoting", rule_ssh_quoting),
-         ("preflight_isolation", rule_preflight_isolation), ("report_clock", rule_report_clock))
+         ("preflight_isolation", rule_preflight_isolation), ("report_clock", rule_report_clock),
+         ("timer_install", rule_timer_install))
 
 FILES = {"env": ".env.example",
          "live_yaml": "config/live.example.yaml",
@@ -384,6 +403,9 @@ CLEAN = {
                     "sudo bash /opt/toyquant/deploy/preflight.sh\n"
                     "sudo systemctl restart toyquant-live\n",
     "bootstrap": "systemctl daemon-reload\n"
+                 "install -m 0644 deploy/toyquant-report.timer /etc/systemd/system/\n"
+                 "install -m 0644 deploy/toyquant-window-start.timer /etc/systemd/system/\n"
+                 "install -m 0644 deploy/toyquant-window-stop.timer /etc/systemd/system/\n"
                  "state=$(systemctl show -p LoadState --value toyquant-relay)\n"
                  "case \"$unit\" in *@) continue ;; esac\n"
                  "echo \"bootstrap: systemd did not load toyquant-relay\"\n",
@@ -451,6 +473,10 @@ def self_test():
           "deploy/toyquant-window-start.timer fires on the host's own clock")
     check("report_clock", lambda t: t.update(window_stop=t["window_stop"].replace("15:32:00 UTC", "15:32:00")),
           "deploy/toyquant-window-stop.timer fires on the host's own clock")
+    # A timer that is packaged and named but never installed: the bootstrap's unit loop looked for `.timer.service`.
+    check("timer_install", lambda t: t.update(bootstrap=t["bootstrap"].replace(
+        "install -m 0644 deploy/toyquant-window-start.timer /etc/systemd/system/\n", "")),
+        "no `install` line for toyquant-window-start.timer")
     del defects
     print(f"check_deploy self-test OK ({len(RULES)} rule(s), each on a defect and on the clean copy)")
     return 0

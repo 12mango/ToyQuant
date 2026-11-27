@@ -1,8 +1,8 @@
 [Unit]
 Description=ToyQuant window: the close, 15:32 UTC (21:30-23:30 HKT, 22:30-00:30 JST is 13:30-15:30 UTC)
 # Two minutes after the window's close, so the last quote's fill has been reported before the session is asked to stop.
-# Named in UTC because the host is in Tokyo: 15:32 UTC is 00:32 JST, i.e. a moment after the host's midnight, which is
-# exactly the kind of "next day" a host-local calendar expression gets wrong.
+# Named in UTC because the window is: the host *location* is Tokyo (where 15:32 UTC is 00:32 JST, just past midnight) and
+# its *clock* is Etc/UTC (where the same instant is 15:32) -- two readings of one line, and only the named one is meant.
 
 [Timer]
 OnCalendar=*-*-* 15:32:00 UTC

@@ -997,12 +997,13 @@ in Hong Kong -- so every document, timer and report names the zone, and only the
 
 | the same two hours | where it is read |
 |---|---|
-| `13:30-15:30 UTC` | the engine's wind-down, the archive, `journalctl --utc`, `daily_report.py` |
+| `13:30-15:30 UTC` | the engine's wind-down, the archive, `journalctl --utc`, `daily_report.py`, and **the host** (its clock is `Etc/UTC`, measured 2026-11-27) |
 | `21:30-23:30 HKT` | the operator's own day; the window opens at 21:30 and closes at 23:30 |
-| `22:30-00:30 JST` | the host's `date`, the journal's default stamps, `systemctl list-timers` |
+| `22:30-00:30 JST` | the host's *location*, and any shell that is configured to it -- the one reading that can silently differ |
 
-> The window crosses local midnight on the host, which is why a host-local timer cannot express "after the window" and why
-> the report's interval is two UTC instants rather than "the last 24 hours".
+> The window does not cross midnight in UTC or in Hong Kong; it crosses it in Tokyo's zone, which is the host's location but
+> not its clock. That is the whole reason a timer names its zone instead of relying on one: the host's `Etc/UTC` is a
+> configuration, and a configuration is a thing someone can change.
 
 **How the session ends at the close, with nobody watching -- the host owns both moments.** Two timers, both named in UTC:
 `toyquant-window-start.timer` starts `toyquant-live.service` at `13:30:00 UTC` and `toyquant-window-stop.timer` stops it

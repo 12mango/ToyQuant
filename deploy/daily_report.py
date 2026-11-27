@@ -15,9 +15,10 @@ rotated is worse than one that says it could not read the journal:
     the last `[RECON]`, any `[BREAKER]`, and the restarts systemd counted
   * the host: disk on `/` and `/opt/toyquant`, memory, uptime, and which clock the host keeps
 
-**The interval is the most recently completed window, not a rolling 24 h.** A rolling day is wrong on this host in a way
-that is easy to miss: the window 13:30-15:30 UTC is 22:30-00:30 JST, so it *crosses* local midnight, and a mail that fires
-at 00:15 JST (15:15 UTC) would report a window that has not closed yet. The window is named once, in UTC, by
+**The interval is the most recently completed window, not a rolling 24 h.** A rolling day was wrong on this host in the
+silent way time zones are wrong: the window 13:30-15:30 UTC is 21:30-23:30 in Hong Kong and 22:30-00:30 in Tokyo, the
+host's *location* is Tokyo while its *clock* is `Etc/UTC`, and a mail that fired at 00:15 host-local reported 00:15 UTC --
+nine hours after the close, with the window split across two of its own reports. The window is named once, in UTC, by
 `--window-start/--window-end` (defaults `13:30`/`15:30`), and `journalctl` is given epoch bounds so the host's zone cannot
 reinterpret them.
 

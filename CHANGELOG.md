@@ -10,13 +10,15 @@ site now points at `ToyQuant`.
 ## The window is named in UTC, and the daily mail is that window (2026-11-27)
 
 - **Three clocks met in the same stack and only one of them was written down.** The engine's session clock is the market's
-  (`--wind-down-end` is minutes of the UTC day), the archive and every recorded window are UTC (13:30-15:30), the host is
-  in Tokyo and the operator is in Hong Kong -- so the same two hours are 21:30-23:30 HKT and 22:30-00:30 JST, and the
-  window **crosses the host's local midnight**. Nothing in the tree said which clock a time belonged to, so each reading
-  was available and only one was meant.
-- **`deploy/toyquant-report.timer` fired at `00:15:00`, host-local**, which on the Tokyo host is 15:15 UTC -- fifteen
-  minutes *before* the window closes. It is now `OnCalendar=*-*-* 16:15:00 UTC` (45 minutes after the close: 01:15 JST,
-  00:15 HKT), with the zone in the line rather than in a comment, so the same file means the same moment on any host.
+  (`--wind-down-end` is minutes of the UTC day) and the archive and every recorded window are UTC (13:30-15:30); the
+  operator is in Hong Kong (21:30-23:30) and the host is **located** in Tokyo but runs `Etc/UTC` -- measured 2026-11-27
+  with `timedatectl`. Nothing in the tree said which clock a time belonged to, so each reading was available and only one
+  was meant, and the reading that mattered changed with whoever configured the host.
+- **`deploy/toyquant-report.timer` fired at `00:15:00`, host-local**, and the report covered a rolling 24 hours called
+  "the day": on a UTC host that is 00:15 the *next* morning, nine hours after the close, with the window 13:30-15:30
+  split across two of its own reports. The timer is now `OnCalendar=*-*-* 16:15:00 UTC` (45 minutes after the close:
+  01:15 JST, 00:15 HKT), with the zone in the line rather than in a comment, so the same file means the same moment on any
+  host -- including one whose clock someone changes.
 - **`deploy/daily_report.py` reported a rolling 24 hours and called it the day.** It now reports **the most recently
   completed window**: `--window-start/--window-end` in UTC (defaults 13:30/15:30), the interval computed in UTC, and
   `journalctl --since @<epoch> --until @<epoch> --utc` so neither the host's zone nor its locale can move the bounds or the
