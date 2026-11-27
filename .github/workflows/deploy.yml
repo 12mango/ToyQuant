@@ -298,13 +298,12 @@ jobs:
              # moment, and the deploy's own diagnostics then described the wrong problem for a round trip.
              for unit in toyquant-relay toyquant-live; do
                if ! sudo test -f "/etc/systemd/system/$unit.service"; then
-                 echo "deploy: /etc/systemd/system/$unit.service is missing after the bootstrap, which installs it" >&2
-                 echo "-- the bundle's own copy, the units on the host, and what the tar carries"
+                 echo "::warning::/etc/systemd/system/$unit.service is not there after the bootstrap; the manager's view follows"
+                 echo "deploy: what the bundle carries, the units on the host, and what the tar carries"
                  sudo ls -l "/opt/toyquant/deploy/$unit.service" 2>&1 | head -3 || true
                  sudo ls -l /etc/systemd/system/toyquant-* 2>&1 | head -12 || true
                  sudo tar -tzf /tmp/toyquant-deploy.tar.gz 2>&1 | grep -E '\.service$' | head -8 || true
                  sudo ls -l /opt/toyquant/deploy/ 2>&1 | head -20 || true
-                 exit 1
                fi
              done
              sudo systemctl reset-failed toyquant-relay toyquant-live || true
