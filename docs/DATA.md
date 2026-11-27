@@ -339,15 +339,31 @@ What it reports, and why it reports two distributions:
 ## OKX Trades, and What the Public Route Cannot Do
 
 The public history endpoint answers without a key, and `tools/fetch/fetch_okx_trades.py` turns it into one CSV per
-symbol per day:
+symbol per day -- or one per day of a window:
 
 ```bash
 python3 tools/fetch/fetch_okx_trades.py --date 2023-03-01 --symbol BTC-USDT-SWAP
+python3 tools/fetch/fetch_okx_trades.py --from 2026-10-30 --to 2026-11-26 --symbol UP-USDT-SWAP \
+    --output-dir data/v2/crypto/UP-USDT-SWAP --skip-existing
 ```
 
-What that route serves, checked against the endpoint itself: `module=1` is tick trades, `2` is candles, `3` is
-funding rates, and `11` is margin borrow rates. **There is no order book module**, so the L2 dataset advertised on
-the historical data page is reachable only through the web portal and has to be downloaded by hand.
+What that route serves, checked against the endpoint itself (2026-11-27, one instrument, one file day): `module=1` is
+tick trades, `2` candles (10.81 MB), `3` funding rates (0.02 MB), `6` answers `code=0` with no file for a swap, and
+`4`, `5` and `7`-`15` are HTTP 400. **There is no order book module**, and the eight CDN paths guessed from the trade
+URL all answered 404, so the L2 dataset advertised on the historical data page is a browser download rather than a
+request.
+
+| property | measured | what it changes |
+|---|---|---|
+| one request's span | ≤ 7 days | 2 and 7 days answer `code=0`; 14 and 28 answer HTTP 400 |
+| one day's file | 154.1 MB (11-01), 333.87 MB (11-26) | it is the **whole venue**, so a 28-day window moves 5-9 GB |
+| what is kept per day | 1.7 MB (11-01), 11 MB (11-16) of UP | the sliced symbol; the zip is deleted after slicing |
+| the day's cut | midnight UTC+8 | the file named `D` starts at `D-1 16:00` UTC |
+
+`--skip-existing` leaves a day whose output already has rows alone, `--output-dir` puts a window into the
+per-instrument folder, `--keep-zip` keeps the venue-wide archive, and `--pause` is the gap between days because a
+rapid loop answered HTTP 429. The depth archive is a different route: UP's seven days (`L2orderbook-400lv`,
+2026-11-16 to 11-22) are 11-28 MB each, so a 28-day window is about 0.4 GB and twenty-one browser downloads.
 
 Two properties of the trades file matter before it is joined to anything else. The day is cut on midnight UTC+8, so
 the file named `2023-03-01` begins at `2023-02-28 16:00` UTC, and `size` is in contracts, so a linear swap whose

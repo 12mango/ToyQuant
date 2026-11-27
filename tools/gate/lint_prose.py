@@ -356,6 +356,12 @@ def main():
                         # report's whole subject is that interval, and they are the report's flags rather than the
                         # engine's -- the engine's own clock is `--wind-down-end`, minutes of the UTC day.
                         "--window-start", "--window-end",
+                        # `tools/fetch/fetch_okx_trades.py` owns these six: the window shape of its one fetch (first
+                        # day, last day, the gap between days because the endpoint rate-limits, the folder a window
+                        # lands in, resuming a window, and keeping the venue-wide zip). They are in `docs/DATA.md`
+                        # because the archive's own properties -- a seven-day request cap and a whole-venue file per
+                        # day -- are what those flags exist for.
+                        "--from", "--to", "--pause", "--output-dir", "--skip-existing", "--keep-zip",
                         # `deploy/daily_report.py` also owns this one: the report with the row written and the mail
                         # printed rather than sent, which is how a window the timer missed is backfilled and how the
                         # write path is checked without mailing the operator a second copy.

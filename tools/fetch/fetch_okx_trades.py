@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-"""Fetch one day of OKX tick trades from the public history endpoint, and slice one symbol out of it.
+"""Fetch OKX tick trades from the public history endpoint, one day or a window, and slice one symbol out.
 
 Answers what the public route can and cannot do, for the second venue this repository is heading towards:
 
 * `module=1` is trades, `2` candles, `3` funding rates, `11` margin borrow rates, and the endpoint answers
   without an API key. There is no order book module; that dataset is only offered by the web portal.
-* The endpoint returns a CDN zip per day, one CSV per zip, all instruments in one file, so one day of swaps is
-  about 70 MB compressed and about 600 MB of CSV. This streams the member and writes only the requested symbol.
+* **A request covers at most seven days**: measured 2026-11-27, `begin`/`end` spans of 2 and 7 days answer `code=0`,
+  14 and 28 days answer HTTP 400, so a month is four windowed requests or twenty-eight single-day ones.
+* **The file is the whole venue, not the instrument**: one swap day is `allswap-trades-<day>.zip`, **333.87 MB** on
+  2026-11-26 (it was about 70 MB when this tool was written), so a 28-day window moves ~9.4 GB to keep ~0.3 GB of one
+  symbol. This streams the member and writes only the requested symbol, and deletes each zip after slicing it unless
+  `--keep-zip` says otherwise.
 * **The daily file is cut on the UTC+8 day**, so the file named 2023-03-01 starts at 2023-02-28 16:00 UTC. That is
   the kind of fact that turns into a silently shifted day, so it is written here and printed on every run.
 * Columns are `instrument_name,trade_id,side,price,size,created_time`, the timestamp is milliseconds, and `size`
@@ -15,6 +19,7 @@ Answers what the public route can and cannot do, for the second venue this repos
 Usage:
     python3 tools/fetch/fetch_okx_trades.py --date 2023-03-01 --symbol BTC-USDT-SWAP --output data/v2/crypto/okx_...
     python3 tools/fetch/fetch_okx_trades.py --date 2023-03-01 --symbol BTC-USDT-SWAP --zip /tmp/already-downloaded.zip
+    python3 tools/fetch/fetch_okx_trades.py --from 2026-10-30 --to 2026-11-26 --symbol UP-USDT-SWAP --skip-existing
 """
 
 import argparse
@@ -22,6 +27,7 @@ import csv
 import io
 import json
 import sys
+import time
 import urllib.parse
 import urllib.request
 import zipfile
@@ -133,47 +139,119 @@ def slice_symbol(archive_path, symbol, output, max_rows):
     return written, first_ts, last_ts
 
 
+def collect_day(date, symbol, output, max_rows, keep_zip):
+    """One file day: find the URL, download the venue-wide zip if it is not here, slice the symbol, drop the zip.
+
+    The zip is the whole venue (333.87 MB for 2026-11-26), so it is deleted after slicing unless `keep_zip`: a 28-day
+    window would otherwise leave ~9.4 GB in `/tmp`.
+    """
+    url, filename = find_url(symbol, *day_bounds(date))
+    archive = Path("/tmp") / filename
+    if archive.exists() and not is_readable_zip(archive):
+        print(f"discarding an incomplete download: {archive}")
+        archive.unlink()
+    downloaded = not archive.exists()
+    if downloaded:
+        download(url, archive)
+    if not is_readable_zip(archive):
+        raise RuntimeError(f"the download is not a readable zip: {archive}")
+    zip_bytes = archive.stat().st_size
+    try:
+        written, first_ts, last_ts = slice_symbol(archive, symbol, output, max_rows)
+    finally:
+        if not keep_zip:
+            archive.unlink(missing_ok=True)
+    return {"date": date, "rows": written, "zip_bytes": zip_bytes, "downloaded": downloaded,
+            "first_ts": first_ts, "last_ts": last_ts, "output": output}
+
+
+def day_range(first, last):
+    """Every file day from `first` to `last`, inclusive, as ISO dates."""
+    start = datetime.strptime(first, "%Y-%m-%d").date()
+    end = datetime.strptime(last, "%Y-%m-%d").date()
+    if end < start:
+        raise ValueError(f"--from {first} is after --to {last}")
+    return [(start + timedelta(days=offset)).isoformat() for offset in range((end - start).days + 1)]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--date", required=True, help="file day, for example 2023-03-01, which is midnight UTC+8")
+    parser.add_argument("--date", help="one file day, for example 2023-03-01, which is midnight UTC+8")
+    parser.add_argument("--from", dest="first", metavar="YYYY-MM-DD", help="first file day of a window")
+    parser.add_argument("--to", dest="last", metavar="YYYY-MM-DD", help="last file day of a window, inclusive")
     parser.add_argument("--symbol", required=True, help="for example BTC-USDT-SWAP or BTC-USDT")
     parser.add_argument("--output", type=Path, help="defaults to data/v2/crypto/okx_trades_DATE_SYMBOL.csv")
-    parser.add_argument("--zip", type=Path, dest="zip_path", help="reuse a zip that is already on disk")
-    parser.add_argument("--max-rows", type=int, help="stop after this many matching rows")
+    parser.add_argument("--output-dir", type=Path, default=Path("data/v2/crypto"),
+                        help="where a window's files go, one per day (the per-instrument folder layout)")
+    parser.add_argument("--zip", type=Path, dest="zip_path", help="reuse a zip already on disk (one day only)")
+    parser.add_argument("--max-rows", type=int, help="stop after this many matching rows per day")
+    parser.add_argument("--skip-existing", action="store_true",
+                        help="leave a day whose output already has rows alone, so a window can be resumed")
+    parser.add_argument("--keep-zip", action="store_true", help="do not delete the venue-wide zip after slicing")
+    parser.add_argument("--pause", type=float, default=3.0,
+                        help="seconds between days: a rapid loop answered HTTP 429 (measured 2026-11-27)")
     args = parser.parse_args()
     if args.max_rows is not None and args.max_rows <= 0:
         parser.error("--max-rows must be positive")
-
-    start_ms, end_ms = day_bounds(args.date)
-    output = args.output or Path(f"data/v2/crypto/okx_trades_{args.date}_{args.symbol}.csv")
-
+    if args.date and (args.first or args.last):
+        parser.error("--date and --from/--to are two shapes of one run; pick one")
+    if not args.date and not (args.first and args.last):
+        parser.error("give --date, or both --from and --to")
+    if args.zip_path and args.first:
+        parser.error("--zip reuses one day's archive, so it only goes with --date")
     try:
-        archive = args.zip_path
-        if archive is None:
-            url, filename = find_url(args.symbol, start_ms, end_ms)
-            print(f"url={url}")
-            archive = Path("/tmp") / filename
-            if archive.exists() and not is_readable_zip(archive):
-                print(f"discarding an incomplete download: {archive}")
-                archive.unlink()
-            if not archive.exists():
-                download(url, archive)
-            if not is_readable_zip(archive):
-                raise RuntimeError(f"the download is not a readable zip: {archive}")
-            print(f"zip={archive} bytes={archive.stat().st_size}")
-        written, first_ts, last_ts = slice_symbol(archive, args.symbol, output, args.max_rows)
-    except (OSError, ValueError, RuntimeError, KeyError) as error:
+        days = [args.date] if args.date else day_range(args.first, args.last)
+    except ValueError as error:
         parser.error(str(error))
 
-    print(f"symbol={args.symbol} rows_written={written}")
-    day_start = datetime.strptime(args.date, "%Y-%m-%d").replace(tzinfo=timezone.utc) - FILE_DAY_OFFSET
-    print(f"file_day={args.date} starts at {day_start:%Y-%m-%d %H:%M} UTC, because the file day is UTC+8")
-    if first_ts is not None:
-        first = datetime.fromtimestamp(first_ts / 1000, tz=timezone.utc)
-        last = datetime.fromtimestamp(last_ts / 1000, tz=timezone.utc)
-        print(f"timestamp_unit=milliseconds range={first:%Y-%m-%d %H:%M:%S.%f} .. {last:%Y-%m-%d %H:%M:%S.%f} UTC")
-    print(f"output={output}")
-    return 0
+    done, skipped, empty, failed = [], [], [], []
+    for index, date in enumerate(days):
+        output = (args.output if args.output and len(days) == 1
+                  else args.output_dir / f"okx_trades_{date}_{args.symbol}.csv")
+        if args.skip_existing and output.exists() and output.stat().st_size > 0:
+            print(f"{date}: {output} already has rows, skipped")
+            skipped.append(date)
+        else:
+            try:
+                if args.zip_path:
+                    archive = args.zip_path
+                    if not is_readable_zip(archive):
+                        raise RuntimeError(f"the download is not a readable zip: {archive}")
+                    written, first_ts, last_ts = slice_symbol(archive, args.symbol, output, args.max_rows)
+                    info = {"date": date, "rows": written, "zip_bytes": archive.stat().st_size,
+                            "downloaded": False, "first_ts": first_ts, "last_ts": last_ts, "output": output}
+                else:
+                    info = collect_day(date, args.symbol, output, args.max_rows, args.keep_zip)
+                print(f"{date}: rows={info['rows']} zip={info['zip_bytes']}B "
+                      f"{'downloaded' if info['downloaded'] else 'reused'} output={info['output']} "
+                      f"({info['output'].stat().st_size}B)", flush=True)
+                (done if info["rows"] else empty).append(info)
+            except (OSError, ValueError, RuntimeError, KeyError) as error:
+                # A day that cannot be fetched is named and counted; it never becomes a silent zero.
+                print(f"{date}: FAILED {error}", file=sys.stderr)
+                failed.append((date, str(error)))
+        if len(days) > 1 and index + 1 < len(days) and args.pause:
+            time.sleep(args.pause)
+
+    if len(days) == 1 and done:
+        info = done[0]
+        day_start = datetime.strptime(days[0], "%Y-%m-%d").replace(tzinfo=timezone.utc) - FILE_DAY_OFFSET
+        print(f"file_day={days[0]} starts at {day_start:%Y-%m-%d %H:%M} UTC, because the file day is UTC+8")
+        if info["first_ts"] is not None:
+            first = datetime.fromtimestamp(info["first_ts"] / 1000, tz=timezone.utc)
+            last = datetime.fromtimestamp(info["last_ts"] / 1000, tz=timezone.utc)
+            print(f"timestamp_unit=milliseconds range={first:%Y-%m-%d %H:%M:%S.%f} .. {last:%Y-%m-%d %H:%M:%S.%f} UTC")
+    else:
+        rows = sum(info["rows"] for info in done)
+        kept = sum(info["output"].stat().st_size for info in done)
+        moved = sum(info["zip_bytes"] for info in done if info["downloaded"])
+        print(f"window={days[0]}..{days[-1]} days={len(days)} fetched={len(done)} skipped={len(skipped)} "
+              f"empty={len(empty)} failed={len(failed)} rows={rows} kept_bytes={kept} "
+              f"downloaded_bytes={moved}")
+        if empty:
+            print(f"empty days (no trade for the symbol in that file day): "
+                  f"{', '.join(info['date'] for info in empty)}")
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
