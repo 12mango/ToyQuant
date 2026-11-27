@@ -288,15 +288,27 @@ jobs:
              # The relay is **started** (idempotent: a no-op when it is already up) because the preflight's sixth check
              # reads its two sockets, and `Type=simple` reports the unit started before it binds -- hence the wait.
              #
-             # **`reset-failed` first, because a rewritten unit is failed and unloaded in the manager's eyes.** Measured
-             # 2026-11-27: `show -p LoadState` answered `loaded` and the next `start` answered `Unit
-             # toyquant-relay.service not found` 12 ms later, five deploys in a row -- while `ops.yml`'s restart branch,
-             # which has always begun with `reset-failed`, brought the same host up on the first try. The state is what
-             # `start` refuses; the file and the reload were never the problem. One retry after a reload, because the
-             # manager can also be caught mid-scan, and then the evidence is printed rather than guessed at.
+             # A start that answers `Unit ... not found` is the manager saying it has no file to load, and the cached
+             # `LoadState=loaded` above is the manager's memory of one that used to be there (measured 2026-11-27, five
+             # deploys in a row, twelve milliseconds apart; `reset-failed` and a reload did not change it). So the file
+             # is checked and the manager asked for what it actually sees, before and after, rather than the failure
+             # being described from memory a second time.
+             for unit in toyquant-relay toyquant-live; do
+               if [ ! -f "/etc/systemd/system/$unit.service" ]; then
+                 echo "deploy: /etc/systemd/system/$unit.service is missing after the bootstrap, which installs it" >&2
+                 echo "-- what the bundle carries and what the host has"
+                 sudo ls -l "/opt/toyquant/deploy/$unit.service" 2>&1 | head -3
+                 sudo ls -l /etc/systemd/system/toyquant-* 2>&1 | head -12
+                 exit 1
+               fi
+             done
              sudo systemctl reset-failed toyquant-relay toyquant-live || true
              if ! sudo systemctl start toyquant-relay; then
-               echo "deploy: the first start answered not-found; reloading and clearing the unit state once" >&2
+               echo "deploy: the start answered not-found; here is what the manager sees" >&2
+               sudo ls -l /etc/systemd/system/toyquant-relay.service 2>&1
+               sudo systemctl show -p LoadState -p FragmentPath -p ActiveState toyquant-relay 2>&1
+               sudo systemctl cat toyquant-relay 2>&1 | head -6
+               sudo journalctl -u toyquant-relay -n 5 --no-pager -q 2>&1
                sudo systemctl daemon-reload
                sudo systemctl reset-failed toyquant-relay || true
                sudo systemctl start toyquant-relay
