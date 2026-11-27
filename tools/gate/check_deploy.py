@@ -394,8 +394,9 @@ def rule_report_identity(texts):
     unit supplies that with `SupplementaryGroups=` and a run from the ops workflow supplies nothing. Measured
     2026-11-27, the first backfill: `sudo -u toyquant python3 daily_report.py --at ...` reported "no [PORTFOLIO] line in
     the window" and appended a `sessions=0` row about a session whose numbers were in the journal -- an empty row in the
-    series, written by an account that could not look. So both ends are checked: the unit names the group, and every
-    line that runs the report outside it names the group too.
+    series, written by an account that could not look. `sg systemd-journal` is not the answer either: it asks for the
+    group's password and answered `Invalid password`; `sudo -u <user> -g <group>` is, because sudo runs as root. So both
+    ends are checked: the unit names the group, and every line that runs the report outside it names the group too.
     """
     problems = []
     if "systemd-journal" not in texts["report_unit"]:
@@ -403,7 +404,7 @@ def rule_report_identity(texts):
                         "reads the session's journal and the service account is not a member of that group")
     for line in texts["ops_workflow"].splitlines():
         if "python3" in line and "daily_report.py" in line and "systemd-journal" not in line:
-            problems.append("an ops action runs daily_report.py outside its unit and without `sg systemd-journal`: the "
+            problems.append("an ops action runs daily_report.py outside its unit and without `-g systemd-journal`: the "
                             "scan then comes back empty and the row it writes is a zero that is not a measurement")
     return problems
 
@@ -580,7 +581,7 @@ def self_test():
         "SupplementaryGroups=systemd-journal\n", "")), "SupplementaryGroups=systemd-journal")
     check("report_identity", lambda t: t.update(ops_workflow=t["ops_workflow"] + (
         "sudo -u toyquant /usr/bin/python3 /opt/toyquant/deploy/daily_report.py --dry-run\n")),
-        "without `sg systemd-journal`")
+        "without `-g systemd-journal`")
     del defects
     print(f"check_deploy self-test OK ({len(RULES)} rule(s), each on a defect and on the clean copy)")
     return 0
