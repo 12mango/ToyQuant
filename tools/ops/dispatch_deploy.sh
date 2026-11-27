@@ -3,6 +3,7 @@
 #
 #   tools/ops/dispatch_deploy.sh run              # dispatch deploy.yml (data_gate stays false)
 #   tools/ops/dispatch_deploy.sh run --ops stop   # dispatch ops.yml with an action
+#   tools/ops/dispatch_deploy.sh run --ops report --at 2026-11-27T15:36:00Z   # one window's report, no mail
 #   tools/ops/dispatch_deploy.sh check            # is the token the right shape, and does GitHub accept it
 #   tools/ops/dispatch_deploy.sh status           # the last few runs and their state
 #   tools/ops/dispatch_deploy.sh logs [--failed]  # the newest run's log (failed steps only with --failed)
@@ -84,10 +85,12 @@ in_progress() {  # in_progress <workflow-file> -> prints the run id when one is 
 }
 
 cmd_run() {
-  local workflow=deploy.yml body action=""
+  local workflow=deploy.yml body action="" at="" lines=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --ops) workflow=ops.yml; action=${2:-}; shift 2 ;;
+      --at) at=${2:-}; shift 2 ;;
+      --lines) lines=${2:-}; shift 2 ;;
       --allow-dirty) ALLOW_DIRTY=1; shift ;;
       *) echo "dispatch_deploy: unknown argument $1" >&2; return 2 ;;
     esac
@@ -101,7 +104,18 @@ cmd_run() {
     return 1
   fi
   if [ "$workflow" = ops.yml ]; then
-    body="{\"ref\":\"main\",\"inputs\":{\"action\":\"${action:-status}\"}}"
+    # `--at` is an ISO instant and `--lines` a count: both go into a JSON body, so a character that does not belong in
+    # either is refused here rather than escaped there.
+    if [ -n "$at" ]; then
+      case "$at" in *[!0-9A-Za-z:.+-]*) echo "dispatch_deploy: --at takes an ISO instant, not '$at'" >&2; return 2 ;; esac
+    fi
+    if [ -n "$lines" ]; then
+      case "$lines" in *[!0-9]*) echo "dispatch_deploy: --lines takes a number, not '$lines'" >&2; return 2 ;; esac
+    fi
+    body="{\"ref\":\"main\",\"inputs\":{\"action\":\"${action:-status}\""
+    if [ -n "$lines" ]; then body="$body,\"lines\":\"$lines\""; fi
+    if [ -n "$at" ]; then body="$body,\"at\":\"$at\""; fi
+    body="$body}}"
   else
     # `data_gate` is deliberately absent: its runner does not exist on this host, and a queued job nobody serves is how a
     # green deploy reads as a hung one (measured 2026-11-27, deploy #8).
