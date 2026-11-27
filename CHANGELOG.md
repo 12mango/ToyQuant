@@ -56,8 +56,9 @@ site now points at `ToyQuant`.
   failure(s); nothing was restarted`. A check that reads a running process has to run after the thing that starts it, so
   the relay is now restarted with the unpacked code, its ports are waited for with the unit's own `wait_for_ports.sh`
   (`Type=simple` reports the unit started before it binds), the preflight runs against that relay, and the engine is
-  restarted after it. `check_deploy.py` gained its ninth rule for exactly this order, and the self-test fires it by
-  deleting the restart line.
+  restarted after it. `check_deploy.py` gained its ninth rule for exactly this order, over both workflows, and the
+  self-test fires it by deleting the restart line. `ops.yml`'s `restart` action -- the way an operator starts a stopped
+  host -- had the same order and got the same fix, which is why the rule reads both files.
 - **Why the preflight cannot start the relay itself**: it is the script the operator runs to ask "would this host start",
   and a check that changes the host cannot answer that question twice the same way. The engine's own start-up check inside
   it dials `127.0.0.1:1`, never the relay, because the relay's order channel serves exactly one client -- a probe would

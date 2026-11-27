@@ -101,11 +101,19 @@ jobs:
               sudo journalctl -u toyquant-relay -n 20 --no-pager -q
               ;;
             restart)
-              # The preflight first: it starts the binary, gets the config's arguments, runs the engine to its [Mode] line
-              # as the service user and checks both sockets, so a broken artifact is a red action rather than a crash loop.
-              sudo bash /opt/toyquant/deploy/preflight.sh
+              # The relay first, for the same reason the deploy does it: the preflight's sixth check asks whether the two
+              # sockets are open, and on a host that is stopped they are not -- so the order is restart the relay, wait for
+              # its ports (`Type=simple` reports the unit started before it binds), run the preflight against that relay,
+              # then restart the engine and check health. Measured 2026-11-27: the deploy ran the preflight first and a
+              # stopped host could not be brought back up at all.
               sudo systemctl reset-failed toyquant-relay toyquant-live || true
-              sudo systemctl restart toyquant-relay toyquant-live
+              sudo systemctl restart toyquant-relay
+              sudo bash /opt/toyquant/deploy/wait_for_ports.sh 127.0.0.1:8765 127.0.0.1:8766
+              # The preflight starts the binary, gets the config's arguments, runs the engine to its [Mode] line as the
+              # service user (against 127.0.0.1:1, so the relay's single-client order channel is untouched) and compares
+              # the endpoints, so a broken artifact is a red action rather than a crash loop.
+              sudo bash /opt/toyquant/deploy/preflight.sh
+              sudo systemctl restart toyquant-live
               sudo bash /opt/toyquant/deploy/check_health.sh
               ;;
             stop)
