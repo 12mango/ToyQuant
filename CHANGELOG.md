@@ -7,6 +7,22 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## The shutdown tick was not 100 ms when the venue was asked (2026-11-27, fix written, not yet in the field)
+
+- **`settle_queries()` waits for the venue's `PENDING` answer, up to `query_timeout_ms` (1.5 s), and the shutdown called it
+  on every idle tick.** The tick is 100 ms, so a venue that did not answer turned the three-step shutdown into a run of
+  1.5 s blocks; the 10 s deadline was then reached *inside* one of them and `[SHUTDOWN]` was never logged before
+  `TimeoutStopSec` SIGKILLed the session -- measured twice on 2026-11-27 (10:03:21→10:03:33 and 10:24:16→10:24:29, both
+  13 s, both with no `[SHUTDOWN]` line and `Result=timeout`, and the second one is how the ten-contract position in the
+  morning's first entry was born).
+- **The ask now follows the cancels**: `advance_shutdown` calls `settle_queries()` only in the branch that has just sent a
+  round of cancels, and the answers still arrive through the `drain_venue()` at the top of the tick. A tick with nothing to
+  cancel therefore costs 100 ms, the deadline is checked on time, and the `[SHUTDOWN]` line is written before the unit's
+  25 s run out.
+- **What this does not fix**: a venue that never answers still spends 1.5 s per cancel round, so the shutdown reaches its
+  deadline about a second late -- inside the 25 s the unit now allows. The field proof is a `systemctl stop` on a session
+  that holds quotes; it is **not** tonight's end, which is `ws_seconds` on the normal end-of-run path.
+
 ## A preflight you can ask all afternoon (2026-11-27)
 
 - **`--ops preflight` is the deploy's six checks with the engine left down.** The one question tonight can turn on is

@@ -1011,10 +1011,16 @@ void Application::run_l2_session_mode() const
                 std::chrono::steady_clock::now().time_since_epoch())
                 .count());
         const auto cancel_now = shutdown.advance(now_ms, pipeline.working_order_ids());
-        if (!cancel_now.empty()) pipeline.cancel_orders(cancel_now);
-        // A venue answers a cancel on its own connection, so the next step asks about the set again rather than
-        // reading the one it already had.
-        if (live_venue) live_venue->settle_queries();
+        if (!cancel_now.empty())
+        {
+            pipeline.cancel_orders(cancel_now);
+            // Only after a round of cancels. `settle_queries()` waits up to `query_timeout_ms` (1.5 s by default) for the
+            // venue's `PENDING` answer, and this tick is 100 ms: asking on every tick turned the shutdown into a run of
+            // 1.5 s blocks, so the 10 s deadline was reached inside one of them and `[SHUTDOWN]` was never logged before
+            // `TimeoutStopSec` SIGKILLed the session -- measured 2026-11-27, twice (13 s, no line). The answers
+            // themselves still arrive through `drain_venue()` at the top of this tick, which is what applies them.
+            if (live_venue) live_venue->settle_queries();
+        }
         if (shutdown.finished())
         {
             logger.log(shutdown.to_log_string());
