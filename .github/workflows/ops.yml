@@ -167,6 +167,13 @@ jobs:
               head -8 /etc/systemd/system/toyquant-relay.service 2>&1
               echo '-- who runs, and as whom'
               whoami; sudo whoami; hostname; date -u '+%Y-%m-%dT%H:%M:%SZ'
+              echo '-- is there a manager at all, and can it be written to'
+              ps -o comm= -p 1 2>&1
+              systemctl is-system-running 2>&1 || true
+              which -a systemctl 2>&1
+              sudo systemctl reset-failed toyquant-relay 2>&1; echo "reset-failed exit=$?"
+              sudo systemctl is-active toyquant-relay 2>&1; echo "is-active exit=$?"
+              sudo systemctl status toyquant-relay --no-pager 2>&1 | head -5
               ;;
             *)
               echo "unknown action '$ACTION'" >&2; exit 2
