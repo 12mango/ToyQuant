@@ -53,6 +53,17 @@ existing design, architecture and user documents are the whole plan.
 | out-of-sample, Sharpe and capacity | the Sharpe, volatility, drawdown and Calmar figures are measured on demand behind `--metrics`; the out-of-sample and capacity studies are still not a demo goal | the studies, not the measurement, are out of the demo | out |
 | documents and the maintained plan | done: one plan, no new documents | keep it current; no interview material required | done |
 
+### Waiting on data, with the run it unlocks
+
+Three sets are downloading or published late, and each row names the run it is for, so the next session does not
+rediscover why the days were wanted. The fetcher is tracked and skips a day it already holds, so a re-run is free.
+
+| waiting on | how it arrives | the run it unlocks |
+|---|---|---|
+| UP's `2026-09-28..2026-10-29` tapes (the 32 depth archives are on disk) | `bash tools/fetch/prefetch_windows.sh --block 1` | `tools/sweep/up_ten_contract_cell.sh --days <sixty days>` -- the second month the one-regime argument asks for, because the 28-day sample's mean window move is -104 bps at one standard error of 84 |
+| NES's `2026-10-30..2026-11-26` (21 days) | `--block 2`, queued behind block 1 | the ten-contract cell on NES over the same 28 days as UP: the first seat comparison that stands on one sample |
+| `2026-11-27`'s book and tape, both instruments | `--block 3`; the depth URL answered 404 at 07:00 HKT on 2026-11-28, and a re-run costs nothing | a replay of the first live window itself, which is how its `markout_per_unit_ticks` of -0.591 is compared with the replay's +0.333 under the same flags and +0.416 as the cell's 28-day median |
+
 ### Ordered backlog
 
 **P0 — documentation consolidation (done; no interview material).**

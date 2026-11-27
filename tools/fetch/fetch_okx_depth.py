@@ -51,9 +51,13 @@ def day_range(first, last):
 
 
 def download(url, path):
-    """Stream to a `.part` beside the target, so a killed fetch never leaves a file that looks like data."""
+    """Stream to a `.part` beside the target, so a killed fetch never leaves a file that looks like data.
+
+    The read timeout is short for the reason `fetch_okx_trades.py` records: a CDN read that stalls does not raise, so a
+    prefetch can sit behind one chunk for hours unless the timeout is shorter than the patience of the run.
+    """
     partial = path.with_suffix(path.suffix + ".part")
-    with urllib.request.urlopen(urllib.request.Request(url, headers=HEADERS), timeout=900) as response:
+    with urllib.request.urlopen(urllib.request.Request(url, headers=HEADERS), timeout=120) as response:
         with partial.open("wb") as target:
             while True:
                 chunk = response.read(1 << 20)

@@ -89,7 +89,13 @@ def find_url(symbol, start_ms, end_ms):
 
 
 def download(url, path):
-    with urllib.request.urlopen(urllib.request.Request(url, headers=HEADERS), timeout=600) as response:
+    """Stream to the target; the read timeout is short enough that a stall fails instead of hanging.
+
+    Measured 2026-11-28: a venue-wide zip stopped at 313 MB and sat there for an hour without raising its 600 s socket
+    timeout, so a prefetch of 32 days was wedged behind one read. The timeout is per read of a 1 MB chunk on a link that
+    moves 1-2 MB a second, so two minutes is generous; `--skip-existing` then retries the day on the next run.
+    """
+    with urllib.request.urlopen(urllib.request.Request(url, headers=HEADERS), timeout=120) as response:
         with path.open("wb") as target:
             while True:
                 chunk = response.read(1 << 20)
