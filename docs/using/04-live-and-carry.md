@@ -989,16 +989,17 @@ disk usage. A source it cannot read is a sentence with the reason, never a zero:
 because the journal rotated is worse than one that says it could not read it. `python3 deploy/daily_report.py --dry-run`
 prints the mail.
 
-**Five host actions from a browser, instead of an SSH session.** `.github/workflows/ops.yml` is a dispatch workflow with a
+**Six host actions from a browser, instead of an SSH session.** `.github/workflows/ops.yml` is a dispatch workflow with a
 menu; every action runs one SSH session and prints its result into the run's log.
 
 | action | what it does | what it changes |
 |---|---|---|
 | `status` | per-unit `SubState`/`Result`/`NRestarts`/`ExecMainStatus`, the account's position/orders/equity, five lines of each journal | nothing |
 | `tail-logs` | the last N journal lines of both units | nothing |
-| `restart` | `preflight.sh`, `reset-failed`, restart both units, `check_health.sh` | a session restart |
+| `restart` | restart the relay, wait for its two ports, `preflight.sh`, restart the engine, `check_health.sh` | a session restart |
 | `stop` | graceful stop: the engine cancels what it holds and confirms zero; then prints what is left open | stops trading, does not flatten |
 | `flatten` | `okx_probe.py flatten`: one market order with `reduceOnly`, then prints position and pending | closes the position |
+| `diagnose` | what systemd knows about both units (load state, file path, unit-file state), what is on disk, the unit search path, the manager's version and the account the session runs as | nothing |
 
 > `stop` and `flatten` are deliberately two actions. A stop that also flattened would close a position an operator was
 > holding on purpose; a flatten that did not stop the session would be undone by the next quote. A stale or rounded size
@@ -1007,7 +1008,7 @@ menu; every action runs one SSH session and prints its result into the run's log
 **The unit's stop window outlasts the engine's own cancel sweep, and the check is a rule rather than a habit.** The engine
 gives up cancelling at `deadline_ms` (10 s, `src/lines/session_shutdown.h`) and the unit waits 12; a unit that gave up
 first would `SIGKILL` a session between two cancels and leave what it held at the venue. `tools/gate/check_deploy.py`
-reads both numbers and refuses the pair when the margin is gone, along with seven other couplings the host would otherwise
+reads both numbers and refuses the pair when the margin is gone, along with eight other couplings the host would otherwise
 find: the env template against the names the relay reads, the template's keys against the reader's map, the engine's
 endpoints against the relay's listeners, the units' ordering, the package step against the units' paths,
 `RELAY_ORDER_LIVE` against the venue it names, and `OnFailure=` against a notifier the bundle ships.

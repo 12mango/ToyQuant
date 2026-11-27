@@ -15,6 +15,7 @@ on:
           - restart     # preflight, then a graceful restart, then the health check
           - stop        # graceful stop (the engine cancels what it holds), then show what is left
           - flatten     # close the venue's position at the market, reduceOnly, then show what is left
+          - diagnose    # why systemd and this repository disagree: the units it knows, and what is on disk
         default: status
       lines:
         description: journal lines for tail-logs
@@ -144,6 +145,28 @@ jobs:
               probe pending
               probe equity
               exit "$FLATTEN_STATUS"
+              ;;
+            diagnose)
+              # The question a deploy asks when bootstrap says "install toyquant-relay" and the next `systemctl restart`
+              # says "Unit toyquant-relay.service not found" (measured 2026-11-27): is the file on disk, is it in the unit
+              # search path, and does systemd list it? A unit that exists and is not loaded is a reload or namespace
+              # question, and these lines answer it without another round trip.
+              echo '-- what systemd knows'
+              for unit in toyquant-relay toyquant-live; do
+                for prop in LoadState UnitFileState FragmentPath ActiveState Result; do
+                  printf '%-16s %-14s %s\n' "$unit" "$prop" "$(systemctl show -p "$prop" --value "$unit" 2>&1)"
+                done
+              done
+              echo '-- what is on disk'
+              ls -l /etc/systemd/system/toyquant-* 2>&1 | head -20
+              echo '-- the search path and the manager'
+              systemctl show -p UnitPath --value 2>&1
+              systemctl --version 2>&1 | head -1
+              systemd-detect-virt 2>&1 || true
+              echo '-- what the file says (first eight lines)'
+              head -8 /etc/systemd/system/toyquant-relay.service 2>&1
+              echo '-- who runs, and as whom'
+              whoami; sudo whoami; hostname; date -u '+%Y-%m-%dT%H:%M:%SZ'
               ;;
             *)
               echo "unknown action '$ACTION'" >&2; exit 2
