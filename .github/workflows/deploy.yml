@@ -253,16 +253,16 @@ jobs:
                if [ "$states" = "loaded loaded " ]; then
                  break
                fi
-               echo "deploy: systemd reports '$states' for the two units; reloading (attempt $attempt/20)"
+               echo "deploy: systemd reports [${states}] for the two units; reloading (attempt $attempt/20)"
                sudo systemctl daemon-reload
                sleep 1
              done
              if [ "$states" != "loaded loaded " ]; then
-               echo "deploy: systemd still reports '$states' for toyquant-relay and toyquant-live after 20 reloads;" \
+               echo "deploy: systemd still reports [${states}] for toyquant-relay and toyquant-live after 20 reloads;" \
                  "the unit files are installed but the manager cannot see them" >&2
                exit 1
              fi
-             echo "deploy: systemd loaded both units ($states)"
+             echo "deploy: systemd loaded both units [${states}]"
              # The relay first, because the preflight asks whether its two sockets are open -- and on a host that the
              # operator has stopped they are not, which made every deploy of a stopped host red at the preflight
              # (measured 2026-11-27: two `FAIL nothing listens on 127.0.0.1:8765`). The relay is restarted with the code

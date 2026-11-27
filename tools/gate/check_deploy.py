@@ -19,6 +19,8 @@ between two files in this repository, and a reader with both files in front of t
                       preflight's socket check has nothing to read on a host the operator has stopped
  10. `unit_reload`    the bootstrap asks the manager whether it loaded the units it just installed, and names the one it
                       could not, because a file written immediately before `daemon-reload` can be missed by its scan
+ 11. `ssh_quoting`    a remote script passed to `ssh` in single quotes contains no single quote of its own, because one
+                      ends the argument and the step then exits with a bare code and no output
 
     python3 tools/gate/check_deploy.py             # this repository
     python3 tools/gate/check_deploy.py --self-test  # every rule on a defect and on a clean copy
@@ -241,10 +243,30 @@ def rule_unit_reload(texts):
     return problems
 
 
+def rule_ssh_quoting(texts):
+    """A remote script handed to `ssh` inside single quotes may not contain a single quote of its own.
+
+    The quote ends the argument, so ssh receives a truncated command plus new words, and the step exits with a bare code
+    and **no output at all** -- the exact signature measured 2026-11-27, when `echo "reports '$states'"` inside the
+    deploy's single-quoted script failed a whole deploy in 0.3 s. The fix is double quotes inside the script; this rule is
+    the one that says so before a dispatch does.
+    """
+    problems = []
+    for name in ("workflow", "ops_workflow"):
+        for match in re.finditer(r"ssh .*?'\n(.*?)\n\s*'", texts[name], re.S):
+            body = match.group(1)
+            if "'" in body:
+                line = body[:body.index("'")].count("\n") + 2
+                where = FILES[name].rsplit("/", 1)[-1]
+                problems.append(f"{where}: the single-quoted ssh script has a single quote on its script line {line}, "
+                                f"which ends the quoting: use double quotes inside it")
+    return problems
+
+
 RULES = (("env_names", rule_env_names), ("template_keys", rule_template_keys), ("endpoints", rule_endpoints),
          ("ordering", rule_ordering), ("stop_window", rule_stop_window), ("bundled", rule_bundled),
          ("coupling", rule_coupling), ("notify_refs", rule_notify_refs), ("deploy_order", rule_deploy_order),
-         ("unit_reload", rule_unit_reload))
+         ("unit_reload", rule_unit_reload), ("ssh_quoting", rule_ssh_quoting))
 
 FILES = {"env": ".env.example",
          "live_yaml": "config/live.example.yaml",
@@ -302,7 +324,8 @@ CLEAN = {
                 "sudo systemctl restart toyquant-relay\n"
                 "sudo bash /opt/toyquant/deploy/wait_for_ports.sh 127.0.0.1:8765 127.0.0.1:8766\n"
                 "sudo bash /opt/toyquant/deploy/preflight.sh\n"
-                "sudo systemctl restart toyquant-live\n",
+                "sudo systemctl restart toyquant-live\n"
+                "ssh host '\nset -euo pipefail\necho hello\n'\n",
     "ops_workflow": "sudo systemctl restart toyquant-relay\n"
                     "sudo bash /opt/toyquant/deploy/wait_for_ports.sh 127.0.0.1:8765 127.0.0.1:8766\n"
                     "sudo bash /opt/toyquant/deploy/preflight.sh\n"
@@ -355,6 +378,9 @@ def self_test():
     # A reload that is trusted rather than asked: the bootstrap drops its `LoadState` question.
     check("unit_reload", lambda t: t.update(bootstrap=t["bootstrap"].replace(
         "LoadState", "SomethingElse")), "never asks whether the manager loaded")
+    # A quote inside the single-quoted script: the deploy that exited 1 with no output at all.
+    check("ssh_quoting", lambda t: t.update(workflow=t["workflow"].replace(
+        "echo hello", "echo it's broken")), "single quote")
     del defects
     print(f"check_deploy self-test OK ({len(RULES)} rule(s), each on a defect and on the clean copy)")
     return 0

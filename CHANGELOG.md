@@ -64,6 +64,17 @@ site now points at `ToyQuant`.
   it dials `127.0.0.1:1`, never the relay, because the relay's order channel serves exactly one client -- a probe would
   take it and end it.
 
+## A quote inside a quoted script is a command nobody ran (2026-11-27)
+
+- **The fourth deploy failed in 0.3 s with no output at all**: exit code 1, not one line from the host, not even
+  `doing: install ...`. The remote script is one **single-quoted** argument to ssh, and the line added to it printed
+  `'$states'` -- the quote ended the argument there, ssh received a truncated command and a fistful of new words, and the
+  step failed before anything ran. It is the same family as the `<<'PYFLAT'` heredoc that ate the first flatten: a script
+  inside a script has to be quoted for the parser that consumes it, and the outer one is a single-quoted shell word.
+- **`check_deploy.py`'s eleventh rule is the fix that outlives the session**: it finds the single-quoted ssh script in
+  either workflow and fails if it contains a quote of its own, and its self-test turns `echo hello` into `echo it's
+  broken` to prove the rule fires. The deploy's own messages use `[${states}]` rather than `'$states'`.
+
 ## A reload is not a load: the bootstrap asks the manager what it has (2026-11-27)
 
 - **The second deploy after the flatten failed with `Unit toyquant-relay.service not found`**, one line after the
