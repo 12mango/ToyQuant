@@ -161,7 +161,13 @@ cmd_logs() {
   echo "run $id: $html"
   jobs=$(api GET "/repos/$SLUG/actions/runs/$id/jobs")
   printf '%s' "$jobs" | python3 "$ROOT/tools/ops/jobs.py" list
-  for job in $(printf '%s' "$jobs" | python3 "$ROOT/tools/ops/jobs.py" failed); do
+  # A failed job first; with none, the **last** job, because an ops action reports its result in a job that succeeds and
+  # that result is the whole point of asking (measured 2026-11-27: `--ops stop` printed the position it left and the tool
+  # showed only `completed success`).
+  local targets
+  targets=$(printf '%s' "$jobs" | python3 "$ROOT/tools/ops/jobs.py" failed)
+  [ -z "$targets" ] && targets=$(printf '%s' "$jobs" | python3 "$ROOT/tools/ops/jobs.py" last)
+  for job in $targets; do
     echo "--- log tail of job $job"
     curl -sSL -H "Authorization: token $(read_token)" -H 'Accept: application/vnd.github+json' \
       "$API/repos/$SLUG/actions/jobs/$job/logs" -o /tmp/tq/joblog.zip 2>/dev/null || true

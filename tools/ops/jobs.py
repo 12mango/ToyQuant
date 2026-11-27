@@ -34,14 +34,29 @@ def main():
             if job.get("conclusion") != "success":
                 print(job.get("id"))
         return 0
+    if command == "last":
+        items = jobs()
+        if items:
+            print(items[-1].get("id"))
+        return 0
     if command == "tail":
         limit = int(sys.argv[2]) if len(sys.argv) > 2 else 40
+        # A job's log endpoint redirects to **plain text** and a run's to a zip: try the archive, else read the text, so
+        # neither endpoint is a special case the caller has to know (measured 2026-11-27: the job endpoint answered text
+        # and this printed "File is not a zip file" instead of the result of the action).
+        text = ""
         try:
             with zipfile.ZipFile("/tmp/tq/joblog.zip") as archive:
                 text = "\n".join(archive.read(name).decode("utf-8", "replace") for name in archive.namelist())
-        except (zipfile.BadZipFile, OSError) as error:
-            print(f"  (no readable log: {error})")
-            return 1
+        except (zipfile.BadZipFile, OSError):
+            try:
+                with open("/tmp/tq/joblog.zip", encoding="utf-8", errors="replace") as handle:
+                    text = handle.read()
+            except OSError as error:
+                print(f"  (no readable log: {error})")
+                return 1
+        if not text.strip():
+            print("  (the log is empty)")
         for line in text.splitlines()[-limit:]:
             print("  " + line)
         return 0

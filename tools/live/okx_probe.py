@@ -61,6 +61,11 @@ INST = os.environ.get("INST_ID", "BTC-USDT-SWAP")
 # refusal of the request and is a refusal of its name.
 UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
       "Chrome/120.0.0.0 Safari/537.36")
+# The account is the demo one unless the switch the relay reads says otherwise. It is read **after** the operator's file is
+# loaded (which happens in `main`), because `sudo` strips the environment: a module-level constant computed at import time
+# was always the demo answer on a host where the file is the only place the switch lives.
+def live_account():
+    return os.environ.get("RELAY_ORDER_LIVE", "").lower() in ("1", "true", "yes")
 
 # The three credentials the relay and this probe share. A host keeps them in `/etc/toyquant/live.env` (root-only, seeded
 # by the deploy) and a checkout in `secrets/okx-demo.env`; both are read only when a name is missing from the environment,
@@ -124,7 +129,7 @@ def request(method, path, body=""):
             "OK-ACCESS-TIMESTAMP": stamp,
             "OK-ACCESS-PASSPHRASE": passphrase,
             "Content-Type": "application/json",
-            "x-simulated-trading": "1",
+            **(dict() if live_account() else {"x-simulated-trading": "1"}),
             "User-Agent": UA,
         },
     )
@@ -272,7 +277,7 @@ def signed_headers(method, path, body):
     ).decode()
     return {"OK-ACCESS-KEY": key, "OK-ACCESS-SIGN": sign, "OK-ACCESS-TIMESTAMP": stamp,
             "OK-ACCESS-PASSPHRASE": passphrase, "Content-Type": "application/json",
-            "x-simulated-trading": "1", "User-Agent": UA}
+            **(dict() if live_account() else {"x-simulated-trading": "1"}), "User-Agent": UA}
 
 
 def warm_rtt(connection, inst, rounds, gap_s):
