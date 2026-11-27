@@ -190,7 +190,9 @@ jobs:
           install -m 0755 "${{ env.BUILD_DIR }}/toy_quant" "$staging/toy_quant"
           install -m 0644 tools/live/venue_relay.py tools/live/live_config.py tools/live/okx_probe.py "$staging/tools/live/"
           install -m 0644 deploy/toyquant-live.service deploy/toyquant-relay.service deploy/toyquant-notify@.service \
-            deploy/toyquant-report.service deploy/toyquant-report.timer "$staging/deploy/"
+            deploy/toyquant-report.service deploy/toyquant-report.timer \
+            deploy/toyquant-window-start.timer deploy/toyquant-window-stop.service \
+            deploy/toyquant-window-stop.timer "$staging/deploy/"
           install -m 0755 deploy/bootstrap_server.sh deploy/check_health.sh deploy/rollback.sh deploy/preflight.sh \
             deploy/wait_for_ports.sh "$staging/deploy/"
           install -m 0755 deploy/notify.py deploy/daily_report.py "$staging/deploy/"

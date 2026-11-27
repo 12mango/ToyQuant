@@ -168,6 +168,10 @@ jobs:
               echo '-- the report timer, and the zone it fires in'
               sudo systemctl list-timers --all toyquant-report.timer --no-pager 2>&1 | head -4
               timedatectl 2>&1 | head -4
+              echo '-- the window timers'
+              sudo systemctl list-timers --all toyquant-window-start.timer toyquant-window-stop.timer --no-pager 2>&1 | head -5
+              echo '-- what the session will run with'
+              sudo python3 /opt/toyquant/tools/live/live_config.py --flags /etc/toyquant/live.yaml 2>&1 | head -30
               echo '-- who runs, and as whom'
               whoami; sudo whoami; hostname; date -u '+%Y-%m-%dT%H:%M:%SZ'
               echo '-- is there a manager at all, and can it be written to'

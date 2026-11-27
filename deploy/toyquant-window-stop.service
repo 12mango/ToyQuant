@@ -1,0 +1,11 @@
+[Unit]
+Description=ToyQuant window: close the session at the window's end (15:32 UTC)
+# The close is 15:30 UTC; this fires two minutes later so the last quotes and their fills settle before the stop, and the
+# stop itself is the graceful one the engine implements (SIGTERM: stop new orders, cancel what is live, confirm zero).
+# It does **not** flatten: the measured cell carries the residual and prices it with `settle_residual`, and paying the
+# spread to close it is `close_out: true` -- a decision in the operator's file, not a default in a unit.
+# `Persistent=false`: a host that was down at the close must not stop a session the operator started afterwards.
+
+[Service]
+Type=oneshot
+ExecStart=/bin/systemctl stop toyquant-live.service

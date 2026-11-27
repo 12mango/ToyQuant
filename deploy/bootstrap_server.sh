@@ -92,7 +92,8 @@ RELAY_SERVICE_NAME=${RELAY_SERVICE_NAME:-toyquant-relay}
 units=""
 # The notifier is a template unit (`name@.service`), so it is installed under the name it is instantiated from and never
 # enabled: `OnFailure=` in the two units above is its only caller.
-for unit in "$RELAY_SERVICE_NAME" "$SERVICE_NAME" toyquant-notify@ toyquant-report; do
+for unit in "$RELAY_SERVICE_NAME" "$SERVICE_NAME" toyquant-notify@ toyquant-report \
+            toyquant-window-start.timer toyquant-window-stop toyquant-window-stop.timer; do
   if [ -f "$REPO_DIR/deploy/$unit.service" ]; then
     run "install $unit" install -m 0644 "$REPO_DIR/deploy/$unit.service" "/etc/systemd/system/$unit.service"
     units="$units $unit"
@@ -158,6 +159,15 @@ if [ -f "$REPO_DIR/deploy/toyquant-report.timer" ]; then
   run "start the daily report timer" systemctl enable --now toyquant-report.timer
 else
   echo "bootstrap: $REPO_DIR/deploy/toyquant-report.timer is missing from the bundle" >&2
+fi
+
+# The window's own two moments, armed now: the open at 13:30 UTC and the close at 15:32 UTC. `enable` makes them survive a
+# reboot and `--now` starts them, so tonight's open fires on a host that was bootstrapped this afternoon -- a timer that is
+# only enabled starts counting from the next boot.
+if [ -f "$REPO_DIR/deploy/toyquant-window-start.timer" ] && [ -f "$REPO_DIR/deploy/toyquant-window-stop.timer" ]; then
+  run "arm the window timers" systemctl enable --now toyquant-window-start.timer toyquant-window-stop.timer
+else
+  echo "bootstrap: the window timers are missing from the bundle; the session will not open or close on its own" >&2
 fi
 
 # The two operator files. This script creates them *from the templates* when they are absent, so that the first deploy

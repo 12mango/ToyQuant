@@ -1,0 +1,17 @@
+[Unit]
+Description=ToyQuant window: open the session at the window's start (13:30 UTC)
+# The window is 13:30-15:30 UTC -- 21:30-23:30 HKT, 22:30-00:30 JST. This timer is what makes "the session is a window"
+# true on a host nobody is watching: it starts the session at the open, and `toyquant-window-stop.timer` closes it.
+# The zone is in the line, not in a comment, because the host is in Tokyo and the operator is in Hong Kong.
+#
+# `Persistent=false` on purpose: a timer is a moment, not a debt. A host that was down at 13:30 must not open a session
+# when it comes back at 16:00, which is what `Persistent=true` would do.
+
+[Timer]
+OnCalendar=*-*-* 13:30:00 UTC
+# The session is a unit, so the timer's job is to start it; `Requires=toyquant-relay.service` pulls the relay up with it.
+Unit=toyquant-live.service
+Persistent=false
+
+[Install]
+WantedBy=timers.target

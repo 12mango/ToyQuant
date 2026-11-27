@@ -1004,14 +1004,17 @@ in Hong Kong -- so every document, timer and report names the zone, and only the
 > The window crosses local midnight on the host, which is why a host-local timer cannot express "after the window" and why
 > the report's interval is two UTC instants rather than "the last 24 hours".
 
-**How the session ends at the close, with nobody watching.** Two mechanisms, and the file names which one is in force.
-`ws_seconds: 7200` bounds the session from its own start: restart it at the window's open and it exits by itself at the
-close, cleanly, and `Restart=on-failure` leaves it down -- the unit is a session, and a session that ended is not a fault.
-The engine's `wind_down_*` set is the gentler half of the same end: over the last `wind_down_skew_minutes` before
-`wind_down_end` (UTC minutes of the day, so `15:30` is the close) the closing side walks in and the adding side stops
-opening, which is what the registered cell measured. Neither of them *flattens*: the residual is carried and priced by
-`settle_residual` (`[SETTLE]`), and flattening it is `close_out: true` -- a taker cross the measured cell did not take, so
-it is the operator's call rather than a default.
+**How the session ends at the close, with nobody watching -- the host owns both moments.** Two timers, both named in UTC:
+`toyquant-window-start.timer` starts `toyquant-live.service` at `13:30:00 UTC` and `toyquant-window-stop.timer` stops it
+at `15:32:00 UTC` (two minutes past the close, so the last quote's fill has been reported). `systemctl list-timers` shows
+both next fires, in the host's own clock. The boot-time start stays enabled as well, so a reboot brings a session up
+rather than a silent host -- the timers bound it, they do not replace it. `Persistent=false` on both on purpose: a timer is
+a moment, not a debt, and a host that was down at 13:30 must not open a session when it comes back at 16:00.
+
+Neither moment *flattens*. The residual is carried and priced by `settle_residual` (`[SETTLE]`), and flattening it is
+`close_out: true` -- a taker cross the measured cell did not take, so it is the operator's call rather than a default. If
+you would rather the engine end the session from its own start instead of at a wall clock, `ws_seconds: 7200` is the key,
+and the file's comment says what it does.
 
 **Six host actions from a browser, instead of an SSH session.** `.github/workflows/ops.yml` is a dispatch workflow with a
 menu; every action runs one SSH session and prints its result into the run's log.

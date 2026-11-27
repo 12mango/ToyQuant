@@ -30,8 +30,14 @@ site now points at `ToyQuant`.
   can end itself instead of depending on someone remembering to stop it: started at the open it exits cleanly at the
   close, and `Restart=on-failure` leaves it down. It is a comment in the template, because whether the session carries the
   residual or flattens it is the operator's call -- `settle_residual` prices the handover and `close_out` pays the spread.
-- **`check_deploy.py`'s thirteenth rule** holds the clock: the timer's `OnCalendar` ends in a zone, the report reads the
-  journal with `--utc` and an `--until`, and the self-test fires on each of the three by removing it.
+- **The window's two moments are the host's, not a person's**: `toyquant-window-start.timer` starts the session at
+  `13:30:00 UTC` and `toyquant-window-stop.timer` stops it at `15:32:00 UTC` (two minutes past the close, so the last
+  quote's fill has landed), both armed by the bootstrap with `enable --now`. `Persistent=false` on both: a timer is a
+  moment, not a debt, so a host that comes back at 16:00 does not open a session outside the window. The stop is the
+  graceful one -- the shutdown path fixed above -- and it does not flatten: the residual is carried and priced by
+  `settle_residual`, and paying the spread to close it is `close_out: true`, the operator's decision.
+- **`check_deploy.py`'s thirteenth rule** holds the clock: all three timers' `OnCalendar` end in a zone and the report
+  reads the journal with `--utc` and an `--until`; the self-test fires on each of them by removing it.
 
 ## A deploy kills the session instead of cancelling it: the stop was event-driven (2026-11-27, fix written)
 

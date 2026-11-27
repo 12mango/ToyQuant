@@ -155,7 +155,8 @@ def rule_bundled(texts):
                 problems.append(f"{name} is named by {unit} and never packaged by deploy.yml")
     for script in ("preflight.sh", "check_health.sh", "bootstrap_server.sh", "rollback.sh", "notify.py",
                    "wait_for_ports.sh", "daily_report.py", "toyquant-report.service", "toyquant-report.timer",
-                   "toyquant-notify@.service", "journald/toyquant.conf", "logrotate/toyquant"):
+                   "toyquant-notify@.service", "journald/toyquant.conf", "logrotate/toyquant",
+                   "toyquant-window-start.timer", "toyquant-window-stop.service", "toyquant-window-stop.timer"):
         name = script.rsplit("/", 1)[-1]
         if script not in workflow and name not in workflow:
             problems.append(f"{script} is not in the deploy's package step")
@@ -284,19 +285,22 @@ def rule_preflight_isolation(texts):
 
 
 def rule_report_clock(texts):
-    """The daily mail's *when* and *which interval* are both named in UTC, because the host's clock is not the window's.
+    """Every timer names its zone, and the daily mail's interval is the window rather than a rolling day.
 
     The host is in Tokyo and the operator is in Hong Kong, and the window 13:30-15:30 UTC is 22:30-00:30 JST -- it crosses
     the host's midnight. A host-local `OnCalendar` therefore fires inside the window (00:15 JST is 15:15 UTC), and a
     `journalctl --since -24h` reports a day that is not the session's. Measured 2026-11-27, before this rule.
     """
     problems = []
-    calendar = [line for line in texts["report_timer"].splitlines() if line.startswith("OnCalendar=")]
-    if not calendar:
-        problems.append("deploy/toyquant-report.timer has no OnCalendar line")
-    elif not calendar[0].rstrip().endswith((" UTC", " GMT")):
-        problems.append("deploy/toyquant-report.timer fires on the host's own clock: name the zone "
-                        "(`OnCalendar=*-*-* 16:15:00 UTC`), because the window crosses the host's midnight")
+    timers = (("report_timer", "deploy/toyquant-report.timer"), ("window_start", "deploy/toyquant-window-start.timer"),
+              ("window_stop", "deploy/toyquant-window-stop.timer"))
+    for name, where in timers:
+        calendar = [line for line in texts[name].splitlines() if line.startswith("OnCalendar=")]
+        if not calendar:
+            problems.append(f"{where} has no OnCalendar line")
+        elif not calendar[0].rstrip().endswith((" UTC", " GMT")):
+            problems.append(f"{where} fires on the host's own clock: name the zone (e.g. "
+                            f"`OnCalendar=*-*-* 16:15:00 UTC`), because the window crosses the host's midnight")
     report = texts["daily_report"]
     if '"--utc"' not in report:
         problems.append("deploy/daily_report.py reads the journal without `--utc`: its lines then carry the host's clock")
@@ -322,6 +326,8 @@ FILES = {"env": ".env.example",
          "bootstrap": "deploy/bootstrap_server.sh",
          "preflight": "deploy/preflight.sh",
          "report_timer": "deploy/toyquant-report.timer",
+         "window_start": "deploy/toyquant-window-start.timer",
+         "window_stop": "deploy/toyquant-window-stop.timer",
          "daily_report": "deploy/daily_report.py",
          "shutdown_h": "src/lines/session_shutdown.h"}
 
@@ -363,7 +369,8 @@ CLEAN = {
     "notify_unit": "[Service]\nExecStart=/usr/bin/python3 /opt/toyquant/deploy/notify.py --unit %i\n",
     "workflow": "install -m 0755 toy_quant; install tools/live/live_config.py tools/live/venue_relay.py; "
                 "install deploy/toyquant-notify@.service deploy/toyquant-report.service deploy/toyquant-report.timer "
-                "deploy/notify.py deploy/daily_report.py deploy/preflight.sh deploy/check_health.sh "
+                "deploy/toyquant-window-start.timer deploy/toyquant-window-stop.service deploy/toyquant-window-stop.timer; "
+                "install deploy/notify.py deploy/daily_report.py deploy/preflight.sh deploy/check_health.sh "
                 "deploy/wait_for_ports.sh deploy/bootstrap_server.sh deploy/rollback.sh deploy/journald/toyquant.conf "
                 "deploy/logrotate/toyquant\n"
                 "states=$(systemctl show -p LoadState --value toyquant-relay toyquant-live)\n"
@@ -382,6 +389,8 @@ CLEAN = {
                  "echo \"bootstrap: systemd did not load toyquant-relay\"\n",
     "preflight": "startup=$(engine ws 127.0.0.1:1 --venue-endpoint=127.0.0.1:1)\n",
     "report_timer": "[Timer]\nOnCalendar=*-*-* 16:15:00 UTC\nPersistent=true\n",
+    "window_start": "[Timer]\nOnCalendar=*-*-* 13:30:00 UTC\nUnit=toyquant-live.service\n",
+    "window_stop": "[Timer]\nOnCalendar=*-*-* 15:32:00 UTC\nUnit=toyquant-window-stop.service\n",
     "daily_report": "run([\"journalctl\", \"-u\", UNIT, \"--since\", start, \"--until\", end, \"--utc\"])\n",
     "shutdown_h": "std::uint64_t deadline_ms{10'000};\n",
 }
@@ -438,6 +447,10 @@ def self_test():
           "host's own clock")
     check("report_clock", lambda t: t.update(daily_report=t["daily_report"].replace('"--until"', '"-n"')),
           "rolling `--since -24h`")
+    check("report_clock", lambda t: t.update(window_start=t["window_start"].replace("13:30:00 UTC", "13:30:00")),
+          "deploy/toyquant-window-start.timer fires on the host's own clock")
+    check("report_clock", lambda t: t.update(window_stop=t["window_stop"].replace("15:32:00 UTC", "15:32:00")),
+          "deploy/toyquant-window-stop.timer fires on the host's own clock")
     del defects
     print(f"check_deploy self-test OK ({len(RULES)} rule(s), each on a defect and on the clean copy)")
     return 0

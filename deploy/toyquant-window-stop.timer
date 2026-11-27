@@ -1,0 +1,13 @@
+[Unit]
+Description=ToyQuant window: the close, 15:32 UTC (21:30-23:30 HKT, 22:30-00:30 JST is 13:30-15:30 UTC)
+# Two minutes after the window's close, so the last quote's fill has been reported before the session is asked to stop.
+# Named in UTC because the host is in Tokyo: 15:32 UTC is 00:32 JST, i.e. a moment after the host's midnight, which is
+# exactly the kind of "next day" a host-local calendar expression gets wrong.
+
+[Timer]
+OnCalendar=*-*-* 15:32:00 UTC
+Unit=toyquant-window-stop.service
+Persistent=false
+
+[Install]
+WantedBy=timers.target
