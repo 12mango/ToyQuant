@@ -66,6 +66,10 @@ check "shell scripts parse"          parse_shell deploy/*.sh tools/ops/*.sh
 check "check_deploy rules"           python3 tools/gate/check_deploy.py
 check "check_deploy self-test"       python3 tools/gate/check_deploy.py --self-test
 check "daily_report self-test"       python3 deploy/daily_report.py --self-test
+# The two checks whose failure this file exists for: measured 2026-11-27, a new tool without a `docs/TOOLS.md` row passed
+# every local check and failed the deploy's verify job instead, one runner and one round trip later.
+check "lint_prose"                   python3 tools/gate/lint_prose.py docs
+check "check_links"                  python3 tools/gate/check_links.py
 
 if [ -n "$(git status --porcelain)" ]; then
   echo "predeploy: the working tree is dirty -- a deploy would carry something the gate has not seen"

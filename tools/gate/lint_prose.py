@@ -351,6 +351,9 @@ def main():
                         # ops menu instead of the deploy). It is in `docs/TOOLS.md` because the two workflows are one
                         # loop, and it is the tool's flag rather than the engine's.
                         "--ops",
+                        # `tools/ops/predeploy.sh` is called by that same dispatcher, so its off switch is the
+                        # dispatcher's flag too: a deploy that skips the local preflight says so on the command line.
+                        "--no-predeploy",
                         # `deploy/daily_report.py` owns these two: the window a mail reports on, named once in UTC so
                         # the host's zone cannot reinterpret it. They are in the live page and the changelog because the
                         # report's whole subject is that interval, and they are the report's flags rather than the
