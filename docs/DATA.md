@@ -356,14 +356,15 @@ request.
 | property | measured | what it changes |
 |---|---|---|
 | one request's span | ≤ 7 days | 2 and 7 days answer `code=0`; 14 and 28 answer HTTP 400 |
-| one day's file | 154.1 MB (11-01), 333.87 MB (11-26) | it is the **whole venue**, so a 28-day window moves 5-9 GB |
-| what is kept per day | 1.7 MB (11-01), 11 MB (11-16) of UP | the sliced symbol; the zip is deleted after slicing |
+| one day's file | 166.5 MB to 615.5 MB, whole venue | 20 fetched days moved 7.44 GB to keep 200 MB of one symbol |
+| what is kept per day | 1.7 MB to 14 MB of UP (4.08 M rows in 28 days) | the sliced symbol; the zip is deleted after slicing |
 | the day's cut | midnight UTC+8 | the file named `D` starts at `D-1 16:00` UTC |
 
 `--skip-existing` leaves a day whose output already has rows alone, `--output-dir` puts a window into the
 per-instrument folder, `--keep-zip` keeps the venue-wide archive, and `--pause` is the gap between days because a
 rapid loop answered HTTP 429. The depth archive is a different route: UP's seven days (`L2orderbook-400lv`,
-2026-11-16 to 11-22) are 11-28 MB each, so a 28-day window is about 0.4 GB and twenty-one browser downloads.
+2026-11-16 to 11-22) are 11-28 MB each, so a 28-day window is about 0.4 GB and twenty-one browser downloads -- the
+trades half of that window is what the run above fetched.
 
 Two properties of the trades file matter before it is joined to anything else. The day is cut on midnight UTC+8, so
 the file named `2023-03-01` begins at `2023-02-28 16:00` UTC, and `size` is in contracts, so a linear swap whose
@@ -525,7 +526,7 @@ behind fails tier 1 and names itself.
 
 | family | files | size | what it is | regenerable |
 |---|---:|---:|---|---|
-| `crypto/` | 52 | 8.9 GB | the 2020 perpetual snapshots, incremental books and trades the L2 path is measured on, plus the Binance and OKX archives of a closed line and the two OKX instruments the later screens ranked -- one folder per instrument since 2026-11-25 | yes, from the Tardis samples and the venue archives |
+| `crypto/` | 42 | 16 GB | the 2020 perpetual snapshots, incremental books and trades the L2 path is measured on, plus the Binance and OKX archives of a closed line, the two OKX instruments the later screens ranked and a 28-day UP trade window -- one folder per instrument since 2026-11-25, 249 files in the folders | yes, from the Tardis samples and the venue archives |
 | `equities/` | 29 | 1.8 GB | the US equity windows: depth and trades per symbol and session | yes, from Databento, about two dollars a session |
 | `futures/` | 3 | 2.0 GB | the micro E-mini session, raw and converted | yes, from Databento |
 | `funding/` | 25 | 152 KB | both venues' funding histories for 2024, which closed the carry line | yes, and they are free |
@@ -533,8 +534,9 @@ behind fails tier 1 and names itself.
 | `options/` | 5 | 124 KB | the equity-option series the options gate re-derives, re-bought for 0.012 USD | yes, from Databento, and cheap |
 | `screen/` | 60 | 1.2 GB | the top-of-book files of the thirty symbol screen, cached so the rule can be re-measured for nothing | yes, but it is the cache that makes the re-measurement free |
 
-Counts and sizes are `ls` and `du` on the development checkout, not a claim a gate re-derives: `data/v2/` is ignored, so
-another copy may hold fewer files and every number here is a snapshot rather than a fact about the repository.
+Counts and sizes are `ls | wc -l`, `find … -type f | wc -l` and `du -sh` on the development checkout (2026-11-28),
+not a claim a gate re-derives: `data/v2/` is ignored, so another copy may hold fewer files and every number here is a
+snapshot rather than a fact about the repository.
 
 **Removed**: the empty `v2/carry/` directory, and `BTCUSDT-bookTicker-2024-03-30`, which no gate or checked block
 names. The June, July and August 2020 Deribit snapshots an earlier version of this paragraph listed as removed are on
