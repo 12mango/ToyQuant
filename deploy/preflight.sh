@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 # Answer one question in about a second: would this binary start on this host, with this configuration? It touches no unit
-# and restarts nothing.
+# and restarts nothing -- and it therefore runs **after** the deploy has restarted the relay with the code it just unpacked,
+# because check 6 asks whether the relay's two sockets are open. A host the operator has stopped has no sockets to check,
+# and demanding them before anything starts made every deploy of a stopped host red (measured 2026-11-27, two `FAIL
+# nothing listens on 127.0.0.1:8765`); check 3 runs the engine against `127.0.0.1:1`, so nothing here can disturb a running
+# relay's single-client order channel.
 #
 # Seven deploys failed in a row for seven different reasons, and every one of them was visible in the first second of a run:
 # an illegal instruction (a `-march=native` build on another CPU), a market socket nobody opened, a flag the engine refuses
 # (`--snapshot-out` in `ws`), an argument list the config reader could not produce, a log directory that resolved to the
 # *build* tree (the runner's checkout, which the host cannot write), and a relay whose credentials were still a template's.
 # None of them needed the restart, the crash loop, the journal or the report; all of them needed this script, which is why
-# it runs before the deploy restarts anything.
+# it runs before the deploy restarts the engine.
 #
 #   sudo bash /opt/toyquant/deploy/preflight.sh
 set -euo pipefail

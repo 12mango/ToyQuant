@@ -15,6 +15,8 @@ between two files in this repository, and a reader with both files in front of t
   6. `bundled`        every program and file a unit names is in the deploy's package step
   7. `coupling`       `RELAY_ORDER_LIVE` and the order venue name the same environment, in both directions
   8. `notify_refs`    `OnFailure=` names the notifier template, and the bundle ships it
+  9. `deploy_order`   the relay is restarted (and waited for) before the preflight, and the engine after it, because the
+                      preflight's socket check has nothing to read on a host the operator has stopped
 
     python3 tools/gate/check_deploy.py             # this repository
     python3 tools/gate/check_deploy.py --self-test  # every rule on a defect and on a clean copy
@@ -181,9 +183,32 @@ def rule_notify_refs(texts):
     return problems
 
 
+def rule_deploy_order(texts):
+    """The relay is restarted before the preflight, and the engine after it: a stopped host has no sockets to check.
+
+    The finding this rule is: the preflight's sixth check reads `ss`, and on a host the operator has stopped there is
+    nothing listening -- so a deploy of a stopped host failed before it could start anything. Measured 2026-11-27.
+    """
+    workflow = texts["workflow"]
+    preflight = workflow.find("/opt/toyquant/deploy/preflight.sh")
+    if preflight < 0:
+        return ["deploy.yml never runs /opt/toyquant/deploy/preflight.sh"]
+    problems = []
+    relay = workflow.rfind("systemctl restart toyquant-relay", 0, preflight)
+    if relay < 0:
+        problems.append("deploy.yml runs the preflight before restarting the relay: its socket check fails on a host "
+                        "that is stopped, and no deploy can start it")
+    elif "wait_for_ports.sh" not in workflow[relay:preflight]:
+        problems.append("deploy.yml restarts the relay and runs the preflight without waiting for the sockets: "
+                        "`Type=simple` reports the unit started before it binds")
+    if workflow.find("systemctl restart toyquant-live", preflight) < 0:
+        problems.append("deploy.yml never restarts toyquant-live after the preflight")
+    return problems
+
+
 RULES = (("env_names", rule_env_names), ("template_keys", rule_template_keys), ("endpoints", rule_endpoints),
          ("ordering", rule_ordering), ("stop_window", rule_stop_window), ("bundled", rule_bundled),
-         ("coupling", rule_coupling), ("notify_refs", rule_notify_refs))
+         ("coupling", rule_coupling), ("notify_refs", rule_notify_refs), ("deploy_order", rule_deploy_order))
 
 FILES = {"env": ".env.example",
          "live_yaml": "config/live.example.yaml",
@@ -234,7 +259,11 @@ CLEAN = {
                 "install deploy/toyquant-notify@.service deploy/toyquant-report.service deploy/toyquant-report.timer "
                 "deploy/notify.py deploy/daily_report.py deploy/preflight.sh deploy/check_health.sh "
                 "deploy/wait_for_ports.sh deploy/bootstrap_server.sh deploy/rollback.sh deploy/journald/toyquant.conf "
-                "deploy/logrotate/toyquant\n",
+                "deploy/logrotate/toyquant\n"
+                "sudo systemctl restart toyquant-relay\n"
+                "sudo bash /opt/toyquant/deploy/wait_for_ports.sh 127.0.0.1:8765 127.0.0.1:8766\n"
+                "sudo bash /opt/toyquant/deploy/preflight.sh\n"
+                "sudo systemctl restart toyquant-live\n",
     "shutdown_h": "std::uint64_t deadline_ms{10'000};\n",
 }
 
@@ -269,6 +298,10 @@ def self_test():
     check("coupling", lambda t: t.update(env=t["env"].replace("RELAY_ORDER_LIVE=0", "RELAY_ORDER_LIVE=1")), "demo host")
     check("notify_refs", lambda t: t.update(live_unit=t["live_unit"].replace(
         "toyquant-notify@%n.service", "somebody-else@%n.service")), "not the notifier template")
+    # The ordering defect this rule was written for: the preflight before the relay's restart, which is what a stopped
+    # host fails on. Dropping the restart line is the smallest edit that reproduces it.
+    check("deploy_order", lambda t: t.update(workflow=t["workflow"].replace(
+        "sudo systemctl restart toyquant-relay\n", "", 1)), "before restarting the relay")
     del defects
     print(f"check_deploy self-test OK ({len(RULES)} rule(s), each on a defect and on the clean copy)")
     return 0

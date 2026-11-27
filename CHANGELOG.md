@@ -47,6 +47,22 @@ site now points at `ToyQuant`.
   instrument is read out of `/etc/toyquant/live.env` and passed as `INST_ID`, and an absent one is said out loud rather
   than silently defaulted.
 
+## The deploy ran its preflight before the thing the preflight checks (2026-11-27)
+
+- **The deploy ran the preflight before it started the relay the preflight checks.** `deploy/preflight.sh` asks whether
+  `127.0.0.1:8765` and `:8766` are open -- they are the two sockets the engine dials -- and the workflow ran it before
+  `systemctl restart`, so on a host the operator had stopped (that is what `ops stop` does) there was nothing listening
+  and the job failed at the first check, twice: `preflight: FAIL nothing listens on 127.0.0.1:8765` / `:8766`, `2
+  failure(s); nothing was restarted`. A check that reads a running process has to run after the thing that starts it, so
+  the relay is now restarted with the unpacked code, its ports are waited for with the unit's own `wait_for_ports.sh`
+  (`Type=simple` reports the unit started before it binds), the preflight runs against that relay, and the engine is
+  restarted after it. `check_deploy.py` gained its ninth rule for exactly this order, and the self-test fires it by
+  deleting the restart line.
+- **Why the preflight cannot start the relay itself**: it is the script the operator runs to ask "would this host start",
+  and a check that changes the host cannot answer that question twice the same way. The engine's own start-up check inside
+  it dials `127.0.0.1:1`, never the relay, because the relay's order channel serves exactly one client -- a probe would
+  take it and end it.
+
 ## The opening balance is read off the account, not copied into a file (2026-11-27)
 
 - **`--starting-cash=venue`** makes the engine ask the account for its USDT equity before anything is quoted, instead of

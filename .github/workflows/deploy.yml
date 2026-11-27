@@ -243,11 +243,19 @@ jobs:
              sudo tar -xzf /tmp/toyquant-deploy.tar.gz -C /opt/toyquant
              sudo bash /opt/toyquant/deploy/bootstrap_server.sh --repo-dir /opt/toyquant --etc-dir /etc/toyquant
              sudo systemctl daemon-reload
-             # The preflight answers "would this start" in a second; it runs before the restart so a broken artifact is a
-             # red job instead of a crash loop on a host that trades.
-             sudo bash /opt/toyquant/deploy/preflight.sh
+             # The relay first, because the preflight asks whether its two sockets are open -- and on a host that the
+             # operator has stopped they are not, which made every deploy of a stopped host red at the preflight
+             # (measured 2026-11-27: two `FAIL nothing listens on 127.0.0.1:8765`). The relay is restarted with the code
+             # just unpacked, so what the preflight checks is the artifact about to run; `Type=simple` reports the unit
+             # started before the sockets are bound, so the wait is the unit's own script and names the closed port.
              sudo systemctl reset-failed toyquant-relay toyquant-live || true
-             sudo systemctl restart toyquant-relay toyquant-live
+             sudo systemctl restart toyquant-relay
+             sudo bash /opt/toyquant/deploy/wait_for_ports.sh 127.0.0.1:8765 127.0.0.1:8766
+             # The preflight answers "would this start" in a second; it runs before the engine's restart so a broken
+             # artifact is a red job instead of a crash loop on a host that trades. Its own engine run dials
+             # 127.0.0.1:1, so it cannot take the relay's single-client order channel.
+             sudo bash /opt/toyquant/deploy/preflight.sh
+             sudo systemctl restart toyquant-live
              sudo bash /opt/toyquant/deploy/check_health.sh'
 
       # A failed health check leaves the previous binary on the host and the previous release one command away. This does
