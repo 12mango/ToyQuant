@@ -3,10 +3,10 @@
 
 The measurement it exists for (2026-11-27, the first live window): the session placed **2,547 sell quotes against 44
 buy ones** and reached the venue with **201 of 2,591** orders. Neither number reproduces in the engine -- replaying the
-same two hours with the live flags reads 31/40 (at `--advance-debounce-ms=40000`, the value in `live.yaml`) and 52/25
-(at `40`, the value every recorded cell used). So the split is not the strategy's shape; it is the live order path
-refusing (`--venue-max-orders=200` per session, `--max-orders-per-second=8` with a one-token bucket) while the strategy
-re-places, and the side that re-places is the one whose price moved.
+same two hours with the live flags reads 31 buy / 40 sell (at `--advance-debounce-ms=40000`, which is what `live.yaml`
+carries **and** what the recorded ten-contract cell carries) and 52 buy / 25 sell at `40`. The second arm is a **new
+setting rather than a restoration**: 40 s halved the fills and flipped the sign on that tape (3 fills and -0.2317
+against 6 and +0.1066), so it is a hypothesis to register and test on more than one day, not a cell to go back to.
 
 The debounce alone still costs half the fills and flips the sign on the same tape, which is why the arm is recorded:
 

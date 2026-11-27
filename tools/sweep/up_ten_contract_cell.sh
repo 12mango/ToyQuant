@@ -20,6 +20,23 @@
 #   f1_tox2              42          +2.05       4/7         -76.38           -9.42
 #   f1_tox3              44          +0.76       4/7         -76.38          -13.56
 #
+# **Re-measured on twenty-eight days, 2026-10-30..2026-11-26 (2026-11-28), which is the sampling resolution the row was
+# refused on rather than a new threshold.** The month holds six tail windows in both directions (11-14 -1123 bps, 11-22
+# +1062, 11-23 -944, 11-26 +848, 11-03 -759, 11-25 -534), so a gate and its window are no longer the same seven days:
+#
+#   arm             fills median  closed median [range]      positive   net median  USD/window  peak pos
+#   f1_control                45   +12.27 [-75.19, +90.37]      22/28        +15.96      0.3630    305M
+#   f1_tox3                   35   +15.35 [-70.00, +88.63]      21/28        +13.19      0.2048    240M
+#   f3_throttle0              44    +8.10 [-54.35, +90.87]      20/28         +4.54      0.1728    200M
+#
+# What that changes: the control survives the larger sample (median and worst day both inside the bar), the **jump gate's
+# median clause is available after all** -- +15.35 against +12.27, with the worst day 5.5 bps smaller and the leave-one-out
+# median 14.52 against 11.18 -- and the **fill floor is what refuses it** (35 against 40), at a 44 percent dollar cost.
+# The throttle arm is still worse on every column, so its refusal stands. The frontier row's "the tail and the median are
+# not available from the same lever at this size" is therefore contradicted by this sample and is left for the owner to
+# move, not for this script to rewrite.
+#   bash tools/sweep/up_ten_contract_cell.sh --days 2026-10-30,...,2026-11-26
+#
 # The control and `f1_tox2` reproduce `rs_up10.csv` and `rs5_up10_tox.csv` to the digit; `f1_tox3` is the registered arm.
 # It passes the tail clause by 43.6 bps and fails the median clause, and it is strictly dominated by `f1_tox2` (same worst
 # day, lower median, worse settled) because the worst day is toxic under both definitions -- so the line closes with the
@@ -41,6 +58,7 @@ arm=all
 while [ $# -gt 0 ]; do
   case "$1" in
     --arm) arm=$2; shift 2 ;;
+    --days) DAYS=$2; shift 2 ;;
     --out) OUT=$2; shift 2 ;;
     -h|--help) sed -n '2,40p' "$0"; exit 0 ;;
     *) echo "up_ten_contract_cell: unknown argument $1" >&2; exit 2 ;;
@@ -52,7 +70,7 @@ run() {  # run <name> <switch>
   local name=$1 switch=$2
   echo "== $name start $(date -u +%H:%M:%S)"
   # shellcheck disable=SC2086  # the two flag strings are word lists by construction, not one argument
-  python3 tools/sweep/okx_maker_baseline.py $CELL --extra="$BASE $switch" --out "$OUT/$name.csv"
+  python3 tools/sweep/okx_maker_baseline.py $CELL --days "$DAYS" --extra="$BASE $switch" --out "$OUT/$name.csv"
   echo "== $name exit=$?"
 }
 
