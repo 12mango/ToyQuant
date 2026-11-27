@@ -206,21 +206,33 @@ def rule_deploy_order(texts):
     """
     problems = []
     for name in ("workflow", "ops_workflow"):
-        workflow = texts[name]
+        whole = texts[name]
         where = FILES[name].rsplit("/", 1)[-1]
-        preflight = workflow.find("/opt/toyquant/deploy/preflight.sh")
+        text = whole
+        if name == "ops_workflow":
+            # The ops file also has a standalone `preflight)` action, which starts no unit: the sequence the rule is about
+            # is the `restart)` branch, so that is the text it reads.
+            start = whole.find("            restart)")
+            end = whole.find("            ;;", start) if start >= 0 else -1
+            if start < 0 or end < 0:
+                problems.append(f"{where} has no `restart)` branch to hold to the order")
+                continue
+            text = whole[start:end]
+        preflight = text.find("/opt/toyquant/deploy/preflight.sh")
         if preflight < 0:
             if name == "workflow":
                 problems.append(f"{where} never runs /opt/toyquant/deploy/preflight.sh")
+            else:
+                problems.append(f"{where}'s `restart)` branch never runs the preflight")
             continue
-        relay = workflow.rfind("systemctl restart toyquant-relay", 0, preflight)
+        relay = text.rfind("systemctl restart toyquant-relay", 0, preflight)
         if relay < 0:
             problems.append(f"{where} runs the preflight before restarting the relay: its socket check fails on a host "
                             f"that is stopped, and nothing can start it")
-        elif "wait_for_ports.sh" not in workflow[relay:preflight]:
+        elif "wait_for_ports.sh" not in text[relay:preflight]:
             problems.append(f"{where} restarts the relay and runs the preflight without waiting for the sockets: "
                             f"`Type=simple` reports the unit started before it binds")
-        if workflow.find("systemctl restart toyquant-live", preflight) < 0:
+        if text.find("systemctl restart toyquant-live", preflight) < 0:
             problems.append(f"{where} never restarts toyquant-live after the preflight")
     return problems
 
@@ -405,10 +417,12 @@ CLEAN = {
                 "sudo bash /opt/toyquant/deploy/preflight.sh\n"
                 "sudo systemctl restart toyquant-live\n"
                 "ssh host '\nset -euo pipefail\necho hello\n'\n",
-    "ops_workflow": "sudo systemctl restart toyquant-relay\n"
+    "ops_workflow": "            restart)\n"
+                    "sudo systemctl restart toyquant-relay\n"
                     "sudo bash /opt/toyquant/deploy/wait_for_ports.sh 127.0.0.1:8765 127.0.0.1:8766\n"
                     "sudo bash /opt/toyquant/deploy/preflight.sh\n"
-                    "sudo systemctl restart toyquant-live\n",
+                    "sudo systemctl restart toyquant-live\n"
+                    "            ;;\n",
     "bootstrap": "systemctl daemon-reload\n"
                  "install -m 0644 deploy/toyquant-report.timer /etc/systemd/system/\n"
                  "install -m 0644 deploy/toyquant-window-start.timer /etc/systemd/system/\n"

@@ -1019,7 +1019,7 @@ Neither moment *flattens*. The residual is carried and priced by `settle_residua
 you would rather the engine end the session from its own start instead of at a wall clock, `ws_seconds: 7200` is the key,
 and the file's comment says what it does.
 
-**Six host actions from a browser, instead of an SSH session.** `.github/workflows/ops.yml` is a dispatch workflow with a
+**Seven host actions from a browser, instead of an SSH session.** `.github/workflows/ops.yml` is a dispatch workflow with a
 menu; every action runs one SSH session and prints its result into the run's log.
 
 | action | what it does | what it changes |
@@ -1029,7 +1029,8 @@ menu; every action runs one SSH session and prints its result into the run's log
 | `restart` | restart the relay, wait for its two ports, `preflight.sh`, restart the engine, `check_health.sh` | a session restart |
 | `stop` | graceful stop: the engine cancels what it holds and confirms zero; then prints what is left open | stops trading, does not flatten |
 | `flatten` | `okx_probe.py flatten`: one market order with `reduceOnly`, then prints position and pending | closes the position |
-| `diagnose` | what systemd knows about both units (load state, file path, unit-file state), what is on disk, the unit search path, the manager's version and the account the session runs as | nothing |
+| `preflight` | the deploy's six checks on their own (binary, config, `[Mode]` as the service user, credentials, file modes, both sockets), starting the relay for the socket check and **not** the engine | starts the relay |
+| `diagnose` | what systemd knows about both units (load state, file path, unit-file state, stop timeout), what is on disk, the unit search path, the three timers' next fires, the host's clock, the flags the session will run with, and whether the manager can be written to | nothing |
 
 > `stop` and `flatten` are deliberately two actions. A stop that also flattened would close a position an operator was
 > holding on purpose; a flatten that did not stop the session would be undone by the next quote. A stale or rounded size

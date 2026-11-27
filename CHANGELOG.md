@@ -7,6 +7,19 @@ The repository is named `ToyQuant`. The `-v1` suffix that older links and a loca
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
 
+## A preflight you can ask all afternoon (2026-11-27)
+
+- **`--ops preflight` is the deploy's six checks with the engine left down.** The one question tonight can turn on is
+  "would the session start with *this* file", and the only thing that answered it was a deploy (which restarts units) or a
+  restart (which trades). The action starts the relay -- the sixth check reads its sockets -- waits for both ports, runs
+  `deploy/preflight.sh` and stops there: the binary starts, `live_config.py` translates the operator's file, the engine
+  reaches its `[Mode]` line as the service user against `127.0.0.1:1`, the three credentials are set, `toyquant` can read
+  both files, and the endpoints agree and listen. If the action is red the checks name what failed; if it is green the
+  engine is not running and the window can still be waited for.
+- **`check_deploy.py`'s ninth rule now reads the ops file's `restart)` branch** instead of the whole file, because the
+  standalone action legitimately runs the preflight without restarting anything afterwards. The rule was about a
+  sequence, and it now says so.
+
 ## The daily mail counts what the engine prints, and the stop waits for the close (2026-11-27)
 
 - **The report counted a line the engine never writes.** `session_facts` counted `[FILL]` occurrences, and there is no

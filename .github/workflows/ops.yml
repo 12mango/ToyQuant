@@ -16,6 +16,7 @@ on:
           - stop        # graceful stop (the engine cancels what it holds), then show what is left
           - flatten     # close the venue's position at the market, reduceOnly, then show what is left
           - diagnose    # why systemd and this repository disagree: the units it knows, and what is on disk
+          - preflight   # would tonight's session start? the config, the binary and the sockets, without starting it
         default: status
       lines:
         description: journal lines for tail-logs
@@ -145,6 +146,23 @@ jobs:
               probe pending
               probe equity
               exit "$FLATTEN_STATUS"
+              ;;
+            preflight)
+              # The six checks the deploy runs before it restarts anything, on their own: the binary starts, the
+              # operator's file translates into the engine's arguments, the engine reaches its `[Mode]` line as the
+              # service user (against 127.0.0.1:1, so it cannot take the relay's single order client), the credentials
+              # are set, the service user can read both files, and each endpoint the engine dials is the relay's listener
+              # and is listening. The relay is started for the sixth check (it only connects to the venue and waits for
+              # an engine) and left running; **the engine is not started**, which is what makes this the one question
+              # that can be asked all afternoon.
+              sudo systemctl start toyquant-relay
+              sudo bash /opt/toyquant/deploy/wait_for_ports.sh 127.0.0.1:8765 127.0.0.1:8766
+              if sudo bash /opt/toyquant/deploy/preflight.sh; then
+                echo "preflight: this host would start tonight's session (the relay is up for it)"
+              else
+                echo "preflight: the checks above say it would not" >&2
+                exit 1
+              fi
               ;;
             diagnose)
               # The question a deploy asks when bootstrap says "install toyquant-relay" and the next `systemctl restart`
