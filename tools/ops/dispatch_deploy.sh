@@ -59,7 +59,12 @@ api() {  # api <method> <path> [body]
 
 newest_run() {  # newest_run <workflow-file>
   api GET "/repos/$SLUG/actions/workflows/$1/runs?per_page=1" |
-    python3 -c 'import json,sys; d=json.load(sys.stdin); r=(d.get("workflow_runs") or [{}])[0];
+    python3 -c 'import json,sys
+raw = sys.stdin.read().strip()
+if not raw:
+    print(0, "unknown", "-", "")
+    raise SystemExit
+d = json.loads(raw); r=(d.get("workflow_runs") or [{}])[0];
 print(r.get("id",0), r.get("status","none"), r.get("conclusion") or "-", r.get("html_url",""))'
 }
 
@@ -87,8 +92,9 @@ cmd_run() {
     esac
   done
   if [ "${ALLOW_DIRTY:-0}" != 1 ]; then require_clean_tree || return 1; fi
-  local running
-  running=$(in_progress "$workflow")
+  local running=""
+  # Without a token there is nothing to ask, so the dry run does not pretend to know whether a run is in flight.
+  if [ "$DRY_RUN" = 0 ]; then running=$(in_progress "$workflow"); fi
   if [ -n "$running" ]; then
     echo "dispatch_deploy: $workflow already has run $running queued or running; waiting is cheaper than queueing a second" >&2
     return 1
