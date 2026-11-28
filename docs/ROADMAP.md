@@ -183,20 +183,27 @@ it needs no code and no data; the live-replay calibration stayed where the propo
 | 6b | which two or three seats hold a portfolio | 6a for NES, 1 for the state gate, and the correlation of the seats' bad days (already measured once: r = 0.039) |
 | 7 | dynamic size and the intraday circuit breaker | a seat with a stable positive median at one contract, and a tail baseline that is an *event* rather than a number: the C bucket's -250.5 bps is one day (2026-11-22), so a size ladder must be calibrated on the count of such days, not on the single worst print |
 
-**The admission rule, registered before any seat is ranked and decided by the owner on 2026-11-28.** A seat enters a
-comparison only above a **fill floor** of **25 fills in a window, read as the median of the sample's own windows** -- the
-*per-window* form, at the tighter end of the 25 to
-30 range registered here, because a seat is judged window by window; the ten-contract cell's own 40-fill floor still
-governs a cell measured over a window set, and a row says which floor it used. The ranking is **median net bps** with the
-**tail multiple** (`worst day / median`) beside it, smaller is better -- **never the dollar total**, which stays the row's
-third column and is deliberately not the ranking. The owner's reason: a dollar total scales linearly with seats running in
-parallel and with equal-risk size, so it ranks the capital behind a seat rather than the seat's quality, while the tail
-multiple is what bounds a worst-day drawdown and therefore how much room there is to add size. NES reads +15.70 at 3.95 and
-UP +12.27 at 6.13 on the same 28 days, so NES ranks first on both columns while UP carries the larger dollar total (0.3630
-against 0.2342 USD a window), and the two facts are kept side by side rather than collapsed. **And the seats are not a
-tournament**: two instruments that both clear a positive median with a controlled tail are run *together*, which is the
-reason the portfolio line exists at all -- the merge's dispersion test already read 2.77x with the two seats' bad days
-uncorrelated.
+**The admission rule, registered before any seat is ranked, decided by the owner on 2026-11-28, and its reading fixed the
+same day.** A seat enters a comparison only above a **fill floor**: **the median of its windows' fill counts is at least 25**,
+read as the median and **not** as a per-window veto. The veto was refused because a thin window is a property of the
+instrument's tape rather than of the seat's quality: NES's median is 26 while 11 of its 27 measured windows are thinner than
+25, so a veto would refuse the seat with the better median capture and the smaller tail multiple. One supplementary ceiling
+keeps the median from hiding a dead sample: **at most 15 percent of the measured windows may be dead or nearly so**, defined
+as zero fills or fewer than a fifth of the floor (5 fills); NES reads 2 of 27 (7.4 percent) against UP's 2 of 59 (3.4
+percent), so both clear it. The ten-contract cell's own 40-fill floor still governs a cell measured over a window set, and
+**every row states which floor it used and which column it ranked on**. The ranking column is the **median `closed_bps`**
+-- the column every recorded row quotes, and the same one the tail multiple's `worst day / median` is built from -- with the
+**tail multiple** beside it, smaller is better. The **median `net_bps`** is printed in the row and orders these two seats
+identically (+18.97 against +15.96 as well as +15.70 against +12.27); if a future seat's two columns disagree in order, the
+row reports both and the owner picks, rather than the rule silently switching columns. **Never the dollar total**, which
+stays the row's third column and is deliberately not the ranking. The owner's reason: a dollar total scales linearly with
+seats running in parallel and with equal-risk size, so it ranks the capital behind a seat rather than the seat's quality,
+while the tail multiple is what bounds a worst-day drawdown and therefore how much room there is to add size. NES reads
++15.70 at 3.95 and UP +12.27 at 6.13 on the same 28 days, so NES ranks first on both columns while UP carries the larger
+dollar total (0.3630 against 0.2342 USD a window), and the two facts are kept side by side rather than collapsed. **And the
+seats are not a tournament**: two instruments that both clear a positive median with a controlled tail are run *together*,
+which is the reason the portfolio line exists at all -- the merge's dispersion test already read 2.77x with the two seats'
+bad days uncorrelated.
 
 **The two seats under it, measured on the same twenty-eight days (2026-10-30..11-26).** NES's row is the control arm run on
 its own symbol (`--symbol NES-USDT-SWAP`, 28 days) and summarised by `tools/study/sweep_summary.py --read`; UP's is the
@@ -207,12 +214,11 @@ recorded `f1_control` row in `tools/sweep/up_ten_contract_cell.sh`'s header.
 | NES | 27 measured of 28 | 26 | +15.70 [-62.01, +65.48] | 21 of 27 | +18.97 | 0.2342 | 3.95 |
 | UP | 28 | 45 | +12.27 [-75.19, +90.37] | 22 of 28 | +15.96 | 0.3630 | 6.13 |
 
-NES is first on both ranking columns and on the floor's own median; UP carries the larger dollar total. Two things the row
-has to carry or it will be misread. The floor is the **median of the sample's windows**, and NES has **11 of its 27 measured
-windows under 25 fills** -- read as *every* window, the floor would refuse the seat this rule ranks first. And the rule's
-words are "median net bps" while every recorded row quotes the **closed** median: both order the pair the same way (+18.97
-against +15.96 as well as +15.70 against +12.27), so the ranking does not turn on it, but a future row should say which
-column it read.
+NES is first on both ranking columns and on the floor's own median; UP carries the larger dollar total. The row carries the
+two readings the rule was fixed with on 2026-11-28: the floor is the **median** of the sample's windows -- 11 of NES's 27 are
+thinner than 25, which is why a per-window veto was refused -- and the ranking column is **`closed_bps`**, with the
+`net_bps` median printed beside it because it orders the pair identically. The dead-window ceiling reads 2 of 27 for NES and
+2 of 59 for UP at the 5-fill definition, so both are inside the 15 percent limit.
 
 ### Waiting on data, with the run it unlocks
 
