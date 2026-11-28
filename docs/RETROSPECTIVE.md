@@ -266,10 +266,44 @@ median that orders them consistently -- for the row to reopen; if all three read
 other *and* of the control, the closure stands and `docs/L2_FLAGS.md`'s "carries little information" is a statement about the
 market's gap distribution rather than about a divisor.
 
-**And the cost order that follows from the table**: the threshold check; then the cell's control over the same seven days at
-`--latency-us 10000` (= 10 ms) against the recorded ten-second row, which says in one run whether the whole family must be
-re-recorded; then the two seat floors; then the A-S and debounce ladders. The record-derived studies wait for a reason
-because `fill_basis_asymmetry` is a one-month reading that is not a row to quote yet.
+**Run 2026-11-29, the frozen cell over 2026-11-16..22 at 13:30-15:30 UTC with `--latency-us 10000` (10 ms again).** The
+parameter is alive and the frozen value is on the right side of it:
+
+| `--pause-ticks-per-second` | fills median | closed median | positive | pauses median |
+|---|---:|---:|---:|---:|
+| **9** (the frozen default) | 52 | **+16.82** | **6 of 7** | 45 |
+| 20 | 49 | +13.85 | 6 of 7 | 8 |
+| 50 (about off) | 47 | +11.79 | 5 of 7 | 0 |
+
+Three values in one order, and the pause counts say the lever is what moved them: loosening the halt costs **5.03 bps of
+closed median and one positive day**, with the adjacent gaps (2.97 and 2.06 bps) bigger than nothing but inside what a
+seven-day sample wobbles. **So the row reopens as a lever whose frozen value is already the best of the three tested**, and
+`docs/L2_FLAGS.md`'s "every value from 1.0 to 50.0 lands in the same place" is **refuted rather than provisional**. What the
+sample does not say is where the optimum sits between 9 and 20; a lower threshold is a new arm with its own bar, not a
+footnote here.
+
+**And the same run is the sensitivity cut.** The `pause=9` arm *is* the frozen control at the real latency, so the same seven
+days, same flags, differ from the recorded row in one thing only:
+
+| frozen control, 2026-11-16..22 | fills median | closed median | positive | worst day |
+|---|---:|---:|---:|---:|
+| recorded 2026-11-27, `--latency-us 10000` = **10 s** | 50 | +10.32 | 5 of 7 | -202.88 bps |
+| now, `--latency-us 10000` = **10 ms** | 52 | +16.82 | 6 of 7 | -42.79 bps |
+
+So the family **must** be re-recorded, and in the strategy's favour: the recorded rows were measured on a link a hundred
+times slower than the account has, and the level the real one gives is higher, not lower. A reader re-derives both tables with
+the cell's own flags -- `bash tools/sweep/up_ten_contract_cell.sh --arm f1_control --days 2026-11-16,...,2026-11-22` for the
+second row, and `tools/study/live_knobs_ab.py --days <day> --extra "... --pause-ticks-per-second=N"` for the first -- which is
+why nothing here is a pinned block: **these two tables are measured, not pinned**, and the next re-record is where they become
+part of a cell.
+
+**The re-record's bar is the cell's own** -- `40 fills or more`, a positive closed median on `5 of 7`, a worst net day at
+`-120 bps` or better, the settling convention unchanged, and every arm on the same days it was recorded on. What it is *not*
+is a new threshold or a new arm chosen after these numbers were seen. What remains after it, in the order this audit set: the
+two seat floors, then the A-S and debounce ladders -- each on the days it was recorded on -- and the record-derived studies
+still wait for a reason, because `fill_basis_asymmetry` is a one-month reading that is not a row to quote yet.
+
+
 
 
 **A reopen changes the method, never the margin.** The method is the sampling resolution, the execution mechanism (taker

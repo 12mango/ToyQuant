@@ -6,7 +6,28 @@ and when — is in [Roadmap](docs/ROADMAP.md#change-log), and the two are delibe
 The repository is named `ToyQuant`. The `-v1` suffix that older links and a local clone may still carry is a leftover
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
-## The clock a duration is added to: four unit defects, and the bucket they starved (2026-11-29)
+## The audit's first two answers: the halt is a lever, and the cell was measured on a worse link than the account has (2026-11-29)
+
+Two measurements off one seven-day run of the frozen cell (2026-11-16..22, 13:30-15:30 UTC), both registered in
+`docs/RETROSPECTIVE.md`'s frontier map before the numbers existed.
+
+- **The volatility halt's threshold is alive, and its frozen value is already the best of the three tested.** With
+  `--latency-us 10000` now meaning 10 ms, `--pause-ticks-per-second` at **9** (the default) reads a closed median of
+  **+16.82** bps and 6 of 7 positive days with 45 pauses a window; **20** reads +13.85, 6 of 7, 8 pauses; **50** (about off)
+  reads +11.79, 5 of 7, 0 pauses. So loosening the halt costs 5.03 bps of median and one positive day, and the old sentence
+  "every value from 1.0 to 50.0 lands in the same place" was a property of the divisor, not of the market -- withdrawn from
+  `docs/L2_FLAGS.md`. What the sample does not say is where the optimum is below 9; that is a new arm with its own bar.
+- **And the recorded cell was measured on a link a hundred times slower than the account's.** The same seven days, the same
+  flags, the only difference being that `--latency-us 10000` was ten seconds when the row was recorded and is ten milliseconds
+  now: fills median **50 -> 52**, closed median **+10.32 -> +16.82**, positive days **5 of 7 -> 6 of 7**, worst day
+  **-202.88 -> -42.79 bps**. The level the real link gives is *higher*, so every absolute number in the cell family
+  understates the strategy rather than flattering it -- which is the opposite of what a 100x error usually does, and the
+  reason the re-record is registered rather than rushed: same arms, same days, the cell's own bar.
+
+Both tables are measured and **not pinned**: the commands are the cell's own (`tools/sweep/up_ten_contract_cell.sh` and
+`tools/study/live_knobs_ab.py --extra`), and the second table's second row is exactly the `pause=9` arm of the first.
+
+
 
 The 2026-11-28 window's two journal lines were pasted in, and the number that decides a window was not where the session
 had been looking:
