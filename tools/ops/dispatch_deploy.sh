@@ -135,7 +135,9 @@ cmd_run() {
     # whose halves differ in length is refused before the runner starts rather than in the job. Same reason `--at` and
     # `--lines` are checked: these characters go into a JSON body and a local refusal costs a second, a host one a round trip.
     case "$key" in *[!0-9A-Za-z_.,-]*) echo "dispatch_deploy: --key takes section.name[,section.name], not '$key'" >&2; return 2 ;; esac
-    case "$value" in *[!0-9A-Za-z_.,-]*) echo "dispatch_deploy: --value takes a value[,value], not '$value'" >&2; return 2 ;; esac
+    # `/` is allowed in a value because `engine.record_orders` takes an absolute path, and `live_config.py` is the reader that
+    # refuses a relative one -- the guard here is about what can reach a JSON body, not about what a path may look like.
+    case "$value" in *[!0-9A-Za-z_.,/-]*) echo "dispatch_deploy: --value takes a value[,value], not '$value'" >&2; return 2 ;; esac
     local keys=() values=()
     IFS=',' read -r -a keys <<< "$key"
     IFS=',' read -r -a values <<< "$value"
