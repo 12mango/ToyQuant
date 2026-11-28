@@ -6,6 +6,19 @@ and when — is in [Roadmap](docs/ROADMAP.md#change-log), and the two are delibe
 The repository is named `ToyQuant`. The `-v1` suffix that older links and a local clone may still carry is a leftover
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
+## The leader-state gate does not survive its own out-of-sample days (2026-11-28)
+
+- **`tools/study/fill_markout_by_state.py` prints the verdict its table existed for.** The registered bar was "the flat
+  bucket's mean above the pooled mean, and dropping the moving fills costing no more than a fifth", and the tool printed
+  five buckets and left the division to a reader. It prints the two means, which way the comparison falls, and the share of
+  fills a gate would drop.
+- **The out-of-sample run closes the line, kind method.** On 2,518 fills over the 21 days the gate was never measured on
+  (2026-10-30..11-26, the seven it was found on excluded), the flat `-2..2` bucket -- 69 percent of the fills -- reads a
+  mean markout of **-0.12 bps** against a pooled **+0.35**, with the moving buckets at +0.41, +1.85 and +5.75/+5.32: the
+  effect **reversed** rather than decayed, and dropping the moving fills costs **31 percent** of them. So the gap buys no
+  engine input. The row is in `RETROSPECTIVE.md`'s frontier map and in ROADMAP's Tier 1, and its reopen changes the bucket
+  or the horizon rather than the threshold.
+
 ## The ten-contract cell runs on either seat (2026-11-28)
 
 - **`up_ten_contract_cell.sh --symbol` and `--tick`.** The cell's command line carried `--symbol UP-USDT-SWAP` and

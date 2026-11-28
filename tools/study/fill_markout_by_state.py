@@ -168,6 +168,19 @@ def main():
             continue
         print(f"{name:>16} {len(values):>6} {sum(values) / len(values):>+13.2f} "
               f"{values[len(values) // 2]:>+8.2f} {len(values) / total:>6.0%}")
+    # The bar this tool exists for, printed rather than left to arithmetic: the flat bucket's mean against the pooled mean,
+    # and what dropping the moving fills would cost. A table a reader has to divide before knowing the verdict is a table
+    # that hides it -- and measured 2026-11-28, the out-of-sample reading reverses the seven-day one, so the verdict line is
+    # the whole result.
+    flat = pooled["-2..2"]
+    every = [value for values in pooled.values() for value in values]
+    if flat and every:
+        pooled_mean = sum(every) / len(every)
+        flat_mean = sum(flat) / len(flat)
+        dropped = 1.0 - len(flat) / len(every)
+        relation = "above" if flat_mean > pooled_mean else "below"
+        print(f"\nflat bucket: {len(flat)} fills, a mean of {flat_mean:+.2f} bps against the pooled mean of "
+              f"{pooled_mean:+.2f} -- {relation} it. Dropping the moving fills costs {dropped:.0%} of the fills.")
     return 0
 
 
