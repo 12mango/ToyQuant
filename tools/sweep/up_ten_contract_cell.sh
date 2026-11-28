@@ -62,7 +62,6 @@ TICK=${TICK:-0.0001}
 DEBOUNCE=${DEBOUNCE:-40000}
 # The settle arm: the exit a replay cannot fill, priced at the far touch, one tick past it, plus a taker fee.
 SETTLE="--settle-residual --settle-taker-bps=5 --settle-slippage-ticks=1"
-BASE="--post-only --extra-layers=1 --advance-debounce-ms=$DEBOUNCE $SETTLE"
 
 OUT=${OUT:-/tmp/tq}
 arm=all
@@ -78,6 +77,10 @@ while [ $# -gt 0 ]; do
     *) echo "up_ten_contract_cell: unknown argument $1" >&2; exit 2 ;;
   esac
 done
+# The base command line, built after the arguments for the same reason as CELL below it: expanded beside the defaults, an
+# `--advance-debounce-ms` here baked in 40000 and the debounce ladder ran one arm four times and agreed with itself to the
+# digit -- measured 2026-11-28, and the four identical CSVs are what gave the mistake away.
+BASE="--post-only --extra-layers=1 --advance-debounce-ms=$DEBOUNCE $SETTLE"
 # Ten contracts a clip into a hundred-contract cap, two layers, post-only, the frozen forty-second suppression. Built after
 # the arguments so the symbol and the tick the caller named reach the engine; the defaults reproduce every recorded UP row
 # to the digit.

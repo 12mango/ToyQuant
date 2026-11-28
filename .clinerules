@@ -176,6 +176,12 @@ compatibility path. Everything below assumes that page.
   its loop, not at its child**: killing one arm's python inside a `for ms in ...` let the loop start the next arm beside
   the re-launched job, so two sweeps shared one cuts directory -- the tool's own refusal names the pid that holds the lock,
   and that message is how the stray was found.
+- **A flag string is built after the arguments that fill it, because at the top of the file it bakes in the defaults.** The
+  cell script expanded `BASE="…--advance-debounce-ms=$DEBOUNCE…"` beside `DEBOUNCE=${DEBOUNCE:-40000}` and parsed
+  `--debounce` forty lines later, so the debounce ladder ran one arm four times -- the four CSVs agreed to the digit, and
+  that is what caught it. The tell is worth keeping: a lever that changes nothing on a moving book is a bug until a one-day
+  two-value smoke shows the flag moving a number (measured 2026-11-28: 40000 ms fills 51 times, 250 ms 168), so every
+  command string in a driver is assigned after the argument loop and a new flag gets that smoke before a full ladder runs.
 - **A tick is a price, not an amount, and a per-tick figure is converted before it is quoted.** `0.0001` on a `0.19`
   instrument is **5.2 bps**, not half of one, and the difference is the whole answer to "can a fee be paid": on
   2026-11-25 the profile page, the changelog and two tool docstrings said "one tick is half a basis point" for a day,
