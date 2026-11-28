@@ -256,6 +256,15 @@ compatibility path. Everything below assumes that page.
   duration on the Deribit sources came out a thousand times short. So a new duration goes through `seconds_of` or
   `clock_units_of_us`, the unit helper carries a case for all three clocks it can see (a fixture from zero, a millisecond
   epoch, a microsecond epoch), and a test that only feeds microseconds has not covered the code.
+- **A queue carries the four cells, and one heavy job runs at a time.** `tools/ops/jobq.sh add <name> --artifact … --consumer "…"
+  --bar "…" -- <command>` registers a heavy run as a file in `out/jobs/`; `run` starts the serial detached runner, `status`
+  prints the table, `tail` reads a log, `stop` finishes the current job and stops. Measured 2026-11-29 on this host -- 8
+  cores, 15 GB, 6.0 GB free on the 7.7 GB tmpfs -- so the binding resource is the **tmpfs and not the CPU**: the queue is
+  serial by construction (two sweeps in one cuts directory is the collision the sweep tool refuses by pid), it runs at
+  `nice 10` so a foreground `fast` is not starved, and a job whose `--needs-gb` exceeds what `/tmp` holds is marked
+  `blocked` instead of dying at exit 120 with an empty log. The state is in the tree rather than `/tmp`, so a reboot loses
+  the log and not the queue. **A foreground gate may run beside it**, and a tier0 red with only `venue_order_session_test`
+  (#23) named while a job is running is the known load-sensitive flake: re-run tier0 alone instead of debugging it.
 - **A live session is a verb, not a command typed into the tool's shell.** `bash .run.sh soak <post-only|baseline>` runs
   `tools/live/soak.sh` through the same detached `start()` every gate uses. Measured 2026-11-23: a session started from
   the tool's terminal with `tools/gate/detach.sh` ran to completion in the background while the tool's shell executed

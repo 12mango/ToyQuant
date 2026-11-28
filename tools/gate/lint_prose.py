@@ -386,6 +386,11 @@ def main():
                         # the rebuilt rows under the tree. Named in `docs/TOOLS.md` and in the live page, because the
                         # window's numbers reaching this tree without a journal paste is what they are for.
                         "--from-log", "--save",
+                        # `tools/ops/jobq.sh` owns these: a job's four cells (its artifact, the tool that consumes it,
+                        # the bar that closes it) and the two knobs that make the queue safe on this host (how much
+                        # `/tmp` a job may need, and running the runner in the foreground for its self-test). Named in
+                        # `docs/TOOLS.md` with the tool.
+                        "--artifact", "--consumer", "--bar", "--needs-gb", "--foreground",
                         # `tools/fetch/prefetch_windows.sh` owns this one: which of its three blocks to run, because a
                         # prefetch of three questions is re-run one question at a time.
                         "--block",
