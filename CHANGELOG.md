@@ -6,6 +6,33 @@ and when — is in [Roadmap](docs/ROADMAP.md#change-log), and the two are delibe
 The repository is named `ToyQuant`. The `-v1` suffix that older links and a local clone may still carry is a leftover
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
+## The cell at the wire's own latency: the levels were 10 ms findings (2026-11-28)
+
+The host's own probe reads 73-89 ms to the venue's edge and answer, while every cell row in this record was measured at
+`--latency-us 10000` (10 ms). Tier 1 #7 asked whether the ranking survives the difference. The cell now takes `--latency-us`,
+and the same sixty days at `--latency-us 100000` answer it:
+
+| arm | fills | closed median | positive | net median | USD/window | worst day |
+|---|---:|---:|---:|---:|---:|---:|
+| control, 10 ms | 38 | +17.22 | 44 of 59 | +14.79 | 0.3097 | −75.19 |
+| control, 100 ms | **10** | **+5.85** | **31 of 60** | **−6.97** | **−0.0217** | −54.33 |
+| tox2, 100 ms | 10 | +5.24 | 32 of 58 | +14.62 | 0.1013 | −177.47 |
+| A-S 25 bps, 10 ms | 38 | +16.23 | 43 of 59 | +13.81 | 0.5009 | −36.30 |
+| A-S 25 bps, 100 ms | 12 | +1.17 | 32 of 60 | −10.61 | −0.0404 | **−105.31** |
+
+- **The mechanism is the residual, not the capture.** A quote that arrives 100 ms late is filled a third as often, so the
+  session cannot complete its round trips and carries what it holds into the settlement, which prices the far touch, a tick
+  past it and 5 bps of taker fee. Fills fall 38 to 10, the closed median 17.22 to 5.85, and the net median crosses zero.
+- **At least one ordering inverts.** At 10 ms the A-S arm carried the better worst day (−36.30 against the control's
+  −75.19); at 100 ms it carries the worse one (−105.31 against −54.33). A tail multiple quoted against a median this close
+  to zero (9.29, 33.84, 90.01) is not a stable statistic either.
+- **So the levels are 10 ms levels**, and the seat rule's own medians — +15.70 for NES, +12.27 for UP — are 10 ms numbers.
+  What survives is what was measured on a *fill set independent of the latency*: whether a state predicts a fill's markout,
+  whether a fill is toxic at its own instant. What does not survive is any sentence of the form "this seat earns X per
+  window", and any ranking that a residual-driven settlement can reorder.
+- **What would move it**: the cell at the measured *distribution* (73-118 ms) rather than at one constant, and a live window
+  whose record can be decomposed — which is Tier 1 #8's price.
+
 ## The A-S skew halves the tail and pays for it in the median (2026-11-28)
 
 `--as-skew-bps=B` with `--session-start=HH:MM` is Avellaneda-Stoikov's reservation-price skew, `-q*gamma*sigma^2*(T - t)`,

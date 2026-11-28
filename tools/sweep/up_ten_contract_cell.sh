@@ -60,6 +60,12 @@ SYMBOL=${SYMBOL:-UP-USDT-SWAP}
 TICK=${TICK:-0.0001}
 # The frozen forty-second suppression, as a value rather than a constant: the debounce ladder varies it and nothing else.
 DEBOUNCE=${DEBOUNCE:-40000}
+# The round trip a run is given, in **microseconds** because that is the engine's unit: 10000 is ten milliseconds and is the
+# value every recorded row was measured at, while the host's own probe reads 73 to 89 ms to the venue's edge and answer. Tier 1
+# #7 asks whether an arm's ranking survives the wire this project actually has, and that question is one flag:
+#   for arm in f1_control f1_tox2 f6_as_skew; do bash tools/sweep/up_ten_contract_cell.sh --arm $arm --latency-us 100000 \
+#       --days <sixty days> --out /tmp/tq/lat100; done
+LATENCY=${LATENCY:-10000}
 # The settle arm: the exit a replay cannot fill, priced at the far touch, one tick past it, plus a taker fee.
 SETTLE="--settle-residual --settle-taker-bps=5 --settle-slippage-ticks=1"
 
@@ -72,8 +78,9 @@ while [ $# -gt 0 ]; do
     --symbol) SYMBOL=$2; shift 2 ;;
     --tick) TICK=$2; shift 2 ;;
     --debounce) DEBOUNCE=$2; shift 2 ;;
+    --latency-us) LATENCY=$2; shift 2 ;;
     --out) OUT=$2; shift 2 ;;
-    -h|--help) sed -n '2,52p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,68p' "$0"; exit 0 ;;
     *) echo "up_ten_contract_cell: unknown argument $1" >&2; exit 2 ;;
   esac
 done
@@ -85,7 +92,7 @@ BASE="--post-only --extra-layers=1 --advance-debounce-ms=$DEBOUNCE $SETTLE"
 # the arguments so the symbol and the tick the caller named reach the engine; the defaults reproduce every recorded UP row
 # to the digit.
 CELL="--symbol $SYMBOL --days $DAYS --strategy active_l2 --models prorata
-      --base-spread-grid 3 --refresh-grid 1 --latency-us 10000 --tick $TICK
+      --base-spread-grid 3 --refresh-grid 1 --latency-us $LATENCY --tick $TICK
       --start 13:30 --end 15:30 --order-size 100000000 --inv-limit 1000000000"
 mkdir -p "$OUT"
 
