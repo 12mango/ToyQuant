@@ -510,6 +510,15 @@ def main():
 
     now = datetime.fromisoformat(args.at).replace(tzinfo=timezone.utc) if args.at else datetime.now(timezone.utc)
     start_utc, end_utc = window_at(now, args.window_start, args.window_end)
+    # A window that has not closed has no numbers yet, and a row for it is a row of blanks that the next real run has to
+    # overwrite: measured 2026-11-28, a `--at` dispatch naming a future instant (15:36) ran at 12:48, wrote a 2026-11-28 row
+    # reading `sessions=0` about a session that later traded 34 times, and the same command after the close replaced it. The
+    # comparison is against the **real** clock, because `--at` is what a backfill moves and the guard is about whether the
+    # window it names has happened yet.
+    real_now = datetime.now(timezone.utc)
+    if end_utc > real_now:
+        raise SystemExit(f"daily_report: the window {start_utc:%Y-%m-%dT%H:%MZ} .. {end_utc:%H:%MZ} has not closed yet "
+                         f"(it is {real_now:%Y-%m-%dT%H:%MZ}); its row would be blanks -- report it after the close")
     text = journal_text(start_utc, end_utc)
     lines = (text or "").splitlines()
     verdict = verdict_of(lines)
@@ -679,6 +688,12 @@ def self_test():
                           {"net_pnl_usd": "-0.0217", "window_start_utc": "2026-11-27T13:30Z"}])
     assert drawn[0].startswith("-- series (2 window(s)"), drawn[0]
     assert any("2026-11-27" in line and "-0.0217" in line for line in drawn), drawn
+    # `window_at` names the most recently **completed** window: inside today's window it still answers yesterday's, which is
+    # why the guard above compares against the real clock rather than against `--at`.
+    inside = datetime(2026, 11, 28, 14, 0, tzinfo=timezone.utc)
+    assert window_at(inside, "13:30", "15:30")[1] <= inside
+    after_close = datetime(2026, 11, 28, 15, 36, tzinfo=timezone.utc)
+    assert window_at(after_close, "13:30", "15:30")[1] <= after_close
     print("daily_report self-test OK")
     return 0
 

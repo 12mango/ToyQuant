@@ -6,6 +6,30 @@ and when — is in [Roadmap](docs/ROADMAP.md#change-log), and the two are delibe
 The repository is named `ToyQuant`. The `-v1` suffix that older links and a local clone may still carry is a leftover
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
+## The bar's first reading: 11,086 rate-limited orders behind a 20/s budget (2026-11-28)
+
+The 13:30-15:30 window, read by the verdict line for the first time:
+
+    verdict FAIL (failed: rate_limited) -- refused: 0.0% < 20%; rate_limited: 11086 < 2000;
+    fills: 34 >= 20; capture: +2.662 > 0, markout +1.221 ticks beside it;
+    residual: 0 units and [RECON] at=end ok
+
+- **The budget did what it was bought to do and the bar says so**: the adapter refused nothing (92 percent on 2026-11-27), the
+  venue never refused a frame, and the session ended flat with `[RECON] at=end position venue_units=0 ... status=ok`.
+- **34 maker fills with a capture of +2.662 ticks and a markout of +1.221**, both far above the replay's median capture of
+  +0.416 — one window, so an observation rather than a rate, but it is the first window in which the fill count clears the
+  bar's twenty.
+- **The failing clause is the strategy's own churn.** The bar asks for under 2,000 rate-limited orders; the adapter's limiter
+  fired **11,086** times, 5.5 times that, at a 20/s cap with a burst of 4 over two hours (an allowance of 144,000). So the
+  frozen 40-second debounce still asks for roughly 23 orders a second, and the limiter — not the venue — is the binding
+  constraint. Either the churn falls or the clause moves with a reason; it is the owner's call, and the number is now printed
+  every night instead of read by hand.
+- **Two instrument defects surfaced with it.** The report would happily write a row for a window that had not closed (a
+  `--at` dispatch before the open left a 2026-11-28 row reading `sessions=0`; the same command after the close replaced it),
+  so it now refuses a window whose `end` is in the future. And the residual clause read `missing` on a host that runs no
+  wind-down — the engine stops at `--ws-seconds` — so the clause falls back to the position on the `[RECON] at=end` line,
+  which is the quantity it is about.
+
 ## The mail gets a readable half, and the record stays exact (2026-11-28)
 
 The owner's instruction: the record used for retrospection stays serious, the mail may be made readable. So the ledger row is
