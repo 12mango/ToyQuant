@@ -388,6 +388,10 @@ def main():
                         # because the archive's own properties -- a seven-day request cap and a whole-venue file per
                         # day -- are what those flags exist for.
                         "--from", "--to", "--pause", "--output-dir", "--skip-existing", "--keep-zip",
+                        # `tools/fetch/fetch_okx_index.py` owns these two: the candle size the index is
+                        # fetched at and the single day form. Both are named in `docs/TOOLS.md` with the
+                        # tool, and `--bar` is the venue's own name (`1m`, `5m`, `1H`) rather than a guess.
+                        "--bar", "--date",
                         # `deploy/daily_report.py` also owns this one: the report with the row written and the mail
                         # printed rather than sent, which is how a window the timer missed is backfilled and how the
                         # write path is checked without mailing the operator a second copy.
