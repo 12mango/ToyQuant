@@ -6,6 +6,24 @@ and when — is in [Roadmap](docs/ROADMAP.md#change-log), and the two are delibe
 The repository is named `ToyQuant`. The `-v1` suffix that older links and a local clone may still carry is a leftover
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
+## The P&L decomposition exists and refuses to quote itself yet (2026-11-28)
+
+- **`tools/study/fill_decomposition.py`** writes the identity `net = spread + drift - fees` per day and reconciles it against
+  the sweep CSV's `net_usd`: spread is each maker fill's `sign * (mid - price) * qty` at the instant, drift is the same fill
+  marked at the window's last mid, and fees are the record's own column. On twenty-one days **three reconcile to the digit
+  and the rest do not** -- the largest gap is -3.03 USD on 2026-11-25 against a replay net of +4.78 -- so the tool prints
+  "do not quote the split until the gap is explained", and that is the state it is in. The pattern points at the residual's
+  valuation (the gap is largest where the carry is largest), which is the next check, not a number to publish.
+- **Two defects the reconciliation found, both real.** `fill_markout_by_state.py`'s CELL was missing the four flags the cell
+  script passes (`--base-spread-ticks=3`, `--refresh-price-ticks=1`, and the two latency knobs), so its records were a
+  *different* run: 2026-11-05 recorded **71** maker fills where the cell's own CSV says **14**, and the sign of the ending
+  position differed. And the record cache was keyed on the day alone, so a fixed CELL silently reused the old records --
+  the key is now the day **and** the flag string, stamped beside the record.
+- **What that means for the leader-state closure**: its counterfactual was computed on those records, so the numbers
+  (+15.70-tier medians aside, the flat-bucket means and the 31 percent drop) belong to the run with the defaults, not to the
+  ten-contract cell. The sign reversal may stand or may not -- the honest status is **provisional until the analysis is
+  re-run on the corrected records**, and that re-run is the queue's next item.
+
 ## The release path splits, and the light one is off until it is measured (2026-11-28)
 
 - **`deploy/release_path.py`** answers one question for a diff: can it travel without a binary? Its allowlist is the card's

@@ -39,7 +39,13 @@ OUT = Path("/tmp/tq/fill_state")
 BIN = ROOT / "out/build/linux-debug/toy_quant"
 DAYS = ["2026-11-16", "2026-11-17", "2026-11-18", "2026-11-19", "2026-11-20", "2026-11-21", "2026-11-22"]
 CELL = ["--fast-validation", "--order-size=100000000", "--inventory-limit=1000000000", "--post-only",
-        "--extra-layers=1", "--advance-debounce-ms=40000", "--settle-residual", "--settle-slippage-ticks=1"]
+        "--extra-layers=1", "--advance-debounce-ms=40000", "--settle-residual", "--settle-slippage-ticks=1",
+        # The four the cell script passes and this list used to omit, in the engine's own names: the sweep tool's
+        # `--base-spread-grid 3 --refresh-grid 1 --latency-us 10000` translates to these. Measured 2026-11-28, the record of
+        # a day carries 71 fills on the defaults (a one-tick spread refreshed every fourth view at zero latency) against the
+        # cell's 14 -- so a record is only "the cell's fills" if the flags are the cell's.
+        "--base-spread-ticks=3", "--refresh-price-ticks=1",
+        "--order-latency-us=10000", "--cancel-latency-us=10000"]
 BUCKETS = [(-1e9, -10.0, "< -10"), (-10.0, -2.0, "-10..-2"), (-2.0, 2.0, "-2..2"),
            (2.0, 10.0, "2..10"), (10.0, 1e9, "> 10")]
 
@@ -111,6 +117,9 @@ def main():
     parser.add_argument("--days", default=",".join(DAYS), help="file days both instruments have an archive for")
     parser.add_argument("--leader", default="BTC-USDT-SWAP")
     parser.add_argument("--follower", default="UP-USDT-SWAP")
+    parser.add_argument("--records-only", action="store_true",
+                        help="replay each day and stop, without reading the leader -- the mode a P&L decomposition and a "
+                             "second month's records need, neither of which has a leader archive")
     args = parser.parse_args()
     days = [part.strip() for part in args.days.split(",") if part.strip()]
     OUT.mkdir(parents=True, exist_ok=True)
@@ -126,13 +135,22 @@ def main():
         # counterparty's mirror (measured 2026-11-16: 339 maker and 339 taker rows, the same 339 quantities, one each
         # side). Counting both halves every markout, so only the maker rows are read, and the replay is skipped when the
         # record is already on disk so a re-analysis does not pay for it again.
-        if not Path(f"{record}_orders.csv").exists():
+        # The cache key is the day **and the cell**: measured 2026-11-28, a record left from a cell missing four flags was
+        # silently reused after the flags were fixed, and the only sign was a P&L decomposition that would not reconcile.
+        stamp = Path(f"{record}.cell")
+        cell_line = " ".join(CELL)
+        stamped = stamp.exists() and stamp.read_text(encoding="utf-8").strip() == cell_line
+        if not (Path(f"{record}_orders.csv").exists() and stamped):
             command = [str(BIN), "l2_replay", str(trades), str(cut), args.follower, "0", "active_l2", "1",
                        "prorata"] + CELL + [f"--record-orders={record}"]
             run = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
             if run.returncode != 0:
                 print(f"# {day}: replay failed: {run.stderr.strip()[-200:]}", flush=True)
                 continue
+            stamp.write_text(cell_line + "\n", encoding="utf-8")
+        if args.records_only:
+            print(f"# {day}: record {record.name}_orders.csv (cell stamped)", flush=True)
+            continue
         start_ms, end_ms = bl.window_bounds(day, "13:30", "15:30")
         follower = mids_from_jsonl(cut, start_ms, end_ms)
         leader = bl.mids(bl.depth_archive(ROOT / "data/v2/crypto", args.leader, day), start_ms, end_ms)
