@@ -6,6 +6,29 @@ and when — is in [Roadmap](docs/ROADMAP.md#change-log), and the two are delibe
 The repository is named `ToyQuant`. The `-v1` suffix that older links and a local clone may still carry is a leftover
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
+## The toxicity gate's neighbourhood is a smooth plateau below the control (2026-11-28)
+
+The threshold question is whether a value works one step away or only where it was picked. The same rule at 1, 2, 3 and 4
+ticks over the sixty days, each arm one run of the tracked cell (`--jump-ticks` is an integer, so its own grid is the
+neighbourhood; a "+-20 percent" band is not expressible on this parameter):
+
+| arm | windows | fills (median) | closed median [range] | positive | net median | USD/window | tail multiple |
+|---|---:|---:|---|---:|---:|---:|---:|
+| control, no gate | 59 of 60 | 38 | +17.22 [-75.19, +90.37] | 44 of 59 | +14.79 | 0.3097 | 4.37 |
+| 1 tick | 59 of 60 | 30 | +15.33 [-59.39, +105.73] | 43 of 59 | +13.26 | 0.2508 | 3.87 |
+| 2 ticks | 59 of 60 | 31 | +14.52 [-70.00, +88.63] | 43 of 59 | +8.16 | 0.1670 | 4.82 |
+| 3 ticks | 59 of 60 | 31 | +14.24 [-70.00, +88.63] | 45 of 59 | +8.16 | 0.1670 | 4.92 |
+| 4 ticks | 59 of 60 | 31 | +14.24 [-70.00, +88.63] | 45 of 59 | +8.16 | 0.1670 | 4.92 |
+
+- **The surface is smooth**, which is what the check was for: no threshold is an island, so the seven-day reading was not
+  threshold noise. What it is instead is **uniformly below no gate at all** -- every value costs two to three bps of closed
+  median and seven fills, and none recovers the control.
+- **3 and 4 agree at every printed aggregate while their days differ** (three of sixty), which is a median's robustness
+  rather than a dead flag: `1` against `4` differs on most days, so the flag does reach the engine.
+- **So the cliff is between the gate and no gate, not between two thresholds**, and the second month is what made it
+  visible. A plateau rule would have passed this parameter, which is the part worth carrying: plateau tests catch threshold
+  noise, not regime change.
+
 ## The debounce's turning point is the value already frozen (2026-11-28)
 
 **`up_ten_contract_cell.sh --debounce` makes the ladder one tracked command, and the four arms were measured over the sixty
@@ -24,6 +47,14 @@ reproduces the toxicity row's control to the digit):
   fee column is 2.00 on every day of every arm, so what moves is capture against turnover and nothing else.
 - **So the turning point is the recorded value and Tier 1 #4 closes with the frozen cell unchanged**: no shorter window is
   worth its fills. The measurement cost about a minute because the cuts were already on disk.
+- **The "capture per unit time" a reviewer asked for is the column already published, and an earlier reply's arithmetic was
+  wrong.** `closed_bps` is a window's total capture in bps of notional, not a per-fill figure -- `net_usd / notional_usd x
+  1e4` reproduces `net_bps` on every row, and `closed_per_fill_bps` is that total divided by the fills -- so the median
+  `closed_bps` *is* capture per two-hour window, all windows being the same length, and no new statistic is needed. A reply
+  earlier this session multiplied it by the fill count (654 / 234 / 431 / 319) and that number is withdrawn. What the
+  reviewer's pair of metrics does not do is settle the trade-off it was introduced for: the 40000 window wins capture
+  (+17.22 against +3.84, +6.84 and +4.62) and loses fill share (38 against 61, 63 and 69), so a rule that asks for both
+  still needs the third column -- the tail -- to decide.
 
 ## The leader-state gate does not survive its own out-of-sample days (2026-11-28)
 
