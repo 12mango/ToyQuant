@@ -453,6 +453,11 @@ A page is read in three minutes or it is not read. Three rules follow, and the m
   `csv`, `udp` and `replay` are the L1 compatibility path (`docs/MAINLINE.md`, "What to drop, and why"): they keep
   running and they keep the invariants pinned on them, and on a front door they live **inside** a `/// details` fold
   with one line saying what they are. `tools/gate/lint_prose.py` fails a front-door page that runs one outside a fold.
+- **A page that is also included in another page cannot carry a relative link.** `docs/L2_FLAGS.md` is inlined into
+  `docs/using/01-getting-started.md`, so a link written for `docs/` is resolved from `using/` there and
+  `mkdocs build --strict` fails naming the **including** file -- measured 2026-11-29, one gate run lost to a link that was
+  correct in the file it was written in. Name the page in code (`` `docs/RETROSPECTIVE.md` ``) or spell the link for the
+  page it is included into.
 - **Fold what a reader can skip.** The test is one question: *without opening this, can a first-time reader still
   understand the conclusion?* If yes, it belongs in a fold. The five that always qualify:
 

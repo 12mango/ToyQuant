@@ -226,6 +226,52 @@ integer, so the parameter's own grid is the neighbourhood and a percentage band 
 | **the leader-state gate (`\|ΔBTC\|`)** | **method, closed on the twenty-one days it was never measured on** | a state gate found on seven BTC days: fills taken while the leader's 3 s return was flat were expected to carry a better markout than the pooled fills, and the direction was supposed not to matter, so the state to gate on was `\|return\|` | the counterfactual on 21 out-of-sample days (2026-10-30..11-26, `tools/study/leader_state_out_of_sample.py`): 2,518 fills, and the flat bucket (`-2..2` bps, 69 percent of them) reads a **mean markout of -0.12** against +1.85 in `-10..-2`, +0.41 in `2..10` and +5.75 and +5.32 in the two tails -- so the flat bucket is the worst of the five and **below the pooled mean**, and the effect **reversed** rather than decayed (in sample the moving buckets' means were -3.2 and -3.7). Dropping the moving fills costs **31 percent** of them, so the second clause fails too. A reopen changes the bucket -- the median column reads +2.16 to +3.08 and separates nothing either -- or the horizon, never the threshold. **The line is then closed outright by the owner's decision of 2026-11-28, on the clock rather than on the sample**: the measured round trip is 77 to 118 ms a placement and 76 to 78 ms a cancel, so a gate whose trigger is BTC's instantaneous state acts on a state that has already turned by the time its cancel reaches the venue -- the same wall the lead-lag row below closes on, reached from the other side. The rerun over corrected records was stopped rather than finished, and no further compute goes to the line; what would reopen it is a cancel round trip shorter than the state's own life, which is a venue question and not a measurement this tree can make |
 | **the recording flag** | **a defect in the instrument, cause found and fixed** | `--record-orders` was documented as changing no number, and it changed the run | done, 2026-11-25: the decorator forwarded `process_bbo` and not `process_l2_top`, whose interface default answers `process_bbo`, so an L2 feed arrived at the engine as a BBO feed and the queue accounting never ran -- 207 fills with `queue_ahead_consumed=0` against 123 with 142,572,001,537. With both forwarded (and the six queue queries too) the same day, window, cell and input read **123 fills on both sides** with every queue field equal, and `order_recorder_test` pins the forwards. The hypothesis this row carried -- the recorder stamping untimed reports -- was wrong and is replaced by the measurement |
 
+**What the 2026-11-29 unit fix reaches, and what it does not.** A defect in the instrument does not re-open every row: a
+row is contaminated only if its *measurement* passed through one of the four call sites, so the audit is a lookup on the
+command each row names. Nothing here was re-run to decide the class -- the evidence is the tool's own arguments
+(`tools/sweep/up_ten_contract_cell.sh` defaults `LATENCY=10000`, `tools/study/fill_markout_by_state.py`'s CELL passes
+`--order-latency-us=10000`, `okx_maker_baseline.py` defaults `--latency-us=0`) and, for the horizon row, the unit function
+itself.
+
+| the row | what its measurement ran through | class |
+|---|---|---|
+| crypto perpetuals; micro E-mini; the equities position term; options at fifteen days; the funding carry | a fee schedule, print counts and free archives -- no matcher clock | **clean**: arithmetic on a schedule or on data |
+| the link, and the post-only decline rate | `tools/live/okx_probe.py rtt` on the host -- 77-118 ms a placement, 12 of 12 quotes declined at 113 ms | **clean**: a wire measurement, and 309 of 343 declined on 2026-11-28 confirms it |
+| `tools/study/book_lead_lag.py` | two 400-level archives, returns in bps, a cross-correlation -- no engine | **clean** |
+| the wide-spread screen | one REST read a symbol, ranked by half-spread | **clean**; the ladders that followed it are not |
+| the leader-state gate | closed by the owner on the link's own 77-118 ms | **clean by decision**; its 2,518-fill measurement is a record, and records are the row below |
+| the cell family -- control, the four toxicity arms, the debounce ladder, the A-S ladder, the layer arms, the four window blocks, and both seats | `up_ten_contract_cell.sh`'s default `LATENCY=10000`, which was **ten seconds** | **contaminated** |
+| `fill_markout_by_state.py` and everything that reads its `rec_*_orders.csv`: `fill_decomposition`, `fill_basis_asymmetry`, **`gate_latency_counterfactual`** | the same `--order-latency-us=10000` in its CELL | **contaminated**: the counterfactual's 75 ms window is arithmetic on fills a ten-second replay produced, so its window is clean and its fill set is not |
+| **`trend_l2`'s horizon on the 2020 BTC days** | `clock_units_per_second` answered milliseconds for a microsecond epoch, so the registered 30 s horizon ran as 30 ms | **contaminated, and this is the row the audit found outside the latency flag** |
+| `execution_l2`'s implementation shortfall | a "10 ms" order latency that was ten seconds | **contaminated**: its subject *is* the delay |
+| the UP configuration's latency column | arms at "10", "30" and "80 ms" that were 10, 30 and 80 s | **contaminated**: same, and it is the column the row's verdict rests on |
+| the maker's entry gating; multi-layer quoting; the trading window | cells at "10 ms" | **contaminated as numbers**; each row's *closure reason* is a comparison of two arms under the same contamination, which is why the owner may hold them without a re-run |
+| the latency column; the recording flag | already defects, already fixed | **defect rows**: re-measured, never quoted |
+
+
+**One row's *mechanism* claim is not independent of the defect, and it is the toxicity gate's.** Its closure rests on "a
+smooth plateau below no gate at all" -- every value of `--jump-ticks` reading the same, and all of them below the control.
+A saturated execution model produces exactly that shape: when every quote is ten seconds late, no state gate can
+differentiate, and the control's own numbers are depressed with theirs. So the plateau is consistent with the defect as
+well as with the market. The owner's decision to hold the row stands -- the second month reversed the sign, and a reopen
+changes the mechanism -- and what the audit adds is only that the justification is not clean: one arm over seven days at
+`--latency-us 10000` (= 10 ms now) would re-derive it if the row is ever reopened for another reason.
+
+**The first check, cheapest and registered here before it runs: the volatility halt's threshold on one window.** The row
+that says "every value from 1.0 to 50.0 lands in the same place" was measured on a speed inflated by the old divisor, and the
+0.05 s floor capped that at about five times rather than a thousand -- so the *parameter may now be alive* and the row that
+read "the threshold carries no information" may be a defect rather than a market property. **The bar**: on the frozen cell
+over the same two-hour window, `--pause-ticks-per-second` at 9 (the default), 20 and 50 must separate -- fills or a closed
+median that orders them consistently -- for the row to reopen; if all three read within the sample's own spread of each
+other *and* of the control, the closure stands and `docs/L2_FLAGS.md`'s "carries little information" is a statement about the
+market's gap distribution rather than about a divisor.
+
+**And the cost order that follows from the table**: the threshold check; then the cell's control over the same seven days at
+`--latency-us 10000` (= 10 ms) against the recorded ten-second row, which says in one run whether the whole family must be
+re-recorded; then the two seat floors; then the A-S and debounce ladders. The record-derived studies wait for a reason
+because `fill_basis_asymmetry` is a one-month reading that is not a row to quote yet.
+
+
 **A reopen changes the method, never the margin.** The method is the sampling resolution, the execution mechanism (taker
 against passive, a marketable limit), the holding period, the state gate on the entry, or the fee tier -- the five things
 the rows above say were changed. Re-running the same window with a different numeric threshold is not a reopen: it is the
