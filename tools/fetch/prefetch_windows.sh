@@ -49,6 +49,11 @@ block 3 && { fetch_book UP-USDT-SWAP 2026-11-27 2026-11-27; fetch_tapes UP-USDT-
 #      sample the gate was *found* on; the other twenty-one are the test. BTC's depth day is 434-523 MB, so this block is
 #      about 9 GB and takes hours; it moves nothing else, because the fetch is one file at a time and deletes nothing.
 block 4 && fetch_book BTC-USDT-SWAP 2026-10-30 2026-11-26
+#   5. **NES, 2026-09-28..10-29** -- the second seat's second month, which is what its stability row reads (ROADMAP Tier 1
+#      6a): the same cell on 59 days instead of 27, so the floor and the two ranking columns are re-read on a month the
+#      sample that ranked it never included. A depth day is 10-30 MB and a sliced tape 4-14 MB, so this block is cheap;
+#      the venue-wide zip behind each day is deleted after the slice, as block 1's is.
+block 5 && { fetch_book NES-USDT-SWAP 2026-09-28 2026-10-29; fetch_tapes NES-USDT-SWAP 2026-09-28 2026-10-29; }
 
 echo "== prefetch done exit=$status"
 exit "$status"
