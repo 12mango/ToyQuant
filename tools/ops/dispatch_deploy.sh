@@ -6,6 +6,7 @@
 #   tools/ops/dispatch_deploy.sh run --ops report --at 2026-11-27T15:36:00Z   # one window's report, no mail
 #   tools/ops/dispatch_deploy.sh run --ops set-key \
 #     --key engine.max_orders_per_second,engine.order_burst --value 20,4 --add   # one setting, or a zipped list
+#   tools/ops/dispatch_deploy.sh run --base-sha 0e05ee4   # Cut 2: the diff the release-path classifier reads
 #   tools/ops/dispatch_deploy.sh check            # is the token the right shape, and does GitHub accept it
 #   tools/ops/dispatch_deploy.sh status           # the last few runs and their state
 #   tools/ops/dispatch_deploy.sh logs [--failed]  # the newest run's log (failed steps only with --failed)
@@ -28,7 +29,7 @@ TOKEN_FILE="${GH_TOKEN_FILE:-$ROOT/secrets/gh.token}"
 API=${TOYQUANT_API:-https://api.github.com}
 DRY_RUN=0
 
-usage() { sed -n '2,23p' "$0"; }
+usage() { sed -n '2,24p' "$0"; }
 
 repo_slug() {
   local url
@@ -87,7 +88,7 @@ in_progress() {  # in_progress <workflow-file> -> prints the run id when one is 
 }
 
 cmd_run() {
-  local workflow=deploy.yml body action="" at="" lines="" key="" value="" add=0
+  local workflow=deploy.yml body action="" at="" lines="" key="" value="" add=0 base_sha=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --ops) workflow=ops.yml; action=${2:-}; shift 2 ;;
@@ -96,11 +97,21 @@ cmd_run() {
       --key) key=${2:-}; shift 2 ;;
       --value) value=${2:-}; shift 2 ;;
       --add) add=1; shift ;;
+      # Cut 2: the release-path classifier diffs this commit against the one being deployed. A dispatch has no `before`,
+      # so the base is named here or the classifier answers `full` -- which is the safe default.
+      --base-sha) base_sha=${2:-}; shift 2 ;;
       --no-predeploy) SKIP_PREDEPLOY=1; shift ;;
       --allow-dirty) ALLOW_DIRTY=1; shift ;;
       *) echo "dispatch_deploy: unknown argument $1" >&2; return 2 ;;
     esac
   done
+  if [ -n "$base_sha" ]; then
+    case "$base_sha" in *[!0-9a-fA-F]*) echo "dispatch_deploy: --base-sha takes a commit hash, not '$base_sha'" >&2; return 2 ;; esac
+    if [ "$workflow" != deploy.yml ]; then
+      echo "dispatch_deploy: --base-sha is deploy.yml's (the release-path classifier), not $workflow's" >&2
+      return 2
+    fi
+  fi
   # The three `set-key` inputs. `ops.yml` declares them and this dispatcher has to carry them, or the only way to apply a
   # setting is the browser -- which is the loop this tool exists to close. They are one action's inputs, so naming them
   # for another workflow is refused here rather than arriving at a step that ignores them and reports a run that changed
@@ -166,8 +177,13 @@ cmd_run() {
     body="$body}}"
   else
     # `data_gate` is deliberately absent: its runner does not exist on this host, and a queued job nobody serves is how a
-    # green deploy reads as a hung one (measured 2026-11-27, deploy #8).
-    body='{"ref":"main"}'
+    # green deploy read as a hung one (measured 2026-11-27, deploy #8). `base_sha` is the one input a dispatch may carry,
+    # because the release-path classifier needs a diff and a dispatch has no `before` to diff against.
+    if [ -n "$base_sha" ]; then
+      body="{\"ref\":\"main\",\"inputs\":{\"base_sha\":\"${base_sha}\"}}"
+    else
+      body='{"ref":"main"}'
+    fi
   fi
   if [ "$DRY_RUN" = 1 ]; then
     echo "would: POST /repos/$SLUG/actions/workflows/$workflow/dispatches $body"

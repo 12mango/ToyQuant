@@ -22,6 +22,9 @@ site now points at `ToyQuant`.
 - **The 60-second bar is not measured yet**, and deliberately: it needs a real config-only diff in a 04:00-12:00 UTC block.
   One correction to the card's wording came out of the build -- the operator's `live.yaml` never travels by a deploy, so the
   light path is about the template and the units, not about a setting.
+- **The dispatcher carries the diff's base** (`--base-sha`, refused on any workflow but `deploy.yml` and refused on a
+  non-hex string), because a dispatch has no `before` for the classifier to read; and the switch itself is the owner's --
+  this host's token is Actions-only and answered `403` on the variables endpoint.
 
 ## A red health check now rolls back, and the host remembers what it refused (2026-11-28)
 

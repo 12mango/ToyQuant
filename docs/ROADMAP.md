@@ -146,7 +146,13 @@ the rule (the nineteenth) are in the tree, `TOYQUANT_LIGHT_PATH` is unset so eve
 60-second bar waits for a real config-only diff in a 04:00-12:00 UTC block -- a fixture invented to hit it would measure the
 fixture. One thing the card's wording got wrong and the build corrected: the operator's `live.yaml` never travels by a
 deploy at all (it is `--ops set-key`'s), so the light path is about `config/live.example.yaml`, the units, the timers, the env
-templates and the journald/logrotate files.
+templates and the journald/logrotate files. **Two things stand between this build and the bar.** The switch is the owner's:
+this host's token is Actions-only and a variables read answered `403 Resource not accessible by personal access token`
+(measured 2026-11-28), so `TOYQUANT_LIGHT_PATH` has to be set in the repository settings -- and the dispatcher took
+`--base-sha` in the same change, so the measurement is one command once the switch exists. And the bar's endpoint is
+contradictory as written: a green `check_health.sh` line needs a *running* session, while the card forbids deploying inside
+13:30-15:30, so between windows the light path ends at the activation's report. Measuring to that line, or moving the bar's
+endpoint, is the owner's call.
 
 **Why Cut 1 first, and why neither is built in the hour before the window.** Tonight's session is started by
 `toyquant-window-start.timer`, not by a deploy: nothing in either cut makes the window start. What tonight needs is the
