@@ -14,6 +14,9 @@
 #                                                 # deploy.yml**, so reading an ops run means naming it -- measured
 #                                                 # 2026-11-28, five reads of the wrong run before the default was noticed
 #   tools/ops/dispatch_deploy.sh wait             # block until the newest run finishes
+#   tools/ops/dispatch_deploy.sh window           # dispatch `--ops ledger`, wait, and save the series into
+#                                                 # out/runtime/window_ledger.csv, then print it -- the window's
+#                                                 # numbers reaching this tree without a journal pasted by hand
 #
 # The credential is one file, ignored, mode 600: `secrets/gh.token`, a fine-grained token for this repository with
 # **Actions: Read and write** and nothing else. It is not a push token and it cannot be: a token without `Contents: write`
@@ -32,7 +35,7 @@ TOKEN_FILE="${GH_TOKEN_FILE:-$ROOT/secrets/gh.token}"
 API=${TOYQUANT_API:-https://api.github.com}
 DRY_RUN=0
 
-usage() { sed -n '2,24p' "$0"; }
+usage() { sed -n '2,27p' "$0"; }
 
 repo_slug() {
   local url
@@ -290,6 +293,35 @@ cmd_check() {
   echo "  ok -- Actions: Read and write is the last thing to confirm, and \`status\` proves it"
 }
 
+cmd_window() {
+  # One command from the host's window series to a file in this tree. The host is the only machine that can see the
+  # ledger, and until this verb existed the numbers were copied out of a journal by hand -- which is how a window came to
+  # be read from two lines pasted into a conversation while its own row carried neither. The file it saves is under
+  # `out/`, which is generated output and stays out of the commit, so the series travels with the tree without becoming a
+  # tracked copy of the host's state.
+  local save=${1:-$ROOT/out/runtime/window_ledger.csv} target=${2:-300} id job jobs
+  cmd_run --ops ledger || return 1
+  cmd_wait ops.yml || return 1
+  read -r id _ _ html <<<"$(newest_run ops.yml)"
+  echo "run $id: $html"
+  jobs=$(api GET "/repos/$SLUG/actions/runs/$id/jobs")
+  job=$(printf '%s' "$jobs" | python3 "$ROOT/tools/ops/jobs.py" last)
+  if [ -z "$job" ]; then
+    echo "dispatch_deploy: run $id has no job to read -- nothing was pulled, and no file was written" >&2
+    return 1
+  fi
+  curl -sSL -H "Authorization: token $(read_token)" -H 'Accept: application/vnd.github+json' \
+    "$API/repos/$SLUG/actions/jobs/$job/logs" -o /tmp/tq/joblog.zip || {
+      echo "dispatch_deploy: could not fetch the log of job $job -- nothing was pulled" >&2
+      return 1
+    }
+  python3 "$ROOT/tools/ops/jobs.py" lines > /tmp/tq/joblog.txt || return 1
+  # `--from-log` refuses a log with no CSV in it rather than writing an empty file: a pull that reports success over
+  # nothing is the failure this whole path exists to prevent.
+  python3 "$ROOT/tools/ops/window_ledger.py" --from-log /tmp/tq/joblog.txt --save "$save" \
+    --table --progress "$target"
+}
+
 main() {
   local command=${1:-status}
   shift || true
@@ -298,9 +330,10 @@ main() {
     status) [ "${1:-}" = "--dry-run" ] && DRY_RUN=1; cmd_status ;;
     wait) cmd_wait "$@" ;;
     logs) cmd_logs "$@" ;;
+    window) cmd_window "$@" ;;
     check) cmd_check ;;
     -h|--help|help) usage ;;
-    *) echo "dispatch_deploy: unknown command $command (check|run|status|wait|logs)" >&2; return 2 ;;
+    *) echo "dispatch_deploy: unknown command $command (check|run|status|wait|logs|window)" >&2; return 2 ;;
   esac
 }
 

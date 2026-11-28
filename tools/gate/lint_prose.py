@@ -382,6 +382,10 @@ def main():
                         # cumulative-fills line that says how far the live sample is from 300 to 500 fills. Both are in
                         # `docs/TOOLS.md` because the count is the reason the tool exists.
                         "--table", "--progress",
+                        # The same tool's two pull flags: reading the CSV out of an `--ops ledger` job log, and writing
+                        # the rebuilt rows under the tree. Named in `docs/TOOLS.md` and in the live page, because the
+                        # window's numbers reaching this tree without a journal paste is what they are for.
+                        "--from-log", "--save",
                         # `tools/fetch/prefetch_windows.sh` owns this one: which of its three blocks to run, because a
                         # prefetch of three questions is re-run one question at a time.
                         "--block",

@@ -239,6 +239,14 @@ compatibility path. Everything below assumes that page.
   `awk -F'|' 'NF!=5'` on the table as the one-second check that every row still has its columns.
 - **Deleting a tool breaks a document, not the program.** Before removing anything, grep the documents and the gate for
   it; if nothing names it, say so in the commit message.
+- **A window's numbers arrive through a tool, never through a paste.** `bash tools/ops/dispatch_deploy.sh window` dispatches
+  `--ops ledger`, waits for the run, saves the host's series to `out/runtime/window_ledger.csv` and prints the table. The
+  row carries the window's order path -- submissions, cancels, post-only declines, the rate-limited count, and the
+  strategy's refresh and pause counts -- because those are what a window is judged on, and measured 2026-11-28 they were
+  not on it: the two windows before this were read by pasting `[EXECUTION]` and `[STRATEGY_METRICS]` out of the host's
+  journal, and the number that decided them (`submitted_orders=343`) was absent, so a session's diagnosis ran on an
+  arithmetic figure of 155,000 that the journal contradicted by a factor of 450. A number a window is read for belongs in
+  `ledger_row` and its self-test in the same change; a journal paste is not a reading.
 - **A live session is a verb, not a command typed into the tool's shell.** `bash .run.sh soak <post-only|baseline>` runs
   `tools/live/soak.sh` through the same detached `start()` every gate uses. Measured 2026-11-23: a session started from
   the tool's terminal with `tools/gate/detach.sh` ran to completion in the background while the tool's shell executed

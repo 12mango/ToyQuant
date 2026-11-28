@@ -1008,6 +1008,22 @@ line the append failed with `Read-only file system`, the mail said nothing about
 `check_deploy.py`'s fifteenth rule holds the two ends of that coupling together.
 `python3 deploy/daily_report.py --dry-run --at 2026-11-27T16:20:00Z` prints the mail without waiting for the timer.
 
+**The row carries the window's order path, so reading a window does not start with a journal paste.** Beside the fills,
+fees, net, residual and markout it already had, the row holds the numbers the journal itself prints --
+`submitted_orders`, `cancel_requests`, `post_only_cancels`, `rate_limited_orders`, `quote_count`, `price_refresh_count`,
+`risk_pause_count` and `capture_ticks` -- because those are what a window's own question turns on: submissions against
+rate-limited attempts is a statement about the budget, and the fill count beside its markout is a statement about the
+strategy. One command brings the series from the host into this tree:
+
+```
+bash tools/ops/dispatch_deploy.sh window      # dispatch --ops ledger, wait, save out/runtime/window_ledger.csv, print the table
+```
+
+It saves under `out/`, which is generated output and is not committed, and a log that carries no ledger CSV is refused
+rather than written as an empty file. The rows this row was added for were read by pasting `[EXECUTION]` and
+`[STRATEGY_METRICS]` out of the host's journal into a conversation, and a window read that way is read differently by
+every reader.
+
 **The window is named in UTC, and the three clocks are one table.** The engine's session clock is the market's
 (`--wind-down-end` is minutes of the UTC day), the archive's timestamps are UTC, the host is in Tokyo and the operator is
 in Hong Kong -- so every document, timer and report names the zone, and only the clock changes:

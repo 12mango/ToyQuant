@@ -188,14 +188,23 @@ def field_of(line, name):
 def ledger_row(start_utc, end_utc, lines, groups):
     """One row per window, for the long series the mail cannot show.
 
-    The columns are the numbers the mail already quotes, so the ledger cannot say anything the journal did not: the
-    window, how many runs it held, the last run's trades and money, the residual its close left, and the account at
+    The columns are the numbers the window's own journal carries, so the ledger cannot say anything the journal did not:
+    the window, how many runs it held, the last run's trades and money, the residual its close left, and the account at
     report time. A column the journal did not carry is empty.
+
+    **The order-path counters ride the row for a reason that cost a session.** The first live windows were read by pasting
+    `[EXECUTION]` and `[STRATEGY_METRICS]` out of the host's journal into a conversation, because the row carried neither
+    the submissions, the cancels, the rate-limited count, the refresh count nor the pause count -- and those five are what
+    the window's own question turned on (2026-11-28: 343 submissions against 11,086 rate-limited attempts is a statement
+    about the budget; 34 fills and +1.22 ticks is a statement about the strategy, and the row could only say the second).
+    A row that carries them is read once, from the host, by `tools/ops/dispatch_deploy.sh window`.
     """
     portfolios = [line for line in lines if "[PORTFOLIO]" in line]
     pnls = [line for line in lines if "[PNL]" in line]
     wind_downs = [line for line in lines if "[WIND-DOWN]" in line]
     executions = [line for line in lines if "[EXECUTION]" in line]
+    strategies = [line for line in lines if "[STRATEGY_METRICS]" in line]
+    risks = [line for line in lines if "[RISK]" in line]
     last_portfolio = portfolios[-1] if portfolios else ""
     last_pnl = pnls[-1] if pnls else ""
     last_wind_down = wind_downs[-1] if wind_downs else ""
@@ -203,6 +212,8 @@ def ledger_row(start_utc, end_utc, lines, groups):
     # what pins it, and `[EXECUTION]` carries it per unit of quantity (`markout_per_unit_ticks`). Empty when the line is
     # absent, as every other cell is.
     last_execution = executions[-1] if executions else ""
+    last_strategy = strategies[-1] if strategies else ""
+    last_risk = risks[-1] if risks else ""
     account = groups.get("account", {})
     return {
         "window_start_utc": f"{start_utc:%Y-%m-%dT%H:%MZ}",
@@ -215,6 +226,17 @@ def ledger_row(start_utc, end_utc, lines, groups):
         "gross_pnl_usd": field_of(last_pnl, "gross_pnl_usd"),
         "residual_units": field_of(last_wind_down, "residual"),
         "markout_ticks": field_of(last_execution, "markout_per_unit_ticks"),
+        # The order path, on the row: what the budget was asked for and what it paid, and the strategy's own decisions
+        # behind them. `cancel_count` is the strategy's intent, not the wire's count -- the ledger dedupes a cancel that
+        # races an acknowledgement -- so `cancel_requests` is the number that says what the venue was told.
+        "submitted_orders": field_of(last_execution, "submitted_orders"),
+        "cancel_requests": field_of(last_execution, "cancel_requests"),
+        "post_only_cancels": field_of(last_execution, "post_only_cancels"),
+        "rate_limited_orders": field_of(last_risk, "rate_limited_orders"),
+        "quote_count": field_of(last_strategy, "quote_count"),
+        "price_refresh_count": field_of(last_strategy, "price_refresh_count"),
+        "risk_pause_count": field_of(last_strategy, "risk_pause_count"),
+        "capture_ticks": field_of(last_execution, "captured_edge_per_unit_ticks"),
         "equity_usd": (account.get("equity", "").replace(" USDT", "").replace(",", "")
                        if account.get("equity", "").endswith(" USDT") else ""),
         "read_at": account.get("read_at", ""),
@@ -610,7 +632,11 @@ def self_test():
     # The ledger's columns come from lines that exist, and a line that is absent is an empty cell rather than a zero.
     lines = ["Nov 27 15:30:01 host toy_quant[1]: [PORTFOLIO] fees_paid=0.02 maker_trade_count=44 taker_trade_count=1",
              "Nov 27 15:30:01 host toy_quant[1]: [PNL] gross_pnl_usd=0.5 net_pnl_usd=-0.25 shares=1000",
-             "Nov 27 15:30:01 host toy_quant[1]: [EXECUTION] trade_reports=45 markout_per_unit_ticks=-0.590909",
+             "Nov 27 15:30:01 host toy_quant[1]: [EXECUTION] submitted_orders=343 cancel_requests=310 trade_reports=45 "
+             "markout_per_unit_ticks=-0.590909 post_only_cancels=309 captured_edge_per_unit_ticks=2.66176",
+             "Nov 27 15:30:01 host toy_quant[1]: [RISK] max_orders_per_second=20 rate_limited_orders=11086",
+             "Nov 27 15:30:01 host toy_quant[1]: [STRATEGY_METRICS] quote_count=343 price_refresh_count=301 "
+             "risk_pause_count=85",
              "Nov 27 15:30:02 host toy_quant[1]: [WIND-DOWN] position=0 closed=10000 residual=0 total_bps=3.2"]
     start, end = window_at(datetime(2026, 11, 27, 16, 0, tzinfo=timezone.utc))
     row = ledger_row(start, end, lines, {"account": {"equity": "99.45 USDT", "read_at": "2026-11-27T16:00Z"}})
@@ -621,6 +647,16 @@ def self_test():
     # compared with; a window whose line is absent leaves the cell empty rather than zero.
     assert row["markout_ticks"] == "-0.590909", row
     assert ledger_row(start, end, lines[:2], {"account": {}})["markout_ticks"] == "", "no [EXECUTION] line"
+    # The order path rides the row, and each counter is read from the line that carries it: a window whose `[RISK]` line
+    # is absent leaves `rate_limited_orders` empty while its submissions are still there, which is the difference between
+    # "the bucket never refused" and "nobody said".
+    assert row["submitted_orders"] == "343" and row["cancel_requests"] == "310", row
+    assert row["post_only_cancels"] == "309" and row["capture_ticks"] == "2.66176", row
+    assert row["rate_limited_orders"] == "11086", row
+    assert row["quote_count"] == "343" and row["price_refresh_count"] == "301", row
+    assert row["risk_pause_count"] == "85", row
+    no_risk = ledger_row(start, end, [line for line in lines if "[RISK]" not in line], {"account": {}})
+    assert no_risk["rate_limited_orders"] == "" and no_risk["submitted_orders"] == "343", no_risk
     empty = ledger_row(start, end, [], {"account": {}})
     assert empty["net_pnl_usd"] == "" and empty["sessions"] == "0" and empty["equity_usd"] == "", empty
     # The mail writes `4,797.31 USDT` for a reader; the ledger is parsed by a tool, so the cell is a number.
