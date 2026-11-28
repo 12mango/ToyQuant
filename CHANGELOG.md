@@ -6,7 +6,45 @@ and when — is in [Roadmap](docs/ROADMAP.md#change-log), and the two are delibe
 The repository is named `ToyQuant`. The `-v1` suffix that older links and a local clone may still carry is a leftover
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
-## The bar's first reading: 11,086 rate-limited orders behind a 20/s budget (2026-11-28)
+## The clock a duration is added to: four unit defects, and the bucket they starved (2026-11-29)
+
+The 2026-11-28 window's two journal lines were pasted in, and the number that decides a window was not where the session
+had been looking:
+
+    [EXECUTION] submitted_orders=343 ... cancel_requests=310 trade_reports=34 ...
+                captured_edge_per_unit_ticks=2.66176 ... markout_per_unit_ticks=1.22059 ... post_only_cancels=309
+    [STRATEGY_METRICS] buy_quote_count=150 sell_quote_count=193 price_refresh_count=301 age_refresh_count=3
+                risk_pause_count=85
+    [RISK] max_orders_per_second=20 order_burst=4 ... rate_limited_orders=11086
+
+- **`rate_limited_orders=11,086` had been read as a strategy asking 23 orders a second. It is a bucket paying 148 tokens in
+  two hours.** `RiskContext.now_seconds` was `ts / 1e6`, and the live view's clock is the venue's milliseconds (13 digits,
+  `"ts":"1795564800004"` off the archive), so the bucket refilled 20 x 7,200/1,000 = 144 tokens plus a burst of 4 and
+  refused 11,086 of 11,429 asks — **1.59 a second**, which is what the session actually wanted. What the rows say instead:
+  343 submissions, 310 cancel requests, 34 fills (9.9%), one requote decision every 23.7 s, and **19.2 messages a fill
+  against the replay's 26.6**. There was no churn to cut.
+- **`is_reducing` is the other half of that window, and it is why the budget bound one side.** The 193 sell quotes were
+  exempt as position-reducing while the book was long, and the 150 buys paid for the 148 tokens: 148 + 193 = 341 against 343
+  submitted. A budget that binds one side and not the other is not a budget over the strategy.
+- **`--order-latency-us` was added to a market clock without conversion.** `MatchingEngine` did
+  `order.ts + order_latency_us_`, so on every OKX cut (milliseconds) `10000` was ten seconds and `100000` a hundred.
+  Measured on one ten-minute cut with the live file's flags: 59 submissions and 1 fill at zero, 48 and 2 at `100`, 7 and 0
+  at `100000` — and under a microsecond reading the last two would be indistinguishable at a 100 ms wire. `clock_units.h`
+  gains `seconds_of` and `clock_units_of_us`, and the four call sites go through them: the bucket, the two latency adds,
+  and the volatility halt's speed.
+- **`clock_units_per_second` itself was wrong for a microsecond epoch.** Its test was `ts >= 1e11`, which is true of a
+  millisecond clock (1.7e12) *and* of a microsecond one (1.7e15) — every microsecond epoch is above 1e11 — so the Deribit
+  sources were read as milliseconds and every duration on them came out a thousand times short. The boundary is 1e14 now,
+  with a clock below 1e11 (a fixture counting from zero) read as microseconds, which is what the unit tests assert.
+- **What this invalidates is re-measured rather than quoted.** The cell's `--latency-us` ladder (its "10 ms" arm is ten
+  seconds, its "100 ms" arm a hundred), Tier 1 #7's two columns, the two seat floors read at "100 ms", and every duration
+  the maker's debounce, wind-down and A-S skew put on a Deribit window. The live leg is untouched — it runs `LiveVenue`,
+  which has no matcher latency — so the window's own numbers stand.
+- **Pinned where the defects could not be seen from.** `risk_pipeline_test`, `matching_engine_test` and `l2_strategy_test`
+  each gain a millisecond-clock case, because every fixture in the tree was microseconds or a hand-set `now_seconds` — the
+  one shape in which all four defects are invisible.
+
+
 
 The 13:30-15:30 window, read by the verdict line for the first time:
 

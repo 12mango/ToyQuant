@@ -6,6 +6,7 @@
 #include <thread>
 
 #include "backtest/performance.h"
+#include "common/clock_units.h"
 #include "exchange/execution_report.h"
 
 namespace
@@ -501,7 +502,7 @@ RiskContext Pipeline::make_risk_context(const BboQuote* quote, uint64_t ts) cons
     context.multiplier = multiplier_;
     context.quote = quote;
     context.account_other_exposure_usd = account_other_exposure_usd_;
-    context.now_seconds = static_cast<double>(ts) / 1'000'000.0;
+    context.now_seconds = seconds_of(ts);
     return context;
 }
 

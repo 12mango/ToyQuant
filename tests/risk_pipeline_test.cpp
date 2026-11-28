@@ -2,9 +2,11 @@
 // checks, and a replay cannot make two checks fail at once on purpose. Each block below isolates one
 // control; the last block asserts the precedence the array declares.
 #include <cassert>
+#include <cmath>
 #include <cstdint>
 
 #include "app/risk_pipeline.h"
+#include "common/clock_units.h"
 
 namespace
 {
@@ -93,6 +95,30 @@ int main()
         assert(risk.check(make_order(Side::Buy, 100.0, 1), context).allowed);
         decision = risk.check(make_order(Side::Buy, 100.0, 1), context);
         assert(decision.reason == RiskPipeline::Reason::RateLimit);
+    }
+
+    {
+        // The bucket's clock is a number of seconds and the pipeline builds it from the market's own timestamp, so the
+        // conversion is the thing to pin. A millisecond stamp of 1.795e12 and a microsecond one of 1.795e15 are the same
+        // instant; dividing the first by a constant 1e6 -- the defect of 2026-11-29 -- put it in 1970 and refilled a
+        // thousand times too slowly, which cost the live window 11,086 refusals for 148 tokens.
+        // The unit rule itself, on the three clocks the tree carries: a fixture counting from zero, an OKX millisecond
+        // epoch, and a Deribit microsecond epoch. The third was read as milliseconds until 2026-11-29, which made every
+        // duration on that source a thousand times short.
+        assert(clock_units_per_second(250) == 1'000'000);
+        assert(clock_units_per_second(1'795'564'800'000ULL) == 1'000);
+        assert(clock_units_per_second(1'795'564'800'000'000ULL) == 1'000'000);
+        assert(std::abs(seconds_of(1'795'564'800'500ULL) - 1'795'564'800.5) < 1e-6);
+        assert(std::abs(seconds_of(1'795'564'800'500'000ULL) - 1'795'564'800.5) < 1e-3);
+        RiskPipeline risk;
+        risk.set_order_rate_limit(1.0, 1);
+        RiskContext context = fixture.context();
+        context.now_seconds = seconds_of(1'795'564'800'000ULL);
+        assert(risk.check(make_order(Side::Buy, 100.0, 1), context).allowed);
+        context.now_seconds = seconds_of(1'795'564'800'001ULL);  // one millisecond later: no token
+        assert(risk.check(make_order(Side::Buy, 100.0, 1), context).reason == RiskPipeline::Reason::RateLimit);
+        context.now_seconds = seconds_of(1'795'564'801'000ULL);  // one second later: one token
+        assert(risk.check(make_order(Side::Buy, 100.0, 1), context).allowed);
     }
 
     {

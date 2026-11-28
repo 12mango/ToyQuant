@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <iostream>
 
+#include "common/clock_units.h"
 #include "common/instrument_spec.h"
 #include "execution_report.h"
 #include "order.h"
@@ -61,8 +62,11 @@ void MatchingEngine::send_order(const exchange::Order& order)
         return;
     }
     // Held until the clock reaches it. The delivery time is taken from the order's own timestamp, so a
-    // replay of a feed at a different rate injects the same latency rather than a different one.
-    in_flight_orders_.emplace_back(order.ts + order_latency_us_, order);
+    // replay of a feed at a different rate injects the same latency rather than a different one -- and the
+    // latency is converted from the microseconds the flag names into the clock's own unit. Without that
+    // conversion `--order-latency-us=100000` added a hundred *seconds* to an OKX order (milliseconds) and
+    // ten seconds for the cell's "10 ms" arm; measured 2026-11-29 and fixed in the same change.
+    in_flight_orders_.emplace_back(order.ts + clock_units_of_us(order.ts, order_latency_us_), order);
     // Also remembered by id, because a cancel that names this order before it lands is the race the next line
     // of the lifecycle makes common: see `cancel_order`.
     in_flight_ids_.insert(order.id);
@@ -71,7 +75,7 @@ void MatchingEngine::send_order(const exchange::Order& order)
 void MatchingEngine::advance_to(uint64_t ts)
 {
     // The clock has to move even when nothing is in flight, or a cancel latency would never expire.
-    now_us_ = std::max(now_us_, ts);
+    now_ts_ = std::max(now_ts_, ts);
     if (in_flight_orders_.empty()) return;
     std::stable_sort(in_flight_orders_.begin(), in_flight_orders_.end(),
                      [](const auto& left, const auto& right)
@@ -531,18 +535,19 @@ void MatchingEngine::cancel_order(uint64_t order_id)
         cancel_order_immediate(order_id);
         return;
     }
-    // Both delays are measured from the request rather than from the order's arrival -- `now_us_` is the market event
+    // Both delays are measured from the request rather than from the order's arrival -- `now_ts_` is the market event
     // the strategy decided on and `event_counter_` is the event it decided at -- so a cancel is due when its own link
-    // says so, and `apply_pending_cancels` is what makes it wait for the landing if that is later.
+    // says so, and `apply_pending_cancels` is what makes it wait for the landing if that is later. The latency is the
+    // flag's microseconds converted into the clock's unit, the same way the landing is.
     pending_cancels_[order_id] = {event_counter_ + cancel_delay_events_,
-                                  now_us_ + cancel_latency_us_};
+                                  now_ts_ + clock_units_of_us(now_ts_, cancel_latency_us_)};
 }
 
 void MatchingEngine::apply_pending_cancels()
 {
     for (auto it = pending_cancels_.begin(); it != pending_cancels_.end();)
     {
-        if (it->second.due_event > event_counter_ || it->second.due_time > now_us_)
+        if (it->second.due_event > event_counter_ || it->second.due_time > now_ts_)
         {
             ++it;
             continue;

@@ -247,6 +247,15 @@ compatibility path. Everything below assumes that page.
   journal, and the number that decided them (`submitted_orders=343`) was absent, so a session's diagnosis ran on an
   arithmetic figure of 155,000 that the journal contradicted by a factor of 450. A number a window is read for belongs in
   `ledger_row` and its self-test in the same change; a journal paste is not a reading.
+- **A duration is added to a clock in the clock's unit, and the helper that decides the unit is itself tested.** Measured
+  2026-11-29, four defects of one class, each invisible because every fixture was microseconds or a hand-set number: the risk
+  bucket divided a millisecond timestamp by a constant 1e6 (148 tokens in a two-hour window instead of 144,000, which read
+  as "the strategy wants 23 orders a second" when it wanted 1.59); `MatchingEngine` added `--order-latency-us` raw, so the
+  cell's "10 ms" arm was ten seconds and its "100 ms" arm a hundred; the volatility halt divided the same way; and
+  `clock_units_per_second` returned milliseconds for a *microsecond* epoch (`ts >= 1e11` is true of 1.7e15 too), so every
+  duration on the Deribit sources came out a thousand times short. So a new duration goes through `seconds_of` or
+  `clock_units_of_us`, the unit helper carries a case for all three clocks it can see (a fixture from zero, a millisecond
+  epoch, a microsecond epoch), and a test that only feeds microseconds has not covered the code.
 - **A live session is a verb, not a command typed into the tool's shell.** `bash .run.sh soak <post-only|baseline>` runs
   `tools/live/soak.sh` through the same detached `start()` every gate uses. Measured 2026-11-23: a session started from
   the tool's terminal with `tools/gate/detach.sh` ran to completion in the background while the tool's shell executed

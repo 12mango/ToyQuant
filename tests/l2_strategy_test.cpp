@@ -212,6 +212,31 @@ int main()
     assert(paused);
     assert(active.volatility_ticks() >= 8.0);
 
+    // The halt on a millisecond clock, which is the one an OKX cut and the live feed carry. A mid that moves one tick
+    // every 200 ms is five ticks a second -- half of the threshold below -- so the halt must stay quiet and the quotes
+    // must keep going out. The old divisor (a constant 1e6) read that move as five thousand ticks a second and paused on
+    // the first one, which is the defect of 2026-11-29 and the reason a threshold anywhere from 1.0 to 50.0 landed in the
+    // same place on every OKX cut.
+    ActiveL2MarketMaker millisecond_clock(ActiveL2MarketMakerConfig{
+        .base = L2MarketMakerBaseConfig{.order_size = 2,
+                                        .base_spread = 1.0,
+                                        .inventory_limit = 100,
+                                        .tick_size = 0.5},
+        .volatility_alpha = 0.5,
+        .pause_after_ticks_per_second = 8.0});
+    L2MarketView clock_view = view;
+    clock_view.ts = 1'795'564'800'000ULL;
+    assert(millisecond_clock.on_l2_market_view(clock_view).size() == 2);
+    for (int index = 0; index < 12; ++index)
+    {
+        clock_view.ts += 200;                       // 200 ms of book time
+        clock_view.top.bid_price += 0.5;            // one tick
+        clock_view.top.ask_price += 0.5;
+        millisecond_clock.on_l2_market_view(clock_view);
+    }
+    assert(millisecond_clock.volatility_ticks() < 8.0);
+    assert(millisecond_clock.metrics().risk_pause_count == 0);
+
     ActiveL2MarketMaker warming(ActiveL2MarketMakerConfig{
         .base = L2MarketMakerBaseConfig{.order_size = 1,
                                      .base_spread = 1.0,

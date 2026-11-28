@@ -410,9 +410,10 @@ class MatchingEngine : public IMatchingEngine
     // whatever the market did in the meantime. Cancels are due when both the event count and the clock
     // say so, so the original event-counted delay keeps working underneath this one.
     uint64_t cancel_latency_us_{0};
-    // The last market event's timestamp, which is also the moment a strategy's decision was taken,
-    // because a strategy only ever acts on a market event.
-    uint64_t now_us_{0};
+    // The last market event's timestamp, which is also the moment a strategy's decision was taken, because a strategy
+    // only ever acts on a market event. Named for the clock it is in rather than for microseconds: it was `now_us_`
+    // until 2026-11-29, and the name matched a comment that was true of one data source and false of the other.
+    uint64_t now_ts_{0};
     std::vector<std::pair<uint64_t, exchange::Order>> in_flight_orders_;
     // The same orders, by id. The queue is ordered by delivery and is popped once per event; a cancel arrives
     // once per refresh, so the question "has the venue received this order yet" has to be a lookup rather than

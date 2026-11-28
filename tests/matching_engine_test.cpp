@@ -382,6 +382,43 @@ int main()
     cancel_latency_engine.process_l2_top({250, "CANCELLAT", 100.0, 50, 100.1, 40, 62, "test"});
     assert(has_report(cancel_latency_reports, 96, ExecType::Cancelled, 10));
 
+    // The same two latencies on a millisecond clock, which is the clock every OKX cut carries (`1795564800004`) and the
+    // one a live session runs on. `--order-latency-us=200000` is 200 ms; adding it raw to a millisecond timestamp added
+    // 200 *seconds* instead, which is the defect of 2026-11-29 -- it made the cell's "10 ms" arm ten seconds and its
+    // "100 ms" arm a hundred, and the fix is `clock_units_of_us`.
+    constexpr uint64_t kMs = 1'795'564'800'000ULL;
+    MatchingEngine millisecond_engine(0.1, {}, {.queue_model = QueueModel::ProRata, .arrival_share = 0.0,
+                                                .order_latency_us = 200'000});
+    std::vector<ExecutionReport> millisecond_reports;
+    millisecond_engine.set_report_callback([&millisecond_reports](const ExecutionReport& report)
+                                           { millisecond_reports.push_back(report); });
+    millisecond_engine.process_l2_top({kMs, "MILLISEC", 100.0, 50, 100.1, 40, 70, "test"});
+    millisecond_engine.send_order({97, "MILLISEC", exchange::Side::Buy, exchange::OrderType::Limit, 100.0, 10, 10,
+                                   kMs, "MarketMaker"});
+    assert(!has_report(millisecond_reports, 97, ExecType::Resting, 10));  // in flight, not 200 s away
+    millisecond_reports.clear();
+    millisecond_engine.process_l2_top({kMs + 100, "MILLISEC", 100.0, 50, 100.1, 40, 71, "test"});
+    assert(!has_report(millisecond_reports, 97, ExecType::Resting, 10));  // 100 ms is not 200
+    millisecond_reports.clear();
+    millisecond_engine.process_l2_top({kMs + 200, "MILLISEC", 100.0, 50, 100.1, 40, 72, "test"});
+    assert(has_report(millisecond_reports, 97, ExecType::Resting, 10));  // the clock reached the delivery
+
+    // And the cancel's own line on that clock: 100 ms after the request, not a hundred seconds.
+    MatchingEngine millisecond_cancel(0.1, {}, {.cancel_latency_us = 100'000});
+    std::vector<ExecutionReport> millisecond_cancel_reports;
+    millisecond_cancel.set_report_callback([&millisecond_cancel_reports](const ExecutionReport& report)
+                                           { millisecond_cancel_reports.push_back(report); });
+    millisecond_cancel.process_l2_top({kMs + 1'000, "MSCANCEL", 100.0, 50, 100.1, 40, 60, "test"});
+    millisecond_cancel.send_order({98, "MSCANCEL", exchange::Side::Buy, exchange::OrderType::Limit, 100.0, 10, 10,
+                                   kMs + 1'000, "MarketMaker"});
+    assert(has_report(millisecond_cancel_reports, 98, ExecType::Resting, 10));
+    millisecond_cancel.cancel_order(98);
+    millisecond_cancel_reports.clear();
+    millisecond_cancel.process_l2_top({kMs + 1'050, "MSCANCEL", 100.0, 50, 100.1, 40, 61, "test"});
+    assert(!has_report(millisecond_cancel_reports, 98, ExecType::Cancelled, 10));  // 50 ms is not 100
+    millisecond_cancel.process_l2_top({kMs + 1'100, "MSCANCEL", 100.0, 50, 100.1, 40, 62, "test"});
+    assert(has_report(millisecond_cancel_reports, 98, ExecType::Cancelled, 10));
+
     // A refused order used to vanish without a report, which is indistinguishable from an accepted one on
     // the caller's side. It now counts, warns on stderr, and the instrument's own ordering constraints are
     // enforced: lot size 5 and a minimum of 10 make four of these five orders untradeable.

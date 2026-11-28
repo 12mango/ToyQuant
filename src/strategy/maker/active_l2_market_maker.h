@@ -185,8 +185,12 @@ class ActiveL2MarketMaker final : public L2MarketMakerBase
             double normalized_move_ticks = move_ticks;
             if (ts > 0 && last_ts_ > 0 && ts > last_ts_)
             {
-                const double elapsed_seconds =
-                    static_cast<double>(ts - last_ts_) / 1000000.0;
+                // The divisor is the clock's own, not a constant. On an OKX cut (milliseconds) the old `/1e6` made a
+                // one-tick move over 100 ms read as ten thousand ticks a second, and the floor below caps that at a
+                // factor of five rather than a thousand -- which is why the halt still fired and every threshold from
+                // 1.0 to 50.0 landed in the same place (`docs/L2_FLAGS.md`). Measured 2026-11-29.
+                const double elapsed_seconds = static_cast<double>(ts - last_ts_) /
+                                               static_cast<double>(clock_units_per_second(ts));
                 normalized_move_ticks =
                     move_ticks /
                     std::max(elapsed_seconds, std::max(config_.min_elapsed_seconds, 0.0));
