@@ -253,6 +253,19 @@ def verdict_of(lines):
     capture = number("[EXECUTION]", "captured_edge_per_unit_ticks")
     markout = number("[EXECUTION]", "markout_per_unit_ticks")
     residual = number("[WIND-DOWN]", "residual")
+    if residual is None:
+        # A session that runs no wind-down prints no `[WIND-DOWN]`, and the host's configuration runs none: the engine stops at
+        # `--ws-seconds` instead. The position it ends on is on the reconciliation line, which is the quantity this clause is
+        # about, so the bar reads it there rather than reporting `missing` for a rule the configuration never triggers --
+        # measured 2026-11-28, the first night with the verdict line, which read `residual: missing` on a window that ended
+        # flat.
+        for line in reversed([line for line in lines
+                              if "[RECON]" in line and "at=end" in line and "venue_units=" in line]):
+            try:
+                residual = float(field_of(line, "venue_units"))
+                break
+            except (TypeError, ValueError):
+                continue
     reconciled = any("[RECON]" in line and "at=end" in line and "status=ok" in line for line in lines)
     clauses = [
         ("refused", share is not None and share < BAR_REFUSED_SHARE,
@@ -648,6 +661,12 @@ def self_test():
     said = verdict_of(thin)
     assert said.startswith("verdict FAIL (failed: fills)"), said
     assert verdict_of([]).startswith("verdict FAIL"), verdict_of([])
+    # The residual clause reads the reconciliation line when no wind-down ran: the engine stops at `--ws-seconds` on this host,
+    # so `[WIND-DOWN]` is absent and the position it ended on is the `[RECON] at=end position` line.
+    without_wind_down = [line for line in passing if "[WIND-DOWN]" not in line]
+    without_wind_down[-1:] = ["[RECON] at=end position venue_units=0 ledger_units=0 position_break=0 status=ok"]
+    said = verdict_of(without_wind_down)
+    assert said.startswith("verdict PASS"), said
     # The visual half: a signed bar's zero is the centre of its field, a flat series does not divide by zero, a quantile
     # returns a window that happened, and an empty ledger is a sentence rather than an exception.
     assert signed_bar(+0.5, 1.0).index("|") == 10 and signed_bar(-0.5, 1.0).index("|") == 10
