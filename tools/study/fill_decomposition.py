@@ -17,6 +17,15 @@ counterparty's mirror rows too; the end mid is the window cut's last, so `spread
 close and the comparison is `net_usd` from the sweep CSV, not `settled_bps` (which prices the residual's settlement
 separately).
 
+**It does not reconcile, and on 2026-11-28 the gap was traced to the engine rather than to this tool.** The replay's own
+summary on 2026-11-25 reads `realized_pnl=4.18189`, `gross_pnl_usd=4.8715`, `maker_notional_usd=473.237` and
+`fees_paid=0.0946474`; this tool computes 0.2480 of spread, 1.5885 of drift and the same 0.0945 of fees over the same 58
+maker fills, i.e. 1.7420 USD against a reported 4.7768. The P&L terms are valued `units * price * multiplier` with
+`multiplier=10.0` for this instrument (`src/common/instrument_spec.h`), while the notional, the fee and the `[EXPOSURE]`
+line use `qty/1e6 * price` -- so the reported P&L is ten times the basis of everything printed beside it. The tool is
+therefore right to refuse: until the basis is settled one way, a split it prints would be a factor of ten out and would
+look like a measurement.
+
     python3 tools/study/fill_decomposition.py --days 2026-11-05,2026-11-26 --sweep /tmp/tq/db40000/f1_control.csv
 """
 import argparse
