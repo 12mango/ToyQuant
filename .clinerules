@@ -167,6 +167,12 @@ compatibility path. Everything below assumes that page.
   2026-11-28, when the host restarted and `/tmp/tq` went with it, taking five jobs' logs -- so the row names the artifact
   that survives in the tree (a `data/` archive, an `out/cuts` file) and the command is written to resume: `--skip-existing`
   for a fetch, a cached cut for a sweep. A job whose only product is its log was not a job.
+- **A running job's driver is frozen while it runs.** Measured 2026-11-28: the NES cell was launched at 07:22 and
+  `tools/sweep/up_ten_contract_cell.sh` gained `--debounce` four minutes later; bash re-reads a script as it executes, so
+  the shifted lines landed mid-file and the run's tail died with `line 92: $1: unbound variable` -- at a line that holds a
+  comment in the file being read, which is the tell. The CSV it had already written was fine, so the run looked broken and
+  was not. An edit to a script waits for its run to exit, and if the driver must change the run is restarted rather than
+  edited under: the cuts are cached, so the restart costs the replay and not the data.
 - **A tick is a price, not an amount, and a per-tick figure is converted before it is quoted.** `0.0001` on a `0.19`
   instrument is **5.2 bps**, not half of one, and the difference is the whole answer to "can a fee be paid": on
   2026-11-25 the profile page, the changelog and two tool docstrings said "one tick is half a basis point" for a day,
