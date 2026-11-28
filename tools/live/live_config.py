@@ -16,6 +16,7 @@ Usage:
 """
 
 import argparse
+import os
 import shutil
 import sys
 from datetime import datetime, timezone
@@ -70,6 +71,10 @@ FLAGS = {
     ("engine", "kill_switch_loss_usd"): "--kill-switch-loss-usd",
     ("engine", "fat_finger_bps"): "--fat-finger-bps",
     ("engine", "max_orders_per_second"): "--max-orders-per-second",
+    # The burst bucket that sits beside the rate. It became reachable from this file on 2026-11-28, when the order-budget
+    # card named it as one of the four values the next window needs: until then it existed only as a command-line flag, and
+    # a session started by a unit cannot pass one.
+    ("engine", "order_burst"): "--order-burst",
     ("link", "order_latency_us"): "--order-latency-us",
     ("link", "cancel_latency_us"): "--cancel-latency-us",
     ("link", "venue_endpoint"): "--venue-endpoint",
@@ -106,6 +111,19 @@ AGENT_KEYS = {
     "link.venue_max_notional",
     "link.venue_orders_per_second",
 }
+
+# Keys the owner handed to the agent on 2026-11-28, in one message that confirmed the order-budget card's values and said
+# the operator's parameters are the agent's to manage. They are the three order-budget limits -- a rate, its burst bucket,
+# and the adapter's own cap -- and they are a set of their own rather than extra members of `AGENT_KEYS` so that a reader
+# can see exactly what was handed over, and undo it in one place, without re-reading a comment about the instrument's keys.
+OWNER_DELEGATED = {
+    "engine.max_orders_per_second",
+    "engine.order_burst",
+    "link.venue_max_orders",
+}
+
+# What `--set` may change: the instrument's own keys and the ones the owner delegated. Anything else is refused by name.
+SETTABLE = AGENT_KEYS | OWNER_DELEGATED
 
 # Keys whose value is a switch rather than an argument: written as a bare flag when true and left out when false.
 SWITCHES = {
@@ -238,6 +256,8 @@ engine:
   strategy: active_l2
   base_spread_ticks: 3
   post_only: true
+  max_orders_per_second: 8
+  order_burst: 1
 link:
   market_endpoint: 127.0.0.1:8765
   order_latency_us: 10000
@@ -250,6 +270,10 @@ link:
     assert "--base-spread-ticks=3" in produced, produced
     assert "--post-only" in produced, produced
     assert "--order-latency-us=10000" in produced, produced
+    # The burst bucket beside the rate: a key that existed only as a command-line flag until 2026-11-28, so the reader has
+    # to emit it or the order-budget card cannot be applied from this file at all.
+    assert "--max-orders-per-second=8" in produced, produced
+    assert "--order-burst=1" in produced, produced
     # A false switch is absent, not `--post-only false`, which the engine does not accept.
     values[("engine", "post_only")] = "false"
     assert "--post-only" not in flags(values), flags(values)
@@ -338,66 +362,140 @@ link:
                 assert expect in str(error), (refused, str(error))
             else:
                 raise AssertionError(f"{refused} was accepted")
+        # The order-budget card is one edit or none: the keys the owner delegated land together, in one write and one
+        # backup, because half of them is a file that describes a session nobody registered.
+        before_backups = [name for name in __import__("os").listdir(directory) if name.startswith("live.yaml.")]
+        message = set_key(target, "engine.max_orders_per_second=20,engine.order_burst=4")
+        after_backups = [name for name in __import__("os").listdir(directory) if name.startswith("live.yaml.")]
+        assert len(after_backups) == len(before_backups) + 1, (before_backups, after_backups)
+        assert "max_orders_per_second = 20 (was 8)" in message, message
+        applied = flags(parse(open(target, encoding="utf-8").read()))
+        for expected in ("--max-orders-per-second=20", "--order-burst=4"):
+            assert expected in applied, (expected, applied)
+        # ... and one assignment that is refused writes nothing at all.
+        with open(target, encoding="utf-8") as handle:
+            before_text = handle.read()
+        try:
+            set_key(target, "engine.order_burst=8,engine.order_size=100000000")
+        except ValueError as error:
+            assert "is the operator's" in str(error), str(error)
+        else:
+            raise AssertionError("a mixed assignment was accepted")
+        with open(target, encoding="utf-8") as handle:
+            assert handle.read() == before_text, "a refused assignment still wrote the file"
+        # A key the operator's file does not carry yet is refused unless the caller says `--add`: the order-budget card's
+        # `order_burst` line is exactly that case on a host that has never carried it, and "a new key is a decision" is the
+        # reason the refusal exists -- so the decision is a flag, not an accident of what the file happened to contain.
+        try:
+            set_key(target, "engine.ws_seconds=7200")
+        except ValueError as error:
+            assert "add it by hand" in str(error), str(error)
+        else:
+            raise AssertionError("an absent key was appended without --add")
+        set_key(target, "engine.ws_seconds=7200", add=True)
+        added = flags(parse(open(target, encoding="utf-8").read()))
+        assert "--ws-seconds=7200" in added, added
+        # ... and once it is there, a plain set replaces it, so `--add` is not a permanent mode.
+        set_key(target, "engine.ws_seconds=5400")
+        assert "--ws-seconds=5400" in flags(parse(open(target, encoding="utf-8").read())), "the replace failed"
     print("self-test OK")
     return 0
 
 
-def set_key(path, assignment):
-    """Set one key the instrument owns, in place, with a backup -- and refuse everything else.
+def set_key(path, assignment, add=False):
+    """Set one key, or several as `a=1,b=2`, in place and atomically -- with a backup, and everything else refused.
 
-    The file is the operator's, so this does not rewrite it as YAML: it replaces the one line that carries the key and
-    keeps that line's comment and indentation. A key that is not in `AGENT_KEYS` is refused by name (a size, a loss limit or
-    the seat is a trading decision), an unknown key is refused by `parse`, and the result is put through the same couplings
-    the engine would enforce before anything is written. The old file is kept as `<path>.<UTC stamp>`.
+    The file is the operator's, so this does not rewrite it as YAML: it replaces the line that carries each key and keeps
+    that line's comment and indentation. A key that is not in `SETTABLE` is refused by name (a size, a loss limit or the
+    seat is a trading decision), an unknown key is refused by `parse`, and the result is put through the same couplings the
+    engine would enforce before anything is written. The old file is kept as `<path>.<UTC stamp>`.
+
+    Several keys at once, because one of them landing and another being refused is a file that describes a session nobody
+    registered: the card's four budget values are one edit or none, and the write happens after every check has passed.
     """
-    name, equal, value = assignment.partition("=")
-    name, value = name.strip(), value.strip()
-    if not equal or not name or not value:
-        raise ValueError(f"`{assignment}` is not KEY=VALUE")
-    section, _, key = name.partition(".")
-    if (section, key) not in FLAGS and (section, key) not in POSITIONAL and (section, key) not in POSITIONAL_OPTIONAL:
-        raise ValueError(f"{name} is not a live setting this engine takes")
-    if name not in AGENT_KEYS:
-        raise ValueError(f"{name} is the operator's, not the instrument's: this tool sets only "
-                         f"{', '.join(sorted(AGENT_KEYS))}")
+    assignments = []
+    for part in assignment.split(","):
+        name, equal, value = part.partition("=")
+        name, value = name.strip(), value.strip()
+        if not equal or not name or not value:
+            raise ValueError(f"`{part.strip()}` is not KEY=VALUE")
+        section, _, key = name.partition(".")
+        if (section, key) not in FLAGS and (section, key) not in POSITIONAL and (section, key) not in POSITIONAL_OPTIONAL:
+            raise ValueError(f"{name} is not a live setting this engine takes")
+        if name not in SETTABLE:
+            raise ValueError(f"{name} is the operator's, not the instrument's: this tool sets only "
+                             f"{', '.join(sorted(SETTABLE))}")
+        assignments.append((section, key, name, value))
     with open(path, encoding="utf-8") as handle:
         text = handle.read()
     values = parse(text, path)
-    previous = values.get((section, key), "(absent)")
-    values[(section, key)] = value
+    previous = {name: values.get((section, key), "(absent)") for section, key, name, _ in assignments}
+    for section, key, _, value in assignments:
+        values[(section, key)] = value
     validate(values, path)
 
     lines = text.splitlines()
-    current = ""
-    replaced = False
-    for index, raw in enumerate(lines):
-        code, has_comment, comment = raw.partition("#")
-        stripped = code.strip()
-        if not stripped:
-            continue
-        if not raw.startswith((" ", "\t")):
-            current = stripped.split(":", 1)[0].strip()
-            continue
-        if current == section and stripped.startswith(key + ":"):
-            indent = raw[: len(raw) - len(raw.lstrip())]
-            lines[index] = f"{indent}{key}: {value}" + (f"    #{comment}" if has_comment else "")
-            replaced = True
-            break
-    if not replaced:
-        raise ValueError(f"{path} has no `{key}` under `{section}:` to replace; add it by hand, so a new key is a decision")
+    for section, key, name, value in assignments:
+        current = ""
+        replaced = False
+        for index, raw in enumerate(lines):
+            code, has_comment, comment = raw.partition("#")
+            stripped = code.strip()
+            if not stripped:
+                continue
+            if not raw.startswith((" ", "\t")):
+                current = stripped.split(":", 1)[0].strip()
+                continue
+            if current == section and stripped.startswith(key + ":"):
+                indent = raw[: len(raw) - len(raw.lstrip())]
+                lines[index] = f"{indent}{key}: {value}" + (f"    #{comment}" if has_comment else "")
+                replaced = True
+                break
+        if not replaced:
+            if not add:
+                raise ValueError(f"{path} has no `{key}` under `{section}:` to replace; add it by hand, so a new key is a "
+                                 f"decision -- or pass --add to append it under its section")
+            current = ""
+            last = None
+            indent_used = "  "
+            for index, raw in enumerate(lines):
+                stripped = raw.split("#", 1)[0].strip()
+                if not stripped:
+                    continue
+                if not raw.startswith((" ", "\t")):
+                    current = stripped.split(":", 1)[0].strip()
+                    continue
+                if current == section:
+                    last = index
+                    indent_used = raw[: len(raw) - len(raw.lstrip())]
+            if last is None:
+                raise ValueError(f"{path} has no `{section}:` section to add `{key}` under")
+            stamp_note = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            lines.insert(last + 1, f"{indent_used}{key}: {value}    # set by --set on {stamp_note}")
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    # The stamp has one-second resolution, so two edits inside the same second would share a name and the second would
+    # overwrite the first backup -- which is the one thing a backup must not do (measured by the self-test, 2026-11-28).
     backup = f"{path}.{stamp}"
+    suffix = 1
+    while os.path.exists(backup):
+        backup = f"{path}.{stamp}-{suffix}"
+        suffix += 1
     shutil.copy2(path, backup)
     with open(path, "w", encoding="utf-8") as handle:
         handle.write("\n".join(lines) + "\n")
-    return f"{path}: {name} = {value} (was {previous}); the previous file is {backup}"
+    changed = "; ".join(f"{name} = {value} (was {previous[name]})" for _, _, name, value in assignments)
+    return f"{path}: {changed}; the previous file is {backup}"
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--self-test", action="store_true")
-    parser.add_argument("--set", metavar="KEY=VALUE",
-                        help="set one key the instrument owns (engine.ws_seconds=7200); refuses the operator's keys")
+    parser.add_argument("--set", metavar="KEY=VALUE[,KEY=VALUE]",
+                        help="set the keys the instrument owns or the owner delegated (engine.order_burst=4"
+                             ",link.venue_max_orders=3000), atomically; refuses every other key by name")
+    parser.add_argument("--add", action="store_true",
+                        help="append a --set key whose line is absent under its section, with the date in a comment; "
+                             "without it an absent key is refused, because a new key is a decision")
     parser.add_argument("--file", metavar="FILE", help="the file --set edits (a copy is kept beside it)")
     parser.add_argument("--flags", metavar="FILE", help="print the engine's arguments for this file, one a line")
     parser.add_argument("--check", metavar="FILE", help="parse the file and say whether it is a live configuration")
@@ -408,7 +506,7 @@ def main():
         if not arguments.file:
             parser.error("--set needs --file: the file it edits")
         try:
-            print(set_key(arguments.file, arguments.set))
+            print(set_key(arguments.file, arguments.set, add=arguments.add))
         except (OSError, ValueError) as error:
             print(f"Error: {error}", file=sys.stderr)
             return 1

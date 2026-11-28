@@ -53,7 +53,7 @@ existing design, architecture and user documents are the whole plan.
 | out-of-sample, Sharpe and capacity | the Sharpe, volatility, drawdown and Calmar figures are measured on demand behind `--metrics`; the out-of-sample and capacity studies are still not a demo goal | the studies, not the measurement, are out of the demo | out |
 | documents and the maintained plan | done: one plan, no new documents | keep it current; no interview material required | done |
 
-### L2 experiment card: releasing the local order budget (registered 2026-11-28, awaiting the numbers)
+### L2 experiment card: releasing the local order budget (registered and confirmed 2026-11-28, awaiting the window)
 
 **The question.** The first live window submitted **2,591** orders and reached the venue with **201**: 2,390 were refused by
 `link.venue_max_orders=200`, and **18,098** placement attempts died one layer earlier in the risk bucket
@@ -68,7 +68,7 @@ budget -- and none of them touches a price or a size.
 | `link.venue_max_orders` | 200 | **3000** | a first cap above what the strategy actually asks (2,591 in the measured window) with headroom for a second seat | operator |
 | `link.venue_orders_per_second` | 2 | **20** | ten times today and far under the venue's own budget; the point is that the *venue* cap stops binding first | instrument (agent key) |
 | `engine.max_orders_per_second` | 8 | **20** | with 8/s the risk bucket is the binding cap even after the venue's is raised | operator |
-| `--order-burst` | 1 | **4** | a one-token bucket refuses the second leg of a pair placed inside 125 ms; four lets a two-sided re-quote go out together. **Not reachable from `live.yaml` today** -- it needs a `live_config.py` mapping key, so it is a code change before it is a setting | operator (new key) |
+| `--order-burst` | 1 | **4** | a one-token bucket refuses the second leg of a pair placed inside 125 ms; four lets a two-sided re-quote go out together. **Reachable from `live.yaml` since 2026-11-28** as `engine.order_burst` -- until then it existed only as a command-line flag, and a unit-started session cannot pass one | the agent, after the owner delegated the three budget keys (2026-11-28) |
 | `engine.advance_debounce_ms` | 40000 | **40000, unchanged** | the 40 ms arm read better on *one* day (-0.2317 against +0.1066 on 2026-11-26) and that is the only sample it has; changing it here would mix a price-refresh knob into a budget arm | instrument (agent key) |
 
 **The bar, registered before the run.** Measured on the live journal of the next window, all five at once:
@@ -81,9 +81,14 @@ above 2) fails the arm: the point is to move the binding cap, not to trade the v
 the 58:1 quote split is the strategy's own; more than 20 fills with a markout below the replay's says the extra orders
 were adverse selection, and the budget is a feature rather than a bug.
 
-**How it is applied and undone.** `--ops set-key` per agent key (it keeps a backup of the file it replaces), the operator
-edits the two operator keys, then `--ops restart` -- the engine reads the file at `ExecStartPre`, so nothing lands until a
-session starts; the previous file is one `cp` away and the rollback is the same command with the old numbers.
+**How it is applied and undone.** One `--ops set-key` dispatch carries all four values -- `key` and `value` take
+comma-separated lists zipped in order -- and `live_config.py` writes them **atomically**: one backup, and no write at all if
+any of them is refused. The three the owner delegated on 2026-11-28 (`engine.max_orders_per_second`, `engine.order_burst`,
+`link.venue_max_orders`) are settable; `engine.advance_debounce_ms` stays at 40000 and `link.venue_orders_per_second` was
+already the instrument's. A key whose line the file does not carry yet is refused unless the dispatch asks for `add`,
+because a new key is a decision. Then `--ops restart`: the engine reads the file at `ExecStartPre`, so nothing lands until a
+session starts; the previous file is the backup `set-key` left beside it, and the rollback is the same dispatch with the old
+numbers.
 
 **And the leader-state gate is not part of this card.** `|BTC 3 s return|` was found on the seven days that have BTC's
 book; testing it out of sample needs the twenty-one days block 4 is fetching, and the first test is a *fill-level

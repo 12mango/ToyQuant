@@ -6,6 +6,24 @@ and when — is in [Roadmap](docs/ROADMAP.md#change-log), and the two are delibe
 The repository is named `ToyQuant`. The `-v1` suffix that older links and a local clone may still carry is a leftover
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
+## The order-budget card's four values are settable from `live.yaml`, atomically (2026-11-28)
+
+- **`engine.order_burst` exists.** `--order-burst` was an engine flag with no key, so a session started by a unit could
+  never carry it: `live_config.py`'s mapping gained the key, and the card's fourth value is now a setting rather than a
+  command line nobody can pass.
+- **`OWNER_DELEGATED` is its own set.** The owner confirmed the card's values and delegated the operator's parameters, so
+  `engine.max_orders_per_second`, `engine.order_burst` and `link.venue_max_orders` are settable -- listed apart from
+  `AGENT_KEYS` so that what was handed over is visible and undoable in one place. Everything else the tool still refuses by
+  name, which is the property that list exists for.
+- **`--set` takes a comma-separated list and writes atomically.** One `--ops set-key` dispatch carries all four values, the
+  whole batch passes the couplings before anything is written, and there is exactly one backup -- half a card applied is a
+  file that describes a session nobody registered.
+- **A key whose line is absent is refused unless `add` is set.** The host's file has never carried `order_burst`, and "a new
+  key is a decision" is why that refusal exists; the decision is now a flag on the dispatch rather than a hand edit.
+- **The backup name is unique per write.** Two edits inside one second shared a `<path>.<stamp>` name and the second
+  overwrote the first, which the new self-test caught -- the one thing a backup must not do.
+
+
 ## The twenty-eight-day gate advantage was the window, and the regime labels describe only the tail (2026-11-28)
 
 - **`tools/study/window_regimes.py` (new).** Each window bucketed by its own physics -- A: absolute move at or below 100

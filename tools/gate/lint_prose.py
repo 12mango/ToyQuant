@@ -334,6 +334,10 @@ def main():
                         # is joined with, and which instrument's tape folder they are cut from. They are the edit that makes
                         # a second month one re-run, and `docs/TOOLS.md` names both.
                         "--rows", "--folder",
+                        # `tools/study/leader_state_out_of_sample.py` owns this one: cut the days and stop, without running
+                        # the analysis. It is the mode that makes the preparation checkable on its own -- a full /tmp is a
+                        # failure with no message -- and `docs/TOOLS.md` names it with the tool.
+                        "--prepare-only",
                         # `tools/gate/check_leaks.py` owns these three: the migration's progress report and its
                         # enforcement switch. The boundary rules themselves are not flags; these are how a reader asks
                         # what the deny-list still finds and how the gate tightens once the count is zero.

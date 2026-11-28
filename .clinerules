@@ -155,6 +155,15 @@ compatibility path. Everything below assumes that page.
   80 ms" was five runs at 0 to 80 us, so every conclusion drawn from it was about zero latency and the table looked clean
   because there was no delay in it. `tools/sweep/okx_maker_baseline.py` now warns below one millisecond; the habit is to
   write `80000` in the command and say "80 ms" only in the prose beside it.
+- **A heavy run is detached, registered, and closed by the tool that consumes its output.** The owner's instruction of
+  2026-11-28 is that a heavy experiment belongs in the background and that the agent owns the loop, so "detached" is only
+  half of it. Before a long run starts, its row exists with four cells -- the command, the artifact it writes, the tool that
+  reads that artifact, and the bar that closes the experiment -- in `.handoff.md`'s job table, and the reply that launches it
+  names the row. The loop is then three reads and no watch: the `.exit` file for *whether*, the log's last line for *what*,
+  and when both say done, the consuming run is started in the same pass rather than remembered for later. A run whose
+  artifact nothing reads is a wait, not an experiment, and an experiment whose bar is not written down closes when somebody
+  happens to remember it. The state to avoid is the one this rule was written from: three fetches and two sweeps running,
+  each with a log, none of them with a named consumer.
 - **A tick is a price, not an amount, and a per-tick figure is converted before it is quoted.** `0.0001` on a `0.19`
   instrument is **5.2 bps**, not half of one, and the difference is the whole answer to "can a fee be paid": on
   2026-11-25 the profile page, the changelog and two tool docstrings said "one tick is half a basis point" for a day,

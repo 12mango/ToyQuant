@@ -29,11 +29,15 @@ on:
         description: report only -- the UTC instant whose window to report (empty = now)
         default: ""
       key:
-        description: set-key only -- an instrument-owned setting, e.g. engine.ws_seconds
+        description: set-key only -- a setting, e.g. engine.ws_seconds, or a comma-separated list zipped with `value`
         default: ""
       value:
-        description: set-key only -- its new value
+        description: set-key only -- its new value, or a comma-separated list zipped with `key`
         default: ""
+      add:
+        description: set-key only -- append a key whose line is absent; without it an absent key is refused, because a new key is a decision
+        type: boolean
+        default: false
 
 concurrency:
   group: ops-${{ github.ref }}
@@ -81,12 +85,13 @@ jobs:
           LINES: ${{ inputs.lines }}
           KEY: ${{ inputs.key }}
           VALUE: ${{ inputs.value }}
+          ADD: ${{ inputs.add }}
           AT: ${{ inputs.at }}
         run: |
           set -euo pipefail
           ssh -i "$HOME/.ssh/deploy_key" -o BatchMode=yes \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            "ACTION=$ACTION LINES=$LINES KEY=$KEY VALUE=$VALUE AT=$AT bash -s" <<'REMOTE'
+            "ACTION=$ACTION LINES=$LINES KEY=$KEY VALUE=$VALUE ADD=$ADD AT=$AT bash -s" <<'REMOTE'
           set -uo pipefail
           echo "action=$ACTION host=$(hostname) $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
           # The tool is the workflow's own copy (the step above), not the host's: an action must be able to run the fix it
@@ -207,7 +212,27 @@ jobs:
               if [ -z "${KEY:-}" ] || [ -z "${VALUE:-}" ]; then
                 echo "set-key needs both key and value" >&2; exit 2
               fi
-              sudo python3 /tmp/toyquant-live-config.py --set "$KEY=$VALUE" --file /etc/toyquant/live.yaml
+              # `key` and `value` may each be a comma-separated list, zipped in order, because the order-budget card's
+              # values are one decision and half of them is a file that describes a session nobody registered. The tool
+              # writes atomically: one backup, and no write at all if any assignment is refused. `add` decides whether a
+              # key whose line is absent is appended -- without it the tool refuses, because a new key is a decision.
+              IFS=',' read -r -a SET_KEYS <<< "$KEY"
+              IFS=',' read -r -a SET_VALUES <<< "$VALUE"
+              if [ "${#SET_KEYS[@]}" -ne "${#SET_VALUES[@]}" ]; then
+                echo "set-key: ${#SET_KEYS[@]} key(s) against ${#SET_VALUES[@]} value(s) -- they are zipped, so they must match" >&2
+                exit 2
+              fi
+              ASSIGNMENT=""
+              for i in "${!SET_KEYS[@]}"; do
+                ITEM="${SET_KEYS[$i]}=${SET_VALUES[$i]}"
+                ASSIGNMENT="${ASSIGNMENT:+$ASSIGNMENT,}$ITEM"
+              done
+              echo "set-key: $ASSIGNMENT"
+              if [ "${ADD:-false}" = "true" ]; then
+                sudo python3 /tmp/toyquant-live-config.py --set "$ASSIGNMENT" --add --file /etc/toyquant/live.yaml
+              else
+                sudo python3 /tmp/toyquant-live-config.py --set "$ASSIGNMENT" --file /etc/toyquant/live.yaml
+              fi
               SET_STATUS=$?
               echo "-- the file now says"
               sudo python3 /tmp/toyquant-live-config.py --check /etc/toyquant/live.yaml
