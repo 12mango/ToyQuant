@@ -119,7 +119,27 @@ This is the part a retrospective owes a reader, and it is why the page exists at
   trade report carries price, quantity, side, fee and role, and adding a PnL column is recorded as open in the
   [roadmap](ROADMAP.md).
 
-## 8. Where the numbers live
+## 8. Four network levers, checked against this tree (2026-11-28)
+
+Four proposals for cutting the round trip without touching the strategy, checked in the order they cost. Each row is what
+this tree can prove about it today; none of them has a paired measurement on the host, so none of them is accepted.
+
+| lever | what it costs here | what was checked | verdict |
+|---|---|---|---|
+| OKX's AWS access point | **a code edit, not a config change**: both URLs are literals (`wss://ws.okx.com:8443`, `wss://wspap.okx.com:443`) and the binary takes no flag to override them | from the operator's machine the live names resolve to `*.cdn.cloudflare.net`, and the two ports of one name read **41 ms** (`:8443`) against **13 ms** (`:443`) — CDN routing is real, not a hypothesis. A public resolver (1.1.1.1) answers NOERROR for `wsaws.okx.com` with **no A, no AAAA and no CNAME**, only the zone's SOA, and OKX's nameservers are Route 53's | **the named endpoint is not published**: the lever cannot be bought as written, because the hostname that is supposed to carry the gain does not resolve anywhere. What is left of it is timing whichever endpoint OKX documents for this account, **from the host**, against `ws.okx.com` — the quoted 5-15 ms is the proposal's number and this tree has none |
+| `TCP_NODELAY` | nothing — it is already on | `src/lines/tcp_venue_transport.cpp:32` sets it on every venue socket | **already banked**, so this half of the proposed 5-15 ms is not available to win |
+| `busy_poll` and a `performance` governor | two sysctls on the host **plus a code edit**, because polling is opt-in per socket (`SO_BUSY_POLL`) and the default is not polling | the machine this was read on is the operator's, not the host: it shows `net.core.busy_poll = 0` and **no `cpufreq` node at all** (a VM) | **unverified and partly inapplicable**: a cloud VM usually exposes no governor to set, and busy polling spends a core the engine is using. It needs a host reading and a paired run, not an assumption |
+| the WS private order channel | the order wire, the recorder and the ack path: `venue_order_wire.cpp` builds `POST /api/v5/trade/order` and `/cancel-order` on a **persistent** socket that already has no Nagle delay | the round trip already measured on this venue is 77-118 ms a placement and 76-78 ms a cancel | **real but smaller than quoted**: the 15-25 ms assumes a TLS handshake per order, which this client does not pay; the test that decides it is one day of orders over each channel, compared |
+| AWS Global Accelerator | — | its endpoint groups accept only AWS resources in an account (ALB, NLB, an EC2 instance or an elastic IP); a third party's hostname cannot be a target | **not possible as described**: it accelerates a client *to your* AWS endpoint, not your host *to OKX*. The legitimate form of the same idea is a host inside AWS dialling OKX's AWS access point — the first row plus where the host lives |
+| moving the host to another region | — | the quoted baseline (70-118 ms) matches this tree's own 77-118 and 76-78 ms, so the proposal's starting point is a real measurement rather than a guess | **out of scope by the owner's decision of 2026-11-28** |
+
+What the four have in common is that none of them touches what [§6](#6-why-it-stopped-stated-as-a-condition) stopped on:
+the reader and the hand-off are inside the process, and these are outside it. That makes them cheap to *test* and easy to
+over-claim — which is why the rule the line already lives by applies unchanged: a lever is accepted when a paired
+measurement on the same host shows it and the gain clears the spread of the measurement, and the first thing to measure is
+the endpoint, because it is the only one of the four that this tree can resolve, time and prove without a decision first.
+
+## 9. Where the numbers live
 
 | for | read |
 |---|---|
