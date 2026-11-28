@@ -183,15 +183,19 @@ it needs no code and no data; the live-replay calibration stayed where the propo
 | 6b | which two or three seats hold a portfolio | 6a for NES, 1 for the state gate, and the correlation of the seats' bad days (already measured once: r = 0.039) |
 | 7 | dynamic size and the intraday circuit breaker | a seat with a stable positive median at one contract, and a tail baseline that is an *event* rather than a number: the C bucket's -250.5 bps is one day (2026-11-22), so a size ladder must be calibrated on the count of such days, not on the single worst print |
 
-**The admission rule, registered before any seat is ranked** (the proposal's, with the numbers it left implicit made
-explicit). A seat enters a comparison only above a **fill floor**: the ten-contract cell's own floor is 40 fills over the
-window set it was registered on, and a *per-window median* of 25 to 30 is the stricter form the proposal names -- both are
-written here and a row says which it used. The ranking is then **median net bps** with the **tail multiple**
-(`worst day / median`) beside it, smaller is better; NES reads +15.70 at 3.95 and UP +12.27 at 6.13 on the same 28 days,
-so NES ranks first on both columns while UP carries the larger dollar total (0.3630 against 0.2342 USD a window), and the
-two facts are kept side by side rather than collapsed. **And the seats are not a tournament**: two instruments that both
-clear a positive median with a controlled tail are run *together*, which is the reason the portfolio line exists at all --
-the merge's dispersion test already read 2.77x with the two seats' bad days uncorrelated.
+**The admission rule, registered before any seat is ranked and decided by the owner on 2026-11-28.** A seat enters a
+comparison only above a **fill floor** of **25 fills in a window** -- the *per-window* form, at the tighter end of the 25 to
+30 range registered here, because a seat is judged window by window; the ten-contract cell's own 40-fill floor still
+governs a cell measured over a window set, and a row says which floor it used. The ranking is **median net bps** with the
+**tail multiple** (`worst day / median`) beside it, smaller is better -- **never the dollar total**, which stays the row's
+third column and is deliberately not the ranking. The owner's reason: a dollar total scales linearly with seats running in
+parallel and with equal-risk size, so it ranks the capital behind a seat rather than the seat's quality, while the tail
+multiple is what bounds a worst-day drawdown and therefore how much room there is to add size. NES reads +15.70 at 3.95 and
+UP +12.27 at 6.13 on the same 28 days, so NES ranks first on both columns while UP carries the larger dollar total (0.3630
+against 0.2342 USD a window), and the two facts are kept side by side rather than collapsed. **And the seats are not a
+tournament**: two instruments that both clear a positive median with a controlled tail are run *together*, which is the
+reason the portfolio line exists at all -- the merge's dispersion test already read 2.77x with the two seats' bad days
+uncorrelated.
 
 ### Waiting on data, with the run it unlocks
 
