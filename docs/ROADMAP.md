@@ -164,9 +164,10 @@ key-install step without its `ssh-keyscan` line -- and that is `576712a`; the ru
 `order_burst` mapping key and the three budget values, which travel through the **existing** path -- the one whose
 activation now retries through the race and whose rollback is one command. Building a second path in the same hour as the
 deploy that must land would put the untested branch on the critical line, and the measurement that decides it is the
-window's own journal. So the order is: land the key, deploy through the current path, read the window, and build these two
-cuts at the next 04:00-12:00 UTC block, with Cut 1 landing before Cut 2 because a rollback protects every deploy while a
-split only shortens some of them.
+window's own journal. So the order is: land the key, deploy through the current path, read the window, and build the two
+cuts in priority order -- Cut 1 before Cut 2, because a rollback protects every deploy while a split only shortens some of
+them. (A measurement still names its safety window: a deploy inside 13:30-15:30 is refused, which is a restriction on when,
+not a schedule for the work.)
 
 ### The research queue after the closures (registered 2026-11-28; one line per question, one bar each)
 

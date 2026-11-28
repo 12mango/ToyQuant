@@ -68,6 +68,11 @@ compatibility path. Everything below assumes that page.
   "clean it all up at the end" pass is a second tree nobody reviewed. The guardrails still hold: one page, one table,
   one flag, one figure at a time; `data/` never moves; every recorded number is re-derived by its block; and a
   restructure that moves a claim has to move it everywhere it appears in the same change.
+- **Work is ordered by priority, never by a calendar.** The owner's instruction of 2026-11-28: do not write "X must be
+  iterated by <time>" or "Y lands at the next 04:00-12:00 block"; sort the queue by what can be answered with the tree and the
+  data as they stand, and take the top. A *measurement* may still carry a condition of the form "measured between windows,
+  never inside 13:30-15:30" -- that is a safety restriction on when a deploy may run, not a schedule for the work -- and a card
+  names the order of its cuts ("Cut 1 before Cut 2") rather than a date.
 - **The answer "closed, and here is why" is a deliverable.** Do not manufacture work to avoid delivering it.
 - **Exploration has a buffer, and the guides are not it.** A new direction is tried with a rough note in the studies
   record (`docs/archive/studies.md`) or an ADR if it closes a decision; it does not enter the guide, the front doors or
