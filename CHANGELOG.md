@@ -6,7 +6,7 @@ and when — is in [Roadmap](docs/ROADMAP.md#change-log), and the two are delibe
 The repository is named `ToyQuant`. The `-v1` suffix that older links and a local clone may still carry is a leftover
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
-## The audit's first two answers: the halt is a lever, and the cell was measured on a worse link than the account has (2026-11-29)
+## The audit's first two answers: the halt is a lever, and the cell was measured on a worse link than the account has (2026-11-28 UTC)
 
 Two measurements off one seven-day run of the frozen cell (2026-11-16..22, 13:30-15:30 UTC), both registered in
 `docs/RETROSPECTIVE.md`'s frontier map before the numbers existed.
@@ -26,6 +26,15 @@ Two measurements off one seven-day run of the frozen cell (2026-11-16..22, 13:30
 
 Both tables are measured and **not pinned**: the commands are the cell's own (`tools/sweep/up_ten_contract_cell.sh` and
 `tools/study/live_knobs_ab.py --extra`), and the second table's second row is exactly the `pause=9` arm of the first.
+
+- **And the seat floors, read at 10 ms for the first time, order the two seats differently** (`nes28-floor` and
+  `up28-floor`, the first two jobs through `tools/ops/jobq.sh`). NES: 26 of 28 days, a median of **30 fills**, a closed
+  median of **+12.71** [-16.39, +50.03], 17 of 26 positive, +11.34 net, 0.2104 USD a window, tail multiple **1.29**, 4 of
+  28 days under five fills. UP: 28 of 28, **36 fills**, **+15.61** [-42.79, +56.29], 23 of 28, +13.28, 0.5732, tail 2.74,
+  1 of 28 thin. At the ten-second reading NES led on both ranking columns; at the real latency **UP leads on the median and
+  the net and NES leads on the tail**, both clear the fill floor of 25, and both sit inside the 15 percent dead-window
+  ceiling (NES at 14.3, which is close enough to matter). The admission rule's own tie-break applies -- the row reports both
+  and the owner picks -- so `docs/ROADMAP.md` now carries the 10 ms table beside the 10 s one instead of choosing.
 
 
 

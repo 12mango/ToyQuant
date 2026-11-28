@@ -248,7 +248,7 @@ compatibility path. Everything below assumes that page.
   arithmetic figure of 155,000 that the journal contradicted by a factor of 450. A number a window is read for belongs in
   `ledger_row` and its self-test in the same change; a journal paste is not a reading.
 - **A duration is added to a clock in the clock's unit, and the helper that decides the unit is itself tested.** Measured
-  2026-11-29, four defects of one class, each invisible because every fixture was microseconds or a hand-set number: the risk
+  2026-11-28 UTC, four defects of one class, each invisible because every fixture was microseconds or a hand-set number: the risk
   bucket divided a millisecond timestamp by a constant 1e6 (148 tokens in a two-hour window instead of 144,000, which read
   as "the strategy wants 23 orders a second" when it wanted 1.59); `MatchingEngine` added `--order-latency-us` raw, so the
   cell's "10 ms" arm was ten seconds and its "100 ms" arm a hundred; the volatility halt divided the same way; and
@@ -258,7 +258,7 @@ compatibility path. Everything below assumes that page.
   epoch, a microsecond epoch), and a test that only feeds microseconds has not covered the code.
 - **A queue carries the four cells, and one heavy job runs at a time.** `tools/ops/jobq.sh add <name> --artifact … --consumer "…"
   --bar "…" -- <command>` registers a heavy run as a file in `out/jobs/`; `run` starts the serial detached runner, `status`
-  prints the table, `tail` reads a log, `stop` finishes the current job and stops. Measured 2026-11-29 on this host -- 8
+  prints the table, `tail` reads a log, `stop` finishes the current job and stops. Measured 2026-11-28 UTC on this host -- 8
   cores, 15 GB, 6.0 GB free on the 7.7 GB tmpfs -- so the binding resource is the **tmpfs and not the CPU**: the queue is
   serial by construction (two sweeps in one cuts directory is the collision the sweep tool refuses by pid), it runs at
   `nice 10` so a foreground `fast` is not starved, and a job whose `--needs-gb` exceeds what `/tmp` holds is marked
@@ -464,7 +464,7 @@ A page is read in three minutes or it is not read. Three rules follow, and the m
   with one line saying what they are. `tools/gate/lint_prose.py` fails a front-door page that runs one outside a fold.
 - **A page that is also included in another page cannot carry a relative link.** `docs/L2_FLAGS.md` is inlined into
   `docs/using/01-getting-started.md`, so a link written for `docs/` is resolved from `using/` there and
-  `mkdocs build --strict` fails naming the **including** file -- measured 2026-11-29, one gate run lost to a link that was
+  `mkdocs build --strict` fails naming the **including** file -- measured 2026-11-28 UTC, one gate run lost to a link that was
   correct in the file it was written in. Name the page in code (`` `docs/RETROSPECTIVE.md` ``) or spell the link for the
   page it is included into.
 - **Fold what a reader can skip.** The test is one question: *without opening this, can a first-time reader still
