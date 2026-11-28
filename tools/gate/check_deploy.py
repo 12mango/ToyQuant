@@ -489,6 +489,28 @@ def rule_light_path(texts):
     return problems
 
 
+def rule_state_dir(texts):
+    """A record path under `/var/lib` needs the unit to declare that directory -- and no record path belongs under the program.
+
+    Measured 2026-11-28: the live leg wrote no per-order record at all, so a two-hour window left one summary line. The fix
+    writes `/var/lib/toyquant/live_orders.csv`, and `/var/lib/toyquant` is not writable by `User=toyquant` unless systemd is
+    told the directory is the unit's, which is what `StateDirectory=` does. Without it the session cannot open the file, and a
+    path under `/opt/toyquant` instead would be **replaced by the next deploy** -- the record of a run deleted by the deploy
+    that followed it, which is the one failure mode a record exists to rule out.
+    """
+    record = yaml_pairs(texts["live_yaml"]).get(("engine", "record_orders"), "")
+    if not record:
+        return []
+    if not record.startswith("/var/lib/"):
+        return [f"engine.record_orders is {record}: the session writes it, so it belongs under /var/lib where the unit's "
+                f"StateDirectory= owns it -- anything under the program's own tree is replaced by the next deploy"]
+    owner = record.split("/")[3]
+    if f"StateDirectory={owner}" not in texts["live_unit"]:
+        return [f"the template writes {record} and {owner}'s unit declares no StateDirectory={owner}: systemd creates that "
+                f"directory owned by User= only when the unit names it, so without it the session cannot open its record"]
+    return []
+
+
 RULES = (("env_names", rule_env_names), ("template_keys", rule_template_keys), ("endpoints", rule_endpoints),
          ("ordering", rule_ordering), ("stop_window", rule_stop_window), ("bundled", rule_bundled),
          ("coupling", rule_coupling), ("notify_refs", rule_notify_refs), ("deploy_order", rule_deploy_order),
@@ -496,7 +518,8 @@ RULES = (("env_names", rule_env_names), ("template_keys", rule_template_keys), (
          ("preflight_isolation", rule_preflight_isolation), ("report_clock", rule_report_clock),
          ("timer_install", rule_timer_install), ("report_sandbox", rule_report_sandbox),
          ("report_identity", rule_report_identity), ("deploy_start", rule_deploy_start),
-         ("rollback_latch", rule_rollback_latch), ("light_path", rule_light_path))
+         ("rollback_latch", rule_rollback_latch), ("light_path", rule_light_path),
+         ("state_dir", rule_state_dir))
 
 FILES = {"env": ".env.example",
          "live_yaml": "config/live.example.yaml",
@@ -635,6 +658,14 @@ def self_test():
     check("coupling", lambda t: t.update(env=t["env"].replace("RELAY_ORDER_LIVE=0", "RELAY_ORDER_LIVE=1")), "demo host")
     check("notify_refs", lambda t: t.update(live_unit=t["live_unit"].replace(
         "toyquant-notify@%n.service", "somebody-else@%n.service")), "not the notifier template")
+    # The record's path: a template that writes one under `/var/lib` needs the unit to declare that directory, and a path
+    # under the program's own tree is refused outright because the next deploy replaces it.
+    check("state_dir", lambda t: t.update(live_yaml=t["live_yaml"].replace(
+        "  live_orders: true\n", "  live_orders: true\n  record_orders: /var/lib/toyquant/live\n")),
+          "StateDirectory=toyquant")
+    check("state_dir", lambda t: t.update(live_yaml=t["live_yaml"].replace(
+        "  live_orders: true\n", "  live_orders: true\n  record_orders: /opt/toyquant/live\n")),
+          "replaced by the next deploy")
     # The ordering defect this rule was written for: the preflight before the relay's restart, which is what a stopped
     # host fails on. Dropping the restart line is the smallest edit that reproduces it.
     check("deploy_order", lambda t: t.update(activate=t["activate"].replace(
