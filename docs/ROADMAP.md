@@ -113,7 +113,7 @@ items; two of them landed during the live-line work and the card starts from tha
 | the activation sequence | **landed** | `deploy/activate.sh` -- bundled by the package step (`deploy.yml:196`) and called by the deploy (`:315`): `daemon-reload` -> `reset-failed` -> `start` in a bounded retry that prints the attempt it succeeded on, and on giving up prints `LoadState`, `FragmentPath`, `systemctl cat` and the unit's journal, then `wait_for_ports.sh` and `preflight.sh` |
 | rollback, as a command | **landed** | `deploy/rollback.sh` restores `toy_quant.prev` -- copied before the unpack (`deploy.yml:244`) -- restarts and runs the health check; a red job names it (`deploy.yml:324`) |
 | rollback, automatic | **landed 2026-11-28** | `deploy/activate.sh` runs `check_health.sh`, re-runs it five seconds later when the first read is red, and only a second red calls `deploy/rollback.sh --refuse <RELEASE>`; the rollback's own health check is the deploy's verdict |
-| release-path split | **landed 2026-11-28, inert until the switch is on** | `deploy/release_path.py` classifies a diff against the card's six paths and has its own self-test; `deploy.yml` gains a `classify` job and a `deploy-light` job that rsyncs those files, runs the bootstrap and `activate.sh`, and copies no program. `TOYQUANT_LIGHT_PATH` must be `yes` and a `base_sha` must be named, otherwise the classifier answers `full` -- so the graph is the old one until the bar below is measured |
+| release-path split | **landed and measured 2026-11-28** | `deploy/release_path.py` classifies a diff against the card's six paths; `deploy.yml` gains `classify` and `deploy-light` (rsync, bootstrap, `activate.sh`, no program). The switch is the repository variable `TOYQUANT_LIGHT_PATH`, and with it on a config-only diff reached the host in **21.1 s** against the full path's 164.9 |
 | the two-strike rule | **landed 2026-11-28** | `deploy.yml`'s remote script reads `reverted_release` **before the mkdir, the tar and the bootstrap** and exits 2 naming the release; `tools/gate/check_deploy.py`'s eighteenth rule refuses the absence of either half |
 
 **Cut 1 -- automatic rollback on the second red health check, and a latch against the third attempt.** On a red health
@@ -141,18 +141,17 @@ classified as light.
 The bar: a config-only change (one value in `live.yaml`) from dispatch to a green health check in **under 60 seconds**,
 measured from the runner's first line to the host's `check_health.sh` line; the full path still green on a `src/` change;
 and `check_deploy` gains a rule that refuses a light classification whose file list is wider than those six paths, plus a
-rule that refuses a light path which ships a binary. **Built 2026-11-28 and left inert**: the classifier, the two jobs and
-the rule (the nineteenth) are in the tree, `TOYQUANT_LIGHT_PATH` is unset so every deploy still takes the full path, and the
-60-second bar waits for a real config-only diff in a 04:00-12:00 UTC block -- a fixture invented to hit it would measure the
-fixture. One thing the card's wording got wrong and the build corrected: the operator's `live.yaml` never travels by a
-deploy at all (it is `--ops set-key`'s), so the light path is about `config/live.example.yaml`, the units, the timers, the env
-templates and the journald/logrotate files. **Two things stand between this build and the bar.** The switch is the owner's:
-this host's token is Actions-only and a variables read answered `403 Resource not accessible by personal access token`
-(measured 2026-11-28), so `TOYQUANT_LIGHT_PATH` has to be set in the repository settings -- and the dispatcher took
-`--base-sha` in the same change, so the measurement is one command once the switch exists. And the bar's endpoint is
-contradictory as written: a green `check_health.sh` line needs a *running* session, while the card forbids deploying inside
-13:30-15:30, so between windows the light path ends at the activation's report. Measuring to that line, or moving the bar's
-endpoint, is the owner's call.
+rule that refuses a light path which ships a binary. **Measured 2026-11-28 (run `46136078091`, and the card is closed)**:
+`classify: light`, only `classify` and `deploy-light` ran, and the runner's first line at `10:37:50.137` reached the host's
+activation report at `10:38:11.226` -- **21.1 seconds**, against **164.9** for the last full deploy (run `46133428662`,
+`10:04:38` to `preflight: OK` at `10:07:22.9`). The endpoint is the activation's report rather than a `check_health.sh` line
+because a green health line needs a *running* session and this card forbids deploying inside 13:30-15:30; the substitution is
+written here rather than made quietly in the number, and the owner's instruction of 2026-11-28 was to close the bar if it was
+not reachable as written. The switch is a **repository variable** (`TOYQUANT_LIGHT_PATH=yes`), not a secret, so a reader can
+see whether the fast path is on; and one wording the build corrected: the operator's `live.yaml` never travels by a deploy at
+all (it is `--ops set-key`'s), so the light path is about `config/`, the units, the timers, the env templates and the
+journald/logrotate files. The first attempt failed at `Host key verification failed` -- the light job copied the full job's
+key-install step without its `ssh-keyscan` line -- and that is `576712a`; the run after it is the one measured.
 
 **Why Cut 1 first, and why neither is built in the hour before the window.** Tonight's session is started by
 `toyquant-window-start.timer`, not by a deploy: nothing in either cut makes the window start. What tonight needs is the

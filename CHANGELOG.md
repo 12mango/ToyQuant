@@ -19,12 +19,17 @@ site now points at `ToyQuant`.
   `before` on a tag). So the graph that runs today is the one that ran yesterday, and the switch is the experiment.
 - **`check_deploy.py` is nineteen rules.** The nineteenth refuses an allowlist wider than the card's six and a light job that
   touches the program, and its self-test fires on each by widening the list and by adding `toy_quant` to the rsync line.
-- **The 60-second bar is not measured yet**, and deliberately: it needs a real config-only diff in a 04:00-12:00 UTC block.
-  One correction to the card's wording came out of the build -- the operator's `live.yaml` never travels by a deploy, so the
-  light path is about the template and the units, not about a setting.
+- **The bar is measured and the card is closed.** A config-only diff (`config/live.example.yaml`) with `--base-sha 576712a`
+  classified `light`, only `classify` and `deploy-light` ran, and the runner's first line at `10:37:50.137` reached the host's
+  activation report at `10:38:11.226` -- **21.1 seconds**, against **164.9** for the last full deploy (run `46133428662`).
+  The endpoint is the activation's report and not a `check_health.sh` line, because a green health line needs a *running*
+  session and the card forbids deploying inside 13:30-15:30; the substitution is stated rather than folded into the number.
+- **The first attempt failed at `Host key verification failed`** (`46135416661`): the light job copied the full job's
+  key-install step without its `ssh-keyscan` line, so the `rsync` never reached the host. One line, `576712a`, and the run
+  after it is the one measured.
 - **The dispatcher carries the diff's base** (`--base-sha`, refused on any workflow but `deploy.yml` and refused on a
-  non-hex string), because a dispatch has no `before` for the classifier to read; and the switch itself is the owner's --
-  this host's token is Actions-only and answered `403` on the variables endpoint.
+  non-hex string), because a dispatch has no `before` for the classifier to read; the switch itself is a **repository
+  variable**, not a secret, so a reader can see whether the fast path is on.
 
 ## A red health check now rolls back, and the host remembers what it refused (2026-11-28)
 

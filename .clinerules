@@ -182,6 +182,10 @@ compatibility path. Everything below assumes that page.
   that is what caught it. The tell is worth keeping: a lever that changes nothing on a moving book is a bug until a one-day
   two-value smoke shows the flag moving a number (measured 2026-11-28: 40000 ms fills 51 times, 250 ms 168), so every
   command string in a driver is assigned after the argument loop and a new flag gets that smoke before a full ladder runs.
+- **A step copied from another job carries its lines and not its prerequisites.** Measured 2026-11-28: the light release
+  path's "install the key" step was copied from the full deploy job without its `ssh-keyscan` line, so the first config-only
+  dispatch died at `Host key verification failed` inside the `rsync` -- a red deploy whose cause was one missing line in a
+  copy. A duplicated step is re-read against what it must have done, not against the step it came from.
 - **A tick is a price, not an amount, and a per-tick figure is converted before it is quoted.** `0.0001` on a `0.19`
   instrument is **5.2 bps**, not half of one, and the difference is the whole answer to "can a fee be paid": on
   2026-11-25 the profile page, the changelog and two tool docstrings said "one tick is half a basis point" for a day,
