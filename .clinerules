@@ -163,7 +163,10 @@ compatibility path. Everything below assumes that page.
   and when both say done, the consuming run is started in the same pass rather than remembered for later. A run whose
   artifact nothing reads is a wait, not an experiment, and an experiment whose bar is not written down closes when somebody
   happens to remember it. The state to avoid is the one this rule was written from: three fetches and two sweeps running,
-  each with a log, none of them with a named consumer.
+  each with a log, none of them with a named consumer. **And a reboot ends every detached run without a word** -- measured
+  2026-11-28, when the host restarted and `/tmp/tq` went with it, taking five jobs' logs -- so the row names the artifact
+  that survives in the tree (a `data/` archive, an `out/cuts` file) and the command is written to resume: `--skip-existing`
+  for a fetch, a cached cut for a sweep. A job whose only product is its log was not a job.
 - **A tick is a price, not an amount, and a per-tick figure is converted before it is quoted.** `0.0001` on a `0.19`
   instrument is **5.2 bps**, not half of one, and the difference is the whole answer to "can a fee be paid": on
   2026-11-25 the profile page, the changelog and two tool docstrings said "one tick is half a basis point" for a day,

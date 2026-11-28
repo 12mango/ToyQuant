@@ -150,6 +150,47 @@ window's own journal. So the order is: land the key, deploy through the current 
 cuts at the next 04:00-12:00 UTC block, with Cut 1 landing before Cut 2 because a rollback protects every deploy while a
 split only shortens some of them.
 
+### The research queue after the closures (registered 2026-11-28; one line per question, one bar each)
+
+The proposal this section answers listed seven lines in three tiers. The order below is the same material sorted by **what
+can be answered with the tree and the data as they stand**, because a question whose data needs a week of fetching is not
+"first priority" in a session that has an hour -- it is first in the queue, and the queue is advanced one closed row at a
+time. Two lines moved: the debounce ladder was in "week two" and is the first offline job after the counterfactual, because
+it needs no code and no data; the live-replay calibration stayed where the proposal put it but is the *owner's* to run.
+
+**Tier 1 -- answerable now, with the data on disk.**
+
+| # | question | depends on | the bar that closes it |
+|---|---|---|---|
+| 1 | does the leader's volatility state (`\|ΔBTC\|`) hold up out of sample? | BTC's 21 depth days (block 4, landing) and `tools/study/leader_state_out_of_sample.py` | on the 21 days the gate was never measured on: the flat bucket's mean markout stays materially above the pooled mean, and dropping the moving-state fills does not cost more than a fifth of the fills for it. Clearing it is what buys an engine input; failing it closes the line |
+| 4 | where is the debounce's turning point? | nothing new: 60 days of UP depth, four arms (`40000`, `5000`, `1000`, `250` ms) on the ten-contract cell | a fill share and a markout that both hold above the control's on the same 59 measured days, with the fee column unchanged; a monotone slide either way is an answer too, and the number that stops it is where the pooled median turns |
+| 6a | is NES steady over a second month? | 32 more NES days (`prefetch_windows.sh`), then the same cell | the seat floor and the two ranking columns of the admission rule below, on 59 days instead of 27 |
+
+**Tier 2 -- answerable after one piece of work that is not a measurement.**
+
+| # | question | what stands in the way | the bar |
+|---|---|---|---|
+| 3 | can a soft inventory skew narrow the close without cutting the two-sided spread? | a new engine key: the `wind_down_*` family is a hard stop and the throttle key pauses the adding side, so "lean, do not stop" is a code change first | on 60 days: worst day materially better than the control's -75.19 with the median not below it, and `fills` within a tenth of the control's |
+| 5 | is the perp-index basis an inventory bias? | whether OKX's index series for this instrument exists and is cheap to fetch, which is unverified -- the exchange lists no UP spot book | the basis's extreme-negative decile must show a fill asymmetry whose sign is stable across the two months, before it is worth wiring |
+| 2 | how far is live from replay once the budget is released? | the owner's `set-key` dispatch and five to seven windows, each two hours | `markout_per_unit_ticks` inside the replay's own interval across 300+ non-blocked fills, with the cancel-race slippage named |
+
+**Tier 3 -- depends on the rows above.**
+
+| # | question | depends on |
+|---|---|---|
+| 6b | which two or three seats hold a portfolio | 6a for NES, 1 for the state gate, and the correlation of the seats' bad days (already measured once: r = 0.039) |
+| 7 | dynamic size and the intraday circuit breaker | a seat with a stable positive median at one contract, and a tail baseline that is an *event* rather than a number: the C bucket's -250.5 bps is one day (2026-11-22), so a size ladder must be calibrated on the count of such days, not on the single worst print |
+
+**The admission rule, registered before any seat is ranked** (the proposal's, with the numbers it left implicit made
+explicit). A seat enters a comparison only above a **fill floor**: the ten-contract cell's own floor is 40 fills over the
+window set it was registered on, and a *per-window median* of 25 to 30 is the stricter form the proposal names -- both are
+written here and a row says which it used. The ranking is then **median net bps** with the **tail multiple**
+(`worst day / median`) beside it, smaller is better; NES reads +15.70 at 3.95 and UP +12.27 at 6.13 on the same 28 days,
+so NES ranks first on both columns while UP carries the larger dollar total (0.3630 against 0.2342 USD a window), and the
+two facts are kept side by side rather than collapsed. **And the seats are not a tournament**: two instruments that both
+clear a positive median with a controlled tail are run *together*, which is the reason the portfolio line exists at all --
+the merge's dispersion test already read 2.77x with the two seats' bad days uncorrelated.
+
 ### Waiting on data, with the run it unlocks
 
 Three sets are downloading or published late, and each row names the run it is for, so the next session does not
