@@ -397,6 +397,7 @@ jobs:
           install -m 0700 -d "$HOME/.ssh"
           printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > "$HOME/.ssh/deploy_key"
           chmod 0600 "$HOME/.ssh/deploy_key"
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> "$HOME/.ssh/known_hosts"
       - name: Ship the configuration the classifier approved, then activate
         run: |
           set -euo pipefail
