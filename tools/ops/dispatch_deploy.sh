@@ -4,6 +4,8 @@
 #   tools/ops/dispatch_deploy.sh run              # dispatch deploy.yml (data_gate stays false)
 #   tools/ops/dispatch_deploy.sh run --ops stop   # dispatch ops.yml with an action
 #   tools/ops/dispatch_deploy.sh run --ops report --at 2026-11-27T15:36:00Z   # one window's report, no mail
+#   tools/ops/dispatch_deploy.sh run --ops set-key \
+#     --key engine.max_orders_per_second,engine.order_burst --value 20,4 --add   # one setting, or a zipped list
 #   tools/ops/dispatch_deploy.sh check            # is the token the right shape, and does GitHub accept it
 #   tools/ops/dispatch_deploy.sh status           # the last few runs and their state
 #   tools/ops/dispatch_deploy.sh logs [--failed]  # the newest run's log (failed steps only with --failed)
@@ -26,7 +28,7 @@ TOKEN_FILE="${GH_TOKEN_FILE:-$ROOT/secrets/gh.token}"
 API=${TOYQUANT_API:-https://api.github.com}
 DRY_RUN=0
 
-usage() { sed -n '2,22p' "$0"; }
+usage() { sed -n '2,23p' "$0"; }
 
 repo_slug() {
   local url
@@ -85,17 +87,52 @@ in_progress() {  # in_progress <workflow-file> -> prints the run id when one is 
 }
 
 cmd_run() {
-  local workflow=deploy.yml body action="" at="" lines=""
+  local workflow=deploy.yml body action="" at="" lines="" key="" value="" add=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --ops) workflow=ops.yml; action=${2:-}; shift 2 ;;
       --at) at=${2:-}; shift 2 ;;
       --lines) lines=${2:-}; shift 2 ;;
+      --key) key=${2:-}; shift 2 ;;
+      --value) value=${2:-}; shift 2 ;;
+      --add) add=1; shift ;;
       --no-predeploy) SKIP_PREDEPLOY=1; shift ;;
       --allow-dirty) ALLOW_DIRTY=1; shift ;;
       *) echo "dispatch_deploy: unknown argument $1" >&2; return 2 ;;
     esac
   done
+  # The three `set-key` inputs. `ops.yml` declares them and this dispatcher has to carry them, or the only way to apply a
+  # setting is the browser -- which is the loop this tool exists to close. They are one action's inputs, so naming them
+  # for another workflow is refused here rather than arriving at a step that ignores them and reports a run that changed
+  # nothing. Measured 2026-11-28: the card's four budget values were one dispatch away and the body had no room for them.
+  if [ -n "$key$value" ] || [ "$add" = 1 ]; then
+    if [ "$workflow" != ops.yml ] || [ "${action:-}" != set-key ]; then
+      echo "dispatch_deploy: --key/--value/--add are '--ops set-key' inputs, not $workflow's (action '${action:-none}')" >&2
+      return 2
+    fi
+  fi
+  if [ "$add" = 1 ] && [ -z "$key" ]; then
+    echo "dispatch_deploy: --add says 'append this key', and no --key was named" >&2
+    return 2
+  fi
+  if [ -n "$key" ] || [ -n "$value" ]; then
+    if [ -z "$key" ] || [ -z "$value" ]; then
+      echo "dispatch_deploy: --key and --value go together; one without the other is a setting nobody named" >&2
+      return 2
+    fi
+    # Both are zipped by `ops.yml`, so a character that is not in a key, a number or a comma is refused here, and a list
+    # whose halves differ in length is refused before the runner starts rather than in the job. Same reason `--at` and
+    # `--lines` are checked: these characters go into a JSON body and a local refusal costs a second, a host one a round trip.
+    case "$key" in *[!0-9A-Za-z_.,-]*) echo "dispatch_deploy: --key takes section.name[,section.name], not '$key'" >&2; return 2 ;; esac
+    case "$value" in *[!0-9A-Za-z_.,-]*) echo "dispatch_deploy: --value takes a value[,value], not '$value'" >&2; return 2 ;; esac
+    local keys=() values=()
+    IFS=',' read -r -a keys <<< "$key"
+    IFS=',' read -r -a values <<< "$value"
+    if [ "${#keys[@]}" -ne "${#values[@]}" ]; then
+      echo "dispatch_deploy: ${#keys[@]} key(s) against ${#values[@]} value(s) -- they are zipped, so they must match" >&2
+      return 2
+    fi
+  fi
   if [ "${ALLOW_DIRTY:-0}" != 1 ]; then require_clean_tree || return 1; fi
   # Fail-fast, locally, in about three seconds: a fault found on the host costs a runner start, a build, an upload and a
   # journal round trip (measured 2026-11-27, several of four to five minutes each).
@@ -124,6 +161,8 @@ cmd_run() {
     body="{\"ref\":\"main\",\"inputs\":{\"action\":\"${action:-status}\""
     if [ -n "$lines" ]; then body="$body,\"lines\":\"$lines\""; fi
     if [ -n "$at" ]; then body="$body,\"at\":\"$at\""; fi
+    if [ -n "$key" ]; then body="$body,\"key\":\"$key\",\"value\":\"$value\""; fi
+    if [ "$add" = 1 ]; then body="$body,\"add\":true"; fi
     body="$body}}"
   else
     # `data_gate` is deliberately absent: its runner does not exist on this host, and a queued job nobody serves is how a

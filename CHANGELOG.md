@@ -6,6 +6,25 @@ and when — is in [Roadmap](docs/ROADMAP.md#change-log), and the two are delibe
 The repository is named `ToyQuant`. The `-v1` suffix that older links and a local clone may still carry is a leftover
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
+## The dispatcher can carry the setting it dispatches (2026-11-28)
+
+- **`dispatch_deploy.sh run --ops set-key` could not send `key`, `value` or `add`.** `ops.yml` declares the three inputs
+  and the dispatcher's JSON body carried only `action`, `at` and `lines`, so the one dispatch the order-budget card needs
+  would have died at `set-key needs both key and value` (exit 2). The card's four values were reachable from the tree and
+  not from this host, which is the loop the tool exists to close.
+- **The three flags are checked before a runner starts.** A `--key`/`--value` pair is zipped in order, so a list whose
+  halves differ in length is refused in about a second with both counts named; `--add` says "append a key the operator's
+  file has never carried"; and naming any of the three on `deploy.yml`, or on an action that is not `set-key`, is refused
+  rather than dispatched into a step that ignores it and reports a run that changed nothing.
+- **The order is deploy, then set-key, and it is measured rather than assumed.** The host's
+  `tools/live/live_config.py` is the copy the last deploy delivered (`142a80c`, 2026-11-27T20:22Z) and it does not know
+  `engine.order_burst`: `git show 142a80c:tools/live/live_config.py | grep -c order_burst` reads **0** against **7** at
+  HEAD. The unit's `ExecStartPre` runs `live_config.py --check /etc/toyquant/live.yaml`, so writing the fourth value
+  before the reader travels would make the 13:30 window refuse its own configuration. The binary was never the blocker --
+  `--order-burst` is in `app_config.cpp` at that commit.
+- **`--ops restart` is not part of applying a setting.** The file is read at `ExecStartPre`, so a write lands on the next
+  start; a restart between windows starts a two-hour session hours before the timer opens the real one.
+
 ## The order-budget card's four values are settable from `live.yaml`, atomically (2026-11-28)
 
 - **`engine.order_burst` exists.** `--order-burst` was an engine flag with no key, so a session started by a unit could
