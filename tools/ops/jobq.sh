@@ -70,6 +70,16 @@ cmd_add() {
     return 2
   fi
   case "$needs" in *[!0-9.]*|'') echo "jobq: --needs-gb takes a number" >&2; return 2 ;; esac
+  # **A job may enqueue, never start.** `jobq add` from inside a job is the chain mechanism, and the runner picks the new
+  # file up after the current one finishes; a second runner or a second detached process is the one state this queue
+  # exists to prevent -- it would escape the registry, the disk guard and the `nice` level in a single line. Measured
+  # 2026-11-28: the question "does a nested background experiment stay manageable" is answered by refusing it, not by
+  # describing it.
+  case " $* " in
+    *jobq.sh\ run*|*jobq\ run*|*detach.sh*|*detach.sh\ *)
+      echo "jobq: a job may enqueue (jobq add) but must not start a runner or a second detached process" >&2
+      return 2 ;;
+  esac
   mkdir -p "$STATE"/pending "$STATE"/running "$STATE"/done
   # A name is a key: a second job with it would make the registry ambiguous the way two rows for one window make a ledger
   # double-count. Any state counts, because a finished job's log is still the answer to "what did that one do".
@@ -112,6 +122,16 @@ cmd_run() {
   fi
   echo $$ > "$STATE/runner.pid"
   rm -f "$STATE/stop"
+  # A job left in `running/` is a job whose runner died with the machine. Requeue it rather than let the status table say
+  # "running" for ever: the jobs are deterministic and resumable (the cut cache, `--skip-existing`), so the price of a
+  # restart is the replay and not the data -- measured 2026-11-28, when a reboot took `/tmp/tq` and five logs with it.
+  local orphan
+  for orphan in "$STATE"/running/*.job; do
+    [ -e "$orphan" ] || continue
+    if mv "$orphan" "$STATE/pending/$(basename "$orphan")" 2>/dev/null; then
+      echo "jobq: requeued $(basename "$orphan" .job) -- its runner was gone"
+    fi
+  done
   local job name needs exit_code
   while true; do
     if [ -f "$STATE/stop" ]; then
