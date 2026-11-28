@@ -548,6 +548,16 @@ in tracked files:
   shapes, one drive letter followed by a backslash, `/home/<someone>/`, the cloud-drive folder name, a filled credential
   and a tracked `config/live*.yaml`, `.env`, `secrets/` or `private/`. `X:/sync` and `<the folder .drive-target names>` are
   the spellings a document may use: a lesson travels, a path does not.
+- **Two audiences, two shapes, and the test between them is reconstruction.** A page in `docs/` is read by a stranger in
+  three minutes: it carries the instrument, the method and the *simulated* result in bps -- never an account's live size,
+  its seat list, a dollar PnL, an equity line or a machine. A page in `private/` is read by a session with a question, so
+  it opens with **the question, the bar, the exact parameters, the number with its date, zone and basis (which latency,
+  which unit, which binary), and the public row it moves**, and it is indexed in `private/README.md` so the next session
+  finds it instead of re-deriving it. The test for a public page is not "does it mention money" but **could a reader
+  reconstruct an account's position or size from it**: a fee schedule and a simulated capture in bps pass, a seat's name
+  beside its live size does not. The private tree inherits every shape rule here -- two pages answering one question are
+  one page, a page whose last reader was a closed line is deleted or folded into that line's record, and the count of
+  private pages is not a measure of work done. Stage 2 of the migration is the deny-list's `[audit]` count.
 - **A page that moves keeps its path.** `git rm --cached <page>`, `mv` it into `private/docs/...`, and write a stub at the
   old path that says what it recorded, who may ask for it, and which public page documents the same method. Links, the site
   navigation and the ADR index all survive, because the path is unchanged; what leaves the commit is the number. Fragments

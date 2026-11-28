@@ -29,6 +29,16 @@ claim.**
 | **2. The reference** | what exists, how to read the code, what each field means, what is left to do | [Architecture](ARCHITECTURE.md), [Main Line](MAINLINE.md), [Learning Path](LEARNING.md), [Performance](PERFORMANCE.md), [Roadmap](ROADMAP.md), [Data Files](DATA.md), [Tools](TOOLS.md) | open the one that matches the question; none is meant to be read whole |
 | **3. The evidence** | the measurements in the order they were taken, the research record behind the closures, and one file per technical decision | [Performance History](PERFORMANCE_HISTORY.md) and its three parts, [Low-Latency Design](performance/design.md), [The studies](archive/studies.md), [Research Notes](archive/research-notes.md), [Decisions](adr/index.md) | search it; every part opens with the question it answers, and a decision is one file you can send as a link |
 
+**What this repository carries, and what it does not.** Everything here is the *instrument* and the *method*: how a file
+becomes an event, how a queue decides a fill, what a bar is, which lever was refused and why in mechanism terms, and the
+command that re-derives each figure the documents quote — including the simulated results in basis points. It does **not**
+carry an account's money: the live seat list, the size, a day's PnL in dollars, an equity line, a host's address or a key
+live in an ignored `private/` tree that no commit and no bundle carries, and `tools/gate/check_leaks.py` refuses one in
+`git ls-files`. The test a page has to pass is not "does it mention money" but "could a reader reconstruct an account's
+position or size from it": a fee schedule and a simulated capture in bps pass, a seat's name beside its live size does not.
+The boundary itself, and the staged migration that is moving the rest, is
+[`.clinerules` section 7](https://github.com/12mango/ToyQuant/blob/main/.clinerules) and `private/README.md`.
+
 ## Pick the path
 
 | If you want to... | Read | Then |
