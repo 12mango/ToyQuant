@@ -70,7 +70,8 @@ link:
   order_latency_us: 10000             # the measured route is 77 to 118 ms; 10 ms is what the cells were measured at
   cancel_latency_us: 10000
   venue_max_orders: 20                # the adapter's own bound, under the venue's quota
-  venue_orders_per_second: 5
+  venue_orders_per_second: 5              # the order-budget card raised the host's to 20, far under the venue's own quota:
+                                          # the point of that card is that the venue cap stops binding first
   # A session snapshot is an l2_replay file: it is written and resumed against a replay's own clock, and `ws` refuses it.
   # A live session reconciles against the venue instead (`[RECON]`), so there is nothing here to write.
   # snapshot_out: data/runtime/live-snapshot.json
