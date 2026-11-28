@@ -44,6 +44,9 @@ site now points at `ToyQuant`.
 - **`check_deploy.py` is eighteen rules.** The eighteenth reads that pair of facts -- the activation rolls back and names
   the latch, the workflow refuses what the latch names -- and its self-test fires on each half by deleting one from a clean
   copy, which is the only proof the red path has until a deliberately red deploy is run on a host.
+- **The red path's host proof is closed, not deferred** (owner's decision, 2026-11-28): the synthetic self-test is what
+  stands, four green deploys are the code path being read, and a reader who wants the end-to-end proof runs a deliberately
+  red deploy between windows. Nothing tonight depends on it -- the window is started by its timer.
 
 ## The toxicity gate's neighbourhood is a smooth plateau below the control (2026-11-28)
 

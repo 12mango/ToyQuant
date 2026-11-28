@@ -128,7 +128,13 @@ The bar, registered before the build: an artifact built with `-march=native` (th
 crash-looped 35 times) deployed to the host ends with `toy_quant.prev` running, `check_health.sh` green, the job red, and
 `reverted <sha>` in the log; a re-dispatch of that same commit exits 2 in under twenty seconds with no write to the host;
 and a deploy of a *good* binary with one deliberately red health reading does **not** revert. Measured between windows
-(04:00-12:00 UTC), never inside 13:30-15:30.
+(04:00-12:00 UTC), never inside 13:30-15:30. **The red path's host proof is closed as not done, by the owner's decision of
+2026-11-28.** A deliberately red deploy is the only way to exercise the rollback end to end, and the owner judged that not
+worth the risk on a host whose next event is the window; so what stands is the synthetic proof (`check_deploy.py`'s
+eighteenth rule fires on each half of the latch, its nineteenth on a widened allowlist and on a program in the light job)
+plus four green deploys' worth of the code path being read. The gap is written here rather than carried as a backlog item: a
+reader who wants the proof runs a deliberately red deploy between windows, and until then the first real red one is the
+test. Nothing in either cut makes the window start, so nothing tonight depends on it.
 
 **Cut 2 -- the release-path split.** A diff that touches only `config/`, `deploy/*.service`, `deploy/*.timer`,
 `deploy/*.env.example`, `deploy/journald/` and `deploy/logrotate/` takes a **config-only** path: `live_config.py --check`,
