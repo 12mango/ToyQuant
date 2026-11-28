@@ -363,6 +363,10 @@ def main():
                         # the switch that appends a key the operator's file has never carried. They are the dispatch's
                         # flags rather than the workflow's, and `docs/TOOLS.md` names them with the tool.
                         "--key", "--value", "--add",
+                        # `tools/sweep/up_ten_contract_cell.sh` owns these two: which seat the ten-contract cell runs on
+                        # and that instrument's tick. They are in `docs/TOOLS.md` because the seat rule ranks two
+                        # instruments on one cell, and the recorded defaults are UP's.
+                        "--symbol", "--tick",
                         # `tools/ops/predeploy.sh` is called by that same dispatcher, so its off switch is the
                         # dispatcher's flag too: a deploy that skips the local preflight says so on the command line.
                         "--no-predeploy",

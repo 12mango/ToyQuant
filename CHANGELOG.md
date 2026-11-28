@@ -6,6 +6,17 @@ and when — is in [Roadmap](docs/ROADMAP.md#change-log), and the two are delibe
 The repository is named `ToyQuant`. The `-v1` suffix that older links and a local clone may still carry is a leftover
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
+## The ten-contract cell runs on either seat (2026-11-28)
+
+- **`up_ten_contract_cell.sh --symbol` and `--tick`.** The cell's command line carried `--symbol UP-USDT-SWAP` and
+  `--tick 0.0001` as constants, so the seat rule the owner decided today -- median net bps with the tail multiple over a
+  floor of 25 fills in a window -- would have needed a second seat's cell from a `/tmp` driver, which is the failure
+  `.clinerules` records. Both are flags now, defaulting to the recorded values so every UP row stays reproducible; they are
+  named together because a tick is a property of the instrument and not of the cell.
+- **Measured, as plumbing rather than as a row:** the same cell on one NES day (`--symbol NES-USDT-SWAP --days
+  2026-11-16`) fills 82 times at a net -26.04 bps. The twenty-eight-day NES cell needs that block's archives and is the next
+  run.
+
 ## The dispatcher can carry the setting it dispatches (2026-11-28)
 
 - **`dispatch_deploy.sh run --ops set-key` could not send `key`, `value` or `add`.** `ops.yml` declares the three inputs

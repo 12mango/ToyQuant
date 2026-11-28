@@ -36,6 +36,15 @@
 # not available from the same lever at this size" is therefore contradicted by this sample and is left for the owner to
 # move, not for this script to rewrite.
 #   bash tools/sweep/up_ten_contract_cell.sh --days 2026-10-30,...,2026-11-26
+#   bash tools/sweep/up_ten_contract_cell.sh --symbol NES-USDT-SWAP --out /tmp/tq/nes   # the same cell, other seat
+#
+# `--symbol` and `--tick` exist because the seat rule ranks two instruments on *this* cell. A hard-coded UP here is the
+# reason a NES row would have needed a `/tmp` driver, which is the failure `.clinerules` records; the two defaults keep
+# every recorded UP row reproducible to the digit.
+#
+# The debounce ladder (Tier 1 #4) is four runs of one arm, one per value -- `--debounce` is why it is one tracked command:
+#   for ms in 40000 5000 1000 250; do bash tools/sweep/up_ten_contract_cell.sh --arm f1_control --debounce $ms \
+#       --days <sixty days> --out /tmp/tq/db$ms; done
 #
 # The control and `f1_tox2` reproduce `rs_up10.csv` and `rs5_up10_tox.csv` to the digit; `f1_tox3` is the registered arm.
 # It passes the tail clause by 43.6 bps and fails the median clause, and it is strictly dominated by `f1_tox2` (same worst
@@ -45,13 +54,15 @@ set -u
 cd "$(dirname "$0")/../.." || exit 1
 
 DAYS=2026-11-16,2026-11-17,2026-11-18,2026-11-19,2026-11-20,2026-11-21,2026-11-22
+# The seat the cell runs on and the instrument's own tick. The defaults are UP's, so every recorded row stands; a second
+# seat names both, because a tick is a property of the instrument and not of the cell.
+SYMBOL=${SYMBOL:-UP-USDT-SWAP}
+TICK=${TICK:-0.0001}
+# The frozen forty-second suppression, as a value rather than a constant: the debounce ladder varies it and nothing else.
+DEBOUNCE=${DEBOUNCE:-40000}
 # The settle arm: the exit a replay cannot fill, priced at the far touch, one tick past it, plus a taker fee.
 SETTLE="--settle-residual --settle-taker-bps=5 --settle-slippage-ticks=1"
-# Ten contracts a clip into a hundred-contract cap, two layers, post-only, the frozen forty-second suppression.
-CELL="--symbol UP-USDT-SWAP --days $DAYS --strategy active_l2 --models prorata
-      --base-spread-grid 3 --refresh-grid 1 --latency-us 10000 --tick 0.0001
-      --start 13:30 --end 15:30 --order-size 100000000 --inv-limit 1000000000"
-BASE="--post-only --extra-layers=1 --advance-debounce-ms=40000 $SETTLE"
+BASE="--post-only --extra-layers=1 --advance-debounce-ms=$DEBOUNCE $SETTLE"
 
 OUT=${OUT:-/tmp/tq}
 arm=all
@@ -59,11 +70,20 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --arm) arm=$2; shift 2 ;;
     --days) DAYS=$2; shift 2 ;;
+    --symbol) SYMBOL=$2; shift 2 ;;
+    --tick) TICK=$2; shift 2 ;;
+    --debounce) DEBOUNCE=$2; shift 2 ;;
     --out) OUT=$2; shift 2 ;;
-    -h|--help) sed -n '2,40p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,52p' "$0"; exit 0 ;;
     *) echo "up_ten_contract_cell: unknown argument $1" >&2; exit 2 ;;
   esac
 done
+# Ten contracts a clip into a hundred-contract cap, two layers, post-only, the frozen forty-second suppression. Built after
+# the arguments so the symbol and the tick the caller named reach the engine; the defaults reproduce every recorded UP row
+# to the digit.
+CELL="--symbol $SYMBOL --days $DAYS --strategy active_l2 --models prorata
+      --base-spread-grid 3 --refresh-grid 1 --latency-us 10000 --tick $TICK
+      --start 13:30 --end 15:30 --order-size 100000000 --inv-limit 1000000000"
 mkdir -p "$OUT"
 
 run() {  # run <name> <switch>
