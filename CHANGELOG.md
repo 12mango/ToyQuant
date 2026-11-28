@@ -6,6 +6,19 @@ and when — is in [Roadmap](docs/ROADMAP.md#change-log), and the two are delibe
 The repository is named `ToyQuant`. The `-v1` suffix that older links and a local clone may still carry is a leftover
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
+## The window's bar prints itself (2026-11-28)
+
+`deploy/daily_report.py` now opens the mail with the registered bar's verdict — one line, PASS or FAIL, with the clause that
+decided it and every clause's number beside its limit:
+
+    verdict PASS -- refused: 4.8% < 20%; rate_limited: 3 < 2000; fills: 25 >= 20; capture: +0.500 > 0, markout +0.400
+    ticks beside it; residual: 0 units and [RECON] at=end ok
+
+A clause the journal did not carry prints `missing` rather than passing quietly, which is the rule the empty cells already
+follow, and the ledger row gains a `verdict` column so the series carries the answer beside the numbers it was drawn from.
+The bar's values were fixed before the 2026-11-28 window and are untouched: what is new is that nobody has to read five
+numbers to learn the answer.
+
 ## The cell at the wire's own latency: the levels were 10 ms findings (2026-11-28)
 
 The host's own probe reads 73-89 ms to the venue's edge and answer, while every cell row in this record was measured at

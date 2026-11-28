@@ -216,6 +216,57 @@ def ledger_row(start_utc, end_utc, lines, groups):
     }
 
 
+# The registered bar for a live window (ROADMAP, fixed before the 2026-11-28 window): five clauses, each read from the
+# engine's own journal line rather than from a file, because the window's evidence is the journal.
+BAR_REFUSED_SHARE = 0.20   # `refused_by_adapter` against the attempts it refused
+BAR_RATE_LIMITED = 2000
+BAR_FILLS = 20
+
+
+def verdict_of(lines):
+    """The bar as one line: PASS or FAIL, the clause that decided it, and every clause's number beside its limit.
+
+    A verdict nobody can trace is a verdict nobody reads, so a clause the journal did not carry prints `missing` instead of
+    passing quietly -- an absent number is not a met one, which is the same rule the empty cells above follow.
+    """
+    def number(tag, name):
+        found = [line for line in lines if tag in line]
+        if not found:
+            return None
+        try:
+            return float(field_of(found[-1], name))
+        except (TypeError, ValueError):
+            return None
+
+    orders = number("[VENUE]", "orders")
+    refused = number("[VENUE]", "refused_by_adapter")
+    attempts = (orders or 0.0) + (refused or 0.0)
+    share = (refused / attempts) if (refused is not None and attempts > 0.0) else None
+    rate_limited = number("[RISK]", "rate_limited_orders")
+    fills = number("[PORTFOLIO]", "maker_trade_count")
+    capture = number("[EXECUTION]", "captured_edge_per_unit_ticks")
+    markout = number("[EXECUTION]", "markout_per_unit_ticks")
+    residual = number("[WIND-DOWN]", "residual")
+    reconciled = any("[RECON]" in line and "at=end" in line and "status=ok" in line for line in lines)
+    clauses = [
+        ("refused", share is not None and share < BAR_REFUSED_SHARE,
+         f"{'missing' if share is None else f'{share:.1%}'} < {BAR_REFUSED_SHARE:.0%}"),
+        ("rate_limited", rate_limited is not None and rate_limited < BAR_RATE_LIMITED,
+         f"{'missing' if rate_limited is None else f'{rate_limited:.0f}'} < {BAR_RATE_LIMITED}"),
+        ("fills", fills is not None and fills >= BAR_FILLS,
+         f"{'missing' if fills is None else f'{fills:.0f}'} >= {BAR_FILLS}"),
+        ("capture", capture is not None and capture > 0.0,
+         f"{'missing' if capture is None else f'{capture:+.3f}'} > 0, markout "
+         f"{'missing' if markout is None else f'{markout:+.3f}'} ticks beside it"),
+        ("residual", residual is not None and abs(residual) < 0.5 and reconciled,
+         f"{'missing' if residual is None else f'{residual:.0f}'} units and [RECON] at=end "
+         f"{'ok' if reconciled else 'missing or not ok'}"),
+    ]
+    failed = [name for name, passed, _ in clauses if not passed]
+    head = "verdict PASS" if not failed else f"verdict FAIL (failed: {', '.join(failed)})"
+    return f"{head} -- " + "; ".join(f"{name}: {shown}" for name, _, shown in clauses)
+
+
 def append_ledger(path, row):
     """One row per window: append it, replacing the row that window already has.
 
@@ -360,6 +411,8 @@ def main():
     now = datetime.fromisoformat(args.at).replace(tzinfo=timezone.utc) if args.at else datetime.now(timezone.utc)
     start_utc, end_utc = window_at(now, args.window_start, args.window_end)
     text = journal_text(start_utc, end_utc)
+    lines = (text or "").splitlines()
+    verdict = verdict_of(lines)
     groups = {
         "window": {"utc": f"{start_utc:%Y-%m-%dT%H:%MZ} .. {end_utc:%H:%MZ}",
                    "clocks": zone_range(start_utc, end_utc),
@@ -370,9 +423,10 @@ def main():
     }
     subject, body = compose(groups)
     row = ledger_row(start_utc, end_utc, (text or "").splitlines(), groups)
+    row["verdict"] = "PASS" if verdict.startswith("verdict PASS") else "FAIL"
     settings = notify.load_settings()
     if args.dry_run:
-        print(f"To: {settings['NOTIFY_TO'] or '<ALERT_EMAIL_TO is not set>'}\nSubject: {subject}\n\n{body}")
+        print(f"To: {settings['NOTIFY_TO'] or '<ALERT_EMAIL_TO is not set>'}\nSubject: {subject}\n\n{verdict}\n\n{body}")
         print(f"ledger: would append to {args.ledger}: {row}")
         return 0
     # The row is written before the mail, and the mail carries the outcome, because a ledger failure has to be visible
@@ -385,6 +439,7 @@ def main():
     groups["ledger"] = {"file": args.ledger, "result": ledger_status,
                         "row": " ".join(f"{name}={value}" for name, value in row.items() if value)}
     subject, body = compose(groups)
+    body = f"{verdict}\n\n{body}"
     if args.no_mail:
         print(f"Subject: {subject}\n\n{body}")
         print(f"daily_report: ledger {ledger_status}; no mail sent (--no-mail)")
@@ -486,6 +541,22 @@ def self_test():
                 os.environ.pop(name, None)
             else:
                 os.environ[name] = value
+    # The verdict: the registered bar's five clauses, each read from the engine's own line, and a clause the journal did not
+    # carry is `missing` rather than a pass -- the same rule the empty cells follow.
+    passing = [
+        "[VENUE] endpoint=a orders=100 cancels=50 refused_by_adapter=5 write_failures=0",
+        "[RISK] fat_finger_bps=50 rate_limited_orders=3",
+        "[PORTFOLIO] maker_trade_count=25 taker_trade_count=0 fees_paid=0.1",
+        "[EXECUTION] captured_edge_per_unit_ticks=0.5 markout_per_unit_ticks=0.4",
+        "[WIND-DOWN] position=0 closed=10000 residual=0 total_bps=3.2",
+        "[RECON] at=end venue_equity_usd=99.3 ledger_equity_usd=99.3 status=ok",
+    ]
+    said = verdict_of(passing)
+    assert said.startswith("verdict PASS"), said
+    thin = [line.replace("maker_trade_count=25", "maker_trade_count=7") for line in passing]
+    said = verdict_of(thin)
+    assert said.startswith("verdict FAIL (failed: fills)"), said
+    assert verdict_of([]).startswith("verdict FAIL"), verdict_of([])
     print("daily_report self-test OK")
     return 0
 
