@@ -337,22 +337,42 @@ compatibility path. Everything below assumes that page.
 - **Report in the owner's vocabulary, never a literal rendering.** The owner reads Chinese trading and engineering
   Chinese; a word translated from its English shape costs a sentence of explanation and reads as not knowing the domain.
   This is a rule about the reply only -- the repository's own artifacts stay English, as the bullet above says. The map
-  below is the authority and is extended whenever a term confuses a reply, rather than re-argued each session.
+  below is the authority and is extended whenever a term confuses a reply, rather than re-argued each session. **It has
+  two halves**: the English terms, and -- added on the owner's instruction of 2026-11-28, after two batches -- the Chinese
+  shorthands the agent invented while reporting (`臂`, `座位`、`席位`, `平桶`, `消费者`, `阶梯`, `地板`、`地板口径`, `入册`,
+  `判词`). Those are refused in a reply exactly as a translated English shape is: each is a literal rendering of *arm*,
+  *seat*, *flat bucket*, *consumer*, *ladder*, *floor*, *register* and *verdict*, and the owner reads them as not knowing
+  the domain. Code, comments and documents keep the English words; only the reply is translated.
 
   | English | not this | say this |
   |---|---|---|
   | book, order book | 书 | 盘口 / 订单簿（深度） |
   | venue | 场馆、场地 | 交易所 / 撮合市场 |
-  | gate (a CI gate, a screen) | 门 | 质量门禁 / 筛选阈值 |
+  | gate (a CI gate, a screen, a state filter) | 门、关卡 | 按语境三分：① 实验的**验收标准**；② 盘中的**风控过滤开关**（如波动率状态门）；③ 提交前的**自动化质量门禁**。单说「门」一律不用 |
   | tree, working tree | 树 | 代码库 / 本地工作区 |
   | line (a research line) | 线、开行 | 研究方向 / 支线；开启一个新方向 |
   | closure | 闭包 | 结项 / 正式关闭 |
   | leg | 腿 | 子链路（行情链路、下单链路）/ 单边 |
   | pinned | 钉住 | 固化 / 用测试锁定 |
   | marketable | 到达即可成交 | 激进限价（到即吃单，被动方成 Taker） |
-  | floor, ceiling | 地板、天花板 | 下限 / 上限（准入门槛、费率下限） |
+  | floor, ceiling | 地板、天花板、地板口径 | 下限 / 上限；合约准入时是**最低准入硬门槛** |
   | soak (test) | SOAK | 长稳测试 / 持续挂机测试 |
   | run, window | 跑、窗 | 单次运行 / 时间窗口 |
+  | arm | 臂 | **实验组 / 对照分支**（同一份历史上平行跑的一组参数配置） |
+  | parameter ladder | 阶梯 | **参数梯度扫描**（只动一个参数的逐级对比） |
+  | instrument seat | 座位、席位 | **合约品种 / 交易标的** |
+  | register, entry | 入册、登记行 | **正式归档结论**（写进 ROADMAP / RETROSPECTIVE 的永久规则） |
+  | bucket | 桶 | **数据切片分组** |
+  | flat vs moving bucket | 平桶、移动桶 | **BTC 平静期 / 剧烈波动期**（按成交瞬间跳强度划分的样本组） |
+  | pooled mean | 池化均值 | **全样本合并均值** |
+  | tail, tail multiple | 尾巴、尾部倍数 | **极端亏损日 / 尾部风险倍数**（最差单日亏损 ÷ 中位单日收益，越小越抗跌） |
+  | toxic flow | 毒流 | **知情扫单流**（tox2 / tox3 = 二、三级过滤；已在 60 天复现后结项） |
+  | ledger | 台账、账本 | **实验与实盘记录总表** |
+  | wrapper, tracking script | 跟踪脚本 | **后台监控运行脚本**（带 PID、刷盘日志与退出码） |
+  | consumer | 消费者 | **下游依赖模块**（谁直接读这个产出） |
+  | handoff | 交接 | **跨会话任务摘要** |
+  | in-flight | 飞、仍在飞 | **正在后台运行 / 未出结果** |
+  | verdict, verdict line | 判词、判词行 | **自动化验收结论行**（脚本末尾打印的定性结果） |
 
 - **Quote only numbers that are pinned.** A number in the reply either names the block that re-derives it, or is
   labelled as not quotable and says why. "Measured but not committed to the gate" is an honest answer; a clean-looking
