@@ -1,0 +1,158 @@
+#!/usr/bin/env python3
+"""Do market-regime labels explain the cell's per-window result, and can any of them be known before the window?
+
+The regime idea (A: regular chop, B: wide two-way tug-of-war, C: one-sided shock) is only useful if a label separates the
+cell's outcomes, and only buildable if the label can be computed *before* the window it names. This joins each day's
+market features -- from the tape alone, never from the PnL -- with the control arm's row for the same day, buckets the
+days, and then describes the same buckets by their half hour before 13:30.
+
+Measured 2026-11-28 over 2026-10-30..2026-11-26 (control arm, ten contracts):
+
+    regime                days   closed median   net median   worst net   fills   markout
+    A  |move| <= 100         9           +19.6        +24.3        +5.5      45     -0.01
+    B  100 < |move| <= 200   6            +9.5         +1.2       -12.6      44     +0.13
+    C  |move| > 200         13            +6.4        +13.8      -250.5      50     +0.73
+
+**The label separates the tail and nothing else.** A never lost a day (+5.5 is its worst), C lost 250 bps on its worst --
+a 45-fold difference in the worst day -- while the *median* falls as the move grows (+19.6, +9.5, +6.4) because a wide day
+carries inventory risk rather than extra capture. So C is not "unprocessable": its median day still earns +6.4 bps.
+
+**And the month has no one-way days at all**: efficiency (net move over path travelled) is at or below 0.5 on all thirteen
+C-days, so the bucket is "wide two-way range", not "single-direction shock". The damage is range, not trendiness.
+
+**Nothing before the window predicts the bucket.** The same three buckets, described by 13:00-13:30:
+
+    regime    days   pre |move| bps   pre realized   pre trades
+    A            9             108            243        1,698
+    B            6              82            308        5,822
+    C           13              52            242        2,705
+
+C's pre-window move is the *smallest* of the three and its pre-window realized volatility is the same as A's, so a regime
+gate at 13:30 has no feature to stand on -- which is the same finding as the lead-lag measurement from the other side: what
+happens in the two hours is not foreshadowed by anything measured before them. That leaves *in-window* state (the leader's
+volatility, the fill markout conditioning of `fill_markout_by_state.py`) as the only form of gate this data supports.
+"""
+import csv
+import glob
+import math
+import statistics
+from datetime import datetime, timedelta, timezone
+
+FOLDER = "data/v2/crypto/UP-USDT-SWAP"
+
+
+def features(day):
+    path = f"{FOLDER}/okx_trades_{day}_UP-USDT-SWAP.csv"
+    start = datetime.strptime(day, "%Y-%m-%d").replace(hour=13, minute=30, tzinfo=timezone.utc)
+    lo, hi = int(start.timestamp() * 1000), int((start + timedelta(hours=2)).timestamp() * 1000)
+    prices = []
+    with open(path, newline="", encoding="utf-8") as handle:
+        for row in csv.reader(handle):
+            if len(row) < 6:
+                continue
+            try:
+                stamp = int(row[5])
+            except ValueError:
+                continue
+            if lo <= stamp < hi:
+                prices.append(float(row[3]))
+    if len(prices) < 50:
+        return None
+    first, last = prices[0], prices[-1]
+    steps = [abs(b / a - 1.0) * 1e4 for a, b in zip(prices, prices[1:])]
+    travelled = sum(steps)
+    move = (last / first - 1.0) * 1e4
+    return {"day": day, "move": move, "abs_move": abs(move), "range": (max(prices) / min(prices) - 1.0) * 1e4,
+            "travelled": travelled, "efficiency": abs(move) / travelled if travelled else 0.0,
+            "realized": math.sqrt(sum(step * step for step in steps)), "trades": len(prices)}
+
+
+def pre_window(day):
+    """What was knowable at 13:30: the half hour before the window, from the same tape."""
+    path = f"{FOLDER}/okx_trades_{day}_UP-USDT-SWAP.csv"
+    start = datetime.strptime(day, "%Y-%m-%d").replace(hour=13, minute=0, tzinfo=timezone.utc)
+    lo, hi = int(start.timestamp() * 1000), int((start + timedelta(minutes=30)).timestamp() * 1000)
+    prices = []
+    with open(path, newline="", encoding="utf-8") as handle:
+        for row in csv.reader(handle):
+            if len(row) < 6:
+                continue
+            try:
+                stamp = int(row[5])
+            except ValueError:
+                continue
+            if lo <= stamp < hi:
+                prices.append(float(row[3]))
+    if len(prices) < 20:
+        return None
+    steps = [abs(b / a - 1.0) * 1e4 for a, b in zip(prices, prices[1:])]
+    return {"pre_move": abs((prices[-1] / prices[0] - 1.0) * 1e4),
+            "pre_realized": math.sqrt(sum(step * step for step in steps)),
+            "pre_trades": len(prices)}
+
+def main():
+
+    rows = {row["day"]: row for row in csv.DictReader(open("out/p2/f1_control.csv"))}
+    days = sorted(rows)
+    table = [f for f in (features(day) for day in days) if f]
+    for entry in table:
+        row = rows[entry["day"]]
+        entry["closed"] = float(row["closed_bps"])
+        entry["net"] = float(row["net_bps"])
+        entry["fills"] = float(row["fills"])
+        entry["markout"] = float(row["markout_ticks"]) if row["markout_ticks"] not in ("", "n/a") else None
+    print(f"{'day':>10} {'|move|':>7} {'range':>6} {'effic':>6} {'trades':>7} {'closed':>8} {'net':>8} {'fills':>6} "
+          f"{'markout':>8}")
+    for entry in table:
+        markout_text = "" if entry["markout"] is None else f"{entry['markout']:+.2f}"
+        print(f"{entry['day']:>10} {entry['abs_move']:>7.0f} {entry['range']:>6.0f} {entry['efficiency']:>6.2f} "
+              f"{entry['trades']:>7} {entry['closed']:>+8.1f} {entry['net']:>+8.1f} {entry['fills']:>6.0f} "
+              f"{markout_text:>8}")
+
+    buckets = [("A  |move| <= 100", lambda e: e["abs_move"] <= 100),
+               ("B  100 < |move| <= 200", lambda e: 100 < e["abs_move"] <= 200),
+               ("C  |move| > 200", lambda e: e["abs_move"] > 200)]
+    print(f"\n{'regime':>22} {'days':>5} {'closed median':>14} {'net median':>11} {'worst net':>10} "
+          f"{'fills':>6} {'markout':>8}")
+    for name, keep in buckets:
+        subset = [entry for entry in table if keep(entry)]
+        if not subset:
+            print(f"{name:>22} {0:>5}")
+            continue
+        markouts = [entry["markout"] for entry in subset if entry["markout"] is not None]
+        print(f"{name:>22} {len(subset):>5} {statistics.median(e['closed'] for e in subset):>+14.1f} "
+              f"{statistics.median(e['net'] for e in subset):>+11.1f} {min(e['net'] for e in subset):>+10.1f} "
+              f"{statistics.median(e['fills'] for e in subset):>6.0f} "
+              f"{(statistics.median(markouts) if markouts else float('nan')):>+8.2f}")
+    # And the split that the labels ignore: does the *efficiency* (trend against chop) move the result at a fixed move?
+    print("\nwithin C, by efficiency (0 = chop, 1 = one-way):")
+    wide = [entry for entry in table if entry["abs_move"] > 200]
+    for label, keep in (("chop  <=0.5", lambda e: e["efficiency"] <= 0.5), ("trend >0.5", lambda e: e["efficiency"] > 0.5)):
+        subset = [entry for entry in wide if keep(entry)]
+        if subset:
+            print(f"  {label:>12} days={len(subset):>2} closed median={statistics.median(e['closed'] for e in subset):+.1f} "
+                  f"net median={statistics.median(e['net'] for e in subset):+.1f}")
+
+    # The ex-ante question: at 13:30 the window's own move is not known, so a label computed from it cannot gate anything.
+    # The half hour before it, however, is knowable -- does it separate the buckets?
+    print("\nthe same buckets, described by the half hour *before* the window (knowable at 13:30):")
+    print(f"{'regime':>22} {'days':>5} {'pre |move|':>11} {'pre realized':>13} {'pre trades':>11}")
+    for name, keep in buckets:
+        subset = []
+        for entry in table:
+            if not keep(entry):
+                continue
+            before = pre_window(entry["day"])
+            if before:
+                subset.append(before)
+        if not subset:
+            print(f"{name:>22} {0:>5}")
+            continue
+        print(f"{name:>22} {len(subset):>5} {statistics.median(e['pre_move'] for e in subset):>11.0f} "
+              f"{statistics.median(e['pre_realized'] for e in subset):>13.0f} "
+              f"{statistics.median(e['pre_trades'] for e in subset):>11.0f}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
