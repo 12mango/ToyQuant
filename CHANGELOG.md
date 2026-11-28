@@ -60,6 +60,10 @@ and the same sixty days at `--latency-us 100000` answer it:
   so the frozen 40000 ms is no longer the best arm on either ranking column — it is fourth on net and third on the median —
   and "40000 is the turning point" is a ten-millisecond finding. It is **not yet a live change**: one latency point on one
   sample is not a ladder, and the worst column moves independently of the median.
+- **The tox gate is not the rescue either.** `f1_tox3` at 100 ms reads 10 fills, **+3.42 closed**, +14.62 net, 0.1013 USD and
+  a worst day of **−169.52** — the same net and dollars as `f1_tox2` with a worse median and a better worst day, so the
+  strict domination it had at 10 ms (same worst day, lower median) does not survive the latency either. The gate that
+  closed a line is not a lever against a late quote.
 - **What would move it**: the cell at the measured *distribution* (73-118 ms) rather than at one constant, and a live window
   whose record can be decomposed — which is Tier 1 #8's price.
 
