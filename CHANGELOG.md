@@ -30,6 +30,23 @@ and the same sixty days at `--latency-us 100000` answer it:
   What survives is what was measured on a *fill set independent of the latency*: whether a state predicts a fill's markout,
   whether a fill is toxic at its own instant. What does not survive is any sentence of the form "this seat earns X per
   window", and any ranking that a residual-driven settlement can reorder.
+- **The seat floor is a 10 ms floor.** NES's own twenty-eight days re-run at 100 ms read **23 measured of 28, 9 fills instead
+  of 26, +3.49 closed instead of +15.70**, 14 of 23 positive, +8.71 net, **0.0256 USD instead of 0.2342**, tail 5.46 — and
+  **five dead windows of twenty-eight, 17.9 percent, above the seat rule's own 15 percent ceiling**. At the latency the wire
+  has, neither seat clears the rule it was admitted by.
+- **The debounce ladder inverts.** At 10 ms every shorter suppression gave up the median against the frozen 40000 ms
+  (+17.22 control against +3.84, +6.84 and +4.62 at 5000, 1000 and 250). At 100 ms the same four read:
+
+  | debounce | fills | closed median | positive | net median | USD/window | worst day |
+  |---:|---:|---:|---:|---:|---:|---:|
+  | 40000 ms | 10 | +5.85 | 31 of 60 | −6.97 | −0.0217 | −54.33 |
+  | 5000 ms | 12 | +5.31 | 34 of 59 | −0.10 | −0.0008 | −165.23 |
+  | **1000 ms** | 15 | **+7.75** | 39 of 60 | **+11.46** | **0.1096** | −76.33 |
+  | 250 ms | 17 | +4.90 | 37 of 60 | +4.24 | 0.0425 | −49.03 |
+
+  so the frozen 40000 ms is no longer the best arm on either ranking column — it is fourth on net and third on the median —
+  and "40000 is the turning point" is a ten-millisecond finding. It is **not yet a live change**: one latency point on one
+  sample is not a ladder, and the worst column moves independently of the median.
 - **What would move it**: the cell at the measured *distribution* (73-118 ms) rather than at one constant, and a live window
   whose record can be decomposed — which is Tier 1 #8's price.
 

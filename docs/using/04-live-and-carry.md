@@ -194,6 +194,13 @@ statement reconciled against the account. The three flags are one decision:
 | `--venue-max-orders` | integer | the adapter's own cap, below the pipeline's limits |
 | `--venue-orders-per-second` | integer | optional: how fast the session may place, if the session cap alone would stop a quoting maker |
 | `--venue-max-notional` | USD | optional: one order's notional, priced the way the ledger prices it |
+| `--record-orders` | path prefix | every submission, cancel and report this session makes, one row each with its own timestamp |
+
+> The record is the only way a two-hour window can be taken apart afterwards: a submission's `ts` and its acknowledgement's
+> `ts` are the round trip, so the file carries the latency distribution, the refusal reasons and every fill's price and fee.
+> Without it a window leaves one summary line at the close. The prefix is absolute because the session writes it: the unit
+> declares `StateDirectory=toyquant`, so `/var/lib/toyquant/live` becomes `/var/lib/toyquant/live_orders.csv`, which the next
+> deploy does not replace and `/opt/toyquant` would have.
 
 > They are required together: an endpoint without the opt-in reaches nothing, and a live leg with no cap of its own is
 > what ADR 0005 decision 4 forbids. They are refused outside `l2_replay` and `ws`, and on a two-book run. The rate is a

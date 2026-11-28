@@ -27,6 +27,11 @@ engine:
   live_orders: true
   advance_debounce_ms: 40000      # forty seconds of book time, the frozen configuration's suppression
   settle_residual: true
+  # Every submission, cancel and report this session makes, one row each with its own timestamp, to
+  # `/var/lib/toyquant/live_orders.csv` (the engine appends `_orders.csv` to the prefix). The unit's `StateDirectory=` is what
+  # makes that path the session's own; without a record a two-hour window leaves one summary line at the close and no way to
+  # ask what its submission-to-acknowledgement distribution, its refusal reasons or its per-fill edge were (Tier 1 #8).
+  record_orders: /var/lib/toyquant/live
   # The window's own end, in **UTC minutes of the day** (`15:30` is 930), because the engine's clock is the market's and
   # every recorded window is named that way: 13:30-15:30 UTC is 21:30-23:30 in Hong Kong and 22:30-00:30 in Tokyo, so a
   # host-local or operator-local reading of this number would close the session at the wrong hour.

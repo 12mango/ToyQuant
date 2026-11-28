@@ -59,6 +59,11 @@ FLAGS = {
     ("engine", "wind_down_skew_ticks"): "--wind-down-skew-ticks",
     ("engine", "wind_down_adverse_bps"): "--wind-down-adverse-bps",
     ("engine", "settle_residual"): "--settle-residual",
+    # The per-order record: every submission, cancel and report with one timestamp each, which is the only way a live window
+    # can be decomposed after the fact -- a submission's `ts` and its ack's `ts` are the round trip, and without them a window
+    # leaves one summary line and no distribution (Tier 1 #8, 2026-11-28). The value is an absolute path prefix; the engine
+    # appends `_orders.csv`.
+    ("engine", "record_orders"): "--record-orders",
     # The opt-in that makes the venue a socket instead of the in-process matcher, and the four `venue_*` keys below are
     # part of it: the engine refuses them without it (`--venue-endpoint ... part of --live-orders`). Missing this key was
     # the third deploy's failure -- the unit started, exited 1 on that message and was restarted, with both relay sockets
@@ -104,6 +109,7 @@ AGENT_KEYS = {
     "engine.pause_ticks_per_second",
     "engine.quote_distance_bps",
     "engine.refresh_price_ticks",
+    "engine.record_orders",
     "engine.settle_residual",
     "engine.ws_seconds",
     "link.cancel_latency_us",
@@ -226,6 +232,13 @@ def validate(values, source="<text>"):
             if not positive:
                 raise ValueError(f"{source}: engine.starting_cash is US dollars or `venue` (the account's own equity "
                                  f"at start); '{cash}' is neither")
+    # The record's prefix is a path the service account writes, so it is absolute: a relative one would land in the unit's
+    # WorkingDirectory, which is the program's own directory and is replaced by the next deploy -- so the record would be
+    # deleted by the deploy that was supposed to preserve it.
+    record = values.get(("engine", "record_orders"))
+    if record is not None and not record.strip().startswith("/"):
+        raise ValueError(f"{source}: engine.record_orders is a path prefix the session writes, so it is absolute "
+                         f"('/var/lib/toyquant/live'); '{record}' is not")
     return values
 
 

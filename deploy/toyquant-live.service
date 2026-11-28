@@ -34,6 +34,10 @@ Environment=PYTHONUNBUFFERED=1
 # The configuration is read from a file beside the credentials, which is ignored: the command line carries no symbol and
 # no size. `--flags` turns that file into the engine's arguments, in the order `ws` reads them.
 WorkingDirectory=/opt/toyquant
+# The state directory, so a session can leave a per-order record somewhere the next deploy does not replace: `/opt/toyquant`
+# is the program's own tree and every deploy unpacks over it, while `/var/lib/toyquant` is systemd's for this unit and is
+# created owned by `User=`. Without it a record path would either fail to open or be deleted by the deploy.
+StateDirectory=toyquant
 # The configuration is checked before anything else runs: `live_config.py --check` refuses a file by name (an unknown key,
 # a venue endpoint without `engine.live_orders`, a switch without its endpoint), and without this line that refusal lands
 # in a command substitution -- the engine is invoked with no arguments, prints its usage and exits 1, which reads like an
