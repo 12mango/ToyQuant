@@ -44,6 +44,11 @@ block 1 && { fetch_book UP-USDT-SWAP 2026-09-28 2026-10-29; fetch_tapes UP-USDT-
 block 2 && { fetch_book NES-USDT-SWAP 2026-10-30 2026-11-26; fetch_tapes NES-USDT-SWAP 2026-10-30 2026-11-26; }
 block 3 && { fetch_book UP-USDT-SWAP 2026-11-27 2026-11-27; fetch_tapes UP-USDT-SWAP 2026-11-27 2026-11-27
              fetch_book NES-USDT-SWAP 2026-11-27 2026-11-27; fetch_tapes NES-USDT-SWAP 2026-11-27 2026-11-27; }
+#   4. **BTC, 2026-10-30..2026-11-26** -- the leader's book on the same twenty-eight days as UP, which is what an
+#      out-of-sample test of a |BTC 3 s return| state gate needs. The seven days already held (11-16..11-22) are the
+#      sample the gate was *found* on; the other twenty-one are the test. BTC's depth day is 434-523 MB, so this block is
+#      about 9 GB and takes hours; it moves nothing else, because the fetch is one file at a time and deletes nothing.
+block 4 && fetch_book BTC-USDT-SWAP 2026-10-30 2026-11-26
 
 echo "== prefetch done exit=$status"
 exit "$status"

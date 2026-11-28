@@ -53,7 +53,43 @@ existing design, architecture and user documents are the whole plan.
 | out-of-sample, Sharpe and capacity | the Sharpe, volatility, drawdown and Calmar figures are measured on demand behind `--metrics`; the out-of-sample and capacity studies are still not a demo goal | the studies, not the measurement, are out of the demo | out |
 | documents and the maintained plan | done: one plan, no new documents | keep it current; no interview material required | done |
 
-### Waiting on data, with the run it unlocks
+### L2 experiment card: releasing the local order budget (registered 2026-11-28, awaiting the numbers)
+
+**The question.** The first live window submitted **2,591** orders and reached the venue with **201**: 2,390 were refused by
+`link.venue_max_orders=200`, and **18,098** placement attempts died one layer earlier in the risk bucket
+(`engine.max_orders_per_second=8` with `--order-burst=1`). The replay has neither cap and fills 45 orders a window. Does
+releasing the local budget turn the live window's **12** fills into the replay's count without breaking anything else?
+
+**The numbers, which are the point of the card.** One arm, because all three are the same mechanism -- the local order
+budget -- and none of them touches a price or a size.
+
+| setting | now | card | why this number | who may change it |
+|---|---|---|---|---|
+| `link.venue_max_orders` | 200 | **3000** | a first cap above what the strategy actually asks (2,591 in the measured window) with headroom for a second seat | operator |
+| `link.venue_orders_per_second` | 2 | **20** | ten times today and far under the venue's own budget; the point is that the *venue* cap stops binding first | instrument (agent key) |
+| `engine.max_orders_per_second` | 8 | **20** | with 8/s the risk bucket is the binding cap even after the venue's is raised | operator |
+| `--order-burst` | 1 | **4** | a one-token bucket refuses the second leg of a pair placed inside 125 ms; four lets a two-sided re-quote go out together. **Not reachable from `live.yaml` today** -- it needs a `live_config.py` mapping key, so it is a code change before it is a setting | operator (new key) |
+| `engine.advance_debounce_ms` | 40000 | **40000, unchanged** | the 40 ms arm read better on *one* day (-0.2317 against +0.1066 on 2026-11-26) and that is the only sample it has; changing it here would mix a price-refresh knob into a budget arm | instrument (agent key) |
+
+**The bar, registered before the run.** Measured on the live journal of the next window, all five at once:
+`refused_by_adapter / submitted_orders` **below 20%** (92% today), `rate_limited_orders` **below 2,000** (18,098 today),
+**fills of 20 or more** (12 today), `capture_per_fill > 0` (and the mean `markout_per_unit_ticks` reported beside it, whose
+28-day replay median is +0.416), and `residual = 0` with `[RECON] at=end` ok. A venue-side rate refusal (`venue_refusals`
+above 2) fails the arm: the point is to move the binding cap, not to trade the venue's patience.
+
+**What would overturn it.** Fewer than 20 fills with the refusals below 20% says the budget was never the constraint and
+the 58:1 quote split is the strategy's own; more than 20 fills with a markout below the replay's says the extra orders
+were adverse selection, and the budget is a feature rather than a bug.
+
+**How it is applied and undone.** `--ops set-key` per agent key (it keeps a backup of the file it replaces), the operator
+edits the two operator keys, then `--ops restart` -- the engine reads the file at `ExecStartPre`, so nothing lands until a
+session starts; the previous file is one `cp` away and the rollback is the same command with the old numbers.
+
+**And the leader-state gate is not part of this card.** `|BTC 3 s return|` was found on the seven days that have BTC's
+book; testing it out of sample needs the twenty-one days block 4 is fetching, and the first test is a *fill-level
+counterfactual* (drop the fills whose leader state was moving, recompute the mean markout), not a PnL -- an engine input
+for the leader's state is a wiring change that only earns its place if that counterfactual clears.
+
 
 Three sets are downloading or published late, and each row names the run it is for, so the next session does not
 rediscover why the days were wanted. The fetcher is tracked and skips a day it already holds, so a re-run is free.
