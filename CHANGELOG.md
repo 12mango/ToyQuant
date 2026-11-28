@@ -6,6 +6,25 @@ and when — is in [Roadmap](docs/ROADMAP.md#change-log), and the two are delibe
 The repository is named `ToyQuant`. The `-v1` suffix that older links and a local clone may still carry is a leftover
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
+## The debounce's turning point is the value already frozen (2026-11-28)
+
+**`up_ten_contract_cell.sh --debounce` makes the ladder one tracked command, and the four arms were measured over the sixty
+days 2026-09-28..11-26** (`tools/study/sweep_summary.py --read` on each arm; the 40000 arm is the recorded cell and
+reproduces the toxicity row's control to the digit):
+
+| debounce | windows | fills (median) | closed median [range] | positive | net median | USD/window | tail multiple |
+|---:|---:|---:|---|---:|---:|---:|---:|
+| 40000 ms | 59 of 60 | 38 | +17.22 [-75.19, +90.37] | 44 of 59 | +14.79 | 0.3097 | 4.37 |
+| 5000 ms | 60 | 61 | +3.84 [-64.20, +57.09] | 37 of 60 | +0.96 | 0.0667 | 16.72 |
+| 1000 ms | 60 | 63 | +6.84 [-55.85, +45.60] | 44 of 60 | +4.05 | 0.2409 | 8.17 |
+| 250 ms | 60 | 69 | +4.62 [-61.58, +36.90] | 41 of 60 | +2.58 | 0.1420 | 13.34 |
+
+- **Every shorter window buys fills and gives up the median, the tail and the dollars**, and not monotonically: 5000 is the
+  worst of the three on the median and the dollars, 1000 the best, and none is near the control's +17.22 on 44 of 59. The
+  fee column is 2.00 on every day of every arm, so what moves is capture against turnover and nothing else.
+- **So the turning point is the recorded value and Tier 1 #4 closes with the frozen cell unchanged**: no shorter window is
+  worth its fills. The measurement cost about a minute because the cuts were already on disk.
+
 ## The leader-state gate does not survive its own out-of-sample days (2026-11-28)
 
 - **`tools/study/fill_markout_by_state.py` prints the verdict its table existed for.** The registered bar was "the flat
