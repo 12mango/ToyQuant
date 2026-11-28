@@ -31,18 +31,22 @@ C's pre-window move is the *smallest* of the three and its pre-window realized v
 gate at 13:30 has no feature to stand on -- which is the same finding as the lead-lag measurement from the other side: what
 happens in the two hours is not foreshadowed by anything measured before them. That leaves *in-window* state (the leader's
 volatility, the fill markout conditioning of `fill_markout_by_state.py`) as the only form of gate this data supports.
+
+`--rows` names the arm's per-day CSV and `--folder` its tape folder, so the same three buckets on a second month are one
+command against that month's rows (`out/p6/...`), which is what makes the finding falsifiable rather than a description.
 """
+import argparse
 import csv
-import glob
 import math
 import statistics
 from datetime import datetime, timedelta, timezone
 
 FOLDER = "data/v2/crypto/UP-USDT-SWAP"
+ROWS = "out/p2/f1_control.csv"
 
 
-def features(day):
-    path = f"{FOLDER}/okx_trades_{day}_UP-USDT-SWAP.csv"
+def features(day, folder):
+    path = f"{folder}/okx_trades_{day}_UP-USDT-SWAP.csv"
     start = datetime.strptime(day, "%Y-%m-%d").replace(hour=13, minute=30, tzinfo=timezone.utc)
     lo, hi = int(start.timestamp() * 1000), int((start + timedelta(hours=2)).timestamp() * 1000)
     prices = []
@@ -67,9 +71,9 @@ def features(day):
             "realized": math.sqrt(sum(step * step for step in steps)), "trades": len(prices)}
 
 
-def pre_window(day):
+def pre_window(day, folder):
     """What was knowable at 13:30: the half hour before the window, from the same tape."""
-    path = f"{FOLDER}/okx_trades_{day}_UP-USDT-SWAP.csv"
+    path = f"{folder}/okx_trades_{day}_UP-USDT-SWAP.csv"
     start = datetime.strptime(day, "%Y-%m-%d").replace(hour=13, minute=0, tzinfo=timezone.utc)
     lo, hi = int(start.timestamp() * 1000), int((start + timedelta(minutes=30)).timestamp() * 1000)
     prices = []
@@ -90,11 +94,17 @@ def pre_window(day):
             "pre_realized": math.sqrt(sum(step * step for step in steps)),
             "pre_trades": len(prices)}
 
-def main():
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Bucket the windows by their own physics and join them with one arm's rows.")
+    parser.add_argument("--rows", default=ROWS,
+                        help="the arm's per-day CSV (default out/p2/f1_control.csv; needs day, closed_bps, net_bps, fills "
+                             "and markout_ticks columns, which up_ten_contract_cell.sh writes)")
+    parser.add_argument("--folder", default=FOLDER, help=f"the instrument's tape folder (default {FOLDER})")
+    args = parser.parse_args(argv)
 
-    rows = {row["day"]: row for row in csv.DictReader(open("out/p2/f1_control.csv"))}
+    rows = {row["day"]: row for row in csv.DictReader(open(args.rows))}
     days = sorted(rows)
-    table = [f for f in (features(day) for day in days) if f]
+    table = [f for f in (features(day, args.folder) for day in days) if f]
     for entry in table:
         row = rows[entry["day"]]
         entry["closed"] = float(row["closed_bps"])
@@ -142,7 +152,7 @@ def main():
         for entry in table:
             if not keep(entry):
                 continue
-            before = pre_window(entry["day"])
+            before = pre_window(entry["day"], args.folder)
             if before:
                 subset.append(before)
         if not subset:
