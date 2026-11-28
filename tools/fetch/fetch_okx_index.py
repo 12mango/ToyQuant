@@ -47,18 +47,26 @@ def day_range(first, last):
     return days
 
 
-def page(inst_id, bar, after_ms):
-    """One page of bars older than `after_ms`, or `None` when the venue refuses both endpoints."""
-    for url in URLS:
-        query = f"?instId={inst_id}&bar={bar}&limit=100&after={after_ms}"
-        request = urllib.request.Request(url + query, headers=HEADERS)
-        try:
-            with urllib.request.urlopen(request, timeout=30) as answer:
-                payload = json.loads(answer.read().decode())
-        except (urllib.error.URLError, json.JSONDecodeError, TimeoutError):
-            continue
-        if payload.get("code") == "0" and payload.get("data"):
-            return [row for row in payload["data"] if len(row) >= 5]
+def page(inst_id, bar, after_ms, tries=4):
+    """One page of bars older than `after_ms`: a list (possibly empty) when an endpoint answered, or None when neither did.
+
+    Empty is an answer -- the history has an end, and a day before the series is a day with no bars rather than a failure.
+    A refusal is retried with a backoff, because measured 2026-11-28 a window of sixty days lost eleven days to transient
+    refusals while the same stamps answered by hand a minute later; a tool that calls those "FAILED" makes a gap in the
+    history and a rate limit look the same.
+    """
+    for attempt in range(tries):
+        for url in URLS:
+            query = f"?instId={inst_id}&bar={bar}&limit=100&after={after_ms}"
+            request = urllib.request.Request(url + query, headers=HEADERS)
+            try:
+                with urllib.request.urlopen(request, timeout=30) as answer:
+                    payload = json.loads(answer.read().decode())
+            except (urllib.error.URLError, json.JSONDecodeError, TimeoutError):
+                continue
+            if payload.get("code") == "0":
+                return [row for row in payload.get("data") or [] if len(row) >= 5]
+        time.sleep(1.0 + attempt)
     return None
 
 
@@ -71,6 +79,8 @@ def fetch_day(inst_id, bar, day, pause):
         rows = page(inst_id, bar, cursor)
         if rows is None:
             return None
+        if not rows:
+            break
         fresh = 0
         for row in rows:
             stamp = int(row[0])

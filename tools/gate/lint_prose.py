@@ -392,6 +392,10 @@ def main():
                         # fetched at and the single day form. Both are named in `docs/TOOLS.md` with the
                         # tool, and `--bar` is the venue's own name (`1m`, `5m`, `1H`) rather than a guess.
                         "--bar", "--date",
+                        # `tools/study/fill_basis_asymmetry.py` owns these three: which index a fill is joined
+                        # to, which swap's record and cut are read, and the day that splits a sample into two
+                        # halves for a sign check. Named in `docs/TOOLS.md` with the tool.
+                        "--index", "--follower", "--split",
                         # `deploy/daily_report.py` also owns this one: the report with the row written and the mail
                         # printed rather than sent, which is how a window the timer missed is backfilled and how the
                         # write path is checked without mailing the operator a second copy.
