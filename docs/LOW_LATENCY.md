@@ -126,7 +126,7 @@ this tree can prove about it today; none of them has a paired measurement on the
 
 | lever | what it costs here | what was checked | verdict |
 |---|---|---|---|
-| OKX's AWS access point | **a code edit, not a config change**: both URLs are literals (`wss://ws.okx.com:8443`, `wss://wspap.okx.com:443`) and the binary takes no flag to override them | from the operator's machine the live names resolve to `*.cdn.cloudflare.net`, and the two ports of one name read **41 ms** (`:8443`) against **13 ms** (`:443`) — CDN routing is real, not a hypothesis. A public resolver (1.1.1.1) answers NOERROR for `wsaws.okx.com` with **no A, no AAAA and no CNAME**, only the zone's SOA, and OKX's nameservers are Route 53's | **the named endpoint is not published**: the lever cannot be bought as written, because the hostname that is supposed to carry the gain does not resolve anywhere. What is left of it is timing whichever endpoint OKX documents for this account, **from the host**, against `ws.okx.com` — the quoted 5-15 ms is the proposal's number and this tree has none |
+| OKX's AWS access point | **a code edit, not a config change**: both URLs are literals (`wss://ws.okx.com:8443`, `wss://wspap.okx.com:443`) and the binary takes no flag to override them | from the operator's machine the live names resolve to `*.cdn.cloudflare.net`; a public resolver (1.1.1.1) answers NOERROR for `wsaws.okx.com` with **no A, no AAAA and no CNAME**; and **from the host itself** (the `probe-venue` action, three samples, 2026-11-28 13:12 UTC, while a window was running) `ws.okx.com:8443` reads **tcp 4.0-4.6 ms, tls 8.1-10.7 ms, ttfb 64.8-100.0 ms**, total 77-112 ms, with `wsaws.okx.com` failing to resolve **there too** | **dead as written, and the segment is priced**: 12 ms of the 77-112 ms is the hop to the venue's edge and the other 65-100 ms is the venue's own answer after TLS, so a lever on the access path could not return the quoted 5-15 ms even if the endpoint existed, and the hostname does not exist |
 | `TCP_NODELAY` | nothing — it is already on | `src/lines/tcp_venue_transport.cpp:32` sets it on every venue socket | **already banked**, so this half of the proposed 5-15 ms is not available to win |
 | `busy_poll` and a `performance` governor | two sysctls on the host **plus a code edit**, because polling is opt-in per socket (`SO_BUSY_POLL`) and the default is not polling | the machine this was read on is the operator's, not the host: it shows `net.core.busy_poll = 0` and **no `cpufreq` node at all** (a VM) | **unverified and partly inapplicable**: a cloud VM usually exposes no governor to set, and busy polling spends a core the engine is using. It needs a host reading and a paired run, not an assumption |
 | the WS private order channel | the order wire, the recorder and the ack path: `venue_order_wire.cpp` builds `POST /api/v5/trade/order` and `/cancel-order` on a **persistent** socket that already has no Nagle delay | the round trip already measured on this venue is 77-118 ms a placement and 76-78 ms a cancel | **real but smaller than quoted**: the 15-25 ms assumes a TLS handshake per order, which this client does not pay; the test that decides it is one day of orders over each channel, compared |
@@ -135,9 +135,12 @@ this tree can prove about it today; none of them has a paired measurement on the
 
 What the four have in common is that none of them touches what [§6](#6-why-it-stopped-stated-as-a-condition) stopped on:
 the reader and the hand-off are inside the process, and these are outside it. That makes them cheap to *test* and easy to
-over-claim — which is why the rule the line already lives by applies unchanged: a lever is accepted when a paired
-measurement on the same host shows it and the gain clears the spread of the measurement, and the first thing to measure is
-the endpoint, because it is the only one of the four that this tree can resolve, time and prove without a decision first.
+over-claim, which is why the rule the line already lives by applies unchanged: a lever is accepted when a paired measurement
+on the same host shows it and the gain clears the spread of the measurement. The host's own numbers then reprice three of the
+four: the access path is **4 ms to the venue's edge and 8-11 ms of TLS**, so an accelerator has nothing to compress on this
+side, and a websocket order channel removes framing rather than the venue's 65-100 ms answer. What is left open is the one
+question those numbers cannot answer — whether the **venue's** private channel answers faster than its REST gateway — and it
+is a paired order test on one day, not a design.
 
 ## 9. Where the numbers live
 
