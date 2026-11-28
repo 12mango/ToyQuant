@@ -101,6 +101,11 @@ want() { [ "$arm" = all ] || [ "$arm" = "$1" ]; }
 want f1_control && run f1_control ""
 want f1_tox2 && run f1_tox2 "--amend-on-toxicity --jump-window-ms=40 --jump-ticks=2"
 want f1_tox3 && run f1_tox3 "--amend-on-toxicity --jump-window-ms=40 --jump-ticks=3"
+# The neighbourhood around that gate, so a threshold that works only at its chosen point is caught as noise rather than
+# believed: `--jump-ticks` is an integer, so the interval is its own grid (1, 2, 3, 4) and a "+-20 percent" band is not
+# expressible here -- that limitation is worth knowing before the rule is borrowed from a paper.
+want f1_tox1 && run f1_tox1 "--amend-on-toxicity --jump-window-ms=40 --jump-ticks=1"
+want f1_tox4 && run f1_tox4 "--amend-on-toxicity --jump-window-ms=40 --jump-ticks=4"
 # Frontier 3: the size throttle at the same 15 bps trigger P0.1 was refused at, with the adding side paused and then cut
 # to one contract. The closing side keeps its full size in both arms -- that is the whole point of the lever.
 want f3_throttle0 && run f3_throttle0 "--throttle-adverse-bps=15 --throttle-units=0"
