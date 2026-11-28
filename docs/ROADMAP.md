@@ -86,9 +86,11 @@ comma-separated lists zipped in order -- and `live_config.py` writes them **atom
 any of them is refused. The three the owner delegated on 2026-11-28 (`engine.max_orders_per_second`, `engine.order_burst`,
 `link.venue_max_orders`) are settable; `engine.advance_debounce_ms` stays at 40000 and `link.venue_orders_per_second` was
 already the instrument's. A key whose line the file does not carry yet is refused unless the dispatch asks for `add`,
-because a new key is a decision. Then `--ops restart`: the engine reads the file at `ExecStartPre`, so nothing lands until a
-session starts; the previous file is the backup `set-key` left beside it, and the rollback is the same dispatch with the old
-numbers.
+because a new key is a decision. **Nothing is restarted.** The unit reads the file at `ExecStartPre`, so the write lands on
+the next start -- and between windows the next start is `toyquant-window-start.timer` at 13:30 UTC. `--ops restart` is for a
+hotfix *inside* a window and it is not part of applying this card: a restart between windows opens a two-hour session hours
+before the registered one and spends the window the arm is measured on. The previous file is the backup `set-key` left
+beside it, and the rollback is the same dispatch with the old numbers.
 
 **And the leader-state gate is not part of this card.** `|BTC 3 s return|` was found on the seven days that have BTC's
 book; testing it out of sample needs the twenty-one days block 4 is fetching, and the first test is a *fill-level
