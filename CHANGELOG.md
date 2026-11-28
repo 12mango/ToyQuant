@@ -6,6 +6,27 @@ and when — is in [Roadmap](docs/ROADMAP.md#change-log), and the two are delibe
 The repository is named `ToyQuant`. The `-v1` suffix that older links and a local clone may still carry is a leftover
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
+## The mail gets a readable half, and the record stays exact (2026-11-28)
+
+The owner's instruction: the record used for retrospection stays serious, the mail may be made readable. So the ledger row is
+untouched — one line per window, the numbers as numbers, re-derivable — and the mail gains, after the verdict line, a
+`-- series` block drawn from that same CSV:
+
+    -- series (27 window(s), dollars, zero centred)
+       2026-11-20  +0.0342         |###
+       2026-11-21  -0.0217  ####|
+       ... 19 earlier window(s) not drawn
+       shape    ▁▃▂▅▁▇█▃▂▁▄▆▂
+       total    +0.4120 USD, positive in 21 of 27
+       spread   p10 -0.0412  p25 +0.0011  p50 +0.0342  p75 +0.0611  p90 +0.1204
+
+Three things make it honest rather than merely pretty: a signed dollar is drawn on a field **whose centre is zero** (a bar
+from the left edge lies about the sign), the spread is quoted in **nearest-rank quantiles** — a window that actually happened,
+never an interpolation between two — and the series is read **before** this window's row is appended, so the chart is the
+history the new row joins rather than one that already contains itself. A missing ledger prints a sentence instead of raising:
+the drawing must never be the reason a mail does not arrive. The self-test pins the centred zero mark, a flat series, an empty
+ledger and a quantile, so the drawing is checked where the mail cannot be.
+
 ## The window's bar prints itself (2026-11-28)
 
 `deploy/daily_report.py` now opens the mail with the registered bar's verdict — one line, PASS or FAIL, with the clause that

@@ -4,9 +4,11 @@
     python3 deploy/daily_report.py --dry-run     # print it
     python3 deploy/daily_report.py               # mail it
 
-Run by `toyquant-report.timer` (once a day, after the trading window). Four groups, and each one says `unavailable` with
-a reason rather than a zero when it cannot read its source -- a report that prints `net_pnl=0.00` because the journal was
-rotated is worse than one that says it could not read the journal:
+Run by `toyquant-report.timer` (once a day, after the trading window). The mail has two halves, and they answer to different
+readers: **the verdict line and the series are for reading** -- one line saying whether the window met its registered bar, then
+the window series drawn as a shape, as bars around a zero and as quantiles -- while **the four groups are for checking**, each
+one saying `unavailable` with a reason rather than a zero when it cannot read its source, because a report that prints
+`net_pnl=0.00` because the journal was rotated is worse than one that says it could not read the journal:
 
   * the window, stated three ways: UTC (the clock the engine and the archive use), HKT and JST (the two clocks the people
     involved read) -- because this host is in Tokyo, the operator is in Hong Kong and the session is named in UTC
@@ -25,6 +27,10 @@ host's *location* is Tokyo while its *clock* is `Etc/UTC`, and a mail that fired
 nine hours after the close, with the window split across two of its own reports. The window is named once, in UTC, by
 `--window-start/--window-end` (defaults `13:30`/`15:30`), and `journalctl` is given epoch bounds so the host's zone cannot
 reinterpret them.
+
+**The ledger row stays the serious record, and the drawing never replaces it.** The shape, the bars and the quantiles are read
+from the same CSV the row is appended to, so the mail can be taken in at a glance while the row keeps the numbers as numbers:
+re-derivable, diffable, and one line per window. A window the drawing makes look good still stands beside its own figures.
 
 The mail goes through `notify.py`, whose SMTP settings are the same ones `/etc/toyquant/live.env` already carries for
 alerts (`SMTP_*`, `ALERT_EMAIL_TO` or `NOTIFY_TO`). No credentials means no mail and a sentence saying so.
@@ -378,6 +384,87 @@ def window_note(now, start=WINDOW_START, end=WINDOW_END):
     return "the most recently completed window; the account is read at report time"
 
 
+BLOCKS = "▁▂▃▄▅▆▇█"
+
+
+def read_ledger(path):
+    """The window series as rows, oldest first.
+
+    A missing or unreadable file is no windows rather than an exception: the mail's visual half must never be the reason the
+    mail does not arrive, which is the same rule `append_ledger` follows on the way out.
+    """
+    try:
+        with open(path, newline="") as handle:
+            return list(csv.DictReader(handle))
+    except (OSError, csv.Error):
+        return []
+
+
+def sparkline(values, width=32):
+    """The series as one line of heights, so the shape arrives before any number does."""
+    if not values:
+        return "no windows yet"
+    sample = values[-width:]
+    low, high = min(sample), max(sample)
+    if high - low < 1e-12:
+        return BLOCKS[0] * len(sample)
+    return "".join(BLOCKS[int((value - low) / (high - low) * (len(BLOCKS) - 1))] for value in sample)
+
+
+def signed_bar(value, limit, span=10):
+    """A bar whose zero is the middle of its field, because a signed number drawn from the left edge lies about its sign."""
+    if limit <= 0.0:
+        return "|"
+    cells = min(span, max(1, int(round(abs(value) / limit * span)))) if value else 0
+    if value >= 0.0:
+        return " " * span + "|" + "#" * cells
+    return " " * (span - cells) + "#" * cells + "|"
+
+
+def quantile(values, share):
+    """The nearest-rank quantile: it returns a window that actually happened, never an interpolation between two.
+
+    A window is a whole unit of evidence here, so the distribution is quoted in the sample's own points -- which is also why
+    the median and the tail can disagree without either being wrong.
+    """
+    if not values:
+        return None
+    ordered = sorted(values)
+    return ordered[min(len(ordered) - 1, max(0, int(round(share * (len(ordered) - 1)))))]
+
+
+def series_block(rows, tail=8):
+    """The mail's visual half: one series in three coordinates -- per window, cumulative, and as a distribution.
+
+    The ledger keeps the serious record; this is the part a reader takes in at a glance, so the dollars are drawn against a
+    zero-centred field and the spread is named in quantiles rather than as a mean that hides the tail.
+    """
+    net = []
+    for row in rows:
+        try:
+            net.append(float((row.get("net_pnl_usd") or "").strip()))
+        except ValueError:
+            continue
+    if not net:
+        return ["-- series", "  no window in the ledger yet: this row is the first", ""]
+    limit = max(abs(value) for value in net) or 1e-9
+    win = [row for row in rows if (row.get("window_start_utc") or "").strip()]
+    block = [f"-- series ({len(net)} window(s), dollars, zero centred)"]
+    start = max(0, len(net) - tail)
+    for index in range(start, len(net)):
+        stamp = win[index]["window_start_utc"][:10] if index < len(win) else f"#{index + 1}"
+        block.append(f"   {stamp}  {net[index]:+9.4f}  {signed_bar(net[index], limit)}")
+    if start:
+        block.append(f"   ... {start} earlier window(s) not drawn")
+    block.append(f"   shape    {sparkline(net)}")
+    block.append(f"   total    {sum(net):+9.4f} USD, positive in "
+                 f"{sum(1 for value in net if value > 0)} of {len(net)}")
+    block.append("   spread   " + "  ".join(f"p{int(share * 100):02d} {quantile(net, share):+.4f}"
+                                            for share in (0.1, 0.25, 0.5, 0.75, 0.9)))
+    block.append("")
+    return block
+
+
 def compose(groups, host=None):
     """The body: four labelled groups, no column alignment to break in a phone's mail client."""
     host = host or socket.gethostname()
@@ -413,6 +500,10 @@ def main():
     text = journal_text(start_utc, end_utc)
     lines = (text or "").splitlines()
     verdict = verdict_of(lines)
+    # The series is read before this window's row is appended, so the chart is the history the new row joins rather than a
+    # series that already contains itself.
+    series = series_block(read_ledger(args.ledger))
+    head = "\n".join([verdict, ""] + series)
     groups = {
         "window": {"utc": f"{start_utc:%Y-%m-%dT%H:%MZ} .. {end_utc:%H:%MZ}",
                    "clocks": zone_range(start_utc, end_utc),
@@ -426,7 +517,7 @@ def main():
     row["verdict"] = "PASS" if verdict.startswith("verdict PASS") else "FAIL"
     settings = notify.load_settings()
     if args.dry_run:
-        print(f"To: {settings['NOTIFY_TO'] or '<ALERT_EMAIL_TO is not set>'}\nSubject: {subject}\n\n{verdict}\n\n{body}")
+        print(f"To: {settings['NOTIFY_TO'] or '<ALERT_EMAIL_TO is not set>'}\nSubject: {subject}\n\n{head}\n{body}")
         print(f"ledger: would append to {args.ledger}: {row}")
         return 0
     # The row is written before the mail, and the mail carries the outcome, because a ledger failure has to be visible
@@ -439,7 +530,7 @@ def main():
     groups["ledger"] = {"file": args.ledger, "result": ledger_status,
                         "row": " ".join(f"{name}={value}" for name, value in row.items() if value)}
     subject, body = compose(groups)
-    body = f"{verdict}\n\n{body}"
+    body = f"{head}\n{body}"
     if args.no_mail:
         print(f"Subject: {subject}\n\n{body}")
         print(f"daily_report: ledger {ledger_status}; no mail sent (--no-mail)")
@@ -557,6 +648,18 @@ def self_test():
     said = verdict_of(thin)
     assert said.startswith("verdict FAIL (failed: fills)"), said
     assert verdict_of([]).startswith("verdict FAIL"), verdict_of([])
+    # The visual half: a signed bar's zero is the centre of its field, a flat series does not divide by zero, a quantile
+    # returns a window that happened, and an empty ledger is a sentence rather than an exception.
+    assert signed_bar(+0.5, 1.0).index("|") == 10 and signed_bar(-0.5, 1.0).index("|") == 10
+    assert signed_bar(0.0, 1.0) == " " * 10 + "|"
+    assert sparkline([]) == "no windows yet" and len(sparkline([1.0, 2.0, 3.0])) == 3
+    assert sparkline([2.0, 2.0]) == BLOCKS[0] * 2
+    assert quantile([1.0, 2.0, 3.0, 4.0], 0.5) == 3.0 and quantile([], 0.5) is None
+    assert series_block([])[0] == "-- series"
+    drawn = series_block([{"net_pnl_usd": "0.0342", "window_start_utc": "2026-11-26T13:30Z"},
+                          {"net_pnl_usd": "-0.0217", "window_start_utc": "2026-11-27T13:30Z"}])
+    assert drawn[0].startswith("-- series (2 window(s)"), drawn[0]
+    assert any("2026-11-27" in line and "-0.0217" in line for line in drawn), drawn
     print("daily_report self-test OK")
     return 0
 
