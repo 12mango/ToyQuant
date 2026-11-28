@@ -21,6 +21,7 @@ on:
           - set-key     # change one instrument-owned setting in live.yaml, with a backup and the flags re-read
           - ledger      # the window series: one row per closed window, as daily_report.py appended it
           - report      # run the report now for the window `at` names: writes the ledger row, mails nothing
+          - probe-venue # the host's path to the venue: DNS, TCP, TLS and one GET per name, read-only
         default: status
       lines:
         description: journal lines for tail-logs
@@ -76,6 +77,11 @@ jobs:
           scp -i "$HOME/.ssh/deploy_key" -o BatchMode=yes \
             tools/live/live_config.py \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/tmp/toyquant-live-config.py"
+          # The venue probe travels the same way for the same reason: it measures the host's path, so the fix that
+          # changes what it measures has to reach the host with the workflow rather than with the next deploy.
+          scp -i "$HOME/.ssh/deploy_key" -o BatchMode=yes \
+            tools/live/venue_probe.py \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/tmp/toyquant-venue-probe.py"
 
       # One step, one SSH session, and the script is the heredoc's: an action that needs `sudo` gets it from the same
       # account the deploy uses, and every branch prints what it did rather than exiting silently.
@@ -121,6 +127,12 @@ jobs:
               echo '-- last five lines each'
               sudo journalctl -u toyquant-live -n 5 --no-pager -q
               sudo journalctl -u toyquant-relay -n 5 --no-pager -q
+              ;;
+            probe-venue)
+              # Read-only by construction, so it may run beside a live window: DNS, the TCP connect, the TLS handshake and
+              # one unauthenticated GET per name, from the host that trades -- the only machine whose numbers say what a
+              # lever on the wire is worth.
+              python3 /tmp/toyquant-venue-probe.py
               ;;
             tail-logs)
               echo "-- toyquant-live, last $LINES"
