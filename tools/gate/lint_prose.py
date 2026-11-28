@@ -330,6 +330,10 @@ def main():
                         # size ladder. They are the summary tool's arguments rather than the engine's knobs, and both the
                         # studies record and `docs/TOOLS.md` name them.
                         "--gate", "--worst-multiple",
+                        # `tools/study/window_regimes.py` owns these two: which arm's per-day rows a set of market buckets
+                        # is joined with, and which instrument's tape folder they are cut from. They are the edit that makes
+                        # a second month one re-run, and `docs/TOOLS.md` names both.
+                        "--rows", "--folder",
                         # `tools/gate/check_leaks.py` owns these three: the migration's progress report and its
                         # enforcement switch. The boundary rules themselves are not flags; these are how a reader asks
                         # what the deny-list still finds and how the gate tightens once the count is zero.

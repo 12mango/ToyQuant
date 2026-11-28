@@ -32,6 +32,21 @@ gate at 13:30 has no feature to stand on -- which is the same finding as the lea
 happens in the two hours is not foreshadowed by anything measured before them. That leaves *in-window* state (the leader's
 volatility, the fill markout conditioning of `fill_markout_by_state.py`) as the only form of gate this data supports.
 
+**Reproduced on fifty-nine days, and one of the three findings was a nine-day artifact.** The same buckets over
+2026-09-28..2026-11-26 (the sixty-day control arm, `--rows out/p6/f1_control.csv`; 2026-10-17 is `n/a` and is skipped,
+never counted as a zero):
+
+    regime                days   closed median   net median   worst net   fills   markout
+    A  |move| <= 100        20           +19.5        +20.2       -28.6      32     +0.28
+    B  100 < |move| <= 200  13           +10.7         +4.8       -17.0      41     -0.13
+    C  |move| > 200         26            +8.4        +14.3      -250.5      44     +0.54
+
+The ordering and the size survive (+19.6/+9.5/+6.4 against +19.5/+10.7/+8.4, so within two basis points), efficiency is
+still at or below 0.5 on **all twenty-six** C-days, and the half hour before 13:30 still fails to separate the buckets
+(C's pre-move 46 bps against A's 98). What does not survive is "A never loses a day": on twenty days its worst is
+**-28.6**, so the +5.5 of the smaller sample was the sample. And the worst day of C is the *same* -250.5 in both windows --
+one event (2026-11-22) rather than a property of a regime, which is the honest way to read the tail column.
+
 `--rows` names the arm's per-day CSV and `--folder` its tape folder, so the same three buckets on a second month are one
 command against that month's rows (`out/p6/...`), which is what makes the finding falsifiable rather than a description.
 """
@@ -94,6 +109,12 @@ def pre_window(day, folder):
             "pre_realized": math.sqrt(sum(step * step for step in steps)),
             "pre_trades": len(prices)}
 
+def number(row, key):
+    """A cell that a run could not fill is `n/a`, not a zero -- so it makes the day absent rather than poor."""
+    value = row.get(key, "")
+    return None if value in ("", "n/a") else float(value)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Bucket the windows by their own physics and join them with one arm's rows.")
     parser.add_argument("--rows", default=ROWS,
@@ -107,10 +128,14 @@ def main(argv=None):
     table = [f for f in (features(day, args.folder) for day in days) if f]
     for entry in table:
         row = rows[entry["day"]]
-        entry["closed"] = float(row["closed_bps"])
-        entry["net"] = float(row["net_bps"])
-        entry["fills"] = float(row["fills"])
-        entry["markout"] = float(row["markout_ticks"]) if row["markout_ticks"] not in ("", "n/a") else None
+        entry["closed"] = number(row, "closed_bps")
+        entry["net"] = number(row, "net_bps")
+        entry["fills"] = number(row, "fills") or 0.0
+        entry["markout"] = number(row, "markout_ticks")
+    absent = [entry["day"] for entry in table if entry["closed"] is None or entry["net"] is None]
+    table = [entry for entry in table if entry["closed"] is not None and entry["net"] is not None]
+    print(f"{len(table)} day(s) with a tape and a filled row"
+          + (f"; {len(absent)} skipped as n/a: {', '.join(absent[:6])}" if absent else ""))
     print(f"{'day':>10} {'|move|':>7} {'range':>6} {'effic':>6} {'trades':>7} {'closed':>8} {'net':>8} {'fills':>6} "
           f"{'markout':>8}")
     for entry in table:

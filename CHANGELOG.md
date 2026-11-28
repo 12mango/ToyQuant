@@ -6,6 +6,30 @@ and when — is in [Roadmap](docs/ROADMAP.md#change-log), and the two are delibe
 The repository is named `ToyQuant`. The `-v1` suffix that older links and a local clone may still carry is a leftover
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
+## The twenty-eight-day gate advantage was the window, and the regime labels describe only the tail (2026-11-28)
+
+- **`tools/study/window_regimes.py` (new).** Each window bucketed by its own physics -- A: absolute move at or below 100
+  bps, B: 100 to 200, C: above 200 -- and joined with one arm's per-day row (`--rows`, `--folder`). On the twenty-eight-day
+  control arm the buckets read closed medians **+19.6 / +9.5 / +6.4** with worst days **+5.5 / -12.6 / -250.5**: the label
+  separates the tail by 45 times and the median not at all, and no C-day has efficiency above 0.5, so the month holds wide
+  two-way ranges and no one-way day. The half hour before 13:30 does not separate the buckets (C's pre-window move is the
+  smallest at 52 bps), so a regime gate decided at 13:30 has no feature to stand on. Re-run on the sixty-day arm
+  (`--rows out/p6/f1_control.csv`, 59 days, 2026-10-17 skipped as `n/a`) the ordering and the size survive at
+  **+19.5 / +10.7 / +8.4**, efficiency stays under 0.5 on all 26 C-days, and the worst day of C is the same single
+  **-250.5** (2026-11-22, one event rather than a regime); what does not survive is "A never loses a day" -- on twenty days
+  its worst is **-28.6**, so the +5.5 was the nine-day sample.
+- **The toxicity gate is closed again, by the sixty-day arm.** Over the 59 days both arms filled, the control reads a
+  closed median of **+17.22 on 44 of 59** and a net of **+14.79** against `f1_tox2`'s **+14.52 on 43 of 59** and
+  **+8.16**, and the month the twenty-eight-day window excludes decides it: 2026-09-28..10-29 reads **+17.27 on 22 of 31**
+  against **+9.77 on 22 of 31**, net **+9.56** against **+6.16**, worst multiple 2.37 against 5.50. The gate loses capture
+  out of sample and its tail advantage does not appear there either, so the 2026-11-28 reading of "the median is available
+  from the same lever" described that month. `docs/RETROSPECTIVE.md`'s row carries the corrected kind and the bar that
+  would reopen it.
+- **An `n/a` day is an absent day, not a zero.** The join read `closed_bps` as a float and died on 2026-10-17; it now names
+  the skipped days on a count line, which is convention 3 of `docs/TOOLS.md` applied to a cell rather than a file.
+- `--rows` and `--folder` entered the prose lint's allowlist in the same change that made `docs/TOOLS.md` name them.
+
+
 
 ## The report read to the window's edge and missed the summary that closes it (2026-11-27)
 
