@@ -239,11 +239,26 @@ jobs:
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
             'bash -s' <<'REMOTE'
           set -euo pipefail
+             # **Cut 1 of the deploy card, first half: the latch is read before anything is written.** A release this host
+             # has already rolled back from is not re-dispatched unchanged -- a revert that is immediately re-deployed is a
+             # loop with extra steps (`.clinerules`) -- so the refusal happens here, before the mkdir, the tar or the
+             # bootstrap, and exits 2: nothing on the host changes.
+             if [ -f /opt/toyquant/data/runtime/reverted_release ]; then
+               refused=$(cut -d' ' -f1 /opt/toyquant/data/runtime/reverted_release)
+               if [ "$refused" = "${{ github.sha }}" ]; then
+                 echo "reverted <$refused> is already on this host's latch; a third dispatch of the same release is a change, not a retry" >&2
+                 exit 2
+               fi
+               echo "deploy: reverted_release names ${refused}, which is not this release (${{ github.sha }}); carrying on"
+             fi
              sudo mkdir -p /opt/toyquant
              if [ -x /opt/toyquant/toy_quant ]; then
                sudo cp -a /opt/toyquant/toy_quant /opt/toyquant/toy_quant.prev
              fi
              sudo tar -xzf /tmp/toyquant-deploy.tar.gz -C /opt/toyquant
+             # The release's name, beside the program: `activate.sh` hands it to `rollback.sh`, which writes it into the
+             # latch the check above reads, so both halves compare like with like.
+             printf '%s\n' "${{ github.sha }}" | sudo tee /opt/toyquant/RELEASE > /dev/null
              sudo bash /opt/toyquant/deploy/bootstrap_server.sh --repo-dir /opt/toyquant --etc-dir /etc/toyquant
              sudo systemctl daemon-reload
              # The manager's own view is asked and, if needed, repaired -- not assumed from the reload's exit status:

@@ -112,9 +112,9 @@ items; two of them landed during the live-line work and the card starts from tha
 |---|---|---|
 | the activation sequence | **landed** | `deploy/activate.sh` -- bundled by the package step (`deploy.yml:196`) and called by the deploy (`:315`): `daemon-reload` -> `reset-failed` -> `start` in a bounded retry that prints the attempt it succeeded on, and on giving up prints `LoadState`, `FragmentPath`, `systemctl cat` and the unit's journal, then `wait_for_ports.sh` and `preflight.sh` |
 | rollback, as a command | **landed** | `deploy/rollback.sh` restores `toy_quant.prev` -- copied before the unpack (`deploy.yml:244`) -- restarts and runs the health check; a red job names it (`deploy.yml:324`) |
-| rollback, automatic | **not landed** | the job names the command and does not run it |
+| rollback, automatic | **landed 2026-11-28** | `deploy/activate.sh` runs `check_health.sh`, re-runs it five seconds later when the first read is red, and only a second red calls `deploy/rollback.sh --refuse <RELEASE>`; the rollback's own health check is the deploy's verdict |
 | release-path split | **not landed** | no `paths-filter` and no classification anywhere in `deploy.yml` |
-| the two-strike rule | **not landed** | neither the workflow nor `.clinerules` carries it |
+| the two-strike rule | **landed 2026-11-28** | `deploy.yml`'s remote script reads `reverted_release` **before the mkdir, the tar and the bootstrap** and exits 2 naming the release; `tools/gate/check_deploy.py`'s eighteenth rule refuses the absence of either half |
 
 **Cut 1 -- automatic rollback on the second red health check, and a latch against the third attempt.** On a red health
 check the job re-runs `check_health.sh` once, ten seconds later, and only a second red result calls

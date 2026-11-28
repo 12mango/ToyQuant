@@ -6,6 +6,20 @@ and when — is in [Roadmap](docs/ROADMAP.md#change-log), and the two are delibe
 The repository is named `ToyQuant`. The `-v1` suffix that older links and a local clone may still carry is a leftover
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
+## A red health check now rolls back, and the host remembers what it refused (2026-11-28)
+
+- **`deploy/activate.sh` re-checks before it reverts.** A running session's first red health read is re-run five seconds
+  later -- `check_health.sh` has a history of sampling a unit mid-restart -- and only a second red calls
+  `deploy/rollback.sh --refuse <RELEASE>`, whose own health check is the deploy's verdict. A green second read is reported
+  as what it was, and nothing is rolled back.
+- **The latch is `reverted_release`.** The rollback writes the release it refused **before** its own check, so a host that
+  is not healthy yet still carries the record; the deploy's remote script reads it **before the mkdir, the tar and the
+  bootstrap** and exits 2 naming it, because a third dispatch of the unchanged release is a change rather than a retry.
+  The release's name travels as `/opt/toyquant/RELEASE`, written at unpack, so both halves compare like with like.
+- **`check_deploy.py` is eighteen rules.** The eighteenth reads that pair of facts -- the activation rolls back and names
+  the latch, the workflow refuses what the latch names -- and its self-test fires on each half by deleting one from a clean
+  copy, which is the only proof the red path has until a deliberately red deploy is run on a host.
+
 ## The toxicity gate's neighbourhood is a smooth plateau below the control (2026-11-28)
 
 The threshold question is whether a value works one step away or only where it was picked. The same rule at 1, 2, 3 and 4

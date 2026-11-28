@@ -434,13 +434,38 @@ def rule_deploy_start(texts):
     return []
 
 
+def rule_rollback_latch(texts):
+    """A red health check on a running session rolls back once and leaves a latch the next deploy reads.
+
+    Measured 2026-11-28: `deploy.yml` said in a comment that it does not roll back by itself, so a release that would not
+    come up left the host on the new binary with the operator as the only recovery -- and the same dispatch could be sent
+    again an hour later with nothing on the host to stop it. The card's Cut 1 is the pair of facts this reads: the
+    activation rolls back and names the latch, and the workflow refuses a release the latch names.
+    """
+    activation, workflow, rollback = texts["activate"], texts["workflow"], texts["rollback"]
+    problems = []
+    if "check_health.sh" in activation and "rollback.sh" not in activation:
+        problems.append("deploy/activate.sh runs the health check and never rolls back: a release that will not come up "
+                        "leaves the host on the new binary with a person as the only recovery")
+    if "rollback.sh" in activation and "reverted_release" not in activation:
+        problems.append("deploy/activate.sh rolls back without naming `reverted_release`: the next deploy has nothing "
+                        "to compare the release against")
+    if "reverted_release" not in rollback:
+        problems.append("deploy/rollback.sh never writes `reverted_release`, so a reverted release leaves no record")
+    if "reverted_release" in rollback and "reverted_release" not in workflow:
+        problems.append("deploy.yml never reads `reverted_release`: a release this host rolled back from can be "
+                        "re-dispatched unchanged, which is a revert that is immediately re-deployed")
+    return problems
+
+
 RULES = (("env_names", rule_env_names), ("template_keys", rule_template_keys), ("endpoints", rule_endpoints),
          ("ordering", rule_ordering), ("stop_window", rule_stop_window), ("bundled", rule_bundled),
          ("coupling", rule_coupling), ("notify_refs", rule_notify_refs), ("deploy_order", rule_deploy_order),
          ("unit_reload", rule_unit_reload), ("ssh_quoting", rule_ssh_quoting),
          ("preflight_isolation", rule_preflight_isolation), ("report_clock", rule_report_clock),
          ("timer_install", rule_timer_install), ("report_sandbox", rule_report_sandbox),
-         ("report_identity", rule_report_identity), ("deploy_start", rule_deploy_start))
+         ("report_identity", rule_report_identity), ("deploy_start", rule_deploy_start),
+         ("rollback_latch", rule_rollback_latch))
 
 FILES = {"env": ".env.example",
          "live_yaml": "config/live.example.yaml",
@@ -458,6 +483,7 @@ FILES = {"env": ".env.example",
          "daily_report": "deploy/daily_report.py",
          "report_unit": "deploy/toyquant-report.service",
          "activate": "deploy/activate.sh",
+         "rollback": "deploy/rollback.sh",
          "shutdown_h": "src/lines/session_shutdown.h"}
 
 
@@ -496,7 +522,7 @@ CLEAN = {
     "relay_unit": "[Unit]\nBefore=toyquant-live.service\nOnFailure=toyquant-notify@%n.service\n[Service]\n"
                   "ExecStart=/usr/bin/python3 /opt/toyquant/tools/live/venue_relay.py\n",
     "notify_unit": "[Service]\nExecStart=/usr/bin/python3 /opt/toyquant/deploy/notify.py --unit %i\n",
-    "workflow": "install -m 0755 toy_quant; install tools/live/live_config.py tools/live/venue_relay.py; "
+    "workflow": "install -m 0755 toy_quant; install tools/live/live_config.py tools/live/venue_relay.py; reverted_release; "
                 "install deploy/toyquant-notify@.service deploy/toyquant-report.service deploy/toyquant-report.timer "
                 "deploy/toyquant-window-start.timer deploy/toyquant-window-stop.service deploy/toyquant-window-stop.timer; "
                 "install deploy/notify.py deploy/daily_report.py deploy/preflight.sh deploy/check_health.sh "
@@ -528,7 +554,13 @@ CLEAN = {
     "report_unit": "[Service]\nUser=toyquant\nSupplementaryGroups=systemd-journal\nProtectSystem=strict\nReadWritePaths=-/opt/toyquant/data/runtime\n",
     "activate": "systemctl daemon-reload\nsystemctl reset-failed toyquant-relay toyquant-live || true\n"
                 "systemctl start toyquant-relay\nbash \"$REPO_DIR/deploy/wait_for_ports.sh\" 127.0.0.1:8765 127.0.0.1:8766\n"
-                "bash \"$REPO_DIR/deploy/preflight.sh\"\n",
+                "bash \"$REPO_DIR/deploy/preflight.sh\"\n"
+                "if systemctl is-active --quiet toyquant-live; then\n"
+                "  bash \"$REPO_DIR/deploy/check_health.sh\" || bash \"$REPO_DIR/deploy/rollback.sh\" --refuse \"$RELEASE\"\n"
+                "  echo \"reverted_release\"\n"
+                "fi\n",
+    "rollback": "install -m 0755 \"$PROGRAM.prev\" \"$PROGRAM\"\n"
+                "printf '%s\\n' \"$REFUSE\" > /opt/toyquant/data/runtime/reverted_release\n",
     "window_start": "[Timer]\nOnCalendar=*-*-* 13:30:00 UTC\nUnit=toyquant-live.service\n",
     "window_stop": "[Timer]\nOnCalendar=*-*-* 15:32:00 UTC\nUnit=toyquant-window-stop.service\n",
     "daily_report": "run([\"journalctl\", \"-u\", UNIT, \"--since\", start, \"--until\", end, \"--utc\"])\n"
@@ -574,6 +606,12 @@ def self_test():
     # The other half: a redeploy that restarts the engine is the thing the rule refuses.
     check("deploy_order", lambda t: t.update(workflow=t["workflow"] + "sudo systemctl restart toyquant-live\n"),
           "must not restart a session that may hold")
+    # Cut 1 of the deploy card: an activation that checks health and never rolls back, and a workflow that cannot see the
+    # latch. Both are the defect the card names, and the second is what an immediate re-dispatch looks like.
+    check("rollback_latch", lambda t: t.update(activate=t["activate"].replace("rollback.sh", "something.sh")),
+          "never rolls back")
+    check("rollback_latch", lambda t: t.update(workflow=t["workflow"].replace("reverted_release", "elsewhere")),
+          "never reads")
     # The ops action had the same defect, and it is the way an operator starts a stopped host: the rule reads both.
     check("deploy_order", lambda t: t.update(ops_workflow=t["ops_workflow"].replace(
         "sudo systemctl restart toyquant-relay\n", "", 1)), "runs the preflight before restarting the relay")

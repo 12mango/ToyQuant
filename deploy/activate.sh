@@ -66,11 +66,31 @@ else
   bash "$REPO_DIR/deploy/preflight.sh"
 fi
 
-# The session is reported, never touched. Running: the operator's, and the health check follows. Not running: the
-# normal state between windows, and the window timer starts this binary.
+# The session is reported, never touched -- with one exception, and it is the one this card exists for. A session that is
+# *running* and whose health check is red twice is a release that did not come up, and the previous binary is the only
+# version anybody has evidence for; so the second red check rolls back, leaves a `reverted_release` latch naming what was
+# refused, and fails the deploy. One red check is not enough: a stop-sigterm and a journal read can race the first read,
+# and a rollback that flaps a live session is worse than a red deploy.
 if systemctl is-active --quiet "$SESSION"; then
   echo "activate: $SESSION is running and was not touched; the health check follows"
-  bash "$REPO_DIR/deploy/check_health.sh"
+  if bash "$REPO_DIR/deploy/check_health.sh"; then
+    echo "activate: the health check is green"
+  else
+    echo "::warning::the first health check is red while $SESSION runs; checking once more before a rollback"
+    sleep 5
+    if bash "$REPO_DIR/deploy/check_health.sh"; then
+      echo "activate: the second health check is green -- the first read the session mid-start, nothing was rolled back"
+    else
+      RELEASE=$(cat "$REPO_DIR/RELEASE" 2>/dev/null || echo unknown)
+      echo "::error::$SESSION is unhealthy twice; rolling back to the previous release and refusing $RELEASE"
+      if bash "$REPO_DIR/deploy/rollback.sh" --refuse "$RELEASE"; then
+        echo "activate: the rollback came up healthy; reverted_release names $RELEASE, so the next deploy of it stops here"
+      else
+        echo "::error::the rollback did not come up healthy either; this host needs a person"
+      fi
+      exit 1
+    fi
+  fi
 else
   echo "activate: $SESSION is not running, which is the state between windows; the window timer starts it"
   systemctl --no-pager --lines=0 status "$SESSION" 2>&1 | head -3 || true
