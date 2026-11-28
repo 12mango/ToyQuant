@@ -91,6 +91,62 @@ counterfactual* (drop the fills whose leader state was moving, recompute the mea
 for the leader's state is a wiring change that only earns its place if that counterfactual clears.
 
 
+### Deploy experiment card: two cuts in the release path (registered 2026-11-28, before either is built)
+
+**The question.** A deploy runs one path for every change: build, test, the seventeen-rule audit, a tar, an unpack, an
+activation and a health check. That is right for a binary and wrong for a one-line config edit -- and it is also the path
+with seven failures behind it. Two cuts are proposed; this card says what each has to clear and in what order, because
+both of them touch the path that has to work at 13:30 UTC.
+
+**What the tree already carries, measured on the last session's commits.** The review that asked for this card listed four
+items; two of them landed during the live-line work and the card starts from that, not from the list.
+
+| item | state | where |
+|---|---|---|
+| the activation sequence | **landed** | `deploy/activate.sh` -- bundled by the package step (`deploy.yml:196`) and called by the deploy (`:315`): `daemon-reload` -> `reset-failed` -> `start` in a bounded retry that prints the attempt it succeeded on, and on giving up prints `LoadState`, `FragmentPath`, `systemctl cat` and the unit's journal, then `wait_for_ports.sh` and `preflight.sh` |
+| rollback, as a command | **landed** | `deploy/rollback.sh` restores `toy_quant.prev` -- copied before the unpack (`deploy.yml:244`) -- restarts and runs the health check; a red job names it (`deploy.yml:324`) |
+| rollback, automatic | **not landed** | the job names the command and does not run it |
+| release-path split | **not landed** | no `paths-filter` and no classification anywhere in `deploy.yml` |
+| the two-strike rule | **not landed** | neither the workflow nor `.clinerules` carries it |
+
+**Cut 1 -- automatic rollback on the second red health check, and a latch against the third attempt.** On a red health
+check the job re-runs `check_health.sh` once, ten seconds later, and only a second red result calls
+`deploy/rollback.sh`; the rollback's own health check is what makes the job's verdict, and the reverted commit is written
+to `/opt/toyquant/data/runtime/reverted_release`, which the next deploy reads: a second dispatch of the same commit prints
+the reason and exits 2 without touching the host. The re-run exists because the first red result has a history of being a
+sampling artifact -- `check_health.sh` once read "activating" mid-restart and reported zero processes on a healthy unit --
+and a rollback that fires on that would revert a good binary, which is worse than the failure it was written for.
+
+The bar, registered before the build: an artifact built with `-march=native` (the SIGILL class, the failure that
+crash-looped 35 times) deployed to the host ends with `toy_quant.prev` running, `check_health.sh` green, the job red, and
+`reverted <sha>` in the log; a re-dispatch of that same commit exits 2 in under twenty seconds with no write to the host;
+and a deploy of a *good* binary with one deliberately red health reading does **not** revert. Measured between windows
+(04:00-12:00 UTC), never inside 13:30-15:30.
+
+**Cut 2 -- the release-path split.** A diff that touches only `config/`, `deploy/*.service`, `deploy/*.timer`,
+`deploy/*.env.example`, `deploy/journald/` and `deploy/logrotate/` takes a **config-only** path: `live_config.py --check`,
+an `rsync` of exactly those files, `activate.sh`, the health check -- no build, no tests, no tar, no seventeen-rule audit.
+Any file outside that list takes the full path, which is unchanged. The classifier is deliberately conservative and its
+allowlist is written in one place, because the failure mode it invites is a config change that *needs* a binary: a new key
+the running program does not read is the coupling class `check_deploy`'s `rule_coupling` exists for, and it must never be
+classified as light.
+
+The bar: a config-only change (one value in `live.yaml`) from dispatch to a green health check in **under 60 seconds**,
+measured from the runner's first line to the host's `check_health.sh` line; the full path still green on a `src/` change;
+and `check_deploy` gains a rule that refuses a light classification whose file list is wider than those six paths, plus a
+rule that refuses a light path which ships a binary.
+
+**Why Cut 1 first, and why neither is built in the hour before the window.** Tonight's session is started by
+`toyquant-window-start.timer`, not by a deploy: nothing in either cut makes the window start. What tonight needs is the
+`order_burst` mapping key and the three budget values, which travel through the **existing** path -- the one whose
+activation now retries through the race and whose rollback is one command. Building a second path in the same hour as the
+deploy that must land would put the untested branch on the critical line, and the measurement that decides it is the
+window's own journal. So the order is: land the key, deploy through the current path, read the window, and build these two
+cuts at the next 04:00-12:00 UTC block, with Cut 1 landing before Cut 2 because a rollback protects every deploy while a
+split only shortens some of them.
+
+### Waiting on data, with the run it unlocks
+
 Three sets are downloading or published late, and each row names the run it is for, so the next session does not
 rediscover why the days were wanted. The fetcher is tracked and skips a day it already holds, so a re-run is free.
 

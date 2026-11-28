@@ -467,6 +467,14 @@ in tracked files:
   seeded at `0640` and never rewritten by a script.
 - **A green deploy is a health check, not a restart.** `systemctl restart` returning 0 says the process was launched;
   `deploy/check_health.sh` says it is the only one running, wrote nothing at error severity, and can be asked to stop.
+- **A deploy that fails twice for the same reason stops, and the third attempt of the unchanged thing is a change.**
+  Measured across seven failed deploys in one night: every re-dispatch of the same line cost a round trip and taught
+  nothing the first log did not already say, because a red deploy is a fact about the tree or the host and not about the
+  dispatch. So the first failure is read (its log names the file, the port, the unit or the variable), the second is a
+  reproduction with one variable moved, and a third dispatch of the same commit is refused -- today by the reader saying
+  what would have to differ before it goes out again, and, once Cut 1 of the deploy card in `docs/ROADMAP.md` lands, on the
+  host too, by the `reverted_release` marker `deploy/rollback.sh` writes and the next deploy reads. The rule is also what
+  makes an automatic rollback safe: a revert that is immediately re-deployed is a loop with extra steps.
 - **A shipped binary names its instruction set.** `-march=native` is a benchmark's flag: an artifact built on one host and
   run on another is one instruction away from `status=4/ILL` (measured 2026-11-26: the first deploy to a real host
   crash-looped 35 times and the health check reported "activating"). The deploy preset sets `TOYQUANT_PORTABLE_BINARY=ON`,
