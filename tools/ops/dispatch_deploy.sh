@@ -10,6 +10,9 @@
 #   tools/ops/dispatch_deploy.sh check            # is the token the right shape, and does GitHub accept it
 #   tools/ops/dispatch_deploy.sh status           # the last few runs and their state
 #   tools/ops/dispatch_deploy.sh logs [--failed]  # the newest run's log (failed steps only with --failed)
+#   tools/ops/dispatch_deploy.sh logs ops.yml     # the same for another workflow: **`logs` and `wait` default to
+#                                                 # deploy.yml**, so reading an ops run means naming it -- measured
+#                                                 # 2026-11-28, five reads of the wrong run before the default was noticed
 #   tools/ops/dispatch_deploy.sh wait             # block until the newest run finishes
 #
 # The credential is one file, ignored, mode 600: `secrets/gh.token`, a fine-grained token for this repository with

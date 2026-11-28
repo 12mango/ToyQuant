@@ -146,6 +146,14 @@ compatibility path. Everything below assumes that page.
 - **A red gate is not a prompt to retry it.** Go back to `smoke` or `code`, reproduce the failure on the smallest
   input that shows it, fix it there, and only then return to `fast`. Re-running the full gate against a guess is the
   other half of the same anti-pattern, and it hides which edit moved the number.
+- **A wrapper's exit status is part of the measurement.** Measured 2026-11-28: a column added to a sweep row and not to the
+  tool's `COLUMNS` made every day raise, the tool exited 1 on its first day, and the driver still echoed `exit=0` -- it printed
+  `$?` without propagating it, so four arms "succeeded" with a CSV holding one header line each. A script that runs a child
+  records the child's failure and exits with it, and the tell is an artifact that is present but empty: a CSV with a header and
+  no rows, a log with a start and no end. The exit file is one witness; the artifact's size is the second.
+- **A key added to the row is added to the writer's column list in the same edit.** The same session: `submitted` and `cancels`
+  went into the row dict and not into the CSV's `COLUMNS`, and `DictWriter` raises on an unknown key at the first day, inside a
+  driver that hid it. The pair is one edit, the way a new tool-owned flag and `lint_prose`'s allowlist are one edit.
 - **Tier 0 first, for its own reason**: a red unit test must not be able to pass a gate that only compares replay
   output. That bug happened, and the tier exists because of it. **The tiers also refuse a stale build** (2026-11-26,
   twice in one session): `verify_l2.sh` compares the newest artifact in the build directory against `src/` and `tests/`
