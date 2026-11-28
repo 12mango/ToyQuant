@@ -129,4 +129,15 @@ want f4_winddown10 && run f4_winddown10 "--wind-down-skew-minutes=10 --wind-down
 # quote three ticks out moved one tick in is still two ticks from the touch and never fills differently. So the arm's whole
 # difference from its control is the adding side going quiet, and not the skew.
 want f4_winddown10_pure && run f4_winddown10_pure "--wind-down-skew-minutes=10 --wind-down-skew-ticks=0 --wind-down-end=15:30"
+# Tier 2 #3's mechanism, in Avellaneda-Stoikov's shape: the reservation price shifts by `-q*gamma*sigma^2*(T - t)`, with the
+# greeks folded into one measured number -- `--as-skew-bps` is the shift at full inventory and a full session remaining -- and
+# the clock is the session's own (`--session-start=13:30`, `--wind-down-end=15:30`). It is a different lever from the
+# wind-down: that one walks the closing side in over the last ten minutes, this one leans the whole session and relaxes to
+# nothing at the close. One tick on UP at 0.19 is 5.3 bps, so 25 bps is about five ticks at full inventory, against the
+# proportional shift's three.
+want f6_as_skew && run f6_as_skew "--as-skew-bps=25 --session-start=13:30 --wind-down-end=15:30"
+# The gradient around it: a smaller lean should pay less tail, cost less median, and the curve says whether any value holds
+# both -- the same ladder the throttle and the debounce were read on.
+want f6_as_skew10 && run f6_as_skew10 "--as-skew-bps=10 --session-start=13:30 --wind-down-end=15:30"
+want f6_as_skew16 && run f6_as_skew16 "--as-skew-bps=16 --session-start=13:30 --wind-down-end=15:30"
 echo "== done $(date -u +%H:%M:%S) -- rows in $OUT/f*.csv"

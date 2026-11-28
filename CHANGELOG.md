@@ -6,6 +6,28 @@ and when — is in [Roadmap](docs/ROADMAP.md#change-log), and the two are delibe
 The repository is named `ToyQuant`. The `-v1` suffix that older links and a local clone may still carry is a leftover
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
+## The A-S skew halves the tail and pays for it in the median (2026-11-28)
+
+`--as-skew-bps=B` with `--session-start=HH:MM` is Avellaneda-Stoikov's reservation-price skew, `-q*gamma*sigma^2*(T - t)`,
+with the two greeks folded into one measurable number -- B bps of shift at full inventory and a full session remaining --
+and the session's own clock. A small gradient over the sixty days, against the same cell's control:
+
+| skew | fills | closed median | positive | net median | USD/window | worst day | tail multiple |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| control | 38 | +17.22 | 44 of 59 | +14.79 | 0.3097 | -75.19 | 4.37 |
+| 10 bps | 36 | +12.98 | 44 of 59 | +10.03 | 0.3001 | -47.76 | 3.68 |
+| 16 bps | 38 | +11.68 | 44 of 59 | +7.26 | 0.3568 | -35.31 | 3.02 |
+| 25 bps | 38 | +16.23 | 43 of 59 | +13.81 | 0.5009 | -36.30 | 2.24 |
+
+- **The tail improves monotonically and the median does not.** Worst day -75.19 to -47.76, -35.31, -36.30; tail multiple
+  4.37 to 3.68, 3.02, 2.24 -- but the median is below the control at every value, and the dip at 16 bps below both 10 and 25
+  says the median differences are inside this sample's noise. Fewest positives at the largest skew (43 against 44).
+- **So the registered bar fails on its median clause**, and what the run does deliver is the trade priced: a tail multiple
+  of 2.24 for 0.99 bps of median and one fewer positive day. The leverage a seat can carry is what the tail buys, so the
+  trade is not obviously bad -- but the admission rule ranks the median first, and by that rule this is not a seat.
+- **It is pinned by a test**: `l2_strategy_test` asserts the ask relaxes upward as the session runs out and that a zero knob
+  changes nothing, so the default leaves every recorded row standing.
+
 ## The cancel has to travel, and the leader state turns inside the trip (2026-11-28)
 
 - **`tools/study/gate_latency_counterfactual.py` prices the optimism.** A fill-level counterfactual that drops every fill

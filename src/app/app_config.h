@@ -160,6 +160,11 @@ struct AppConfig
     // From --wind-down-adverse-bps: start the skew only when the carried position is marked against us by at least this
     // many bps. 0, the default, is the unconditional skew every arm before 2026-11-26 ran.
     double wind_down_adverse_bps = 0.0;
+    // From --as-skew-bps / --session-start: Avellaneda-Stoikov's reservation-price skew, folded into one measurable
+    // dimension -- bps of price shift at full inventory and a full session remaining -- and the session's start as the
+    // clock it counts down from. Zero, the default, adds nothing and leaves every recorded row where it was.
+    double as_skew_bps = 0.0;
+    double session_start_minute = 0.0;
     // From --max-depth-ratio / --depth-ladder-max: no rung larger than this share of the same side's displayed touch
     // size, and this many rungs for a size above it. 0 leaves the fixed size every recorded run used.
     double max_depth_ratio = 0.0;

@@ -177,6 +177,13 @@ struct L2MarketMakerBaseConfig
     // on UP at ten contracts that arm cost +11.33 to -5.43 bps of settled median by clearing a tail the week had marked in
     // our favour. A run that names this keeps the favourable tail and works only the adverse one.
     double wind_down_adverse_bps{0.0};
+    // Avellaneda-Stoikov's reservation price is `r = s - q*gamma*sigma^2*(T - t)`: the inventory skew is proportional to
+    // the risk left, and the risk left is the time to the close. The two greeks are folded into **one measurable number** --
+    // bps of price shift at full inventory and a full session remaining -- so the lever is one dimension rather than two
+    // that cannot be told apart on a two-hour window, and the clock is the same UTC minute-of-day the wind-down reads.
+    // Zero, the default, adds nothing and leaves every recorded row standing.
+    double as_skew_bps{0.0};
+    double session_start_minute{0.0};
     // --max-depth-ratio: no rung may be larger than this share of the same side's displayed touch size, and a size above
     // the cap is split into `depth_ladder_max` rungs one tick behind each other. A fixed size on a thin book is adverse
     // selection by construction -- measured 2026-11-26, BLUR at thirteen ticks reads +31.74 bps closed at one contract and
@@ -418,6 +425,24 @@ class L2MarketMakerBase : public Strategy
         return (second_of_day - start) / (end - start);
     }
 
+    // The session's own remaining fraction, 1 at `session_start_minute` and 0 at `wind_down_end_minute`: the `(T - t)` a
+    // time-decaying skew is proportional to. The clock is the view's and the bounds are wall-clock minutes of the UTC day,
+    // so the conversion goes through `clock_units_per_second` for the reason the wind-down's does.
+    double session_remaining_fraction() const
+    {
+        if (config_.as_skew_bps == 0.0 || config_.session_start_minute <= 0.0 ||
+            config_.wind_down_end_minute <= 0.0 || last_view_ts_ == 0)
+            return 0.0;
+        const uint64_t units = clock_units_per_second(last_view_ts_);
+        if (units == 0) return 0.0;
+        const double second_of_day = static_cast<double>((last_view_ts_ / units) % 86'400ULL);
+        const double end = config_.wind_down_end_minute * 60.0;
+        const double start = config_.session_start_minute * 60.0;
+        if (end <= start) return 0.0;
+        const double fraction = (end - second_of_day) / (end - start);
+        return std::min(1.0, std::max(0.0, fraction));
+    }
+
     // How the carried position is marked, in bps of the last mid: positive is in our favour. Zero when flat, which makes
     // the condition above false for a run with nothing to work.
     double open_pnl_bps() const
@@ -527,13 +552,20 @@ class L2MarketMakerBase : public Strategy
             half_width = std::max(2.0, std::round(config_.base_spread_bps / tick_bps)) * config_.tick_size;
         }
         const double inventory_shift = inventory_ratio * half_width;
+        // The time-decaying half of the reservation price: Avellaneda-Stoikov's skew is `q*gamma*sigma^2*(T - t)`, and
+        // folding the greeks into one bps figure leaves `inventory_ratio * as_skew_bps * remaining`. It is added to the
+        // proportional shift above rather than replacing it, so a run that names neither knob behaves as every recorded row.
+        double as_skew_shift = 0.0;
+        if (config_.as_skew_bps > 0.0 && fair_price > 0.0)
+            as_skew_shift = inventory_ratio * (config_.as_skew_bps / 1e4) * fair_price * session_remaining_fraction();
+        const double total_shift = inventory_shift + as_skew_shift;
         double weak_flow_spread_shift = 0.0;
         if (config_.flow_guard && std::abs(flow) > config_.weak_flow_threshold &&
             std::abs(inventory_ratio) > config_.neutral_inventory_band)
             weak_flow_spread_shift = config_.weak_flow_spread_shift_ticks * config_.tick_size;
-        const double raw_bid = std::floor((fair_price - half_width - inventory_shift - weak_flow_spread_shift) /
+        const double raw_bid = std::floor((fair_price - half_width - total_shift - weak_flow_spread_shift) /
                                           config_.tick_size) * config_.tick_size;
-        const double raw_ask = std::ceil((fair_price + half_width - inventory_shift + weak_flow_spread_shift) /
+        const double raw_ask = std::ceil((fair_price + half_width - total_shift + weak_flow_spread_shift) /
                                          config_.tick_size) * config_.tick_size;
         const double passive_bid = std::floor(top.bid_price / config_.tick_size) * config_.tick_size;
         const double passive_ask = std::ceil(top.ask_price / config_.tick_size) * config_.tick_size;

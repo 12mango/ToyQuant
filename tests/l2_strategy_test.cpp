@@ -1179,4 +1179,45 @@ int main()
         assert(against.burst_count() == 0);
         assert(against.target_position() == 0);
     }
+
+    // Avellaneda-Stoikov's reservation-price skew: the shift is `q*gamma*sigma^2*(T - t)`, folded into one bps figure
+    // (`as_skew_bps` at full inventory and a full session remaining) and read against the session's own clock. A long
+    // position is leaned against harder at the open than at the close, so the ask sits lower early and relaxes upward; with
+    // the knob at zero the two reads are the same price, which is what leaves every recorded row standing.
+    {
+        const uint64_t day_ms = (1'794'834'900'007ULL / 86'400'000ULL) * 86'400'000ULL;
+        const auto ask_at = [&](int minute_of_day, double as_skew)
+        {
+            L2MarketMakerBase maker(L2MarketMakerBaseConfig{.order_size = 1,
+                                                            .base_spread = 1.5,  // three ticks at 0.5
+                                                            .inventory_limit = 100,
+                                                            .tick_size = 0.5,
+                                                            .signal_mode = L2SignalMode::Baseline,
+                                                            .wind_down_end_minute = 930.0,    // 15:30 UTC
+                                                            .as_skew_bps = as_skew,
+                                                            .session_start_minute = 810.0});  // 13:30 UTC
+            L2MarketView at;
+            at.symbol = view.symbol;
+            at.ts = day_ms + static_cast<uint64_t>(minute_of_day) * 60ULL * 1'000ULL;
+            at.top = view.top;
+            const auto open = maker.on_l2_market_view(at);
+            assert(open.size() == 2);
+            maker.on_order_submitted(StrategyOrder{open[0].side, at.symbol.str(), open[0].price, 1, 93});
+            maker.on_order_update(ExecutionReport{.order_id = 93,
+                                                  .side = exchange::Side::Buy,
+                                                  .exec_type = ExecType::Trade,
+                                                  .symbol = at.symbol.str(),
+                                                  .price = open[0].price,
+                                                  .quantity = 1,
+                                                  .owner = "MarketMaker"});
+            for (const auto& order : maker.on_l2_market_view(at))
+                if (order.side == Side::Sell) return order.price;
+            return 0.0;
+        };
+        const double open_ask = ask_at(13 * 60 + 31, 50.0);
+        const double close_ask = ask_at(15 * 60 + 29, 50.0);
+        assert(open_ask > 0.0 && close_ask > 0.0);
+        assert(close_ask > open_ask);  // the lean is against the long and relaxes as the session runs out
+        assert(std::abs(ask_at(13 * 60 + 31, 0.0) - ask_at(15 * 60 + 29, 0.0)) < 1e-9);  // zero adds nothing
+    }
 }

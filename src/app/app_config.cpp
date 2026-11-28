@@ -108,6 +108,10 @@ constexpr std::string_view kWindDownMinutesPrefix = "--wind-down-skew-minutes=";
 constexpr std::string_view kWindDownEndPrefix = "--wind-down-end=";
 constexpr std::string_view kWindDownTicksPrefix = "--wind-down-skew-ticks=";
 constexpr std::string_view kWindDownAdversePrefix = "--wind-down-adverse-bps=";
+// The time-decaying skew and the clock it counts down from: Avellaneda-Stoikov's `T - t` needs a session start, and the
+// wind-down's end is the same minute-of-day the rest of the tail logic reads.
+constexpr std::string_view kAsSkewPrefix = "--as-skew-bps=";
+constexpr std::string_view kSessionStartPrefix = "--session-start=";
 constexpr std::string_view kMaxDepthRatioPrefix = "--max-depth-ratio=";
 constexpr std::string_view kDepthLadderMaxPrefix = "--depth-ladder-max=";
 constexpr std::string_view kTrendSignalPrefix = "--trend-signal=";
@@ -302,7 +306,10 @@ void print_usage(const char* executable)
                      "--wind-down-skew-minutes=M with --wind-down-end=HH:MM (a UTC clock) walks the closing side in by "
                      "--wind-down-skew-ticks=T (one by default) over the last M minutes and stops the adding side, so "
                      "the residual is worked by the market rather than crossed, and --wind-down-adverse-bps=X starts it "
-                     "only when the tail is marked against us by at least X; --max-depth-ratio=F caps each quote rung at "
+                     "only when the tail is marked against us by at least X; --as-skew-bps=B with --session-start=HH:MM "
+                     "(and the same --wind-down-end) leans both quotes against the carried position by B bps at full "
+                     "inventory and a full session remaining, relaxing to nothing at the close -- Avellaneda-Stoikov's "
+                     "(T - t) clock, one dimension because the greeks are folded into B; --max-depth-ratio=F caps each quote rung at "
                      "F of the same side's displayed touch size and --depth-ladder-max=N splits a larger quote into N rungs "
                      "one tick behind each other; --pause-ticks-per-second=D sets "
                      "the active halt's threshold, which is 9.0 ticks a second and always on, so a large value is what "
@@ -1446,6 +1453,37 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                 }
                 cfg.wind_down_adverse_bps = bps;
             }
+            else if (flag.compare(0, kAsSkewPrefix.size(), kAsSkewPrefix) == 0)
+            {
+                // Avellaneda-Stoikov's `q*gamma*sigma^2*(T - t)`, with the greeks folded into one bps figure: what a
+                // two-hour window can measure is one number, not two that cannot be told apart. Zero turns it off.
+                double bps = 0.0;
+                std::istringstream stream(flag.substr(kAsSkewPrefix.size()));
+                if (!(stream >> bps) || bps < 0.0)
+                {
+                    error = "--as-skew-bps is the inventory skew at full inventory and a full session remaining, in bps; "
+                            "zero turns it off and a negative skew leans the wrong way";
+                    return false;
+                }
+                cfg.as_skew_bps = bps;
+            }
+            else if (flag.compare(0, kSessionStartPrefix.size(), kSessionStartPrefix) == 0)
+            {
+                // The clock the time-decay counts forward from, in the wind-down's own `HH:MM` shape.
+                const std::string clock = flag.substr(kSessionStartPrefix.size());
+                const auto colon = clock.find(':');
+                int hour = -1;
+                int minute = -1;
+                if (colon == std::string::npos ||
+                    !(std::istringstream(clock.substr(0, colon)) >> hour) ||
+                    !(std::istringstream(clock.substr(colon + 1)) >> minute) || hour < 0 || hour > 23 ||
+                    minute < 0 || minute > 59)
+                {
+                    error = "--session-start is the UTC clock the time-decaying skew counts down from, as HH:MM (13:30)";
+                    return false;
+                }
+                cfg.session_start_minute = static_cast<double>(hour * 60 + minute);
+            }
             else if (flag.compare(0, kMaxDepthRatioPrefix.size(), kMaxDepthRatioPrefix) == 0)
             {
                 double ratio = 0.0;
@@ -2031,10 +2069,11 @@ bool parse_config(int argc, char** argv, AppConfig& cfg, std::string& error)
                     "ends, so the clock it counts back from has to be named";
             return false;
         }
-        if (cfg.wind_down_end_minute > 0.0 && cfg.wind_down_skew_minutes == 0)
+        if (cfg.wind_down_end_minute > 0.0 && cfg.wind_down_skew_minutes == 0 && cfg.as_skew_bps == 0.0)
         {
             error = "--wind-down-end names when a wind-down ends and --wind-down-skew-minutes says how long it runs; "
-                    "name both";
+                    "name both (or name --as-skew-bps, which reads the same clock for the time-decaying skew and needs no "
+                    "wind-down to be running)";
             return false;
         }
         if (cfg.wind_down_skew_minutes > 0 && !maker_with_state)
