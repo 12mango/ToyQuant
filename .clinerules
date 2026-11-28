@@ -529,6 +529,17 @@ review of one change needs the change.
   -- the commit it describes, the requirements in force, what was done, what is next in order and what is blocked -- and
   it is ignored for the same reason the reviewer's brief is: it names a commit, so a tracked copy would be a second,
   older roadmap. Every reply that ends a stretch rewrites it, and the commit it names is the one after the file.
+- **A context that is nearly full is closed on disk, not in the window.** This deployment offers the agent no `new_task`
+  tool and no view of its own token count -- the tools are file reads, searches, edits, commands and a question -- so the
+  continuity across a compaction cannot be a hand-off the agent performs; it has to be a state the tree carries. When a
+  stretch is about to end (a long reply, the same file read twice, a task boundary), **write before continuing**, and
+  write three things: `.handoff.md` keeps only state -- the commit, the queue, who is waited on, the two operational
+  facts -- the long work goes into `tools/ops/jobq.sh`, and the open decisions become a numbered list with one line each.
+  A fresh session then reads three things in order: `.handoff.md`, `bash tools/ops/jobq.sh status`, and the page its
+  question names. Measured 2026-11-28 UTC: the file had grown to **2,989 lines** of per-session blocks, five of them
+  marked "read this first", and every number in them was already in the tracked documents -- so the history was removed
+  and the file is **45 lines of state**. A compaction that arrives before the write loses the reply's details; a
+  compaction after it loses nothing, because nothing that matters was in the window.
 - **A copy is never evidence.** CI and `verify_l2.sh` read the repository; the bundle is for a reader, and the gate does
   not read it (`docs/TOOLS.md`, convention 4).
 
