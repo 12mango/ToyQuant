@@ -172,7 +172,10 @@ compatibility path. Everything below assumes that page.
   the shifted lines landed mid-file and the run's tail died with `line 92: $1: unbound variable` -- at a line that holds a
   comment in the file being read, which is the tell. The CSV it had already written was fine, so the run looked broken and
   was not. An edit to a script waits for its run to exit, and if the driver must change the run is restarted rather than
-  edited under: the cuts are cached, so the restart costs the replay and not the data.
+  edited under: the cuts are cached, so the restart costs the replay and not the data. **And a chain of runs is stopped at
+  its loop, not at its child**: killing one arm's python inside a `for ms in ...` let the loop start the next arm beside
+  the re-launched job, so two sweeps shared one cuts directory -- the tool's own refusal names the pid that holds the lock,
+  and that message is how the stray was found.
 - **A tick is a price, not an amount, and a per-tick figure is converted before it is quoted.** `0.0001` on a `0.19`
   instrument is **5.2 bps**, not half of one, and the difference is the whole answer to "can a fee be paid": on
   2026-11-25 the profile page, the changelog and two tool docstrings said "one tick is half a basis point" for a day,
