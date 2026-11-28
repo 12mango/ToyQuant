@@ -6,6 +6,22 @@ and when — is in [Roadmap](docs/ROADMAP.md#change-log), and the two are delibe
 The repository is named `ToyQuant`. The `-v1` suffix that older links and a local clone may still carry is a leftover
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
+## The cancel has to travel, and the leader state turns inside the trip (2026-11-28)
+
+- **`tools/study/gate_latency_counterfactual.py` prices the optimism.** A fill-level counterfactual that drops every fill
+  taken while the leader moved assumes the cancel was already there; the measured round trip is 77 to 118 ms. For each maker
+  fill the tool reads the same 3 s state twice -- at the fill and one latency earlier -- and sorts it into flat, **avoidable**
+  (moving at both reads, so a cancel could have landed) and **unavoidable** (moving only at the fill: the state turned inside
+  the latency).
+- **On the two days tried first, every moving fill is unavoidable at 75 ms.** 2026-11-05 and 2026-11-26, 77 fills: no gate
+  reads a mean markout of **-1.12 bps**, the gate with a free cancel reads **+0.86** on 57 fills, and the gate at 75 ms reads
+  **-1.12 on 77** -- all twenty moving fills turned inside the trip. So the gate's apparent gain is entirely the assumption
+  that it can act instantly, and the leader's 3 s return is a *coincident* measure rather than a leading one, which is what
+  `book_lead_lag.py` already read from the other side (a 0 ms peak at correlation 0.013).
+- **Status: two days, not the frontier.** The twenty-one-day run is in flight; until it lands this is a demonstration of the
+  method and a strong hint, not a number to quote. What it already changes is the *bar* for any future state gate: a
+  counterfactual without an in-flight term is not evidence of anything a cancel can do.
+
 ## The P&L decomposition exists and refuses to quote itself yet (2026-11-28)
 
 - **`tools/study/fill_decomposition.py`** writes the identity `net = spread + drift - fees` per day and reconciles it against
