@@ -49,6 +49,11 @@ engine:
   kill_switch_loss_usd: 50
   fat_finger_bps: 200
   max_orders_per_second: 8
+  # The burst bucket beside the rate. One token refuses the second leg of a pair placed inside 125 ms, which is what a
+  # two-sided re-quote is: the engine's own default is 1, and the order-budget card raised it to 4 on the measured window.
+  # Reachable from this file since 2026-11-28 -- before that it was a command-line flag, and a session started by a unit
+  # cannot pass one.
+  order_burst: 1
 
   # close_out: true               # flatten at the end of the input (a replay-only control)
   # close_out_cross_bps: 20
