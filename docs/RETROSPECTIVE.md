@@ -251,7 +251,44 @@ re-derived by the binary; and two non-adjacent windows before anything is believ
 
 Total spent on data across all eight: **1.27 USD**, of which the funding histories were free.
 
-## Held for later: the maker's open directions, and the number that would buy each one
+## What a verdict rests on: the factors, and which of them are measured
+
+A conclusion here is a quotient, and a quotient is only as good as the factors that moved it. The 2026-11-28 iteration on the
+wire made that concrete: three of four proposed latency levers turned out to be claims about a segment that is **12 ms of a
+77-112 ms round trip**, and the measurement that said so took ten minutes. This is the standing list of the factors a verdict
+can rest on, and which of them this tree actually measures.
+
+| factor | what it moves | measured? | what would pin it |
+|---|---|---|---|
+| the hop to the venue's edge (TCP) | 4.0-4.6 ms of every order and cancel | yes — `probe-venue`, 2026-11-28 13:12 UTC, three samples | nothing; it is 5 percent of the trip |
+| the TLS handshake | 8.1-10.7 ms, once per connection and not per order: the order path holds a persistent socket | yes — same run | how long that socket lives, if the relay ever re-dials mid-window |
+| the venue's answer after TLS | **64.8-100.0 ms, 85 percent of the trip** | yes — same run | only the venue moves it, so it is a fact to price, not a lever |
+| the private order channel against the REST gateway | whether that 65-100 ms is the gateway or the engine behind it | **no** | one day of paired orders over each channel, same sizes, same minutes |
+| the engine to the relay, and the relay to the venue | a localhost hop on 8765/8766 plus whatever the relay buffers | **no** | a stamp per order in the relay's log, or `strace -T` on one order |
+| the cancel round trip | 76-78 ms, and the race a cancel loses | yes — two runs the same day | nothing; the wind-down is already built around it |
+| the rate-limit budget | the 92 percent refusal rate the budget change addressed | yes — per window, from the journal | the next window's refused-to-submitted ratio |
+| the host's clock and its zone | the window's boundaries, the report's key, the order of the journal | **no** on the host | one `timedatectl` and one `chronyc tracking` on the host |
+| **the latency a replay is given** | **10 ms in the cell against 77-118 ms live**, so a gate's worth computed on the cell understates the penalty by an order of magnitude | yes, both sides | a cell run at the measured distribution rather than at one constant |
+| **the markout horizon** | 5 quote cycles is **0.54 s** at 2026-11-25's 9.25 views a second, and shorter on a busier day — so a markout is not a fixed horizon | half: the rate was measured for that day | the rate for every day a markout is quoted, and a horizon named in seconds beside it |
+| the fill set | the 60 fills a replay counts against the record's 58 maker rows | **no** | the reconciliation, still open |
+| the settlement convention | the far touch, one tick past, plus 5 bps: 2.19 bps of cost on 2026-11-25 | the convention is written and single-valued | a second convention on the same days, to show the choice's size |
+| the window and its zone | every conclusion is about 13:30-15:30 UTC and nothing else | yes, registered | a second window, named |
+| the breadth of a ladder | the A-S median dips at 16 bps between 10 and 25, which says three values cannot separate the mechanism from the noise | yes | more values, or a paired day-level test |
+
+Two of these deserve the emphasis the rest do not.
+
+**The latency a replay is given is the factor that has already changed a verdict.** The leader-state gate was found on seven
+days of a cell that models 10 ms, and the counterfactual that closed it ran at 75 ms — closer to the measured 77-118 ms than
+the cell ever was. That is not a coincidence: a state whose life is shorter than the round trip cannot be acted on, and a cell
+at a tenth of the real latency will happily show it can. So the rule is not "be careful with gates" but the narrower, checkable
+one: **a conclusion whose trigger has to travel the round trip must be measured at that round trip**. A cell at a constant the
+wire does not have is a conclusion about a market this project does not trade.
+
+**The markout horizon is the factor most likely to be quoted without its unit.** Five quote cycles reads like a fixed horizon
+and is not one: at 9.25 views a second it is half a second, on a busy day it is less, and on a quiet one it is more. Every
+markout comparison in the retrospective therefore carries the day's rate, or it is comparing two different horizons and
+calling the difference a result.
+
 
 The UP configuration is **frozen**: two structural upgrades (the asymmetric refresh and the second layer) took it to a
 closed median of **+9.83 bps on 5 of 7 days at 26 fills a window**, which is the value every re-derivation reads -- the

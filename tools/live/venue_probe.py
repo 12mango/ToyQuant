@@ -15,9 +15,12 @@ A name that does not resolve is a result rather than an error: `wsaws.okx.com` a
 resolver, and printing that is how the plan's premise gets tested instead of assumed.
 """
 import argparse
+import os
 import socket
 import ssl
+import subprocess
 import time
+from pathlib import Path
 
 # The two names this tree dials (`src/lines`), the one the proposal would switch to, and the REST edge the order path uses.
 TARGETS = (
@@ -58,11 +61,49 @@ def probe(name, port, path, samples, timeout):
             print(f"  FAIL {exc}")
 
 
+def host_facts():
+    """The machine's own facts: the clock and its zone, the polling knob, the governor and the NIC.
+
+    Every wire lever this was written to test assumed something about the host -- that the clock is synced, that polling can be
+    turned on, that a governor exists to set, that the interface's MTU is what the path expects. Printing them costs nothing
+    and turns four assumptions into four readings.
+    """
+    print("-- host")
+    try:
+        facts = subprocess.run(["timedatectl", "show", "--property=Timezone", "--property=NTPSynchronized",
+                                "--property=TimeUSec"], capture_output=True, text=True, timeout=5)
+        for line in facts.stdout.strip().splitlines():
+            print(f"  {line}")
+    except (OSError, subprocess.SubprocessError) as exc:
+        print(f"  timedatectl: {exc}")
+    try:
+        with open("/proc/sys/net/core/busy_poll") as handle:
+            busy_poll = handle.read().strip()
+        with open("/proc/sys/net/core/busy_read") as handle:
+            busy_read = handle.read().strip()
+        print(f"  net.core.busy_poll={busy_poll} net.core.busy_read={busy_read}"
+              f"  governor={'present' if Path('/sys/devices/system/cpu/cpu0/cpufreq').exists() else 'absent (a VM)'}")
+    except OSError as exc:
+        print(f"  sysctl: {exc}")
+    try:
+        for nic in sorted(Path("/sys/class/net").iterdir()):
+            if nic.name == "lo":
+                continue
+            mtu = (nic / "mtu").read_text().strip()
+            link = nic / "device" / "driver"
+            driver = os.path.basename(os.readlink(link)) if link.is_symlink() else "virtual"
+            print(f"  nic {nic.name} mtu={mtu} driver={driver}")
+    except OSError as exc:
+        print(f"  nic: {exc}")
+    print(f"  cpus={os.cpu_count()} load={','.join(f'{value:.2f}' for value in os.getloadavg())}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--samples", type=int, default=3, help="connections per name")
     parser.add_argument("--timeout", type=float, default=5.0, help="seconds per connection attempt")
     args = parser.parse_args()
+    host_facts()
     for name, port, path in TARGETS:
         probe(name, port, path, args.samples, args.timeout)
     return 0
