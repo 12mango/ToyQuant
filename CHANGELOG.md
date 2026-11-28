@@ -6,6 +6,23 @@ and when — is in [Roadmap](docs/ROADMAP.md#change-log), and the two are delibe
 The repository is named `ToyQuant`. The `-v1` suffix that older links and a local clone may still carry is a leftover
 from the first frozen tag, `v1.0-demo`, which is a *version* and stays: every reference in `docs/` and on the published
 site now points at `ToyQuant`.
+## The release path splits, and the light one is off until it is measured (2026-11-28)
+
+- **`deploy/release_path.py`** answers one question for a diff: can it travel without a binary? Its allowlist is the card's
+  six paths in one constant -- `config/`, `deploy/journald/`, `deploy/logrotate/`, `deploy/*.service`, `deploy/*.timer`,
+  `deploy/*.env.example` -- and it refuses a path that names a program (`toy_quant`, a `.py`, a `.sh`) before the allowlist is
+  even consulted. An empty diff is `full`: a classifier that answers "light" when it was told nothing would ship nothing and
+  call it a deploy. Its self-test pins twelve paths, one mixed list and the empty one.
+- **`deploy.yml` gained a `classify` job and a `deploy-light` job.** The light job rsyncs the approved files, runs the
+  bootstrap and `activate.sh`, and copies no program; `verify` and `deploy` are gated on the classifier saying `full`, which
+  is what it says unless `TOYQUANT_LIGHT_PATH` is `yes` **and** a base commit is named (`base_sha` on a dispatch, the push's
+  `before` on a tag). So the graph that runs today is the one that ran yesterday, and the switch is the experiment.
+- **`check_deploy.py` is nineteen rules.** The nineteenth refuses an allowlist wider than the card's six and a light job that
+  touches the program, and its self-test fires on each by widening the list and by adding `toy_quant` to the rsync line.
+- **The 60-second bar is not measured yet**, and deliberately: it needs a real config-only diff in a 04:00-12:00 UTC block.
+  One correction to the card's wording came out of the build -- the operator's `live.yaml` never travels by a deploy, so the
+  light path is about the template and the units, not about a setting.
+
 ## A red health check now rolls back, and the host remembers what it refused (2026-11-28)
 
 - **`deploy/activate.sh` re-checks before it reverts.** A running session's first red health read is re-run five seconds

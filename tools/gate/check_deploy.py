@@ -458,6 +458,37 @@ def rule_rollback_latch(texts):
     return problems
 
 
+def rule_light_path(texts):
+    """The config-only path ships the six registered kinds of file, and never a program.
+
+    Cut 2. The allowlist has one home -- `deploy/release_path.py` -- and this rule holds it to the card's six: three
+    directories, `*.service`, `*.timer` and `*.env.example`. A wider list is how a change that *needs* a binary would travel
+    without the audit; and a `deploy-light` job that copies the program is the same defect with the audit skipped, which is
+    why the second half reads the job's own lines rather than its name.
+    """
+    problems = []
+    classifier = texts["release_path"]
+    for needed in ('"config/"', '"deploy/journald/"', '"deploy/logrotate/"', "\\.(service|timer)$", "\\.env\\.example$"):
+        if needed not in classifier:
+            problems.append(f"deploy/release_path.py does not carry `{needed}`: the allowlist must be the card's six paths, "
+                            "written in one place")
+    if "PROGRAM" not in classifier:
+        problems.append("deploy/release_path.py has no refusal for a program path: a file named `toy_quant` or `x.py` "
+                        "would be classified light")
+    workflow = texts["workflow"]
+    start = workflow.find("deploy-light:")
+    if start < 0:
+        problems.append("deploy.yml has no `deploy-light` job, so the classifier's answer has no path to travel")
+        return problems
+    for line in workflow[start:].splitlines():
+        if line.strip().startswith("#"):
+            continue
+        for program in ("toy_quant", "out/build"):
+            if program in line:
+                problems.append(f"the light path touches `{program}`: it ships configuration files and never the program")
+    return problems
+
+
 RULES = (("env_names", rule_env_names), ("template_keys", rule_template_keys), ("endpoints", rule_endpoints),
          ("ordering", rule_ordering), ("stop_window", rule_stop_window), ("bundled", rule_bundled),
          ("coupling", rule_coupling), ("notify_refs", rule_notify_refs), ("deploy_order", rule_deploy_order),
@@ -465,7 +496,7 @@ RULES = (("env_names", rule_env_names), ("template_keys", rule_template_keys), (
          ("preflight_isolation", rule_preflight_isolation), ("report_clock", rule_report_clock),
          ("timer_install", rule_timer_install), ("report_sandbox", rule_report_sandbox),
          ("report_identity", rule_report_identity), ("deploy_start", rule_deploy_start),
-         ("rollback_latch", rule_rollback_latch))
+         ("rollback_latch", rule_rollback_latch), ("light_path", rule_light_path))
 
 FILES = {"env": ".env.example",
          "live_yaml": "config/live.example.yaml",
@@ -484,6 +515,7 @@ FILES = {"env": ".env.example",
          "report_unit": "deploy/toyquant-report.service",
          "activate": "deploy/activate.sh",
          "rollback": "deploy/rollback.sh",
+         "release_path": "deploy/release_path.py",
          "shutdown_h": "src/lines/session_shutdown.h"}
 
 
@@ -522,7 +554,7 @@ CLEAN = {
     "relay_unit": "[Unit]\nBefore=toyquant-live.service\nOnFailure=toyquant-notify@%n.service\n[Service]\n"
                   "ExecStart=/usr/bin/python3 /opt/toyquant/tools/live/venue_relay.py\n",
     "notify_unit": "[Service]\nExecStart=/usr/bin/python3 /opt/toyquant/deploy/notify.py --unit %i\n",
-    "workflow": "install -m 0755 toy_quant; install tools/live/live_config.py tools/live/venue_relay.py; reverted_release; "
+    "workflow": "install -m 0755 toy_quant; install tools/live/live_config.py tools/live/venue_relay.py; reverted_release; deploy-light:\n  run: rsync config\n"
                 "install deploy/toyquant-notify@.service deploy/toyquant-report.service deploy/toyquant-report.timer "
                 "deploy/toyquant-window-start.timer deploy/toyquant-window-stop.service deploy/toyquant-window-stop.timer; "
                 "install deploy/notify.py deploy/daily_report.py deploy/preflight.sh deploy/check_health.sh "
@@ -561,6 +593,10 @@ CLEAN = {
                 "fi\n",
     "rollback": "install -m 0755 \"$PROGRAM.prev\" \"$PROGRAM\"\n"
                 "printf '%s\\n' \"$REFUSE\" > /opt/toyquant/data/runtime/reverted_release\n",
+    "release_path": "LIGHT_PREFIXES = (\"config/\", \"deploy/journald/\", \"deploy/logrotate/\")\n"
+                    "LIGHT_UNIT = re.compile(r\"^deploy/[A-Za-z0-9_.@-]+\\.(service|timer)$\")\n"
+                    "LIGHT_ENV = re.compile(r\"^deploy/[A-Za-z0-9_.@-]+\\.env\\.example$\")\n"
+                    "PROGRAM = re.compile(r\"toy_quant\")\n",
     "window_start": "[Timer]\nOnCalendar=*-*-* 13:30:00 UTC\nUnit=toyquant-live.service\n",
     "window_stop": "[Timer]\nOnCalendar=*-*-* 15:32:00 UTC\nUnit=toyquant-window-stop.service\n",
     "daily_report": "run([\"journalctl\", \"-u\", UNIT, \"--since\", start, \"--until\", end, \"--utc\"])\n"
@@ -612,6 +648,12 @@ def self_test():
           "never rolls back")
     check("rollback_latch", lambda t: t.update(workflow=t["workflow"].replace("reverted_release", "elsewhere")),
           "never reads")
+    # Cut 2: an allowlist wider than the card's six, and a light path that copies the program.
+    check("light_path", lambda t: t.update(release_path=t["release_path"].replace('"config/", ', "")),
+          "does not carry")
+    check("light_path", lambda t: t.update(workflow=t["workflow"].replace("run: rsync config",
+                                                                         "run: rsync config toy_quant")),
+          "touches")
     # The ops action had the same defect, and it is the way an operator starts a stopped host: the rule reads both.
     check("deploy_order", lambda t: t.update(ops_workflow=t["ops_workflow"].replace(
         "sudo systemctl restart toyquant-relay\n", "", 1)), "runs the preflight before restarting the relay")

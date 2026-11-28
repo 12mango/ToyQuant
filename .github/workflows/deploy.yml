@@ -9,6 +9,11 @@ on:
         description: run the data-backed gate on the self-hosted runner (needs the archive)
         type: boolean
         default: false
+      base_sha:
+        description: >-
+          Cut 2 only -- the commit to diff against for the release-path classifier. Empty means the full path, because a
+          classifier that is told nothing must not answer "light".
+        default: ""
   push:
     tags:
       - "v*"
@@ -25,10 +30,44 @@ env:
   BUILD_DIR: out/build/linux-relwithdebinfo
 
 jobs:
+  # **Cut 2: one place decides whether a change needs a binary.** The classifier is a tracked script with its own
+  # self-test, so the allowlist has one home. It answers `light` only when the switch below is on, every changed path is one
+  # of the six the card names, and a base commit was actually named -- a classifier that answers "light" when it was told
+  # nothing would ship nothing and call it a deploy. Anything else is `full`, which is the path that existed before this job.
+  classify:
+    runs-on: ubuntu-latest
+    outputs:
+      path: ${{ steps.verdict.outputs.path }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: verdict
+        run: |
+          set -euo pipefail
+          if [ "${{ vars.TOYQUANT_LIGHT_PATH }}" != "yes" ]; then
+            echo "classify: the light path is off (TOYQUANT_LIGHT_PATH is not yes); the full path is the default"
+            echo "path=full" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          base="${{ inputs.base_sha }}"
+          if [ -z "$base" ] && [ "${{ github.event_name }}" = "push" ]; then base="${{ github.event.before }}"; fi
+          case "$base" in
+            ""|0000000000000000000000000000000000000000)
+              echo "classify: no base commit named; the full path is the default"
+              echo "path=full" >> "$GITHUB_OUTPUT"
+              exit 0 ;;
+          esac
+          verdict=$(git diff --name-only "$base..${{ github.sha }}" | python3 deploy/release_path.py --stdin)
+          echo "classify: $verdict (base $base..${{ github.sha }})"
+          echo "path=$verdict" >> "$GITHUB_OUTPUT"
+
   # The checks that need no market data -- the same set the repository's CI runs -- plus the two self-tests the live path
   # owns. The tier that would also run `verify_l2.sh fast` reads a 1.5 GB depth archive that is not in the repository, so it
   # runs in `data-gate` below, on the machine that holds the archive.
   verify:
+    needs: [classify]
+    if: needs.classify.outputs.path == 'full'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -152,9 +191,10 @@ jobs:
           bash tools/gate/verify_l2.sh fast
 
   deploy:
-    needs: [verify]
-    # A tag push and a dispatch both reach here; a pull request never does.
-    if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
+    needs: [classify, verify]
+    # A tag push and a dispatch both reach here; a pull request never does. The full path is the one that carries the
+    # artifact `verify` built, so it is the only one that can run when the classifier says `full`.
+    if: needs.classify.outputs.path == 'full' && (github.ref_type == 'tag' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     environment: production
     steps:
@@ -330,10 +370,42 @@ jobs:
              sudo bash /opt/toyquant/deploy/activate.sh --repo-dir /opt/toyquant
           REMOTE
 
-      # A failed health check leaves the previous binary on the host and the previous release one command away. This does
-      # not roll back by itself: a rollback that runs unattended can flap a live session, and the operator's decision is
-      # what the failure is for.
+      # A failed step is not always a failed release: `activate.sh` rolls back on its own when a running session's health
+      # check is red twice (Cut 1), and the latch then names the release it refused. What is left for this step is the case
+      # where the rollback itself did not come up, or where the failure was earlier than activation -- so it names the
+      # command and the latch rather than repeating either.
       - name: Say how to roll back
         if: failure()
         run: |
-          echo "::error::the deploy did not come up healthy. On the host: sudo bash /opt/toyquant/deploy/rollback.sh"
+          echo "::error::the deploy did not finish healthy. A running session with two red health reads has already been rolled back by activate.sh; for any other failure: sudo bash /opt/toyquant/deploy/rollback.sh"
+
+  # **The config-only path (Cut 2).** It ships the six kinds of file the classifier approved, runs the same `activate.sh` the
+  # full path runs, and stops: no build, no tests, no tar, no rule audit, and **no binary** -- that last is what
+  # `check_deploy.py`'s rule refuses in this job, because a binary that changes without the audit is the failure this card's
+  # conservatism exists to prevent. It runs only when the classifier says `light`, which it does only when
+  # `TOYQUANT_LIGHT_PATH` is `yes` and a base commit was named.
+  deploy-light:
+    needs: [classify]
+    if: needs.classify.outputs.path == 'light' && (github.ref_type == 'tag' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the key
+        run: |
+          set -euo pipefail
+          install -m 0700 -d "$HOME/.ssh"
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > "$HOME/.ssh/deploy_key"
+          chmod 0600 "$HOME/.ssh/deploy_key"
+      - name: Ship the configuration the classifier approved, then activate
+        run: |
+          set -euo pipefail
+          rsync -az --relative -e "ssh -i $HOME/.ssh/deploy_key -o BatchMode=yes" \
+            config deploy/journald deploy/logrotate \
+            deploy/*.service deploy/*.timer deploy/*.env.example \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/opt/toyquant/"
+          # The units landed in `/opt/toyquant/deploy`; the bootstrap is what installs them where the manager reads them, and
+          # it is the same script the full path runs. Then the same activation, which is where the health check lives.
+          ssh -i "$HOME/.ssh/deploy_key" -o BatchMode=yes \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "sudo bash /opt/toyquant/deploy/bootstrap_server.sh --repo-dir /opt/toyquant --etc-dir /etc/toyquant && sudo bash /opt/toyquant/deploy/activate.sh --repo-dir /opt/toyquant"

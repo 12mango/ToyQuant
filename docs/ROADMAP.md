@@ -113,7 +113,7 @@ items; two of them landed during the live-line work and the card starts from tha
 | the activation sequence | **landed** | `deploy/activate.sh` -- bundled by the package step (`deploy.yml:196`) and called by the deploy (`:315`): `daemon-reload` -> `reset-failed` -> `start` in a bounded retry that prints the attempt it succeeded on, and on giving up prints `LoadState`, `FragmentPath`, `systemctl cat` and the unit's journal, then `wait_for_ports.sh` and `preflight.sh` |
 | rollback, as a command | **landed** | `deploy/rollback.sh` restores `toy_quant.prev` -- copied before the unpack (`deploy.yml:244`) -- restarts and runs the health check; a red job names it (`deploy.yml:324`) |
 | rollback, automatic | **landed 2026-11-28** | `deploy/activate.sh` runs `check_health.sh`, re-runs it five seconds later when the first read is red, and only a second red calls `deploy/rollback.sh --refuse <RELEASE>`; the rollback's own health check is the deploy's verdict |
-| release-path split | **not landed** | no `paths-filter` and no classification anywhere in `deploy.yml` |
+| release-path split | **landed 2026-11-28, inert until the switch is on** | `deploy/release_path.py` classifies a diff against the card's six paths and has its own self-test; `deploy.yml` gains a `classify` job and a `deploy-light` job that rsyncs those files, runs the bootstrap and `activate.sh`, and copies no program. `TOYQUANT_LIGHT_PATH` must be `yes` and a `base_sha` must be named, otherwise the classifier answers `full` -- so the graph is the old one until the bar below is measured |
 | the two-strike rule | **landed 2026-11-28** | `deploy.yml`'s remote script reads `reverted_release` **before the mkdir, the tar and the bootstrap** and exits 2 naming the release; `tools/gate/check_deploy.py`'s eighteenth rule refuses the absence of either half |
 
 **Cut 1 -- automatic rollback on the second red health check, and a latch against the third attempt.** On a red health
@@ -141,7 +141,12 @@ classified as light.
 The bar: a config-only change (one value in `live.yaml`) from dispatch to a green health check in **under 60 seconds**,
 measured from the runner's first line to the host's `check_health.sh` line; the full path still green on a `src/` change;
 and `check_deploy` gains a rule that refuses a light classification whose file list is wider than those six paths, plus a
-rule that refuses a light path which ships a binary.
+rule that refuses a light path which ships a binary. **Built 2026-11-28 and left inert**: the classifier, the two jobs and
+the rule (the nineteenth) are in the tree, `TOYQUANT_LIGHT_PATH` is unset so every deploy still takes the full path, and the
+60-second bar waits for a real config-only diff in a 04:00-12:00 UTC block -- a fixture invented to hit it would measure the
+fixture. One thing the card's wording got wrong and the build corrected: the operator's `live.yaml` never travels by a
+deploy at all (it is `--ops set-key`'s), so the light path is about `config/live.example.yaml`, the units, the timers, the env
+templates and the journald/logrotate files.
 
 **Why Cut 1 first, and why neither is built in the hour before the window.** Tonight's session is started by
 `toyquant-window-start.timer`, not by a deploy: nothing in either cut makes the window start. What tonight needs is the
