@@ -51,6 +51,9 @@
 # day, lower median, worse settled) because the worst day is toxic under both definitions -- so the line closes with the
 # sentence the registration asked for.
 set -u
+# Whether any run in this invocation failed. `run()` sets it, and the script exits with it: a driver that reports success
+# beside a CSV holding one header line is the shape the 2026-11-28 defect took.
+FAILED=0
 cd "$(dirname "$0")/../.." || exit 1
 
 DAYS=2026-11-16,2026-11-17,2026-11-18,2026-11-19,2026-11-20,2026-11-21,2026-11-22
@@ -97,11 +100,16 @@ CELL="--symbol $SYMBOL --days $DAYS --strategy active_l2 --models prorata
 mkdir -p "$OUT"
 
 run() {  # run <name> <switch>
-  local name=$1 switch=$2
+  local name=$1 switch=$2 status=0
   echo "== $name start $(date -u +%H:%M:%S)"
   # shellcheck disable=SC2086  # the two flag strings are word lists by construction, not one argument
-  python3 tools/sweep/okx_maker_baseline.py $CELL --days "$DAYS" --extra="$BASE $switch" --out "$OUT/$name.csv"
-  echo "== $name exit=$?"
+  python3 tools/sweep/okx_maker_baseline.py $CELL --days "$DAYS" --extra="$BASE $switch" --out "$OUT/$name.csv" || status=$?
+  echo "== $name exit=$status"
+  # A run that failed must make the script fail. Measured 2026-11-28: a column added to the row and not to the tool's
+  # `COLUMNS` made every day raise, the tool exited 1 on the first one, and this script still exited 0 -- four sweeps read
+  # as successful with one header line each in their CSVs.
+  [ "$status" -eq 0 ] || FAILED=1
+  return "$status"
 }
 
 want() { [ "$arm" = all ] || [ "$arm" = "$1" ]; }
@@ -148,3 +156,4 @@ want f6_as_skew && run f6_as_skew "--as-skew-bps=25 --session-start=13:30 --wind
 want f6_as_skew10 && run f6_as_skew10 "--as-skew-bps=10 --session-start=13:30 --wind-down-end=15:30"
 want f6_as_skew16 && run f6_as_skew16 "--as-skew-bps=16 --session-start=13:30 --wind-down-end=15:30"
 echo "== done $(date -u +%H:%M:%S) -- rows in $OUT/f*.csv"
+[ "$FAILED" -eq 0 ] || { echo "== a run failed; the rows above are not a complete table" >&2; exit 1; }

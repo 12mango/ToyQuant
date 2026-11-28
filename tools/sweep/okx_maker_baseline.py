@@ -48,7 +48,7 @@ SLICE_TOOL = ROOT / "tools/fetch/slice.py"
 # The archive and the trade tape live in `<root>/<SYMBOL>/` or in the flat root; one module owns both layouts.
 sys.path.insert(0, str(ROOT / "tools" / "lib"))
 from okx_data import depth_archive, trade_tape  # noqa: E402
-COLUMNS = ["day", "model", "strategy", "base", "refresh", "latency_us", "fills", "fill_rate", "fees_bps", "gross_bps", "closed_bps",
+COLUMNS = ["day", "model", "strategy", "base", "refresh", "latency_us", "fills", "submitted", "cancels", "fill_rate", "fees_bps", "gross_bps", "closed_bps",
            "closed_per_fill_bps", "net_bps", "net_usd", "notional_usd", "breakeven_bps", "capture_ticks", "markout_ticks", "zero_queue",
            "max_inv", "net_pos", "hold_s", "settle_bps", "settled_bps",
            # The execution line's own decomposition, from the `[EXECUTION_ALGO]` block: `n/a` on every row a strategy other
@@ -347,6 +347,12 @@ def main():
                            "refresh": "" if refresh is None else f"{refresh:g}",
                            "latency_us": str(args.latency_us),
                            "fills": fields.get("trade_reports", "?"),
+                           # What the session spent to get those fills. Latency and churn are one problem: a quote that
+                           # arrives too late to be filled still costs a submission and a cancel, and on 2026-11-28 the live
+                           # leg was rate-limited 11,086 times in one window -- so the columns that price a fill in messages
+                           # belong beside the fills, not only in the raw summary.
+                           "submitted": fields.get("submitted_orders", "?"),
+                           "cancels": fields.get("cancel_requests", "?"),
                            "fill_rate": fields.get("fill_rate", "?"), "fees_bps": bps("fees_paid"),
                            "gross_bps": bps("gross_pnl_usd"), "closed_bps": bps("gross_closed_pnl_usd"),
                            "closed_per_fill_bps": bps("gross_closed_per_fill_usd"),
